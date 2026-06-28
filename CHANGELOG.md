@@ -4,6 +4,20 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-06-29
+
+### Fixed
+- **Git panel: bound repos reset to the default on every reopen** — repos added to a
+  window were silently dropped, so reopening the panel fell back to the auto-discovered
+  directory. Root cause: a legacy flat-array value under the per-window storage key made
+  `readMap` return an array; subsequent writes set an array property that `JSON.stringify`
+  drops, so every save vanished. `readMap` now coerces non-object values to `{}`, so
+  per-window writes persist. Repos added to a window now survive close/reopen.
+
+### Changed
+- **Settings → Language label** — non-English locales now append "Language" to the setting
+  label so the option is recognisable regardless of the current UI language.
+
 ## [0.5.1] - 2026-06-28
 
 ### Added
