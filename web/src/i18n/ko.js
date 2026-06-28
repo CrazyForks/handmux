@@ -16,7 +16,7 @@ export default {
   'token.title': '액세스 토큰이 필요합니다',
   'token.placeholder': 'HANDMUX_TOKEN 붙여넣기',
 
-  'settings.language': '언어',
+  'settings.language': '언어 Language',
 
   // home / drawer / windowbar
   'home.empty': '열린 파일이 없습니다',

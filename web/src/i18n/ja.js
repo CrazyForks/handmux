@@ -16,7 +16,7 @@ export default {
   'token.title': 'アクセストークンが必要です',
   'token.placeholder': 'HANDMUX_TOKEN を貼り付け',
 
-  'settings.language': '言語',
+  'settings.language': '言語 Language',
 
   // home / drawer / windowbar
   'home.empty': 'ファイルが開かれていません',

@@ -11,6 +11,7 @@ import {
   getRecentDocs, pushRecentDoc, removeRecentDoc, getPaneBase, setPaneBase,
   getBrowseDir, setBrowseDir,
   getIdeas, setIdeas, renameWindowIdeas,
+  getGitRepos, addGitRepos,
 } from '../src/storage.js';
 
 beforeEach(() => localStorage.clear());
@@ -127,6 +128,20 @@ describe('storage', () => {
     expect(getBoundSessions()).toEqual(['prod', 'server']);
     expect(getRecent('prod')).toEqual(['npm test']); // recent followed the rename
     expect(getRecent('main')).toEqual([]);            // old name cleared
+  });
+
+  // Regression: a LEGACY flat-array value under a per-window map key (tw_git_repos was once a global
+  // array, before per-window keying) must not silently swallow writes. readMap used to JSON.parse the
+  // array and return it as-is; writeMapEntry then set arr['@23']=… (a non-index property) which
+  // JSON.stringify DROPS — so every git-repo write vanished and getGitRepos always returned []. The map
+  // key must be treated as an object, ignoring the stale legacy array.
+  it('does not let a legacy flat-array value swallow per-window writes (tw_git_repos)', () => {
+    localStorage.setItem('tw_git_repos', JSON.stringify(['/old/global/repo']));
+    expect(getGitRepos('@23')).toEqual([]);                 // legacy array is not a per-window map
+    expect(addGitRepos('@23', ['/proj'])).toEqual(['/proj']);
+    expect(getGitRepos('@23')).toEqual(['/proj']);          // the write actually persisted
+    // and it round-trips through storage, not just the returned value
+    expect(JSON.parse(localStorage.getItem('tw_git_repos'))['@23']).toEqual(['/proj']);
   });
 
   it('renameBoundSession is a no-op for an unknown name and copies nothing when there is no recent', () => {

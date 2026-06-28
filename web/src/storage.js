@@ -14,7 +14,8 @@ const PREVIEW_DIR_KEY = 'tw_preview_dir';   // { [windowId]: absPath } — last 
 const STARTUP_CMD_KEY = 'tw_startup_cmd';   // last startup command chosen in new window/session (e.g. "claude")
 const IDEAS_KEY = 'tw_ideas';               // { [sessionName]: { [windowName]: Idea[] } } — per-window todo list
 const CHANGELOG_SEEN_KEY = 'tw_changelog_seen'; // the latest changelog entry id (v) the user has opened
-const GIT_REPOS_KEY = 'tw_git_repos';          // { [windowId]: absPath[] } — bound git repos per window absolute paths (order = tab order)
+const GIT_REPOS_KEY = 'tw_git_repos';          // { [windowId]: absPath[] } —
+const GIT_DIRS_KEY = 'tw_git_dirs';            // { [windowId]: absPath[] } — dirs the user picked repos from (history, newest first) bound git repos per window absolute paths (order = tab order)
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t);
@@ -62,8 +63,14 @@ export function renameBoundSession(oldName, newName) {
 }
 
 function readMap(key) {
-  try { return JSON.parse(localStorage.getItem(key)) || {}; }
-  catch { return {}; }
+  // Must return a PLAIN OBJECT. A legacy value that parses to an array (e.g. tw_git_repos was once a
+  // global flat array, before per-window keying) would otherwise be returned as-is — then writeMapEntry
+  // sets arr[windowId]=… as a non-index property, which JSON.stringify silently DROPS, so every write
+  // vanishes. Coerce anything that isn't a plain object back to {}.
+  try {
+    const v = JSON.parse(localStorage.getItem(key));
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch { return {}; }
 }
 function writeMapEntry(key, k, v) {
   const m = readMap(key);
@@ -260,5 +267,16 @@ export function removeGitRepo(windowId, path) {
   if (!windowId) return [];
   const next = getGitRepos(windowId).filter((p) => p !== path);
   writeMapEntry(GIT_REPOS_KEY, windowId, next);
+  return next;
+}
+export function getGitDirs(windowId) {
+  if (!windowId) return [];
+  const v = readMap(GIT_DIRS_KEY)[windowId];
+  return Array.isArray(v) ? v : [];
+}
+export function addGitDir(windowId, dir) {
+  if (!windowId || !dir) return [];
+  const next = [dir, ...getGitDirs(windowId).filter(d => d !== dir)].slice(0, 10);
+  writeMapEntry(GIT_DIRS_KEY, windowId, next);
   return next;
 }

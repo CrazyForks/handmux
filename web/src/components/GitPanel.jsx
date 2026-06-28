@@ -36,6 +36,11 @@ export default function GitPanel({ open, pane, windowId, inset = 0, onClose }) {
   const drill = stack.length ? stack[stack.length - 1] : null;
   const [pickOpen, setPickOpen] = useState(false);
   const [seedCwd, setSeedCwd] = useState(null);       // DirPicker start dir (the pane's cwd)
+  // Always-fresh windowId ref — onPick is async and captures a closure; using the ref means we
+  // always write to storage under the windowId that's valid at the time the pick resolves, not the
+  // stale one from when the callback was created (e.g. when current was briefly null).
+  const windowIdRef = useRef(windowId);
+  useEffect(() => { windowIdRef.current = windowId; }, [windowId]);
 
   // Home data, fetched as a bundle. `changes`/`branches` follow the work tree (not branch-specific);
   // `commits` follows `viewedBranch` (null = current HEAD). null = still loading.
@@ -206,10 +211,17 @@ export default function GitPanel({ open, pane, windowId, inset = 0, onClose }) {
       const { repos: found = [] } = await apiRepos(dir);
       if (!mountedRef.current) return;
       if (!found.length) { setError(t('git.errNoRepoInDir')); return; }
-      const next = addGitRepos(windowId, found.map((r) => r.path));
-      setRepos(next);
-      // jump to the first newly-found repo
-      const firstNew = found.map((r) => r.path).find((p) => !repos.includes(p)) || found[0].path;
+      const foundPaths = found.map((r) => r.path);
+      // Use the ref so we always write to the current windowId even if the prop was stale in this closure.
+      const wid = windowIdRef.current;
+      const next = wid ? addGitRepos(wid, foundPaths) : foundPaths;
+      // Functional updater: append to whatever the current list is (avoids stale-closure overwrite).
+      setRepos((prev) => {
+        const merged = [...prev];
+        for (const p of next) if (!merged.includes(p)) merged.push(p);
+        return merged;
+      });
+      const firstNew = foundPaths.find((p) => !repos.includes(p)) || foundPaths[0];
       switchRepo(firstNew);
     } catch {
       if (mountedRef.current) setError(t('git.errReadDir'));

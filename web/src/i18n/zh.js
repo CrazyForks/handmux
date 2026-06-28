@@ -16,7 +16,7 @@ export default {
   'token.title': '需要访问 token',
   'token.placeholder': '粘贴 HANDMUX_TOKEN',
 
-  'settings.language': '语言',
+  'settings.language': '语言 Language',
 
   // home / drawer / windowbar
   'home.empty': '还没有打开过文件',

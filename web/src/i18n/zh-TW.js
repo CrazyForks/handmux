@@ -16,7 +16,7 @@ export default {
   'token.title': '需要存取 Token',
   'token.placeholder': '貼上 HANDMUX_TOKEN',
 
-  'settings.language': '語言',
+  'settings.language': '語言 Language',
 
   // home / drawer / windowbar
   'home.empty': '尚未開啟任何檔案',
