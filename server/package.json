@@ -1,0 +1,52 @@
+{
+  "name": "handmux",
+  "version": "0.5.0",
+  "description": "Mobile vibe coding — drive your real tmux session (and Claude Code) from your phone.",
+  "type": "module",
+  "license": "MIT",
+  "author": "yuanyuanzijin",
+  "homepage": "https://handmux.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yuanyuanzijin/handmux.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yuanyuanzijin/handmux/issues"
+  },
+  "keywords": ["tmux", "mobile", "terminal", "claude-code", "remote", "pwa"],
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "handmux": "bin/handmux.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "hooks",
+    "tmux",
+    "public",
+    "README.zh-CN.md"
+  ],
+  "scripts": {
+    "start": "node bin/handmux.js start",
+    "dev": "node bin/handmux.js start --foreground",
+    "handmux": "node bin/handmux.js",
+    "bundle": "node scripts/bundle-web.mjs",
+    "prepack": "node scripts/bundle-web.mjs",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "busboy": "^1.6.0",
+    "express": "^4.19.2",
+    "tunlite": "^0.10.0",
+    "web-push": "^3.6.7"
+  },
+  "optionalDependencies": {
+    "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "supertest": "^7.0.0",
+    "vitest": "^2.0.0"
+  }
+}

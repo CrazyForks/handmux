@@ -1,0 +1,11 @@
+{
+  "tunnel": "none",
+  "port": 19999,
+  "host": "0.0.0.0",
+  "name": "",
+  "token": "",
+  "previewDomain": "",
+  "staticDir": "",
+  "vapid": { "public": "", "private": "", "subject": "mailto:you@example.com" },
+  "xfyun": { "appId": "", "apiKey": "", "apiSecret": "" }
+}

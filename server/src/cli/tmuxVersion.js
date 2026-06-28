@@ -1,0 +1,49 @@
+// handmux's terminal rendering depends on `capture-pane -e -N` semantics, and those have drifted
+// across tmux versions before (e.g. how -N pads trailing whitespace). So we check the host's tmux at
+// start: absent → hard error; below the version we've validated → warn (don't block). exec injectable.
+import { spawnSync } from 'node:child_process';
+
+// Lowest tmux handmux has been validated against. Bump as the CI matrix (see release plan) widens.
+export const MIN_TMUX = '3.0';
+
+// "tmux 3.6a" / "tmux 3.4" / "tmux next-3.5" / "tmux openbsd-7.4" → {major,minor,suffix,raw}.
+export function parseTmuxVersion(out) {
+  const m = /tmux\s+(?:next-|openbsd-)?(\d+)\.(\d+)([a-z]?)/i.exec(String(out || ''));
+  if (!m) return null;
+  return { major: +m[1], minor: +m[2], suffix: m[3] || '', raw: `${m[1]}.${m[2]}${m[3] || ''}` };
+}
+
+// v >= min, comparing major.minor only (patch letters don't change the capture behaviour we rely on).
+export function versionAtLeast(v, minStr = MIN_TMUX) {
+  if (!v) return false;
+  const [maj, min] = minStr.split('.').map(Number);
+  return v.major > maj || (v.major === maj && v.minor >= min);
+}
+
+export function checkTmux(exec = spawnSync) {
+  const r = exec('tmux', ['-V'], { encoding: 'utf8' });
+  if (!r || r.status !== 0 || !r.stdout) return { present: false };
+  const version = parseTmuxVersion(r.stdout);
+  return { present: true, version, ok: versionAtLeast(version), raw: version ? version.raw : String(r.stdout).trim() };
+}
+
+// In install-command order: probe for the package manager that's actually on this Linux box.
+const LINUX_PKG_MANAGERS = [
+  ['apt-get', 'sudo apt install tmux'],
+  ['dnf', 'sudo dnf install tmux'],
+  ['pacman', 'sudo pacman -S tmux'],
+  ['zypper', 'sudo zypper install tmux'],
+  ['apk', 'sudo apk add tmux'],
+  ['yum', 'sudo yum install tmux'],
+];
+
+// The exact "install tmux" command for THIS host, so a tmux-less newcomer gets a copy-paste line instead
+// of a dead end. macOS → Homebrew; Linux → whichever package manager is present; Windows → tmux is a
+// Unix tool, so point at WSL. exec/platform injectable for tests.
+export function tmuxInstallHint(exec = spawnSync, platform = process.platform) {
+  if (platform === 'darwin') return 'brew install tmux';
+  if (platform === 'win32') return 'tmux is a Unix tool — install WSL (`wsl --install`), then inside it: sudo apt install tmux';
+  const has = (bin) => { const r = exec('which', [bin], { encoding: 'utf8' }); return !!r && r.status === 0; };
+  for (const [bin, cmd] of LINUX_PKG_MANAGERS) if (has(bin)) return cmd;
+  return 'install tmux with your package manager (e.g. `sudo apt install tmux`)';
+}

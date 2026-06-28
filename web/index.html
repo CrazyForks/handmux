@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>handmux</title>
+
+    <!-- Installable PWA: "Add to Home Screen" + standalone (no browser address bar). -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#1a1b1e" />
+    <link rel="icon" type="image/png" href="/icons/icon-192.png" />
+    <!-- iOS Safari ignores the manifest's display mode, so these drive standalone + the
+         home-screen icon/label. "black" keeps the white status-bar text readable on the dark topbar. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="handmux" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+    <!-- Inline boot splash: paints instantly (before the JS bundle loads) so a cold launch shows the
+         brand, not a blank dark screen. main.jsx calls window.__hideBootSplash() once React has painted;
+         a safety timer hides it even if the bundle never boots. Self-contained here — no app code. -->
+    <style>
+      html, body { margin: 0; background: #1a1b1e; } /* opaque dark from frame one — no wallpaper showing through */
+      #boot-splash { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 22px; background: #1a1b1e;
+        transition: opacity .45s ease; }
+      #boot-splash.boot-hide { opacity: 0; pointer-events: none; }
+      .boot-mark { position: relative; width: 108px; height: 108px; display: flex;
+        align-items: center; justify-content: center; }
+      .boot-mark svg { width: 108px; height: 108px; border-radius: 24px; position: relative; z-index: 1; }
+      .boot-glow { position: absolute; inset: -42%; border-radius: 50%;
+        background: radial-gradient(circle, rgba(116,230,160,.42) 0%, rgba(116,230,160,0) 68%);
+        animation: bootGlow 2.4s ease-in-out infinite; }
+      @keyframes bootGlow { 0%,100% { transform: scale(.9); opacity: .5; } 50% { transform: scale(1.14); opacity: .95; } }
+      .boot-word { font: 600 22px/1 -apple-system, system-ui, sans-serif; letter-spacing: .5px; color: #e9efe9; }
+      .boot-dots { display: flex; gap: 7px; }
+      .boot-dots i { width: 6px; height: 6px; border-radius: 50%; background: #6fe2ac; opacity: .22;
+        animation: bootDot 1.3s ease-in-out infinite; }
+      .boot-dots i:nth-child(2) { animation-delay: .18s; }
+      .boot-dots i:nth-child(3) { animation-delay: .36s; }
+      @keyframes bootDot { 0%,100% { opacity: .22; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+      @media (prefers-reduced-motion: reduce) { .boot-glow, .boot-dots i { animation: none; opacity: .8; } }
+    </style>
+  </head>
+  <body>
+    <div id="boot-splash" aria-hidden="true">
+      <div class="boot-mark">
+        <span class="boot-glow"></span>
+        <svg viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="bsbg" x1="0" y1="0" x2="0" y2="512" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#16180f"/><stop offset="1" stop-color="#080907"/></linearGradient>
+            <radialGradient id="bsglow" cx="230" cy="262" r="250" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#74e6a0" stop-opacity="0.26"/><stop offset="1" stop-color="#74e6a0" stop-opacity="0"/></radialGradient>
+            <linearGradient id="bsbody" x1="150" y1="120" x2="300" y2="420" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#aef9c8"/><stop offset="1" stop-color="#46d6a2"/></linearGradient>
+            <linearGradient id="bsa1" x1="300" y1="190" x2="372" y2="262" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#7fe9b8" stop-opacity="0.95"/><stop offset="1" stop-color="#7fe9b8" stop-opacity="0.12"/></linearGradient>
+            <linearGradient id="bsa2" x1="296" y1="150" x2="406" y2="262" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#6fe2ac" stop-opacity="0.7"/><stop offset="1" stop-color="#6fe2ac" stop-opacity="0.05"/></linearGradient>
+            <linearGradient id="bsa3" x1="292" y1="112" x2="446" y2="262" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#62dca4" stop-opacity="0.45"/><stop offset="1" stop-color="#62dca4" stop-opacity="0"/></linearGradient>
+            <filter id="bssoft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+          <rect width="512" height="512" rx="116" fill="url(#bsbg)"/>
+          <rect width="512" height="512" rx="116" fill="url(#bsglow)"/>
+          <g transform="rotate(-7 221 281)">
+            <g fill="none" stroke-linecap="round">
+              <path d="M300 190 a74 74 0 0 1 70 70" stroke="url(#bsa1)" stroke-width="15"/>
+              <path d="M296 148 a118 118 0 0 1 112 112" stroke="url(#bsa2)" stroke-width="14"/>
+              <path d="M292 108 a160 160 0 0 1 154 154" stroke="url(#bsa3)" stroke-width="13"/>
+            </g>
+            <g filter="url(#bssoft)"><rect x="146" y="150" width="150" height="262" rx="36" fill="url(#bsbody)"/></g>
+            <rect x="163" y="184" width="116" height="194" rx="18" fill="#0a0b09"/>
+            <rect x="194" y="146" width="30" height="6" rx="3" fill="#0a0b09" opacity="0.45"/>
+            <rect x="206" y="396" width="30" height="6" rx="3" fill="#0a0b09" opacity="0.45"/>
+            <polyline points="188,236 212,266 188,296" fill="none" stroke="#aef9c8" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="224" y="252" width="15" height="32" rx="3" fill="#aef9c8"/>
+          </g>
+        </svg>
+      </div>
+      <div class="boot-word">handmux</div>
+      <div class="boot-dots"><i></i><i></i><i></i></div>
+    </div>
+    <div id="root"></div>
+    <script>
+      // Hide the splash once the app has painted (main.jsx), but keep it up at least ~650ms so the glow
+      // is actually seen, not a flicker. Safety: hide after 8s no matter what, so a failed boot never traps it.
+      window.__bootStart = Date.now();
+      window.__hideBootSplash = function () {
+        var el = document.getElementById('boot-splash');
+        if (!el || el.classList.contains('boot-hide')) return;
+        var wait = Math.max(0, 650 - (Date.now() - (window.__bootStart || 0)));
+        setTimeout(function () {
+          el.classList.add('boot-hide');
+          setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 500);
+        }, wait);
+      };
+      setTimeout(function () { window.__hideBootSplash(); }, 8000);
+    </script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

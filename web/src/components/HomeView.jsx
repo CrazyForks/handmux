@@ -1,0 +1,32 @@
+// web/src/components/HomeView.jsx
+import { useState } from 'react';
+import { getRecentDocs, removeRecentDoc } from '../storage.js';
+import { t } from '../i18n';
+
+// The 最近 segment of the file viewer: ONLY recently-opened docs. The directory browser lives in the
+// sibling 新增 segment (FileBrowser). Recent taps bubble an absolute path up via onOpenDoc.
+export default function HomeView({ onOpenDoc }) {
+  const [recents, setRecents] = useState(() => getRecentDocs());
+  const dropRecent = (path) => { removeRecentDoc(path); setRecents(getRecentDocs()); };
+
+  if (recents.length === 0) {
+    return (
+      <div className="home-view">
+        <div className="home-empty">{t('home.empty')}<span>{t('home.emptyHint')}</span></div>
+      </div>
+    );
+  }
+  return (
+    <div className="home-view">
+      {recents.map((d) => (
+        <div key={d.path} className="home-recent-row">
+          <button className="home-recent" onClick={() => onOpenDoc(d.path)} title={d.path}>
+            <span className="home-name">{d.name}</span>
+            <span className="home-path">{d.path}</span>
+          </button>
+          <button className="home-x" aria-label={t('home.remove')} onClick={() => dropRecent(d.path)}>✕</button>
+        </div>
+      ))}
+    </div>
+  );
+}

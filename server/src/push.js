@@ -1,0 +1,121 @@
+// Web Push (VAPID) — minimal delivery layer. Sends notifications to subscribed devices via the
+// browser/OS push services (Android=FCM, iOS=APNs); the server only talks to those services, never
+// to the phone directly, so device reachability/queueing is their problem (see TTL/topic below).
+//
+// Subscriptions are stored as records: { subscription, boundSessions }. The subscription field is
+// the raw PushSubscription the browser hands us ({endpoint, keys:{p256dh, auth}}); boundSessions is
+// the list of session names this device cares about (used by sendToSession for targeted delivery). A
+// dead subscription (404/410 from the push service) is pruned on the next send.
+import webpush from 'web-push';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const STORE = process.env.PUSH_STORE || path.resolve(here, '../data/push-subs.json');
+
+// VAPID is optional: without keys every send is a no-op, so the server still boots in an
+// environment that hasn't generated keys (configured=false surfaces as a 503 on /vapid). Push delivers
+// whenever VAPID is configured — there is no separate "dev vs prod server" anymore (one config file, one
+// `handmux start`). If you run a second instance on the same host and don't want it to deliver, leave
+// `vapid` out of that instance's config. Init is LAZY (first use) so the module is import-safe.
+let inited = false;
+let configured = false;
+function ensureInit() {
+  if (inited) return;
+  inited = true;
+  configured = !!(process.env.VAPID_PUBLIC && process.env.VAPID_PRIVATE);
+  if (configured) {
+    webpush.setVapidDetails(
+      // Apple (APNs) rejects a VAPID subject on a fake/.local domain with BadJwtToken — it must be a
+      // valid mailto:/https: with a real-looking domain. example.com is reserved and accepted by both.
+      process.env.VAPID_SUBJECT || 'mailto:admin@example.com',
+      process.env.VAPID_PUBLIC,
+      process.env.VAPID_PRIVATE,
+    );
+  }
+}
+
+let subs = load();
+
+function load() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(STORE, 'utf8')) || [];
+    return raw.map((e) => (e && e.subscription)
+      ? { subscription: e.subscription, boundSessions: e.boundSessions || [] }
+      : { subscription: e, boundSessions: [] }); // migrate old bare-subscription entries
+  } catch { return []; }
+}
+function persist() {
+  try {
+    fs.mkdirSync(path.dirname(STORE), { recursive: true });
+    fs.writeFileSync(STORE, JSON.stringify(subs));
+  } catch { /* best effort — a lost subscription just means the client re-subscribes next launch */ }
+}
+
+export function isConfigured() { ensureInit(); return configured; }
+export function publicKey() { ensureInit(); return process.env.VAPID_PUBLIC || null; }
+export function count() { return subs.length; }
+
+export function addSubscription(sub, boundSessions = []) {
+  if (!sub || typeof sub.endpoint !== 'string') return false;
+  const i = subs.findIndex((s) => s.subscription.endpoint === sub.endpoint);
+  if (i === -1) subs.push({ subscription: sub, boundSessions });
+  else subs[i] = { subscription: sub, boundSessions };
+  persist();
+  return true;
+}
+
+export function updateBound(endpoint, boundSessions = []) {
+  const rec = subs.find((s) => s.subscription.endpoint === endpoint);
+  if (rec) { rec.boundSessions = boundSessions; persist(); }
+}
+
+export function removeSubscription(endpoint) {
+  const before = subs.length;
+  subs = subs.filter((s) => s.subscription.endpoint !== endpoint);
+  if (subs.length !== before) persist();
+}
+
+// The push-service Topic header (RFC 8030) must be ≤32 URL/filename-safe base64 chars [A-Za-z0-9_-].
+// An invalid topic makes the service reject the ENTIRE send with a non-404/410 error that deliver()
+// swallows — a silent zero-delivery, no log, no prune. tmux pane ids carry a '%' (e.g. %4), so a
+// pane-derived topic ("pane-%4") breaks every per-pane push (需要你 / 已完成). Sanitize here, the layer
+// that owns the web-push contract, so no caller has to know the rule.
+function safeTopic(t) {
+  if (!t) return undefined;
+  const s = t.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32);
+  return s || undefined;
+}
+
+// TTL bounds staleness (a phone offline longer than this drops the push instead of getting it
+// hours later); topic collapses older undelivered messages with the same key so a device coming
+// back online sees only the latest per topic. urgency hints the OS how aggressively to wake.
+function options(opts = {}) {
+  return { TTL: opts.ttl ?? 90, urgency: opts.urgency || 'normal', topic: safeTopic(opts.topic) };
+}
+
+async function deliver(records, payload, opts = {}) {
+  ensureInit();
+  if (!configured) return { sent: 0, configured: false };
+  const data = JSON.stringify(payload);
+  const dead = [];
+  let sent = 0;
+  await Promise.all(records.map(async (rec) => {
+    try { await webpush.sendNotification(rec.subscription, data, options(opts)); sent += 1; }
+    catch (e) { if (e?.statusCode === 404 || e?.statusCode === 410) dead.push(rec.subscription.endpoint); }
+  }));
+  if (dead.length) { subs = subs.filter((s) => !dead.includes(s.subscription.endpoint)); persist(); }
+  return { sent, configured: true };
+}
+
+export const sendToAll = (payload, opts = {}) => deliver(subs, payload, opts);
+export const sendToSession = (session, payload, opts = {}) =>
+  deliver(subs.filter((s) => s.boundSessions.includes(session)), payload, opts);
+
+// Back-compat: the /push/subscribe welcome still pushes to a single just-added subscription.
+export async function sendToOne(sub, payload, opts = {}) {
+  const rec = subs.find((s) => s.subscription.endpoint === sub.endpoint)
+    ?? { subscription: sub, boundSessions: [] };
+  return deliver([rec], payload, opts);
+}

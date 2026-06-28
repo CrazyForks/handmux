@@ -1,0 +1,53 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { plistFor, unitFor, plistPath, unitPath, installService, uninstallService, LABEL, UNIT } from '../src/cli/service.js';
+
+const ARGS = ['/usr/bin/node', '/abs/bin/handmux.js', '__supervise', '--payload', 'eyJ4Ijox'];
+
+describe('service text generators', () => {
+  it('plist lists every arg and sets RunAtLoad/KeepAlive', () => {
+    const p = plistFor({ args: ARGS, log: '/home/u/.handmux/handmux.log' });
+    for (const a of ARGS) expect(p).toContain(`<string>${a}</string>`);
+    expect(p).toContain('<key>RunAtLoad</key><true/>');
+    expect(p).toContain('<key>KeepAlive</key><true/>');
+    expect(p).toContain('/home/u/.handmux/handmux.log');
+  });
+  it('plist escapes XML metacharacters', () => {
+    expect(plistFor({ args: ['a&b', 'c<d'], log: 'x' })).toContain('<string>a&amp;b</string>');
+  });
+  it('systemd unit has ExecStart with the joined command and Restart=always', () => {
+    const u = unitFor({ args: ARGS });
+    expect(u).toContain('ExecStart=/usr/bin/node /abs/bin/handmux.js __supervise --payload eyJ4Ijox');
+    expect(u).toContain('Restart=always');
+    expect(u).toContain('WantedBy=default.target');
+  });
+});
+
+describe('install/uninstall (mocked exec, temp home)', () => {
+  let home, calls;
+  beforeEach(() => { home = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-svc-')); calls = []; });
+  afterEach(() => { fs.rmSync(home, { recursive: true, force: true }); });
+  const exec = (cmd, args) => { calls.push([cmd, ...args]); return { status: 0, stdout: '', stderr: '' }; };
+
+  it('darwin writes the plist and runs launchctl load', () => {
+    installService(ARGS, { home, platform: 'darwin', exec, log: { log() {} } });
+    expect(fs.existsSync(plistPath(home))).toBe(true);
+    expect(calls.some(([c, a]) => c === 'launchctl' && a === 'load')).toBe(true);
+  });
+  it('linux writes the unit and enables it', () => {
+    installService(ARGS, { home, platform: 'linux', exec, log: { log() {} } });
+    expect(fs.existsSync(unitPath(home))).toBe(true);
+    expect(calls.some((c) => c.join(' ') === `systemctl --user enable --now ${UNIT}`)).toBe(true);
+  });
+  it('unsupported platform throws', () => {
+    expect(() => installService(ARGS, { home, platform: 'sunos', exec })).toThrow(/not supported/);
+  });
+  it('darwin uninstall unloads and removes the plist', () => {
+    installService(ARGS, { home, platform: 'darwin', exec, log: { log() {} } });
+    uninstallService({ home, platform: 'darwin', exec, log: { log() {} } });
+    expect(fs.existsSync(plistPath(home))).toBe(false);
+    expect(calls.some(([c, a]) => c === 'launchctl' && a === 'unload')).toBe(true);
+  });
+});
