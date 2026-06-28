@@ -4,6 +4,7 @@
 // fixed bottom sheet; the keyboard inset is handled by the .app transform (which carries this above
 // the keyboard), so no inset prop is needed here.
 import { t } from '../i18n';
+import { XIcon, StarIcon } from './icons.jsx';
 
 export default function CommandPanel({
   open, recent = [], favorites = [],
@@ -17,7 +18,7 @@ export default function CommandPanel({
       <div className="cmd-panel" role="dialog" aria-label={t('cmd.panel')}>
         <div className="cmd-head">
           <span className="cmd-title">{t('cmd.title')}</span>
-          <button className="cmd-close" onClick={onClose} aria-label={t('common.close')}>✕</button>
+          <button className="cmd-close" onClick={onClose} aria-label={t('common.close')}><XIcon /></button>
         </div>
         <div className="cmd-list">
           {empty && <div className="cmd-empty">{t('cmd.empty')}</div>}
@@ -30,7 +31,7 @@ export default function CommandPanel({
           {favorites.map((cmd) => (
             <div key={`f:${cmd}`} className="cmd-row">
               <span className="cmd-text" onClick={() => onPick(cmd)}>{cmd}</span>
-              <button className="cmd-star on" onClick={() => onToggleFav(cmd)} aria-label={t('cmd.unfavorite')}>★</button>
+              <button className="cmd-star on" onClick={() => onToggleFav(cmd)} aria-label={t('cmd.unfavorite')}><StarIcon /></button>
             </div>
           ))}
           {recent.length > 0 && (
@@ -45,8 +46,8 @@ export default function CommandPanel({
               <div key={`r:${cmd}`} className="cmd-row">
                 <span className="cmd-text" onClick={() => onPick(cmd)}>{cmd}</span>
                 <button className={`cmd-star ${fav ? 'on' : ''}`} onClick={() => onToggleFav(cmd)}
-                  aria-label={fav ? t('cmd.unfavorite') : t('cmd.favorite')}>{fav ? '★' : '☆'}</button>
-                <button className="cmd-del" onClick={() => onRemoveRecent(cmd)} aria-label={t('common.delete')}>✕</button>
+                  aria-label={fav ? t('cmd.unfavorite') : t('cmd.favorite')}><StarIcon /></button>
+                <button className="cmd-del" onClick={() => onRemoveRecent(cmd)} aria-label={t('common.delete')}><XIcon /></button>
               </div>
             );
           })}

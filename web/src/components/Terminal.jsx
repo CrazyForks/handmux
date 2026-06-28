@@ -734,9 +734,15 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
   }, [pane]);
 
   const resume = () => {
-    stopFlingRef.current?.(); // tapping the button doesn't reach host's touchstart, so kill the coast here
+    stopFlingRef.current?.();
+    // Force the xterm-viewport scrollTop to its maximum directly — the fling operates on this
+    // element too, and xterm's scrollToBottom() may lag one frame if ydisp is still mid-fling.
+    const vp = elRef.current?.querySelector('.xterm-viewport');
+    if (vp) vp.scrollTop = vp.scrollHeight;
     termRef.current?.scrollToBottom();
     setPaused(false);
+    setScrollInfo(''); // clear the history-mode banner immediately
+    wakeRef.current?.(); // re-poll right away so the live screen is confirmed at the bottom
   };
 
   // Copy the live selection, then drop the highlight + bubble. navigator.clipboard only exists in
@@ -774,7 +780,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       {!connected && <div className="term-banner term-banner--err">⚠ 连接断开,重连中…</div>}
       {dbgVisible && <div className="dbg">{dbg}</div>}
       {connected && scrollInfo && <div className="term-banner term-banner--hist">{scrollInfo}</div>}
-      {paused && <button className="new-output" onClick={resume}>↓ 回到底部</button>}
+      {scrollInfo && <button className="new-output" onClick={resume}>↓ 回到底部</button>}
       {selHint && <div className="sel-hint">按住拖动选择文字，松手后点「复制」</div>}
       {copyBtn && (
         <button

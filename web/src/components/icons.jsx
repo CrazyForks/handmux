@@ -263,6 +263,36 @@ export function GitIcon() {
   );
 }
 
+// ✕ 关闭/删除(两条交叉线,Lucide x)。
+export function XIcon() {
+  return (
+    <svg {...base}>
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  );
+}
+
+// ☆/★ 收藏星(Lucide star);填充由 CSS 控制(.cmd-star.on svg { fill: currentColor })。
+export function StarIcon() {
+  return (
+    <svg {...base}>
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+    </svg>
+  );
+}
+
+// ⊡ 常用命令入口(Lucide square-terminal:圆角框 + > 提示符 + 横线)。
+export function CommandIcon() {
+  return (
+    <svg {...base}>
+      <path d="m7 11 2-2-2-2" />
+      <path d="M11 13h4" />
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+    </svg>
+  );
+}
+
 // ⧖ 续期(秒表 + 回拨箭头,Lucide timer-reset)——把有效期重置回 1 小时。
 export function RenewIcon() {
   return (

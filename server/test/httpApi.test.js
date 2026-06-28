@@ -20,6 +20,7 @@ const baseCommands = {
   listPanes: vi.fn(async () => [{ id: '%1', active: true, width: 80, height: 24, command: 'zsh', cwd: '/home/u/proj' }]),
   capturePane: vi.fn(async () => 'history-text'),
   paneInfo: vi.fn(async () => ({ width: 80, height: 24, cursorX: 0, cursorY: 23, cursorVisible: false })),
+  exitCopyModeIfActive: vi.fn(async () => {}),
   sendText: vi.fn(async () => {}),
   sendEnter: vi.fn(async () => {}),
   sendKey: vi.fn(async () => {}),

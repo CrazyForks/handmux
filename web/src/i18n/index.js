@@ -3,21 +3,31 @@
 // two maps below — nothing else changes, and any missing key falls back to English.
 import en from './en.js';
 import zh from './zh.js';
+import zhTW from './zh-TW.js';
+import ja from './ja.js';
+import ko from './ko.js';
 
-const LOCALES = { en, zh };
+const LOCALES = { zh, 'zh-TW': zhTW, en, ja, ko };
 export const AVAILABLE = [
-  { code: 'en', label: 'English' },
-  { code: 'zh', label: '中文' },
+  { code: 'zh',    label: '简体中文' },
+  { code: 'zh-TW', label: '繁體中文' },
+  { code: 'en',    label: 'English' },
+  { code: 'ja',    label: '日本語' },
+  { code: 'ko',    label: '한국어' },
 ];
 
 const LANG_KEY = 'tw_lang';
 
 // pure + testable: saved override wins, else first browser language we have a locale for, else English.
+// Matching priority: exact code (e.g. zh-TW) first, then base language (e.g. zh), to avoid zh-TW
+// collapsing to zh before the exact entry is checked.
 export function detectLang(saved, languages, available = LOCALES) {
   if (saved && available[saved]) return saved;
   for (const l of (languages && languages.length ? languages : ['en'])) {
-    const code = String(l).toLowerCase().split('-')[0];
-    if (available[code]) return code;
+    const full = String(l).toLowerCase();
+    if (available[full]) return full;
+    const base = full.split('-')[0];
+    if (available[base]) return base;
   }
   return 'en';
 }

@@ -4,6 +4,22 @@
 // is what's shown. `items` is now { zh, en } — parallel arrays (same order/count) for each locale.
 export const CHANGELOG = [
   {
+    v: '2026-06-28-i18n-ui',
+    date: '2026-06-28',
+    items: {
+      zh: [
+        '新增繁体中文、日语、韩语界面（设置 → Language 切换）',
+        '想法角标：有未完成想法时，灯泡图标右上角显示数量',
+        '设置面板列数调节：实时显示当前列数，新增 ±1 精细调节按钮',
+      ],
+      en: [
+        'Added Traditional Chinese, Japanese, and Korean UI (Settings → Language to switch)',
+        'Idea badge: when there are pending ideas, the lightbulb icon shows a count in the corner',
+        'Settings column control: shows the current column count live, with new ±1 fine-adjust buttons',
+      ],
+    },
+  },
+  {
     v: '2026-06-20-claude-hooks',
     date: '2026-06-20',
     items: {

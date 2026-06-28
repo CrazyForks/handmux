@@ -44,7 +44,7 @@ describe('CommandPanel', () => {
     render({ ...base, recent: ['npm test'], favorites: ['npm test'], onToggleFav });
     const recentRow = container.querySelectorAll('.cmd-row')[1]; // [0]=fav row, [1]=recent row
     const star = recentRow.querySelector('.cmd-star');
-    expect(star.textContent).toBe('★'); // already favorite → filled
+    expect(star.classList.contains('on')).toBe(true); // already favorite → .on class (SVG filled via CSS)
     click(star);
     expect(onToggleFav).toHaveBeenCalledWith('npm test');
   });

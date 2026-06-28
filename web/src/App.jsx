@@ -7,7 +7,7 @@ import {
   pushRecentDoc, getPaneBase, setPaneBase,
   getInboxSeen, markInboxSeen, getInboxReadTs, setInboxReadTs,
   renameWindowIdeas, getChangelogSeen, setChangelogSeen,
-  getPreviewDir, setPreviewDir,
+  getPreviewDir, setPreviewDir, getIdeas,
 } from './storage.js';
 import { LATEST_RELEASE } from './changelog.js';
 import {
@@ -86,6 +86,7 @@ export default function App() {
   const [inboxOpen, setInboxOpen] = useState(false); // inbox dropdown open
   const { status: hooksStatus, enable: enableHooks } = useClaudeHooks();
   const [ideaOpen, setIdeaOpen] = useState(false); // per-window idea sheet open
+  const [ideaCount, setIdeaCount] = useState(0);   // idea count for the current window (badge)
   const [changelogOpen, setChangelogOpen] = useState(false); // "what's new" sheet open
   const [clSeen, setClSeen] = useState(getChangelogSeen); // latest changelog id the user has opened
   const [seen, setSeen] = useState(getInboxSeen); // pane → last-viewed ts (inbox read state)
@@ -490,6 +491,13 @@ export default function App() {
     setRecent(current?.session?.name ? getRecent(current.session.name) : []);
   }, [current?.session?.name]);
 
+  // Sync idea count for the badge when the active window changes.
+  const ideaSession = current?.session?.name;
+  const ideaWin = current?.window?.name || current?.window?.id;
+  useEffect(() => {
+    setIdeaCount(ideaSession && ideaWin ? getIdeas(ideaSession, ideaWin).length : 0);
+  }, [ideaSession, ideaWin]);
+
   // Seeing a pane clears its pending notification (you've arrived; the alert has done its job).
   useEffect(() => {
     if (current?.paneId) clearPaneNotification(current.paneId);
@@ -742,7 +750,10 @@ export default function App() {
         )}
         {/* Always render so it doesn't pop in late once `current` loads — just disable until ready. */}
         <button className="topbar-icon" onClick={() => setIdeaOpen(true)} aria-label={t('app.ideas')} title={t('app.ideas')}
-          disabled={!current}><BulbIcon /></button>
+          disabled={!current}>
+          <BulbIcon />
+          {ideaCount > 0 && <span className="idea-badge">{ideaCount}</span>}
+        </button>
         <Inbox
           rows={inboxList}
           top={inboxTop}
@@ -765,8 +776,8 @@ export default function App() {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         termRef={termRef}
-        onColDec={() => tmuxResizeCols(-COL_STEP)}
-        onColInc={() => tmuxResizeCols(COL_STEP)}
+        getColCount={() => tmuxColsRef.current ?? termRef.current?.getSize()?.cols}
+        onColAdjust={(d) => tmuxResizeCols(d)}
         onColRestore={tmuxRestore}
         onOpenChangelog={openChangelog}
         changelogUnread={changelogUnread}
@@ -894,6 +905,7 @@ export default function App() {
         window={current?.window?.name || current?.window?.id}
         onClose={() => setIdeaOpen(false)}
         onSend={(text) => { dockRef.current?.fill(text); setIdeaOpen(false); }}
+        onCountChange={setIdeaCount}
       />
       <DirPicker
         open={!!basePrompt}

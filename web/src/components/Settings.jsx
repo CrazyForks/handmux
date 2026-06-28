@@ -8,10 +8,13 @@ import { t, getLangCode, setLang, AVAILABLE } from '../i18n';
 // Settings modal: the screen-column controls (⊟/⊞/↺, previously in the topbar) plus an explicit
 // font-size control. Font reads/writes the live terminal through termRef — the same persisted
 // size the two-finger pinch drives — so the modal and the gesture stay in sync.
-export default function Settings({ open, onClose, termRef, onColDec, onColInc, onColRestore, onOpenChangelog, changelogUnread,
+export default function Settings({ open, onClose, termRef, onColAdjust, onColRestore, onOpenChangelog, changelogUnread,
   activePreview = null, pane = null, lastPreviewDir = null, dynamicEnabled = false,
+  getColCount = null,
   onStartPreview, onStartDynamicPreview, onOpenPreview, onRenew, onStop }) {
   const [font, setFont] = useState(null); // { size, auto } snapshot for display
+  const [cols, setCols] = useState(null); // current col count for display (null = unknown/restored)
+  const [langOpen, setLangOpen] = useState(false);
   const [notify, setNotify] = useState(notifyEnabled()); // device-notification toggle state
   const [notifyBusy, setNotifyBusy] = useState(false); // true while (un)subscribing — shows a spinner, disables the button
   const [notifyMsg, setNotifyMsg] = useState(''); // inline status/error shown to the right of the toggle
@@ -49,8 +52,11 @@ export default function Settings({ open, onClose, termRef, onColDec, onColInc, o
   };
 
   useEffect(() => {
-    if (open) setFont(termRef.current?.getFontSize?.() ?? null);
-  }, [open, termRef]);
+    if (open) {
+      setFont(termRef.current?.getFontSize?.() ?? null);
+      setCols(getColCount?.() ?? null);
+    }
+  }, [open, termRef, getColCount]);
 
   const toggleNotify = async () => {
     setNotifyBusy(true); setNotifyMsg('');
@@ -76,6 +82,9 @@ export default function Settings({ open, onClose, termRef, onColDec, onColInc, o
   };
 
   const fontLabel = font?.auto ? t('settings.font_auto') : font?.size ? `${font.size}px` : '—';
+  const colsLabel = cols != null ? `${cols} 列` : '—';
+  const adjustCol = (d) => { onColAdjust?.(d); setCols(getColCount?.() ?? null); };
+  const restoreCol = () => { onColRestore?.(); setCols(null); };
 
   return (
     <>
@@ -90,13 +99,20 @@ export default function Settings({ open, onClose, termRef, onColDec, onColInc, o
 
         <div className="settings-section">
           <div className="settings-label">{t('settings.language')}</div>
-          <div className="settings-btns">
-            {AVAILABLE.map((l) => (
-              <button key={l.code} className="fontbtn" aria-pressed={getLangCode() === l.code}
-                onClick={() => setLang(l.code)}>
-                {l.label}{getLangCode() === l.code ? ' ✓' : ''}
-              </button>
-            ))}
+          <div className="lang-drop">
+            {langOpen && <div className="lang-drop-backdrop" onClick={() => setLangOpen(false)} />}
+            <button className="lang-trigger" onClick={() => setLangOpen(o => !o)}>
+              <span>{AVAILABLE.find(l => l.code === getLangCode())?.label}</span>
+              <span className="lang-chevron">{langOpen ? '▴' : '▾'}</span>
+            </button>
+            {langOpen && (
+              <div className="lang-menu">
+                {AVAILABLE.map(l => (
+                  <button key={l.code} className={`lang-option${l.code === getLangCode() ? ' active' : ''}`}
+                    onClick={() => setLang(l.code)}>{l.label}</button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -141,10 +157,13 @@ export default function Settings({ open, onClose, termRef, onColDec, onColInc, o
 
         <div className="settings-section">
           <div className="settings-label">{t('settings.screen_cols')}</div>
-          <div className="settings-btns">
-            <button className="fontbtn" onClick={onColDec} title={t('settings.cols_dec_title')}>⊟ {t('settings.cols_dec')}</button>
-            <button className="fontbtn" onClick={onColInc} title={t('settings.cols_inc_title')}>⊞ {t('settings.cols_inc')}</button>
-            <button className="fontbtn" onClick={onColRestore} title={t('settings.cols_restore_title')}>↺ {t('settings.cols_restore')}</button>
+          <div className="settings-btns cols-btns">
+            <button className="fontbtn col-step" onClick={() => adjustCol(-10)}>−10</button>
+            <button className="fontbtn col-step col-fine" onClick={() => adjustCol(-1)}>−1</button>
+            <span className="settings-value">{colsLabel}</span>
+            <button className="fontbtn col-step col-fine" onClick={() => adjustCol(1)}>+1</button>
+            <button className="fontbtn col-step" onClick={() => adjustCol(10)}>+10</button>
+            <button className="fontbtn" onClick={restoreCol}>↺ {t('settings.cols_restore')}</button>
           </div>
         </div>
 

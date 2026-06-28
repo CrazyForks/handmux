@@ -380,6 +380,7 @@ export function createApiRouter({
     if (!isPaneId(pane)) return res.status(400).json({ error: 'bad pane id' });
     const body = typeof text === 'string' ? text : '';
     try {
+      await commands.exitCopyModeIfActive(pane);
       await commands.sendText(pane, body);
       if (enter) {
         if (body) await delay(SUBMIT_GAP_MS); // a bare Enter has nothing to settle — send at once
@@ -426,6 +427,7 @@ export function createApiRouter({
       return res.status(400).json({ error: 'disallowed key' });
     }
     try {
+      await commands.exitCopyModeIfActive(pane);
       for (const k of keys) await commands.sendKey(pane, k);
       res.json({ ok: true });
     } catch (e) { next(e); }

@@ -4,7 +4,7 @@ import { createRepeater } from '../repeat.js';
 import KeyBar from './KeyBar.jsx';
 import CommandPanel from './CommandPanel.jsx';
 import MicButton from './MicButton.jsx';
-import { ArrowUpIcon, PlusIcon } from './icons.jsx';
+import { ArrowUpIcon, PlusIcon, CommandIcon } from './icons.jsx';
 import { usePushToTalk } from '../voice/usePushToTalk.js';
 import { useAsrAvailable } from '../voice/useAsrAvailable.js';
 import { useScreenWakeLock } from '../hooks/useScreenWakeLock.js';
@@ -289,7 +289,7 @@ function BottomDock({
             />
             {!value && (
               <button type="button" className="input-cmd" aria-label={t('dock.phrases')} title={t('dock.phrases')}
-                onClick={() => setPanelOpen((o) => !o)}>▤</button>
+                onClick={() => setPanelOpen((o) => !o)}><CommandIcon /></button>
             )}
             {micAvailable && <MicButton active={recording} disabled={voice.state === 'requesting'} onToggle={toggleMic} />}
             {/* 发送 ↑ 常驻,空框禁用:点 = 发送组合文本,长按 = 填入。 */}

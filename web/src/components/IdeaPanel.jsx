@@ -13,7 +13,7 @@ import { t } from '../i18n';
 // AND edit (tapping a row's text loads it in, button flips 添加→保存); rows drag-reorder by their
 // ≡ handle (pointer events only, see the project's KeyBar note on touch+mouse double-fire). 发送 fills
 // the bottom input box (never sends); ✕ deletes. The compose box supports the app's push-to-talk mic.
-export default function IdeaPanel({ open, session, window: win, onClose, onSend }) {
+export default function IdeaPanel({ open, session, window: win, onClose, onSend, onCountChange }) {
   const [list, setList] = useState([]);
   const [value, setValue] = useState('');
   const [editingId, setEditingId] = useState(null); // null = add mode; else the idea being edited
@@ -26,7 +26,7 @@ export default function IdeaPanel({ open, session, window: win, onClose, onSend 
   const suppressVoiceRef = useRef(false);
   const dragRef = useRef({ active: false });
 
-  const persist = (next) => { saveIdeas(session, win, next); setList(next); };
+  const persist = (next) => { saveIdeas(session, win, next); setList(next); onCountChange?.(next.length); };
 
   // Grow the compose box to fit content (CSS max-height caps it, then it scrolls) — so multi-line
   // ideas show as you type/dictate. +2 for the border under box-sizing: border-box.
@@ -35,7 +35,9 @@ export default function IdeaPanel({ open, session, window: win, onClose, onSend 
   // (Re)load this window's ideas each time the sheet opens or the window changes; reset the compose box.
   useEffect(() => {
     if (!open) return;
-    setList(loadIdeas(session, win));
+    const loaded = loadIdeas(session, win);
+    setList(loaded);
+    onCountChange?.(loaded.length);
     setValue('');
     setEditingId(null);
   }, [open, session, win]);
@@ -147,7 +149,7 @@ export default function IdeaPanel({ open, session, window: win, onClose, onSend 
       <div className="cmd-backdrop" onClick={onClose} />
       <div className="idea-panel" role="dialog" aria-label={t('idea.title')}>
         <div className="cmd-head">
-          <span className="cmd-title">{t('idea.title')}{win ? ` · ${win}` : ''}</span>
+          <span className="cmd-title">{t('idea.title')}{win ? ` · ${win}` : ''}{list.length > 0 && <span className="idea-head-count">{list.length}</span>}</span>
           <button className="cmd-close" onClick={onClose} aria-label={t('common.close')}>✕</button>
         </div>
 

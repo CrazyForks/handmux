@@ -1,6 +1,6 @@
 {
   "name": "handmux",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Mobile vibe coding — drive your real tmux session (and Claude Code) from your phone.",
   "type": "module",
   "license": "MIT",

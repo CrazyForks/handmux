@@ -31,8 +31,15 @@ export function runTmux(args) {
 const lines = (out) => out.split('\n').filter((l) => l.length > 0);
 
 export async function listSessions() {
-  const out = await runTmux(['list-sessions', '-F', '#{session_id}\t#{session_name}']);
-  return lines(out).map((l) => { const [id, name] = l.split('\t'); return { id, name }; });
+  try {
+    const out = await runTmux(['list-sessions', '-F', '#{session_id}\t#{session_name}']);
+    return lines(out).map((l) => { const [id, name] = l.split('\t'); return { id, name }; });
+  } catch (e) {
+    // tmux exits non-zero with "no server running" or "no sessions" when nothing is up yet.
+    const msg = e.message || '';
+    if (msg.includes('no server') || msg.includes('no sessions') || msg.includes('error connecting')) return [];
+    throw e;
+  }
 }
 
 export async function listWindows(sessionId) {
@@ -101,6 +108,13 @@ export async function paneLocation(paneId) {
     '#{session_name}\t#{window_id}\t#{window_name}']);
   const [session, windowId, windowName] = out.trim().split('\t');
   return { session, window: windowId, windowName };
+}
+
+// Exit tmux copy/scroll mode if the pane is currently in it. Called before any user input so
+// text and keys reach the shell instead of being swallowed by tmux's mode key-bindings.
+export async function exitCopyModeIfActive(paneId) {
+  const out = await runTmux(['display-message', '-p', '-t', paneId, '#{pane_in_mode}']);
+  if (out.trim() === '1') await runTmux(['send-keys', '-t', paneId, 'Escape']);
 }
 
 export async function sendText(paneId, text) {
