@@ -1,0 +1,37 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+dist-prod/
+build/
+
+# caches
+.vite/
+.cache/
+
+# logs
+*.log
+npm-debug.log*
+
+# config / secrets — config holds token + push/voice keys, so it's never committed. The one config file
+# lives at ~/.handmux/config.json (written by `handmux setup`); for dev you point `--config ./config.json`
+# at a repo-root file, which is why we still ignore it here. Legacy .env files are unused but stay ignored.
+/config.json
+.env
+.env.*
+
+# runtime data (push subscriptions — device endpoints, not source)
+server/data/
+
+# generated at pack time by scripts/bundle-web.mjs (shipped via package.json "files", not committed)
+server/public/
+server/README.md
+server/README.zh-CN.md
+server/LICENSE
+
+# OS
+.DS_Store
+
+# npm pack output (build artifact)
+*.tgz

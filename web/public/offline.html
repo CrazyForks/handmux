@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>tmux web</title>
+    <!-- Self-contained: inline CSS + inline JS, NO external resources, so this page is immutable and
+         works with no network. The service worker caches it once and serves it when a navigation
+         can't reach the network (replacing the browser's own ERR_NETWORK_CHANGED error page). -->
+    <style>
+      html, body {
+        margin: 0; height: 100%; background: #1a1b1e; color: #9aa0a6;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .box { text-align: center; }
+      .dots { display: flex; gap: 6px; justify-content: center; }
+      .dot {
+        width: 8px; height: 8px; border-radius: 50%; background: #4a7cff;
+        opacity: 0.3; animation: blink 1.2s infinite;
+      }
+      .dot:nth-child(2) { animation-delay: 0.2s; }
+      .dot:nth-child(3) { animation-delay: 0.4s; }
+      @keyframes blink { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+      p { margin-top: 16px; font-size: 14px; letter-spacing: 0.05em; }
+    </style>
+  </head>
+  <body>
+    <div class="box">
+      <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <p>连接中…</p>
+    </div>
+    <script>
+      // We are the SW's offline fallback. Probe connectivity and reload into the real app the moment
+      // the network is back. The probe is a normal fetch (mode !== 'navigate'), so the SW won't
+      // intercept it — it goes straight to the network. Reloading while still offline just re-shows
+      // this page (the browser never gets to show its own error page).
+      (function () {
+        function probe() {
+          fetch('/', { cache: 'no-store' })
+            .then(function (r) { if (r && r.ok) location.reload(); })
+            .catch(function () { /* still offline — keep waiting */ });
+        }
+        setInterval(probe, 2000);
+        addEventListener('online', probe);
+        probe();
+      })();
+    </script>
+  </body>
+</html>

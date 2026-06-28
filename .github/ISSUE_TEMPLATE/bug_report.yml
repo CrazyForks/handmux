@@ -1,0 +1,67 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please don't include your access token, tunnel URL,
+        or VAPID/iFlytek keys in this issue — redact them.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: Steps to reproduce → expected → actual.
+    validations:
+      required: true
+  - type: input
+    id: handmux-version
+    attributes:
+      label: handmux version
+      description: Output of `handmux --version` (or the npm version / git commit).
+    validations:
+      required: true
+  - type: input
+    id: tmux-version
+    attributes:
+      label: tmux version
+      description: Output of `tmux -V`.
+    validations:
+      required: true
+  - type: input
+    id: node-version
+    attributes:
+      label: Node version
+      description: Output of `node -v` (handmux needs ≥ 18).
+    validations:
+      required: true
+  - type: dropdown
+    id: tunnel
+    attributes:
+      label: Tunnel mode
+      options:
+        - none (local / LAN)
+        - cloudflare
+        - cloudflare-named
+        - ssh (self-hosted)
+    validations:
+      required: true
+  - type: input
+    id: host-os
+    attributes:
+      label: Host OS
+      description: Where the server runs (e.g. macOS 14, Ubuntu 22.04).
+    validations:
+      required: true
+  - type: input
+    id: phone
+    attributes:
+      label: Phone / browser
+      description: The device and browser you opened it on (e.g. iPhone 15 / Safari, Pixel 8 / Chrome).
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Output of `handmux logs` around the failure, or the browser console. Redact secrets.
+      render: shell
