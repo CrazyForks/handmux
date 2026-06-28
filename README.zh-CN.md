@@ -4,10 +4,10 @@
 
 [![npm](https://img.shields.io/npm/v/handmux?color=cb3837&logo=npm)](https://www.npmjs.com/package/handmux) [![CI](https://github.com/yuanyuanzijin/handmux/actions/workflows/test.yml/badge.svg)](https://github.com/yuanyuanzijin/handmux/actions/workflows/test.yml) [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 
-> **在手机上 vibe 编程。** 电脑上一条命令、扫个二维码,你那个活着的终端——连同正在跑的 agent
-> ——就到手里了。
+> **指挥Agent干活,何必守在电脑前?** 把创造力随时握在手里——电脑上跑一行命令、手机扫码连上,
+> 那个正跑着的终端连同 Claude 就在你手里了。
 
-handmux 把你电脑上那个**活着的 tmux 会话**原样搬进手机浏览器——**同一个、真实的 pane,不是只读
+handmux 把你电脑上那个**正跑着的 tmux 会话**原样搬进手机浏览器——**同一个、真实的 pane,不是只读
 镜像**。直接在手机上新建一个会话,或接手工位上已经在跑的那个——然后窝在沙发上、挤地铁时、排队买咖啡时接着盯它跑。进程不停,你只是换了块屏。
 **手机端零安装——点开链接就进去了**;还能"添加到主屏",作为 PWA 全屏运行,体验和原生 App 基本一致。任意 shell / TUI 都能开,跟 **Claude Code** 配合最深:哪个 pane
 要你拍板,第一时间推到手机上,拇指点一下就批。

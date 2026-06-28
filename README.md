@@ -4,8 +4,8 @@
 
 [![npm](https://img.shields.io/npm/v/handmux?color=cb3837&logo=npm)](https://www.npmjs.com/package/handmux) [![CI](https://github.com/yuanyuanzijin/handmux/actions/workflows/test.yml/badge.svg)](https://github.com/yuanyuanzijin/handmux/actions/workflows/test.yml) [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 
-> **Vibe-code from your phone.** One command on your computer, scan a QR, and your live terminal —
-> agent and all — is in your hand.
+> **Drive your agent, ditch the desk.** *Keep your creativity in hand* — one command on your
+> computer, scan a QR, and your live terminal (agent and all) goes wherever you do.
 
 handmux puts the *same* live **tmux** session that's on your computer into your phone's browser —
 **real panes, not a read-only mirror**. Spin up a brand-new session right from your phone, or pick up
