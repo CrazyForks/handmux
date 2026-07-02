@@ -82,4 +82,39 @@ describe('Drawer (bound sessions)', () => {
     });
     expect(onBind).toHaveBeenCalled();
   });
+
+  describe('未接管会话 (orphans)', () => {
+    const orphans = [
+      { pid: 100, cwd: '/u/idle', cwdLabel: 'idle', sessionId: 's-idle', state: 'idle', snippet: 'resume me' },
+      { pid: 200, cwd: '/u/busy', cwdLabel: 'busy', sessionId: 's-busy', state: 'busy', snippet: 'running' },
+      { pid: 300, cwd: '/u/nohist', cwdLabel: 'nohist', sessionId: null, state: 'idle', snippet: '' },
+    ];
+
+    it('no section when there are no orphans', async () => {
+      await render({ orphans: [] });
+      expect(container.querySelector('.drawer-orphans')).toBeNull();
+    });
+
+    it('shows a collapsed count; expands to takeover rows', async () => {
+      await render({ orphans });
+      const head = container.querySelector('.drawer-orphans-head');
+      expect(head.textContent).toContain('3');
+      expect(container.querySelector('.drawer-orphan-btn')).toBeNull(); // collapsed
+      await act(async () => { head.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+      expect([...container.querySelectorAll('.drawer-orphan-btn')]).toHaveLength(3);
+    });
+
+    it('接管 fires onTakeoverRequest for idle; disabled for busy / no history', async () => {
+      const onTakeoverRequest = vi.fn();
+      await render({ orphans, onTakeoverRequest });
+      await act(async () => { container.querySelector('.drawer-orphans-head').dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+      const btns = [...container.querySelectorAll('.drawer-orphan-btn')];
+      expect(btns[0].disabled).toBe(false); // idle + session
+      expect(btns[1].disabled).toBe(true);  // busy
+      expect(btns[2].disabled).toBe(true);  // no resumable history
+      expect(btns[2].getAttribute('title')).toBe('无可续接的历史');
+      await act(async () => { btns[0].dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+      expect(onTakeoverRequest).toHaveBeenCalledWith(orphans[0]);
+    });
+  });
 });

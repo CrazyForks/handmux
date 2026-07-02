@@ -802,8 +802,6 @@ export default function App() {
           onMarkAllRead={markAllRead}
           hooksStatus={hooksStatus}
           onEnableHooks={enableHooks}
-          orphans={orphans}
-          onTakeoverRequest={setTakeoverTarget}
         />
         <button className="topbar-icon" onClick={() => setFileManagerOpen(true)} aria-label={t('app.files')} title={t('app.files')}><FolderIcon /></button>
         <button className="topbar-icon" onClick={() => setGitOpen(true)} aria-label="Git" title="Git"><GitIcon /></button>
@@ -841,6 +839,8 @@ export default function App() {
         onBind={() => setBindOpen(true)}
         onClose={() => setDrawerOpen(false)}
         onLogout={logout}
+        orphans={orphans}
+        onTakeoverRequest={setTakeoverTarget}
       />
       <BindSession
         open={bindOpen}

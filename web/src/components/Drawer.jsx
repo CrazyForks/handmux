@@ -1,11 +1,16 @@
 // The drawer lists only the sessions this device has bound (stored locally) — not every live
 // tmux session. Binding/validation happens in the BindSession modal; here we just show the
-// pinned names, let the user open or unbind one, and open the bind modal.
+// pinned names, let the user open or unbind one, and open the bind modal. Below that, a collapsible
+// "未接管会话" section surfaces Claude sessions running outside tmux (orphans) — tap 接管 to resume
+// one into tmux (the takeover sheet, handled in App); see server/src/orphans.js.
+import { useState } from 'react';
 import { t } from '../i18n';
 
 export default function Drawer({
   open, currentSessionName, bound, onSelectSession, onUnbind, onBind, onClose, onLogout,
+  orphans = [], onTakeoverRequest,
 }) {
+  const [orphOpen, setOrphOpen] = useState(false);
   return (
     <>
       <div className={`drawer ${open ? 'open' : ''}`}>
@@ -27,6 +32,39 @@ export default function Drawer({
             </div>
           ))}
           <button className="drawer-bind" onClick={onBind}>＋ {t('drawer.bind')}</button>
+
+          {orphans.length > 0 && (
+            <div className="drawer-orphans">
+              <button className="drawer-orphans-head" onClick={() => setOrphOpen((o) => !o)}>
+                <span>{t('drawer.orphans.title', { n: orphans.length })}</span>
+                <span className="drawer-orphans-caret" aria-hidden="true">{orphOpen ? '▾' : '▸'}</span>
+              </button>
+              {orphOpen && (
+                <>
+                  <div className="drawer-orphans-hint">{t('drawer.orphans.hint')}</div>
+                  {orphans.map((o) => {
+                    const noSession = !o.sessionId;
+                    const disabled = o.state === 'busy' || noSession;
+                    return (
+                      <div key={o.pid} className="drawer-row drawer-orphan-row">
+                        <span className="drawer-name drawer-orphan-cwd" title={o.snippet || o.cwd}>
+                          {o.cwdLabel || o.cwd}
+                        </span>
+                        <button
+                          className="drawer-orphan-btn"
+                          disabled={disabled}
+                          title={noSession ? t('inbox.orphans.noSession') : undefined}
+                          onClick={() => onTakeoverRequest?.(o)}
+                        >
+                          {t('inbox.orphans.takeover')}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          )}
         </div>
         <button className="drawer-logout" onClick={onLogout}>{t('drawer.logout')}</button>
       </div>

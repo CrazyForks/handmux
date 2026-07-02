@@ -83,41 +83,4 @@ describe('Inbox v2', () => {
     await render({ open: true, rows: nameless });
     expect(container.querySelector('.inbox-loc').textContent).toBe('@7');
   });
-
-  describe('orphan footer', () => {
-    const orphans = [
-      { pid: 100, cwd: '/u/idle', cwdLabel: 'idle', sessionId: 's-idle', state: 'idle', snippet: 'resume me', startedAt: 1, lastActivity: 1 },
-      { pid: 200, cwd: '/u/busy', cwdLabel: 'busy', sessionId: 's-busy', state: 'busy', snippet: 'running', startedAt: 1, lastActivity: 1 },
-      { pid: 300, cwd: '/u/nohist', cwdLabel: 'nohist', sessionId: null, state: 'idle', snippet: '', startedAt: 1, lastActivity: 1 },
-    ];
-
-    it('hidden when no orphans; shown (collapsed) with a count when present', async () => {
-      await render({ open: true, orphans: [] });
-      expect(container.querySelector('.inbox-orphans')).toBeNull();
-      await render({ open: true, orphans });
-      expect(container.querySelector('.inbox-orphans-head').textContent).toContain('3');
-      expect(container.querySelector('.inbox-orphans-body')).toBeNull(); // collapsed
-    });
-
-    it('shows the footer even when there are no tmux rows', async () => {
-      await render({ open: true, rows: [], orphans });
-      expect(container.querySelector('.inbox-empty')).toBeNull(); // footer replaces the empty state
-      expect(container.querySelector('.inbox-orphans')).not.toBeNull();
-    });
-
-    it('expands to rows; 接管 fires onTakeoverRequest for idle, disabled for busy/no-history', async () => {
-      const onTakeoverRequest = vi.fn();
-      await render({ open: true, orphans, onTakeoverRequest });
-      await act(async () => { container.querySelector('.inbox-orphans-head').dispatchEvent(new MouseEvent('click', { bubbles: true })); });
-      const btns = [...container.querySelectorAll('.inbox-orphan-btn')];
-      expect(btns).toHaveLength(3);
-      expect(btns[0].disabled).toBe(false);         // idle + has session
-      expect(btns[1].disabled).toBe(true);          // busy
-      expect(btns[2].disabled).toBe(true);          // no resumable history
-      expect(btns[2].getAttribute('title')).toBe('无可续接的历史'); // reason moved to tooltip (label stays 接管)
-      expect(btns.every((b) => b.textContent === '接管')).toBe(true);
-      await act(async () => { btns[0].dispatchEvent(new MouseEvent('click', { bubbles: true })); });
-      expect(onTakeoverRequest).toHaveBeenCalledWith(orphans[0]);
-    });
-  });
 });

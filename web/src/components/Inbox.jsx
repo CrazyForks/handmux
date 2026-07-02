@@ -9,7 +9,7 @@ import { t } from '../i18n';
 // taps bubble out via the callbacks. 清除已完成 advances the device read-ts high-water mark — it drops
 // only the present done rows (working/needs are never history-filtered), so it's shown ONLY when there
 // is at least one done row to clear.
-export default function Inbox({ rows, top, open, onToggle, onClose, onSelectRow, onMarkAllRead, hooksStatus, onEnableHooks, orphans = [], onTakeoverRequest }) {
+export default function Inbox({ rows, top, open, onToggle, onClose, onSelectRow, onMarkAllRead, hooksStatus, onEnableHooks }) {
   const groups = [];
   for (const r of rows) {
     const last = groups[groups.length - 1];
@@ -29,11 +29,6 @@ export default function Inbox({ rows, top, open, onToggle, onClose, onSelectRow,
     catch { setEnableErr(true); }
     finally { setEnabling(false); }
   };
-
-  // Orphan Claude sessions (running outside tmux). Pinned to the bottom of the panel, collapsed by
-  // default so they don't crowd the main roster. The snippet in each row is the "which session is
-  // this" check; tapping 接管 opens the takeover sheet (target + kill choice) in App.
-  const [orphOpen, setOrphOpen] = useState(false);
 
   return (
     <>
@@ -66,7 +61,7 @@ export default function Inbox({ rows, top, open, onToggle, onClose, onSelectRow,
                   {enableErr && <div className="inbox-enable-err">{t('inbox.enableFailed')}</div>}
                 </div>
               ) : (
-                orphans.length === 0 && <div className="inbox-empty">{t('inbox.empty')}</div>
+                <div className="inbox-empty">{t('inbox.empty')}</div>
               )
             ) : groups.map((g) => (
               <div key={g.session} className="inbox-group">
@@ -83,44 +78,6 @@ export default function Inbox({ rows, top, open, onToggle, onClose, onSelectRow,
                 ))}
               </div>
             ))}
-
-            {orphans.length > 0 && (
-              <div className="inbox-orphans">
-                <button className="inbox-orphans-head" onClick={() => setOrphOpen((o) => !o)}>
-                  <span>{t('inbox.orphans.title', { n: orphans.length })}</span>
-                  <span className="inbox-orphans-caret" aria-hidden="true">{orphOpen ? '▾' : '▸'}</span>
-                </button>
-                {orphOpen && (
-                  <div className="inbox-orphans-body">
-                    <div className="inbox-orphans-hint">{t('inbox.orphans.hint')}</div>
-                    {orphans.map((o) => {
-                      const noSession = !o.sessionId;
-                      const disabled = o.state === 'busy' || noSession;
-                      return (
-                        <div key={o.pid} className="inbox-orphan-row">
-                          <div className="inbox-row-head">
-                            <span className={`inbox-chip ${o.state === 'busy' ? 'working' : 'done'}`}>
-                              {o.state === 'busy' ? t('inbox.orphans.busy') : t('inbox.orphans.idle')}
-                            </span>
-                            <span className="inbox-loc">{o.cwdLabel || o.cwd}</span>
-                            <span className="inbox-time">{relTime(o.startedAt || o.lastActivity, now)}</span>
-                            <button
-                              className="inbox-orphan-btn"
-                              disabled={disabled}
-                              title={noSession ? t('inbox.orphans.noSession') : undefined}
-                              onClick={() => onTakeoverRequest?.(o)}
-                            >
-                              {t('inbox.orphans.takeover')}
-                            </button>
-                          </div>
-                          {o.snippet && <div className="inbox-msg">{o.snippet}</div>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </>
       )}

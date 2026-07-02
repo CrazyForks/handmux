@@ -961,32 +961,21 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .inbox-enable-btn:disabled { opacity: 0.6; }
 .inbox-enable-err { color: #e06b5e; font-size: 12px; }
 
-/* Orphan-claude footer: pinned below the roster, collapsed by default. */
-.inbox-orphans { border-top: 1px solid #34353a; margin-top: 6px; padding-top: 2px; }
-.inbox-orphans-head {
+/* 未接管会话: collapsible section at the bottom of the drawer session list. */
+.drawer-orphans { border-top: 1px solid #34353a; margin-top: 10px; padding-top: 6px; }
+.drawer-orphans-head {
   display: flex; align-items: center; width: 100%; gap: 6px; background: none; border: none;
-  color: #8a8b8f; font-size: 11px; padding: 6px 8px; text-align: left; touch-action: manipulation;
+  color: #888; font-size: 12px; letter-spacing: 1px; padding: 6px 4px; text-align: left; touch-action: manipulation;
 }
-.inbox-orphans-caret { margin-left: auto; color: #777; }
-.inbox-orphans-hint { color: #9aa0a6; font-size: 11px; padding: 0 8px 6px; }
-.inbox-orphan-row { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: 8px; }
-.inbox-orphan-row + .inbox-orphan-row { border-top: 1px solid #2c2d31; }
-.inbox-orphan-row .inbox-loc { flex: 1 1 auto; }
-.inbox-orphan-btn {
-  flex: none; padding: 3px 10px; border: none; border-radius: 6px;
-  background: #2f6fed; color: #fff; font-size: 12px; touch-action: manipulation;
+.drawer-orphans-caret { margin-left: auto; }
+.drawer-orphans-hint { color: #777; font-size: 11px; padding: 0 4px 4px; }
+.drawer-orphan-cwd { color: #cdddff; }
+.drawer-orphan-btn {
+  flex: none; padding: 4px 10px; border: none; border-radius: 6px;
+  background: #2b3550; color: #cdddff; font-size: 13px; touch-action: manipulation;
 }
-.inbox-orphan-btn:disabled { opacity: 0.5; background: #3a3b40; }
-.inbox-orphan-confirm { display: flex; gap: 8px; }
-.inbox-orphan-kill {
-  padding: 6px 12px; border: none; border-radius: 8px; background: #c0392b; color: #fff;
-  font-size: 13px; touch-action: manipulation;
-}
-.inbox-orphan-kill:disabled { opacity: 0.6; }
-.inbox-orphan-cancel {
-  padding: 6px 12px; border: 1px solid #4a4b50; border-radius: 8px; background: none; color: #cfcfcf;
-  font-size: 13px; touch-action: manipulation;
-}
+.drawer-orphan-btn:active { background: #344168; }
+.drawer-orphan-btn:disabled { opacity: 0.45; }
 /* Takeover sheet: target picker (fontbtn group, aria-pressed = selected) + kill toggle. */
 .orphan-targets { display: flex; flex-wrap: wrap; gap: 6px; }
 .orphan-targets .fontbtn[aria-pressed="true"] { background: #2f6fed; color: #fff; border-color: #2f6fed; }
