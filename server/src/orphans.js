@@ -15,6 +15,7 @@ import { execFile } from 'node:child_process';
 import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { isSessionId } from './tmux/commands.js';
 
 // Tolerant promisified execFile: resolves '' on any error (no server, missing binary, non-zero exit).
 // Detection is best-effort and must never throw the whole request.
@@ -47,21 +48,35 @@ function normTty(t) {
 // so "vim claude.js" / "node build/claude.js" don't match.
 const CLAUDE_ARGS = /^(\S*\/)?claude(\s|$)/;
 
-// Parse `ps -Ao pid=,ppid=,stat=,tty=,args=` → LIVE claude processes only. args (last column) may
-// contain spaces. STOPPED (STAT 'T', a Ctrl-Z-suspended job-control stack — verified real: one terminal
-// can hold 8 suspended `claude`s) and ZOMBIE ('Z') processes are dropped: they aren't active sessions to
-// steer, and a suspended original can't write its jsonl so there's nothing to race. Everything else
-// (R/S/I/D…) is a live session.
+// ps `etime` (elapsed since start) → milliseconds. Formats (macOS + Linux, no spaces): "MM:SS",
+// "HH:MM:SS", "DD-HH:MM:SS". Used only to derive a startedAt for display/recognition (the "A加成"),
+// NOT for session attribution — a resumed session's process starts long after its jsonl's first event.
+export function etimeToMs(etime) {
+  const s = String(etime).trim();
+  if (!s) return 0;
+  let days = 0;
+  let rest = s;
+  const dash = s.indexOf('-');
+  if (dash >= 0) { days = Number(s.slice(0, dash)) || 0; rest = s.slice(dash + 1); }
+  let sec = 0;
+  for (const p of rest.split(':')) sec = sec * 60 + (Number(p) || 0);
+  return (days * 86400 + sec) * 1000;
+}
+
+// Parse `ps -Ao pid=,ppid=,stat=,etime=,tty=,args=` → LIVE claude processes only. args (last column)
+// may contain spaces; etime has none. STOPPED (STAT 'T', a Ctrl-Z-suspended job-control stack — verified
+// real: one terminal can hold 8 suspended `claude`s) and ZOMBIE ('Z') processes are dropped: they aren't
+// active sessions to steer, and a suspended original can't write its jsonl so there's nothing to race.
 export function parseClaudeProcs(psOut) {
   const out = [];
   for (const line of String(psOut).split('\n')) {
-    const m = line.match(/^\s*(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(.*)$/);
+    const m = line.match(/^\s*(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.*)$/);
     if (!m) continue;
     const stat = m[3];
     if (stat[0] === 'T' || stat[0] === 'Z') continue;
-    const args = m[5].trim();
+    const args = m[6].trim();
     if (!CLAUDE_ARGS.test(args)) continue;
-    out.push({ pid: Number(m[1]), ppid: Number(m[2]), tty: normTty(m[4]), args });
+    out.push({ pid: Number(m[1]), ppid: Number(m[2]), etimeMs: etimeToMs(m[4]), tty: normTty(m[5]), args });
   }
   return out;
 }
@@ -185,6 +200,75 @@ export async function resolveSession(projectsDir, cwd, { busyMs = 8000, now = Da
   return {};
 }
 
+// A tmux session name derived from a cwd basename, kept within isValidSessionName ([A-Za-z0-9-], ≤16):
+// `cc-<alnum label, ≤8>-<n>`. n disambiguates against existing sessions.
+export function takeoverSessionName(cwdLabel, n) {
+  const base = String(cwdLabel || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 8) || 'cc';
+  return `cc-${base}-${n}`.slice(0, 16);
+}
+
+const isShell = (c) => /^-?(zsh|bash|sh|fish|dash|tcsh|csh|ksh)$/.test(String(c || ''));
+
+// Take over an orphan: spawn `claude --resume <sessionId>` in a fresh tmux session (target.mode 'new')
+// or a new window of an existing session ('window'), so handmux can steer the continued conversation.
+// Everything is re-verified server-side — the client's pid/sessionId are inputs to a fresh scan, never
+// trusted directly. The original process is SIGTERM'd only AFTER the resumed claude is confirmed up
+// (foreground command is no longer the shell) AND re-confirmed still the same orphan (guards pid reuse):
+// `claude --resume` appends to the SAME jsonl with no OS lock (verified), so two live writers corrupt
+// history — killing guarantees a single writer. Injectable deps make it unit-testable without real tmux.
+export async function takeoverOrphan(
+  {
+    commands, scanFn = scanOrphans, scanOpts = {},
+    killProc = (pid, sig) => process.kill(pid, sig),
+    delay = (ms) => new Promise((r) => setTimeout(r, ms)),
+    pollTries = 16, pollMs = 400,
+  },
+  { pid, sessionId, target = { mode: 'new' }, kill = true } = {},
+) {
+  if (!Number.isInteger(pid) || pid <= 0) return { error: 'bad pid', status: 400 };
+  if (!isSessionUuid(sessionId)) return { error: 'bad session id', status: 400 };
+
+  const o = (await scanFn(scanOpts)).find((x) => x.pid === pid);
+  if (!o) return { error: 'gone', status: 409 };            // no longer a live orphan
+  if (o.sessionId !== sessionId) return { error: 'session changed', status: 409 };
+  if (!o.cwd) return { error: 'no cwd', status: 409 };
+  const cmd = `claude --resume ${sessionId}`;
+
+  let sid;
+  let wid;
+  if (target.mode === 'window') {
+    if (!isSessionId(target.session)) return { error: 'bad target session', status: 400 };
+    sid = target.session;
+    wid = await commands.newWindow(sid, o.cwd, 'claude', cmd);
+  } else {
+    const existing = new Set((await commands.listSessions()).map((s) => s.name));
+    let name;
+    for (let i = 1; i < 1000 && !name; i++) {
+      const cand = takeoverSessionName(o.cwdLabel, i);
+      if (!existing.has(cand)) name = cand;
+    }
+    sid = await commands.newSession(name, o.cwd, cmd);
+    wid = (await commands.listWindows(sid))[0]?.id;
+  }
+
+  let up = false;
+  let pane = null;
+  for (let i = 0; i < pollTries && !up; i++) {
+    await delay(pollMs);
+    try {
+      const p = (await commands.listPanes(wid))[0];
+      if (p) { pane = p.id; if (!isShell(p.command)) up = true; }
+    } catch { /* window/pane not ready yet */ }
+  }
+
+  let killed = false;
+  if (kill && up) {
+    const still = (await scanFn(scanOpts)).find((x) => x.pid === pid && x.sessionId === sessionId);
+    if (still) { try { killProc(pid, 'SIGTERM'); killed = true; } catch { /* already exited */ } }
+  }
+  return { session: sid, window: wid, pane, claudeUp: up, killed };
+}
+
 async function lsofCwd(run, pid) {
   const out = await run('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn']);
   for (const line of out.split('\n')) if (line[0] === 'n') return line.slice(1).trim();
@@ -197,7 +281,7 @@ export async function scanOrphans({
   run = defaultRun, projectsDir = defaultProjectsDir(), busyMs = 8000, now = Date.now,
 } = {}) {
   const [psOut, tmuxOut] = await Promise.all([
-    run('ps', ['-Ao', 'pid=,ppid=,stat=,tty=,args=']),
+    run('ps', ['-Ao', 'pid=,ppid=,stat=,etime=,tty=,args=']),
     run('tmux', ['list-panes', '-a', '-F', '#{pane_tty}\t#{pane_pid}']),
   ]);
   const orphans = findOrphans(parseClaudeProcs(psOut), parsePaneMembership(tmuxOut));
@@ -213,6 +297,7 @@ export async function scanOrphans({
       state: meta.state || 'unknown',
       snippet: meta.snippet || '',
       lastActivity: meta.lastActivity || 0,
+      startedAt: o.etimeMs ? Math.round(now() - o.etimeMs) : 0,
     });
   }
   return results;

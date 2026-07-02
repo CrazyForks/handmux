@@ -89,6 +89,13 @@ export const installClaudeHooks = () => req('/api/hooks/install', { method: 'POS
 export const getStates = (sessions = []) =>
   req(`/api/states?sessions=${encodeURIComponent(sessions.join(','))}`, { timeoutMs: 4000 });
 
+// Orphan Claude sessions running outside tmux (see server/src/orphans.js). getOrphans returns the roster;
+// takeoverOrphan spawns `claude --resume` in tmux and (default) SIGTERMs the original. Takeover involves a
+// process scan + tmux spawn + up-poll, so it gets a longer timeout.
+export const getOrphans = () => req('/api/orphans', { timeoutMs: 8000 });
+export const takeoverOrphan = (body) =>
+  req('/api/orphans/takeover', { method: 'POST', body: JSON.stringify(body), timeoutMs: 15000 });
+
 // --- git viewer (read-only) ---
 export const gitRepos = (dir) => req(`/api/git/repos?dir=${encodeURIComponent(dir)}`, { timeoutMs: 8000 });
 export const gitStatus = (repo) => req(`/api/git/status?repo=${encodeURIComponent(repo)}`, { timeoutMs: 8000 });

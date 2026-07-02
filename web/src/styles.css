@@ -961,3 +961,29 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .inbox-enable-btn:disabled { opacity: 0.6; }
 .inbox-enable-err { color: #e06b5e; font-size: 12px; }
 
+/* Orphan-claude footer: pinned below the roster, collapsed by default. */
+.inbox-orphans { border-top: 1px solid #34353a; margin-top: 6px; padding-top: 4px; }
+.inbox-orphans-head {
+  display: flex; align-items: center; width: 100%; gap: 8px; background: none; border: none;
+  color: #e0a020; font-size: 12px; padding: 8px; text-align: left; touch-action: manipulation;
+}
+.inbox-orphans-caret { margin-left: auto; color: #888; }
+.inbox-orphans-hint { color: #9aa0a6; font-size: 12px; line-height: 1.4; padding: 0 8px 6px; }
+.inbox-orphan-row { display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: 8px; }
+.inbox-orphan-row + .inbox-orphan-row { border-top: 1px solid #2c2d31; }
+.inbox-orphan-btn {
+  align-self: flex-start; padding: 6px 12px; border: none; border-radius: 8px;
+  background: #2f6fed; color: #fff; font-size: 13px; touch-action: manipulation;
+}
+.inbox-orphan-btn:disabled { opacity: 0.5; background: #3a3b40; }
+.inbox-orphan-confirm { display: flex; gap: 8px; }
+.inbox-orphan-kill {
+  padding: 6px 12px; border: none; border-radius: 8px; background: #c0392b; color: #fff;
+  font-size: 13px; touch-action: manipulation;
+}
+.inbox-orphan-kill:disabled { opacity: 0.6; }
+.inbox-orphan-cancel {
+  padding: 6px 12px; border: 1px solid #4a4b50; border-radius: 8px; background: none; color: #cfcfcf;
+  font-size: 13px; touch-action: manipulation;
+}
+

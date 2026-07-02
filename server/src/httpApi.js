@@ -22,7 +22,7 @@ import { safePreviewName } from './previews.js';
 import { isAllowedUploadExt, DEFAULT_UPLOAD_EXTS } from './uploadTypes.js';
 import { hooksStatus, installHooks } from './cli/claudeHooks.js';
 import { claudeStatePath } from './cli/state.js';
-import { scanOrphans, defaultProjectsDir } from './orphans.js';
+import { scanOrphans, takeoverOrphan, defaultProjectsDir } from './orphans.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const HOOKS_SRC = resolvePath(here, '../hooks'); // server/hooks (bundled scripts)
@@ -518,6 +518,23 @@ export function createApiRouter({
   // `claude --resume` in tmux). Best-effort process scan (see orphans.js); never throws.
   r.get('/orphans', async (req, res, next) => {
     try { res.json(await scanOrphans({ projectsDir: defaultProjectsDir(home) })); } catch (e) { next(e); }
+  });
+
+  // Take over an orphan: spawn `claude --resume <sessionId>` in tmux and (default) SIGTERM the original.
+  // pid/sessionId are re-verified against a fresh scan server-side; sessionId must be a UUID (it's typed
+  // into a shell). target.mode 'new' (fresh session) or 'window' (into an existing session id).
+  r.post('/orphans/takeover', async (req, res, next) => {
+    const { pid, sessionId, kill, target } = req.body || {};
+    const t = target && target.mode === 'window' && isSessionId(target.session)
+      ? { mode: 'window', session: target.session } : { mode: 'new' };
+    try {
+      const out = await takeoverOrphan(
+        { commands, scanOpts: { projectsDir: defaultProjectsDir(home) } },
+        { pid, sessionId, target: t, kill: kill !== false },
+      );
+      if (out.error) return res.status(out.status).json({ error: out.error });
+      res.json(out);
+    } catch (e) { next(e); }
   });
 
   // --- Preview registry (static dir OR dynamic port) -----------------------------------------

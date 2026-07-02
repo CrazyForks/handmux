@@ -14,7 +14,7 @@ import {
   getSessions, getWindows, getPanes, resizeWindow, resizePane, getWindowLayout,
   restoreWindowSize, sendKeys, sendText, createWindow,
   renameSession, renameWindow, deleteWindow, swapWindows, fetchDoc, fetchImageUrl, UnauthorizedError,
-  getStates,
+  getStates, getOrphans, takeoverOrphan,
   getPreviews, createPreview, deletePreview,
 } from './api.js';
 import { previewName } from './previewName.js';
@@ -83,6 +83,7 @@ export default function App() {
   const [previewSheetOpen, setPreviewSheetOpen] = useState(false); // in-app preview sheet visible
   const [booting, setBooting] = useState(true);
   const [states, setStates] = useState({}); // pane → {session,window,kind,…} from /api/states
+  const [orphans, setOrphans] = useState([]); // claude sessions running outside tmux (/api/orphans)
   const [inboxOpen, setInboxOpen] = useState(false); // inbox dropdown open
   const { status: hooksStatus, enable: enableHooks } = useClaudeHooks();
   const [ideaOpen, setIdeaOpen] = useState(false); // per-window idea sheet open
@@ -455,6 +456,19 @@ export default function App() {
     } catch (e) { if (e instanceof UnauthorizedError) onAuthFail(); }
   }, [openSession, onAuthFail]);
 
+  // Take over an orphan (claude running outside tmux): the server spawns `claude --resume` in a fresh
+  // tmux session and SIGTERMs the original, returning the new {session,window,pane}; we navigate into it.
+  // Errors (409 gone / session changed, or a failed spawn) propagate to the Inbox row's own catch.
+  const takeoverOrphanRow = useCallback(async (o) => {
+    const out = await takeoverOrphan({ pid: o.pid, sessionId: o.sessionId, kill: true });
+    setInboxOpen(false);
+    try {
+      const session = (await getSessions()).find((s) => s.id === out.session);
+      if (session) { setDrawerOpen(false); await openSession(session, { window: out.window, pane: out.pane }); }
+    } catch (e) { if (e instanceof UnauthorizedError) onAuthFail(); }
+    try { setOrphans(await getOrphans()); } catch { /* refresh best-effort */ }
+  }, [openSession, onAuthFail]);
+
   // 清除已完成: advance the high-water mark to the current max ts → all present done rows become history
   // (working/needs are never filtered, so this only clears completed). Button is hidden when no done row.
   const markAllRead = useCallback(() => {
@@ -721,6 +735,23 @@ export default function App() {
     if (m > 0) { setInboxReadTs(m); setReadTs(m); }
   }, [states, readTs]);
 
+  // Poll orphan claude sessions for the inbox footer. Slower cadence than /states (a ps+lsof scan is
+  // heavier and orphans change rarely), paused while the tab is hidden.
+  useEffect(() => {
+    if (needToken) return;
+    let cancelled = false;
+    let timer = null;
+    const tick = async () => {
+      if (document.hidden) return;
+      try { const o = await getOrphans(); if (!cancelled) setOrphans(Array.isArray(o) ? o : []); } catch { /* ignore */ }
+    };
+    const loop = () => { tick(); timer = setTimeout(loop, 15000); };
+    loop();
+    const onVis = () => { if (!document.hidden) { clearTimeout(timer); loop(); } };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { cancelled = true; clearTimeout(timer); document.removeEventListener('visibilitychange', onVis); };
+  }, [needToken]);
+
   if (needToken) {
     return <TokenPrompt onSaved={() => { setNeedToken(false); setBooting(true); }} />;
   }
@@ -764,6 +795,8 @@ export default function App() {
           onMarkAllRead={markAllRead}
           hooksStatus={hooksStatus}
           onEnableHooks={enableHooks}
+          orphans={orphans}
+          onTakeover={takeoverOrphanRow}
         />
         <button className="topbar-icon" onClick={() => setFileManagerOpen(true)} aria-label={t('app.files')} title={t('app.files')}><FolderIcon /></button>
         <button className="topbar-icon" onClick={() => setGitOpen(true)} aria-label="Git" title="Git"><GitIcon /></button>

@@ -716,3 +716,28 @@ describe('claude hooks API', () => {
     await request(app).post('/api/hooks/install').expect(401);
   });
 });
+
+describe('orphans routes', () => {
+  // GET runs the real process scan (read-only, may be empty) — assert only shape. The takeover
+  // bad-input paths reject BEFORE any tmux spawn/kill, so they're safe to exercise on a live host.
+  const app = appWith(baseCommands);
+
+  it('GET /api/orphans returns an array', async () => {
+    const res = await auth(request(app).get('/api/orphans')).expect(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  it('GET /api/orphans requires auth', async () => {
+    await request(app).get('/api/orphans').expect(401);
+  });
+
+  it('POST /api/orphans/takeover rejects a non-UUID sessionId (injection guard)', async () => {
+    await auth(request(app).post('/api/orphans/takeover'))
+      .send({ pid: 4717, sessionId: 'x; rm -rf ~' }).expect(400);
+  });
+
+  it('POST /api/orphans/takeover 409s for a pid that is not a live orphan', async () => {
+    await auth(request(app).post('/api/orphans/takeover'))
+      .send({ pid: 2147483000, sessionId: '4442e3d0-8d46-4cce-9822-b86558f69922' }).expect(409);
+  });
+});

@@ -5,17 +5,20 @@ import path from 'node:path';
 import {
   parseClaudeProcs, parsePaneMembership, findOrphans, encodeProjectDir,
   isSessionUuid, lastUserSnippet, resolveSession, scanOrphans,
+  etimeToMs, takeoverSessionName, takeoverOrphan,
 } from '../src/orphans.js';
 
+const UUID = 'eeeeeeee-0000-0000-0000-000000000005';
+
 const PS = [
-  '  4717 72161 S+  ttys010  claude',
-  ' 10368 10357 S+  ttys018  claude --continue',
-  '  5572  5561 S+  ttys036  claude --continue',
-  '  9999     1 S   ??       claude -p "one shot"',       // no tty → not a takeover candidate
-  '  8888  1234 S+  ttys099  node build/claude.js',       // not the claude CLI → ignored
-  '  7777  1234 S+  ttys098  vim claude.md',              // ignored
-  '  6666 72161 T   ttys010  claude',                     // Ctrl-Z suspended → dropped
-  '  6667 72161 Z   ttys010  claude',                     // zombie → dropped
+  '  4717 72161 S+  02:03:04    ttys010  claude',
+  ' 10368 10357 S+  01:00       ttys018  claude --continue',
+  '  5572  5561 S+  05:00       ttys036  claude --continue',
+  '  9999     1 S   10:00       ??       claude -p "one shot"',  // no tty → not a takeover candidate
+  '  8888  1234 S+  10:00       ttys099  node build/claude.js',  // not the claude CLI → ignored
+  '  7777  1234 S+  10:00       ttys098  vim claude.md',         // ignored
+  '  6666 72161 T   3-04:05:06  ttys010  claude',                // Ctrl-Z suspended → dropped
+  '  6667 72161 Z   00:01       ttys010  claude',                // zombie → dropped
 ].join('\n');
 
 const PANES = [
@@ -45,7 +48,7 @@ describe('process parsing', () => {
   });
 
   it('treats ppid match as in-tmux even if tty differs', () => {
-    const procs = parseClaudeProcs('  111 10357 S+ ttysXX  claude');
+    const procs = parseClaudeProcs('  111 10357 S+ 01:00 ttysXX  claude');
     const orphans = findOrphans(procs, parsePaneMembership(PANES));
     expect(orphans).toHaveLength(0); // ppid 10357 is a pane shell
   });
@@ -137,11 +140,104 @@ describe('scanOrphans (injected run)', () => {
       if (cmd === 'lsof' && args.includes('4717')) return `p4717\nfcwd\nn${cwd}\n`;
       return '';
     };
-    const rows = await scanOrphans({ run, projectsDir, now: () => 2_500_000 });
+    const NOW = 2_500_000;
+    const rows = await scanOrphans({ run, projectsDir, now: () => NOW });
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       pid: 4717, cwd, cwdLabel: 'zxy', state: 'idle',
-      sessionId: 'eeeeeeee-0000-0000-0000-000000000005', snippet: 'refactor parser',
+      sessionId: UUID, snippet: 'refactor parser',
     });
+    // startedAt = now - etime (4717's etime '02:03:04' = 7384s)
+    expect(rows[0].startedAt).toBe(NOW - 7384 * 1000);
+  });
+});
+
+describe('etimeToMs', () => {
+  it('parses MM:SS, HH:MM:SS, DD-HH:MM:SS', () => {
+    expect(etimeToMs('01:00')).toBe(60_000);
+    expect(etimeToMs('02:03:04')).toBe(7384_000);
+    expect(etimeToMs('3-04:05:06')).toBe((3 * 86400 + 4 * 3600 + 5 * 60 + 6) * 1000);
+    expect(etimeToMs('')).toBe(0);
+  });
+});
+
+describe('takeoverSessionName', () => {
+  it('produces a valid tmux session name within 16 chars', () => {
+    expect(takeoverSessionName('zxy', 1)).toBe('cc-zxy-1');
+    expect(takeoverSessionName('a-very-long-basename', 2)).toMatch(/^cc-[A-Za-z0-9]{1,8}-2$/);
+    expect(takeoverSessionName('', 1)).toBe('cc-cc-1');
+    expect(takeoverSessionName('!!!', 1)).toBe('cc-cc-1'); // non-alnum stripped
+  });
+});
+
+describe('takeoverOrphan', () => {
+  const orphan = { pid: 4717, sessionId: UUID, cwd: '/home/user/zxy', cwdLabel: 'zxy' };
+  const nap = () => Promise.resolve();
+
+  function fakeCommands({ paneCmds }) {
+    let poll = 0;
+    return {
+      listSessions: async () => [{ id: '$1', name: 'jly' }],
+      newSession: async () => '$9',
+      listWindows: async () => [{ id: '@9' }],
+      newWindow: async () => '@9',
+      listPanes: async () => [{ id: '%9', command: paneCmds[Math.min(poll++, paneCmds.length - 1)] }],
+    };
+  }
+
+  it('spawns a new session, confirms claude up, then SIGTERMs the original', async () => {
+    const killed = [];
+    const out = await takeoverOrphan({
+      commands: fakeCommands({ paneCmds: ['zsh', 'zsh', 'node'] }), // shell → shell → claude up
+      scanFn: async () => [orphan],
+      killProc: (pid, sig) => killed.push([pid, sig]),
+      delay: nap,
+    }, { pid: 4717, sessionId: UUID, kill: true });
+    expect(out).toMatchObject({ session: '$9', window: '@9', pane: '%9', claudeUp: true, killed: true });
+    expect(killed).toEqual([[4717, 'SIGTERM']]);
+  });
+
+  it('does NOT kill when the resumed claude never comes up', async () => {
+    const killed = [];
+    const out = await takeoverOrphan({
+      commands: fakeCommands({ paneCmds: ['zsh'] }), // stays a shell forever
+      scanFn: async () => [orphan],
+      killProc: (pid, sig) => killed.push([pid, sig]),
+      delay: nap, pollTries: 3,
+    }, { pid: 4717, sessionId: UUID, kill: true });
+    expect(out.claudeUp).toBe(false);
+    expect(out.killed).toBe(false);
+    expect(killed).toEqual([]);
+  });
+
+  it('respects kill:false (takeover without killing)', async () => {
+    const killed = [];
+    const out = await takeoverOrphan({
+      commands: fakeCommands({ paneCmds: ['node'] }),
+      scanFn: async () => [orphan],
+      killProc: (pid, sig) => killed.push([pid, sig]),
+      delay: nap,
+    }, { pid: 4717, sessionId: UUID, kill: false });
+    expect(out.claudeUp).toBe(true);
+    expect(out.killed).toBe(false);
+    expect(killed).toEqual([]);
+  });
+
+  it('rejects a non-UUID sessionId (shell-injection guard)', async () => {
+    const out = await takeoverOrphan({ commands: {}, scanFn: async () => [] },
+      { pid: 4717, sessionId: 'x; rm -rf ~', kill: true });
+    expect(out).toMatchObject({ status: 400 });
+  });
+
+  it('409s when the pid is no longer an orphan', async () => {
+    const out = await takeoverOrphan({ commands: {}, scanFn: async () => [] },
+      { pid: 4717, sessionId: UUID, kill: true });
+    expect(out).toMatchObject({ status: 409 });
+  });
+
+  it('409s when the pid now maps to a different session', async () => {
+    const out = await takeoverOrphan({ commands: {}, scanFn: async () => [{ ...orphan, sessionId: 'ffffffff-0000-0000-0000-000000000000' }] },
+      { pid: 4717, sessionId: UUID, kill: true });
+    expect(out).toMatchObject({ status: 409 });
   });
 });
