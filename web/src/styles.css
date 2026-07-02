@@ -986,4 +986,9 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
   padding: 6px 12px; border: 1px solid #4a4b50; border-radius: 8px; background: none; color: #cfcfcf;
   font-size: 13px; touch-action: manipulation;
 }
+/* Takeover sheet: target picker (fontbtn group, aria-pressed = selected) + kill toggle. */
+.orphan-targets { display: flex; flex-wrap: wrap; gap: 6px; }
+.orphan-targets .fontbtn[aria-pressed="true"] { background: #2f6fed; color: #fff; border-color: #2f6fed; }
+.orphan-killtoggle { width: 100%; text-align: left; }
+.orphan-killtoggle[aria-pressed="true"] { color: #e06b5e; border-color: #e06b5e; }
 

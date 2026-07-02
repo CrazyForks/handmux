@@ -148,6 +148,13 @@ export function removeFavorite(cmd) {
 export const getLastStartupCmd = () => localStorage.getItem(STARTUP_CMD_KEY) || '';
 export const setLastStartupCmd = (cmd) => localStorage.setItem(STARTUP_CMD_KEY, cmd || '');
 
+// Orphan-takeover: whether to SIGTERM the original process after resuming it in tmux. Defaults ON
+// (a resumed session shares the same jsonl with no lock — two writers corrupt history), remembered
+// per device. Only an explicit '0' turns it off.
+const ORPHAN_KILL_KEY = 'tw_orphan_kill';
+export const getOrphanKill = () => localStorage.getItem(ORPHAN_KILL_KEY) !== '0';
+export const setOrphanKill = (on) => localStorage.setItem(ORPHAN_KILL_KEY, on ? '1' : '0');
+
 // Recent commands per session NAME (names are stable across tmux restarts — see the binding model).
 // pushRecent dedupes to the front and caps the list so it stays a short, useful tail.
 export const getRecent = (name) => readMap(RECENT_KEY)[name] ?? [];

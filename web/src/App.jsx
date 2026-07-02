@@ -33,6 +33,7 @@ import BottomDock from './components/BottomDock.jsx';
 import TokenPrompt from './components/TokenPrompt.jsx';
 import Settings from './components/Settings.jsx';
 import Inbox from './components/Inbox.jsx';
+import OrphanTakeoverSheet from './components/OrphanTakeoverSheet.jsx';
 import { useClaudeHooks } from './useClaudeHooks.js';
 import BindSession from './components/BindSession.jsx';
 import NewWindowModal from './components/NewWindowModal.jsx';
@@ -84,6 +85,7 @@ export default function App() {
   const [booting, setBooting] = useState(true);
   const [states, setStates] = useState({}); // pane → {session,window,kind,…} from /api/states
   const [orphans, setOrphans] = useState([]); // claude sessions running outside tmux (/api/orphans)
+  const [takeoverTarget, setTakeoverTarget] = useState(null); // orphan being taken over (opens the sheet)
   const [inboxOpen, setInboxOpen] = useState(false); // inbox dropdown open
   const { status: hooksStatus, enable: enableHooks } = useClaudeHooks();
   const [ideaOpen, setIdeaOpen] = useState(false); // per-window idea sheet open
@@ -456,18 +458,21 @@ export default function App() {
     } catch (e) { if (e instanceof UnauthorizedError) onAuthFail(); }
   }, [openSession, onAuthFail]);
 
-  // Take over an orphan (claude running outside tmux): the server spawns `claude --resume` in a fresh
-  // tmux session and SIGTERMs the original, returning the new {session,window,pane}; we navigate into it.
-  // Errors (409 gone / session changed, or a failed spawn) propagate to the Inbox row's own catch.
-  const takeoverOrphanRow = useCallback(async (o) => {
-    const out = await takeoverOrphan({ pid: o.pid, sessionId: o.sessionId, kill: true });
+  // Take over an orphan (claude running outside tmux): the server spawns `claude --resume` in the chosen
+  // target (new session, or a new window of an existing session) and — if kill — SIGTERMs the original,
+  // returning the new {session,window,pane}; we navigate into it. Throws on failure (409 gone / session
+  // changed / spawn failed) so the takeover sheet can surface it; success closes the sheet + inbox.
+  const doTakeover = useCallback(async ({ target, kill }) => {
+    const o = takeoverTarget;
+    const out = await takeoverOrphan({ pid: o.pid, sessionId: o.sessionId, target, kill });
+    setTakeoverTarget(null);
     setInboxOpen(false);
     try {
       const session = (await getSessions()).find((s) => s.id === out.session);
       if (session) { setDrawerOpen(false); await openSession(session, { window: out.window, pane: out.pane }); }
     } catch (e) { if (e instanceof UnauthorizedError) onAuthFail(); }
     try { setOrphans(await getOrphans()); } catch { /* refresh best-effort */ }
-  }, [openSession, onAuthFail]);
+  }, [takeoverTarget, openSession, onAuthFail]);
 
   // 清除已完成: advance the high-water mark to the current max ts → all present done rows become history
   // (working/needs are never filtered, so this only clears completed). Button is hidden when no done row.
@@ -796,7 +801,7 @@ export default function App() {
           hooksStatus={hooksStatus}
           onEnableHooks={enableHooks}
           orphans={orphans}
-          onTakeover={takeoverOrphanRow}
+          onTakeoverRequest={setTakeoverTarget}
         />
         <button className="topbar-icon" onClick={() => setFileManagerOpen(true)} aria-label={t('app.files')} title={t('app.files')}><FolderIcon /></button>
         <button className="topbar-icon" onClick={() => setGitOpen(true)} aria-label="Git" title="Git"><GitIcon /></button>
@@ -856,6 +861,13 @@ export default function App() {
         currentName={renameTarget?.name || ''}
         onClose={() => setRenameTarget(null)}
         onSubmit={submitRename}
+        inset={inset}
+      />
+      <OrphanTakeoverSheet
+        open={!!takeoverTarget}
+        orphan={takeoverTarget}
+        onConfirm={doTakeover}
+        onClose={() => setTakeoverTarget(null)}
         inset={inset}
       />
       <ActionSheet

@@ -9,7 +9,7 @@ import { t } from '../i18n';
 // taps bubble out via the callbacks. 清除已完成 advances the device read-ts high-water mark — it drops
 // only the present done rows (working/needs are never history-filtered), so it's shown ONLY when there
 // is at least one done row to clear.
-export default function Inbox({ rows, top, open, onToggle, onClose, onSelectRow, onMarkAllRead, hooksStatus, onEnableHooks, orphans = [], onTakeover }) {
+export default function Inbox({ rows, top, open, onToggle, onClose, onSelectRow, onMarkAllRead, hooksStatus, onEnableHooks, orphans = [], onTakeoverRequest }) {
   const groups = [];
   for (const r of rows) {
     const last = groups[groups.length - 1];
@@ -31,18 +31,9 @@ export default function Inbox({ rows, top, open, onToggle, onClose, onSelectRow,
   };
 
   // Orphan Claude sessions (running outside tmux). Pinned to the bottom of the panel, collapsed by
-  // default so they don't crowd the main roster. Takeover is destructive (SIGTERMs the original — a
-  // resumed session shares the same jsonl with no lock, so two writers corrupt history), so it's a
-  // two-tap confirm; the snippet in the row is the "which session is this" safety check.
+  // default so they don't crowd the main roster. The snippet in each row is the "which session is
+  // this" check; tapping 接管 opens the takeover sheet (target + kill choice) in App.
   const [orphOpen, setOrphOpen] = useState(false);
-  const [confirmId, setConfirmId] = useState(null);
-  const [takingId, setTakingId] = useState(null);
-  const [errId, setErrId] = useState(null);
-  const doTakeover = async (o) => {
-    setTakingId(o.pid); setErrId(null);
-    try { await onTakeover?.(o); } // on success App closes the inbox + navigates into the new pane
-    catch { setErrId(o.pid); setTakingId(null); }
-  };
 
   return (
     <>
@@ -105,7 +96,6 @@ export default function Inbox({ rows, top, open, onToggle, onClose, onSelectRow,
                     {orphans.map((o) => {
                       const noSession = !o.sessionId;
                       const disabled = o.state === 'busy' || noSession;
-                      const busy = takingId === o.pid;
                       return (
                         <div key={o.pid} className="inbox-orphan-row">
                           <div className="inbox-row-head">
@@ -116,25 +106,13 @@ export default function Inbox({ rows, top, open, onToggle, onClose, onSelectRow,
                             <span className="inbox-time">{relTime(o.startedAt || o.lastActivity, now)}</span>
                           </div>
                           {o.snippet && <div className="inbox-msg">{o.snippet}</div>}
-                          {confirmId === o.pid ? (
-                            <div className="inbox-orphan-confirm">
-                              <button className="inbox-orphan-kill" disabled={busy} onClick={() => doTakeover(o)}>
-                                {busy ? t('inbox.orphans.working') : t('inbox.orphans.confirmKill')}
-                              </button>
-                              <button className="inbox-orphan-cancel" disabled={busy} onClick={() => setConfirmId(null)}>
-                                {t('inbox.orphans.cancel')}
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              className="inbox-orphan-btn"
-                              disabled={disabled}
-                              onClick={() => { setErrId(null); setConfirmId(o.pid); }}
-                            >
-                              {noSession ? t('inbox.orphans.noSession') : t('inbox.orphans.takeover')}
-                            </button>
-                          )}
-                          {errId === o.pid && <div className="inbox-enable-err">{t('inbox.orphans.failed')}</div>}
+                          <button
+                            className="inbox-orphan-btn"
+                            disabled={disabled}
+                            onClick={() => onTakeoverRequest?.(o)}
+                          >
+                            {noSession ? t('inbox.orphans.noSession') : t('inbox.orphans.takeover')}
+                          </button>
                         </div>
                       );
                     })}
