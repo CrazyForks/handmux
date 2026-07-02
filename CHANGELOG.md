@@ -20,7 +20,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   as expected. A codex pane reports `pane_current_command` as its Node launcher (`node`), so
   inbox liveness matches that too (else codex panes were pruned). Every inbox row and the
   current-session topbar now show a per-agent mark (Claude / Codex) so the two are
-  distinguishable at a glance.
+  distinguishable at a glance. Approving a Codex permission flips the pane straight back to
+  进行中 (a PostToolUse un-stick that no-ops mid-turn, so it doesn't fire on every command).
 - **CLI now speaks Chinese** — the `handmux` command-line output (help, `start`/`status`/
   `setup` prompts, errors, the access block) is fully localized. Language resolves from
   `--lang en|zh`, a `"lang"` field in the config, or the shell locale (`LANG`/`LC_*` = `zh…`),

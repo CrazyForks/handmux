@@ -18,11 +18,13 @@ import { homedir } from 'node:os';
 
 // The events we register → the verb passed to handmux-notify.sh (classified by the shared Claude classifier,
 // since Codex's payloads match): UserPromptSubmit→working, Stop→done, PermissionRequest→需要你. PostToolUse
-// is intentionally omitted — unmatched it would spawn the hook on every tool call across every pane.
+// fires on every tool call, but its handmux-write.cjs handler for agent=codex is un-stick-ONLY (it flips a
+// pane out of 需要你 back to 进行中 after you approve, and is a no-op otherwise), so it doesn't churn.
 const CODEX_HOOK_EVENTS = [
   { event: 'UserPromptSubmit', src: 'prompt' },
   { event: 'Stop', src: 'stop' },
   { event: 'PermissionRequest', src: 'permreq' },
+  { event: 'PostToolUse', src: 'resume' },
 ];
 
 // Shared with Claude — the same scripts drive both (stdin payloads are identical).

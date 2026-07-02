@@ -9,8 +9,8 @@ const SCRIPT = path.resolve(__dirname, '../hooks/handmux-notify.sh');
 
 // Run the hook with a given src + env + stdin payload, against a fresh temp state file. Returns the
 // parsed JSON state object (or null if the file was never created).
-function run(arg, env, stdin, file) {
-  execFileSync('sh', [SCRIPT, arg], {
+function run(arg, env, stdin, file, agent) {
+  execFileSync('sh', agent ? [SCRIPT, arg, agent] : [SCRIPT, arg], {
     input: stdin,
     env: { ...process.env, ...env, HANDMUX_STATE: file },
   });
@@ -80,6 +80,27 @@ describe('handmux-notify.sh → handmux-write.js', () => {
     const obj = run('resume', { TMUX_PANE: '%8' }, '{"tool_name":"AskUserQuestion","tool_response":"ok"}', file);
     expect(obj['%8']).toMatchObject({ src: 'resume' });
     expect(obj['%8'].payload.tool_name).toBe('AskUserQuestion');
+  });
+
+  it('codex resume un-sticks a pane FROM 需要你 back to 进行中 (agent tagged)', () => {
+    const file = freshFile();
+    run('permreq', { TMUX_PANE: '%20' }, '{"tool_name":"Bash"}', file, 'codex'); // 需要你
+    const obj = run('resume', { TMUX_PANE: '%20' }, '{"tool_name":"Bash","tool_response":"ok"}', file, 'codex');
+    expect(obj['%20']).toMatchObject({ src: 'resume', agent: 'codex' });          // flipped to 进行中
+  });
+
+  it('codex resume is a NO-OP mid-turn — a tool call when not stuck on 需要你 does not churn the entry', () => {
+    const file = freshFile();
+    run('prompt', { TMUX_PANE: '%21' }, '{"prompt":"go"}', file, 'codex');        // 进行中
+    const obj = run('resume', { TMUX_PANE: '%21' }, '{"tool_name":"Bash"}', file, 'codex');
+    expect(obj['%21']).toMatchObject({ src: 'prompt' });                          // unchanged, still the prompt
+    expect(obj['%21'].payload.prompt).toBe('go');
+  });
+
+  it('codex resume on a brand-new pane writes nothing (nothing to un-stick)', () => {
+    const file = freshFile();
+    const obj = run('resume', { TMUX_PANE: '%22' }, '{"tool_name":"Bash"}', file, 'codex');
+    expect(obj).toBeNull();
   });
 
   it('records a permreq event (PermissionRequest) verbatim with tool_name', () => {

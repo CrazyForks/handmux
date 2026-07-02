@@ -28,6 +28,7 @@ try { payload = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); } catch { /* unr
 // write under the lock — the only place we can read the prior state safely — makes the call.
 const isIdle = src === 'notify' && payload && payload.notification_type === 'idle_prompt';
 let cleared = false; // set by update() when idle cleared an interrupted 进行中 → also clear @claude_dot below
+let noop = false;    // set when a codex PostToolUse resume had nothing to un-stick → skip the state + dot write
 
 // Synchronous nap without busy-spinning (the hook runs async, so a few ms is free). SharedArrayBuffer
 // may be unavailable in odd runtimes — fall back to a tiny busy loop so the lock retry still paces.
@@ -53,6 +54,16 @@ function update() {
     else return;                                             // resting → drop without writing
   } else if (src === 'end') {
     delete obj[pane];                                        // SessionEnd (clean exit) → drop the pane
+  } else if (src === 'resume' && agent === 'codex') {
+    // Codex fires PostToolUse on EVERY tool call, so its resume exists purely to un-stick a pane from 需要你
+    // back to 进行中 after the user approved a PermissionRequest. Apply it ONLY as that transition — a mid-
+    // turn tool call (pane already 进行中 / 已完成) is a no-op, so we don't rewrite the entry or repaint the
+    // dot on every command (the load Claude's matcher avoids). Claude's resume — no agent arg — is unaffected.
+    const prev = obj[pane];
+    const prevPerm = prev && (prev.src === 'permreq'
+      || (prev.src === 'notify' && (prev.payload || {}).notification_type === 'permission_prompt'));
+    if (!prevPerm) { noop = true; return; }
+    obj[pane] = { ts: Number(ts) || 0, src, host, payload, agent };
   } else {
     // agent tag lets the server dispatch classify + liveness per agent (Codex passes 'codex'); omitted for
     // Claude so legacy entries stay byte-identical and default to claude server-side.
@@ -88,7 +99,7 @@ function claudeDot(s, p) {
 }
 try {
   const dot = (src === 'end' || cleared) ? '' : claudeDot(src, payload);
-  if (dot !== null) {
+  if (dot !== null && !noop) {
     require('node:child_process').execFileSync('tmux', ['set-option', '-w', '-t', pane, '@claude_dot', dot], { stdio: 'ignore', timeout: 1000 });
   }
 } catch { /* 不在 tmux / tmux 不可达 → 忽略 */ }

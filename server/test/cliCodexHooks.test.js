@@ -25,6 +25,7 @@ describe('mergeCodexHooks / stripCodexHooks (pure)', () => {
     expect(out).toContain('[[hooks.Stop]]');
     expect(out).toContain('[[hooks.UserPromptSubmit]]');
     expect(out).toContain('[[hooks.PermissionRequest]]');
+    expect(out).toContain('[[hooks.PostToolUse]]'); // un-stick 需要你→进行中 after an approval
   });
 
   it("keeps the user's own config and appends after it", () => {
