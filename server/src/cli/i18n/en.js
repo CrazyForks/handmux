@@ -52,6 +52,9 @@ export default {
   'update.restartHint': '  run `handmux restart` to run the new version.',
   'update.failed': '✗ Upgrade failed. Try manually: npm i -g {pkg}@latest (may need sudo).',
 
+  // cloudflared auto-download
+  'cf.downloading': '  ↓ downloading cloudflared ({file}) …',
+
   // access block (printAccess)
   'access.noState': '  (no state)',
   'access.error': '  ✗ {msg}',

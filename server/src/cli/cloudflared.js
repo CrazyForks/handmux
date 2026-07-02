@@ -5,6 +5,52 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pocketHome } from './state.js';
+import { t } from './i18n/index.js';
+
+const fmtMB = (n) => (n / 1048576).toFixed(1);
+
+// Stream a fetch response into a Buffer, reporting progress per chunk as onProgress(received, total).
+// `total` is the content-length (0 if the server didn't send one). Falls back to arrayBuffer() when the
+// response isn't a readable stream (older/mock fetch), so callers still get the bytes.
+export async function drain(res, onProgress) {
+  const total = Number(res.headers?.get?.('content-length')) || 0;
+  if (!res.body?.getReader) {
+    const b = Buffer.from(await res.arrayBuffer());
+    onProgress?.(b.length, total || b.length);
+    return b;
+  }
+  const reader = res.body.getReader();
+  const chunks = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const c = Buffer.from(value);
+    chunks.push(c);
+    received += c.length;
+    onProgress?.(received, total);
+  }
+  return Buffer.concat(chunks);
+}
+
+// Default progress renderer: a single \r-updated line on a TTY (throttled to ~10/s), e.g.
+// `  cloudflared  45%  (9.2/20.4 MB)`. Non-TTY (piped/logged) gets nothing — the start line already
+// announced the download and a spammy animation would just fill the log with control chars.
+function defaultProgress(out = process.stdout) {
+  if (!out.isTTY) return () => {};
+  let last = 0;
+  return (received, total) => {
+    const done = total && received >= total;
+    const now = Date.now();
+    if (!done && now - last < 100) return;
+    last = now;
+    const body = total
+      ? `${Math.floor((received / total) * 100)}%  (${fmtMB(received)}/${fmtMB(total)} MB)`
+      : `${fmtMB(received)} MB`;
+    out.write(`\r  cloudflared  ${body}   `);
+    if (done) out.write('\n');
+  };
+}
 
 // Map Node's platform/arch to cloudflared's release asset. Linux/Windows ship a bare binary; macOS
 // ships a .tgz that contains a `cloudflared` executable.
@@ -21,7 +67,7 @@ export function onPath(exec = 'cloudflared') {
   return r.status === 0 ? String(r.stdout).trim().split(/\r?\n/)[0] : null;
 }
 
-export async function resolveCloudflared(home, { which = onPath, fetchImpl, log = console } = {}) {
+export async function resolveCloudflared(home, { which = onPath, fetchImpl, log = console, progress } = {}) {
   const found = which('cloudflared');
   if (found) return found;
 
@@ -34,10 +80,10 @@ export async function resolveCloudflared(home, { which = onPath, fetchImpl, log 
   if (!doFetch) throw new Error('no fetch available to download cloudflared (Node 18+ required)');
   fs.mkdirSync(dir, { recursive: true });
   const url = `https://github.com/cloudflare/cloudflared/releases/latest/download/${asset.file}`;
-  log.log?.(`  downloading cloudflared (${asset.file}) …`);
+  log.log?.(t('cf.downloading', { file: asset.file }));
   const res = await doFetch(url, { redirect: 'follow' });
   if (!res.ok) throw new Error(`cloudflared download failed: HTTP ${res.status} (${url})`);
-  const buf = Buffer.from(await res.arrayBuffer());
+  const buf = await drain(res, progress || defaultProgress(process.stdout));
 
   if (asset.archive === 'tgz') {
     const tmp = path.join(dir, asset.file);

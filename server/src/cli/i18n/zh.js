@@ -51,6 +51,9 @@ export default {
   'update.restartHint': '  运行 `handmux restart` 以启用新版本。',
   'update.failed': '✗ 升级失败。请手动运行:npm i -g {pkg}@latest(可能需要 sudo)。',
 
+  // cloudflared 自动下载
+  'cf.downloading': '  ↓ 正在下载 cloudflared({file})…',
+
   // 访问信息块(printAccess)
   'access.noState': '  (无状态)',
   'access.error': '  ✗ {msg}',

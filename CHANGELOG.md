@@ -47,6 +47,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   lsof), skipping Ctrl-Z-suspended and background sessions.
 
 ### Changed
+- **cloudflared auto-download shows progress** — the first-run `cloudflared` fetch used to buffer
+  the whole binary silently, so on a slow link it looked hung. It now streams with a live
+  `cloudflared  45%  (9.2/20.4 MB)` line (TTY only; piped output is left clean).
 - **Bind-session is now a picker, not a text field** — the bind dialog lists the sessions that
   exist on the host (already-bound ones hidden) as tappable chips; pick one and confirm to bind
   it. A `＋ new session` chip flips the card into the create form (name + start dir + startup
