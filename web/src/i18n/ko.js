@@ -56,7 +56,10 @@ export default {
   // bind / actionsheet / dirpicker
   'bind.title': '세션 연결',
   'bind.sessionName': '세션 이름',
-  'bind.namePlaceholder': '짧은 이름',
+  'bind.namePlaceholder': '새 세션 이름',
+  'bind.pickSession': '연결할 세션 선택',
+  'bind.newSession': '＋ 새 세션',
+  'bind.alreadyExists': '이미 존재하는 세션입니다',
   'bind.bind': '연결',
   'bind.checking': '확인 중…',
   'bind.createAndOpen': '생성 후 열기',

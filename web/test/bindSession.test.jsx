@@ -16,7 +16,7 @@ vi.mock('../src/api.js', () => ({
 }));
 
 import BindSession from '../src/components/BindSession.jsx';
-import { getSessions, createSession, UnauthorizedError, fetchDir } from '../src/api.js';
+import { getSessions, createSession, UnauthorizedError } from '../src/api.js';
 
 let container;
 let root;
@@ -43,7 +43,7 @@ const base = {
 
 const render = (props) => act(() => root.render(<BindSession {...base} {...props} />));
 const fire = (node, type) => act(async () => { node.dispatchEvent(new MouseEvent(type, { bubbles: true })); });
-// Flush the async submit (getSessions/createSession) and the re-renders it triggers.
+// Flush the async getSessions/createSession and the re-renders they trigger.
 const settle = async () => { await act(async () => {}); await act(async () => {}); };
 // React tracks the controlled value via the native setter; set it then fire `input` so onChange runs.
 const typeInto = (node, text) => act(() => {
@@ -51,144 +51,154 @@ const typeInto = (node, text) => act(() => {
   setter.call(node, text);
   node.dispatchEvent(new Event('input', { bubbles: true }));
 });
+// Click a target chip (the ＋新建 entry or an existing session) by its visible text.
+const target = (text) => [...container.querySelectorAll('.orphan-targets .fontbtn')].find((b) => b.textContent === text);
 
 describe('BindSession', () => {
-  it('binds an existing session directly (no create)', async () => {
+  it('binds a picked existing session directly (no create)', async () => {
     getSessions.mockResolvedValue([{ id: '$0', name: 'main' }]);
     const onBound = vi.fn();
     await render({ onBound });
-    typeInto(container.querySelector('.bind-input'), 'main');
+    await settle();
+    await fire(target('main'), 'click');
     await fire(container.querySelector('.bind-confirm'), 'click');
     await settle();
     expect(onBound).toHaveBeenCalledWith('main');
     expect(createSession).not.toHaveBeenCalled();
   });
 
-  it('offers to create a non-existent valid name, then creates on the second tap', async () => {
+  it('binds an existing spaced (PC-made) name — charset rule is create-only', async () => {
+    getSessions.mockResolvedValue([{ id: '$0', name: 'Typeless Session' }]);
+    const onBound = vi.fn();
+    await render({ onBound });
+    await settle();
+    await fire(target('Typeless Session'), 'click');
+    await fire(container.querySelector('.bind-confirm'), 'click');
+    await settle();
+    expect(onBound).toHaveBeenCalledWith('Typeless Session');
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it('hides already-bound sessions from the pick list', async () => {
+    getSessions.mockResolvedValue([{ id: '$0', name: 'main' }, { id: '$1', name: 'other' }]);
+    await render({ bound: ['main'] });
+    await settle();
+    expect(target('main')).toBeUndefined();
+    expect(target('other')).toBeDefined();
+  });
+
+  it('confirm is disabled until something is picked', async () => {
+    getSessions.mockResolvedValue([{ id: '$0', name: 'main' }]);
+    await render({});
+    await settle();
+    expect(container.querySelector('.bind-confirm').disabled).toBe(true);
+    await fire(target('main'), 'click');
+    expect(container.querySelector('.bind-confirm').disabled).toBe(false);
+  });
+
+  it('creates a new session via the ＋ entry', async () => {
     getSessions.mockResolvedValue([{ id: '$0', name: 'main' }]);
     createSession.mockResolvedValue({ id: '$7', name: 'new-sess' });
     const onBound = vi.fn();
     await render({ onBound });
-    typeInto(container.querySelector('.bind-input'), 'new-sess');
-    await fire(container.querySelector('.bind-confirm'), 'click');
     await settle();
-    // first tap: not found → button flips to create, nothing created/bound yet
-    expect(container.querySelector('.bind-confirm').textContent).toBe('新建并打开');
-    expect(createSession).not.toHaveBeenCalled();
-    expect(onBound).not.toHaveBeenCalled();
-    // second tap: create + open
+    await fire(target('＋ 新建会话'), 'click');
+    typeInto(container.querySelector('.bind-input'), 'new-sess');
     await fire(container.querySelector('.bind-confirm'), 'click');
     await settle();
     expect(createSession).toHaveBeenCalledWith('new-sess', undefined, undefined);
     expect(onBound).toHaveBeenCalledWith('new-sess');
   });
 
-  it('rejects an already-bound name without any network call', async () => {
+  it('rejects creating a name that already exists — no network call', async () => {
+    getSessions.mockResolvedValue([{ id: '$0', name: 'main' }]);
     const onBound = vi.fn();
-    await render({ bound: ['main'], onBound });
+    await render({ onBound });
+    await settle();
+    await fire(target('＋ 新建会话'), 'click');
     typeInto(container.querySelector('.bind-input'), 'main');
     await fire(container.querySelector('.bind-confirm'), 'click');
     await settle();
-    expect(container.querySelector('.bind-error').textContent).toContain('已绑定');
-    expect(getSessions).not.toHaveBeenCalled();
+    expect(container.querySelector('.bind-error').textContent).toContain('已存在');
+    expect(createSession).not.toHaveBeenCalled();
     expect(onBound).not.toHaveBeenCalled();
   });
 
-  it('rejects an invalid new name but still binds an existing spaced name', async () => {
-    getSessions.mockResolvedValue([{ id: '$0', name: 'Typeless Session' }]);
+  it('rejects an invalid new name (charset)', async () => {
+    getSessions.mockResolvedValue([]);
     const onBound = vi.fn();
     await render({ onBound });
-    // a non-existent name with a space is not creatable → charset error, no create
+    await settle();
+    await fire(target('＋ 新建会话'), 'click');
     typeInto(container.querySelector('.bind-input'), 'bad name');
     await fire(container.querySelector('.bind-confirm'), 'click');
     await settle();
     expect(container.querySelector('.bind-error')).not.toBeNull();
     expect(createSession).not.toHaveBeenCalled();
     expect(onBound).not.toHaveBeenCalled();
-    // but an existing name that contains a space still binds (charset rule is create-only)
-    typeInto(container.querySelector('.bind-input'), 'Typeless Session');
-    await fire(container.querySelector('.bind-confirm'), 'click');
-    await settle();
-    expect(onBound).toHaveBeenCalledWith('Typeless Session');
   });
 
-  it('on a create failure drops back to bind mode and re-checks (recovers a session the server made)', async () => {
-    getSessions.mockResolvedValue([{ id: '$0', name: 'main' }]); // default: new-sess absent
+  it('shows create failure and stays put', async () => {
+    getSessions.mockResolvedValue([]);
     createSession.mockRejectedValueOnce(new Error('boom'));
     const onBound = vi.fn();
     await render({ onBound });
-    typeInto(container.querySelector('.bind-input'), 'new-sess');
-    await fire(container.querySelector('.bind-confirm'), 'click'); // first tap → create mode
     await settle();
-    await fire(container.querySelector('.bind-confirm'), 'click'); // second tap → create fails
+    await fire(target('＋ 新建会话'), 'click');
+    typeInto(container.querySelector('.bind-input'), 'newsess');
+    await fire(container.querySelector('.bind-confirm'), 'click');
     await settle();
     expect(createSession).toHaveBeenCalledTimes(1);
     expect(onBound).not.toHaveBeenCalled();
     const btn = container.querySelector('.bind-confirm');
-    expect(btn.disabled).toBe(false);          // busy reset
-    expect(btn.textContent).toBe('绑定');        // mode dropped back to bind
+    expect(btn.disabled).toBe(false);
     expect(container.querySelector('.bind-error').textContent).toContain('新建失败');
-    // retry: the session now exists server-side (the failed create had actually landed) → bind it
-    getSessions.mockResolvedValueOnce([{ id: '$0', name: 'main' }, { id: '$7', name: 'new-sess' }]);
-    await fire(btn, 'click');
-    await settle();
-    expect(createSession).toHaveBeenCalledTimes(1); // not called again
-    expect(onBound).toHaveBeenCalledWith('new-sess');
   });
 
   it('calls onAuthFail (no error text) when create hits an auth error', async () => {
-    getSessions.mockResolvedValue([{ id: '$0', name: 'main' }]);
+    getSessions.mockResolvedValue([]);
     createSession.mockRejectedValueOnce(new UnauthorizedError());
     const onAuthFail = vi.fn();
     const onBound = vi.fn();
     await render({ onAuthFail, onBound });
-    typeInto(container.querySelector('.bind-input'), 'new-sess');
-    await fire(container.querySelector('.bind-confirm'), 'click'); // → create mode
     await settle();
-    await fire(container.querySelector('.bind-confirm'), 'click'); // create → 401
+    await fire(target('＋ 新建会话'), 'click');
+    typeInto(container.querySelector('.bind-input'), 'newsess');
+    await fire(container.querySelector('.bind-confirm'), 'click');
     await settle();
     expect(onAuthFail).toHaveBeenCalled();
     expect(onBound).not.toHaveBeenCalled();
     expect(container.querySelector('.bind-error')).toBeNull();
   });
 
-  it('hides the 起始目录 segment in bind mode', async () => {
+  it('hides the 起始目录 segment until ＋ 新建 is chosen', async () => {
     getSessions.mockResolvedValue([{ id: '$0', name: 'main' }]);
     await render({});
-    // Before any confirm tap, mode is 'bind' — segment must be absent
+    await settle();
     expect(container.textContent).not.toContain('起始目录');
+    await fire(target('＋ 新建会话'), 'click');
+    expect(container.textContent).toContain('起始目录');
   });
 
-  it('shows the dir segment after a new name arms create, and creates with the picked cwd', async () => {
+  it('creates with the picked cwd', async () => {
     getSessions.mockResolvedValue([]);
     createSession.mockResolvedValue({ id: '$7', name: 'newsess' });
     const onBound = vi.fn();
     await render({ onBound });
-    typeInto(container.querySelector('.bind-input'), 'newsess');
-    await fire(container.querySelector('.bind-confirm'), 'click'); // first tap → create mode
     await settle();
-    // Now in create mode — 起始目录 segment visible
-    expect(container.textContent).toContain('起始目录');
-    // DirPicker not yet open
-    expect(container.querySelector('[aria-label="选择目录"]')).toBeNull();
+    await fire(target('＋ 新建会话'), 'click');
+    typeInto(container.querySelector('.bind-input'), 'newsess');
     // Open the picker via the start-dir field
     await fire(container.querySelector('.cwd-field'), 'click');
     await settle();
-    // DirPicker should be open now
     expect(container.querySelector('[aria-label="选择目录"]')).not.toBeNull();
     // fetchDir boots with null (home) → entries has 'sub'; navigate into it
-    const subEntry = container.querySelector('.browse-entry');
-    expect(subEntry.textContent).toContain('sub');
-    await fire(subEntry, 'click');
+    await fire(container.querySelector('.browse-entry'), 'click');
     await settle();
-    // Confirm the picked dir
-    const confirmPick = container.querySelector('.browse-pick-confirm');
-    await fire(confirmPick, 'click');
+    await fire(container.querySelector('.browse-pick-confirm'), 'click');
     await settle();
-    // Picker closed, cwd shown
     expect(container.querySelector('[aria-label="选择目录"]')).toBeNull();
     expect(container.textContent).toContain('/home/u/sub');
-    // Second confirm — create session
     await fire(container.querySelector('.bind-confirm'), 'click');
     await settle();
     expect(createSession).toHaveBeenCalledWith('newsess', '/home/u/sub', undefined);
@@ -200,11 +210,9 @@ describe('BindSession', () => {
     createSession.mockResolvedValue({ id: '$7', name: 'newsess' });
     const onBound = vi.fn();
     await render({ onBound });
-    typeInto(container.querySelector('.bind-input'), 'newsess');
-    await fire(container.querySelector('.bind-confirm'), 'click'); // first tap → create mode
     await settle();
-    expect(container.textContent).toContain('起始目录');
-    // Second confirm WITHOUT picking a dir
+    await fire(target('＋ 新建会话'), 'click');
+    typeInto(container.querySelector('.bind-input'), 'newsess');
     await fire(container.querySelector('.bind-confirm'), 'click');
     await settle();
     expect(createSession).toHaveBeenCalledWith('newsess', undefined, undefined);

@@ -56,7 +56,10 @@ export default {
   // bind / actionsheet / dirpicker
   'bind.title': '绑定会话',
   'bind.sessionName': '会话名称',
-  'bind.namePlaceholder': '名字缩写',
+  'bind.namePlaceholder': '新会话名',
+  'bind.pickSession': '选择要绑定的会话',
+  'bind.newSession': '＋ 新建会话',
+  'bind.alreadyExists': '该会话已存在',
   'bind.bind': '绑定',
   'bind.checking': '校验中…',
   'bind.createAndOpen': '新建并打开',

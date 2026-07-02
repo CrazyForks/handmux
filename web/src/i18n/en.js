@@ -57,7 +57,10 @@ export default {
   // bind / actionsheet / dirpicker
   'bind.title': 'Bind session',
   'bind.sessionName': 'Session name',
-  'bind.namePlaceholder': 'Short name',
+  'bind.namePlaceholder': 'New session name',
+  'bind.pickSession': 'Choose a session to bind',
+  'bind.newSession': '＋ New session',
+  'bind.alreadyExists': 'Session already exists',
   'bind.bind': 'Bind',
   'bind.checking': 'Checking…',
   'bind.createAndOpen': 'Create & open',

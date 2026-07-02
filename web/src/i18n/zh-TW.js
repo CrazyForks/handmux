@@ -56,7 +56,10 @@ export default {
   // bind / actionsheet / dirpicker
   'bind.title': '綁定工作階段',
   'bind.sessionName': '工作階段名稱',
-  'bind.namePlaceholder': '名稱縮寫',
+  'bind.namePlaceholder': '新工作階段名稱',
+  'bind.pickSession': '選擇要綁定的工作階段',
+  'bind.newSession': '＋ 新增工作階段',
+  'bind.alreadyExists': '此工作階段已存在',
   'bind.bind': '綁定',
   'bind.checking': '驗證中…',
   'bind.createAndOpen': '新增並開啟',

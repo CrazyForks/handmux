@@ -6,85 +6,63 @@ import DirPicker from './DirPicker.jsx';
 import StartupCmdPicker from './StartupCmdPicker.jsx';
 
 // Mirrors the server's isValidSessionName: letters, digits, hyphens, 1-16 chars. Applied only when
-// CREATING a session — binding an existing PC-made name (which may contain spaces) checks existence
-// first, so spaced names still bind.
+// CREATING a session — binding picks from a list of existing names (which may contain spaces), so no
+// regex is needed on that path.
 const NEW_NAME_RE = /^[A-Za-z0-9-]{1,16}$/;
 
-// Bind a session by name. If the name is a live session we open it (the original behavior). If it
-// isn't — and it's a valid new name — the confirm button flips to "新建并打开"; a second tap creates
-// the session, then opens it. A two-tap confirm so nothing is created by accident.
+// Bind a session by PICKING it. Instead of typing a name, we list the sessions that exist on the host
+// and aren't already bound on this device (a fontbtn group, per project convention — no native <select>).
+// A "＋ new" entry flips the card into create mode: name + start dir + startup command, then create+open.
 export default function BindSession({ open, onClose, onBound, bound, onAuthFail, inset = 0 }) {
-  const [name, setName] = useState('');
+  const [sessions, setSessions] = useState([]);
+  const [target, setTarget] = useState(null); // null = nothing picked · 'new' · existing session name
+  const [name, setName] = useState('');        // new-session name (create mode)
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState('bind'); // 'bind' = check/open · 'create' = confirmed new name
   const [cwd, setCwd] = useState(null);
   const [cmd, setCmd] = useState(getLastStartupCmd()); // startup command for a newly-created session
   const [pickerOpen, setPickerOpen] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
-    if (open) {
-      setName('');
-      setError('');
-      setBusy(false);
-      setMode('bind');
-      setCwd(null);
-      setPickerOpen(false);
-      // focus after the modal paints so the soft keyboard pops right up
-      setTimeout(() => inputRef.current?.focus(), 0);
-    }
+    if (!open) return;
+    setTarget(null); setName(''); setError(''); setBusy(false); setCwd(null); setPickerOpen(false);
+    getSessions()
+      .then((s) => setSessions(Array.isArray(s) ? s : []))
+      .catch((e) => { if (e instanceof UnauthorizedError) onAuthFail?.(); else setError(t('bind.checkFailed')); });
   }, [open]);
+
+  // Focus the name field the moment we enter create mode so the soft keyboard pops right up.
+  useEffect(() => { if (target === 'new') setTimeout(() => inputRef.current?.focus(), 0); }, [target]);
 
   if (!open) return null;
 
+  const avail = sessions.filter((s) => !bound.includes(s.name)); // 已绑定的不再展示
+
   const submit = async () => {
-    if (busy) return; // one in-flight submit at a time (a double Enter must not double-create)
+    if (busy || !target) return;
+
+    // Existing session picked → it already exists, just open it (spaced names welcome).
+    if (target !== 'new') { onBound(target); return; }
+
+    // Create mode: validate, create, then open.
     const n = name.trim();
     if (!n) return;
-    if (bound.includes(n)) { setError(t('bind.alreadyBound')); return; }
-
-    // Second tap: the name is a valid, non-existent session (confirmed below) → create then open.
-    if (mode === 'create') {
-      setBusy(true);
-      setError('');
-      setLastStartupCmd(cmd); // remember the launcher for next time
-      try {
-        await createSession(n, cwd || undefined, cmd || undefined);
-        onBound(n); // session is now live → bindSession/selectSession opens it
-      } catch (e) {
-        if (e instanceof UnauthorizedError) onAuthFail?.();
-        // Drop back to bind mode so a retry re-checks existence: if the server actually created the
-        // session before the error reached us, the next tap finds it and opens it (instead of
-        // retrying create and getting stuck on a permanent 409).
-        else { setMode('bind'); setError(t('bind.createFailed')); }
-        setBusy(false);
-      }
-      return;
-    }
-
-    // First tap: does this session already exist?
-    setBusy(true);
-    setError('');
+    if (bound.includes(n) || sessions.some((s) => s.name === n)) { setError(t('bind.alreadyExists')); return; }
+    if (!NEW_NAME_RE.test(n)) { setError(t('bind.invalidName')); return; }
+    setBusy(true); setError('');
+    setLastStartupCmd(cmd); // remember the launcher for next time
     try {
-      const sessions = await getSessions();
-      if (sessions.some((s) => s.name === n)) {
-        onBound(n); // open the existing session (spaced names allowed here)
-      } else if (NEW_NAME_RE.test(n)) {
-        setMode('create'); // valid new name → arm the create confirm
-        setBusy(false);
-      } else {
-        setError(t('bind.invalidName'));
-        setBusy(false);
-      }
+      await createSession(n, cwd || undefined, cmd || undefined);
+      onBound(n); // session is now live → bindSession/selectSession opens it
     } catch (e) {
       if (e instanceof UnauthorizedError) onAuthFail?.();
-      else setError(t('bind.checkFailed'));
+      else setError(t('bind.createFailed'));
       setBusy(false);
     }
   };
 
-  const confirmLabel = mode === 'create'
+  const confirmLabel = target === 'new'
     ? (busy ? t('bind.creating') : t('bind.createAndOpen'))
     : (busy ? t('bind.checking') : t('bind.bind'));
 
@@ -104,21 +82,37 @@ export default function BindSession({ open, onClose, onBound, bound, onAuthFail,
           <button className="settings-close" onClick={onClose} aria-label={t('common.close')}>✕</button>
         </div>
         <div className="settings-section">
-          <div className="settings-label">{t('bind.sessionName')}</div>
-          <input
-            ref={inputRef}
-            className="bind-input"
-            value={name}
-            placeholder={t('bind.namePlaceholder')}
-            onChange={(e) => { setName(e.target.value); setError(''); setMode('bind'); setCwd(null); }}
-            onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
-          />
-          {error && <div className="bind-error">{error}</div>}
-          {!error && mode === 'create' && (
-            <div className="bind-hint">{t('bind.createHint', { name: name.trim() })}</div>
-          )}
-          {mode === 'create' && (
+          <div className="opt">
+            <div className="settings-label">{t('bind.pickSession')}</div>
+            <div className="orphan-targets">
+              <button className="fontbtn" aria-pressed={target === 'new'} onClick={() => { setTarget('new'); setError(''); }}>
+                {t('bind.newSession')}
+              </button>
+              {avail.map((s) => (
+                <button
+                  key={s.id || s.name}
+                  className="fontbtn"
+                  aria-pressed={target === s.name}
+                  onClick={() => { setTarget(s.name); setError(''); }}
+                >
+                  {s.name}
+                </button>
+              ))}
+            </div>
+          </div>
+          {target === 'new' && (
             <>
+              <div className="opt">
+                <div className="settings-label">{t('bind.sessionName')}</div>
+                <input
+                  ref={inputRef}
+                  className="bind-input"
+                  value={name}
+                  placeholder={t('bind.namePlaceholder')}
+                  onChange={(e) => { setName(e.target.value); setError(''); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+                />
+              </div>
               <div className="opt">
                 <div className="settings-label">{t('bind.startDir')}</div>
                 <button type="button" className="field cwd-field" onClick={() => setPickerOpen(true)}>
@@ -132,9 +126,10 @@ export default function BindSession({ open, onClose, onBound, bound, onAuthFail,
               </div>
             </>
           )}
+          {error && <div className="bind-error">{error}</div>}
           <div className="settings-btns bind-actions">
             <button className="fontbtn" onClick={onClose}>{t('common.cancel')}</button>
-            <button className="fontbtn bind-confirm" onClick={submit} disabled={busy}>
+            <button className="fontbtn bind-confirm" onClick={submit} disabled={busy || !target}>
               {confirmLabel}
             </button>
           </div>

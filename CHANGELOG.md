@@ -37,6 +37,11 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   lsof), skipping Ctrl-Z-suspended and background sessions.
 
 ### Changed
+- **Bind-session is now a picker, not a text field** — the bind dialog lists the sessions that
+  exist on the host (already-bound ones hidden) as tappable chips; pick one and confirm to bind
+  it. A `＋ new session` chip flips the card into the create form (name + start dir + startup
+  command). No more typing a name to guess whether it exists, and the misleading "short name"
+  placeholder is gone.
 - **`handmux start` on an already-running instance is clearer** — instead of a terse "already
   running — use restart", it now reassures when this run's config matches what's live, and when
   it differs (e.g. you changed `--tunnel`) it spells out the difference and offers to restart
