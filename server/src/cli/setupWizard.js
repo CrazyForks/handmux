@@ -11,6 +11,7 @@ import webpush from 'web-push';
 import { configPath, pocketHome } from './state.js';
 import { resolveCloudflared } from './cloudflared.js';
 import { resolveTunlite, checkSshAuth } from './tunlite.js';
+import { t, setLocale, getLocale } from './i18n/index.js';
 
 // ~/.cloudflared/config.yml for a named tunnel: route the hostname to the local handmux port.
 export function cfConfigYaml({ tunnelName, credentialsFile, hostname, port }) {
@@ -50,7 +51,7 @@ export function findTunnelId(listJsonOut, name) {
 // old value instead of leaving a stale field behind. Anything NOT here (token, staticDir, previewDomain…)
 // is preserved untouched.
 const WIZARD_KEYS = [
-  'name', 'port', 'tunnel',
+  'lang', 'name', 'port', 'tunnel',
   'sshHost', 'remotePort', 'sshJump', 'cfHostname', 'cfTunnelName', 'publicUrl',
   'vapid', 'xfyun',
 ];
@@ -58,6 +59,7 @@ const WIZARD_KEYS = [
 // Wizard answers → the config fragment the user actually set (omit empty optional fields).
 export function configFromAnswers(a) {
   const cfg = { tunnel: a.tunnel, port: a.port };
+  if (a.lang) cfg.lang = a.lang;
   if (a.name) cfg.name = a.name;
   if (a.tunnel === 'ssh') {
     cfg.sshHost = a.sshHost;
@@ -102,32 +104,41 @@ function readExisting(file) {
 // (preserving fields it didn't ask about). Returns the resolved config (or null on abort). `home` and the
 // write `target` are injectable for tests / `--config`.
 export async function runSetup({ home = homedir(), target = configPath(home), log = console } = {}) {
-  if (!process.stdin.isTTY) { log.error('handmux setup needs an interactive terminal'); return null; }
+  if (!process.stdin.isTTY) { log.error(t('setup.needTty')); return null; }
   const cur = readExisting(target);
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
-    const name = await ask(rl, 'app name (shown in the browser tab / home-screen icon; blank = default)', cur.name || '');
+    // Language first — pick it, apply it immediately, so the rest of the wizard speaks the chosen language.
+    // Default reflects the locale already resolved (from config/shell); Enter keeps it.
+    log.log(t('setup.langQ'));
+    log.log(t('setup.lang1'));
+    log.log(t('setup.lang2'));
+    const langPick = await ask(rl, t('setup.choose').replace('1-4', '1-2'), getLocale() === 'zh' ? '2' : '1');
+    const lang = { 1: 'en', 2: 'zh' }[langPick] || getLocale();
+    setLocale(lang);
 
-    log.log('How should your phone reach this machine?');
-    log.log('  1) none              — same Wi-Fi / LAN only');
-    log.log('  2) cloudflare        — instant, random temporary https URL');
-    log.log('  3) cloudflare-named  — your domain, stable HTTPS (most hands-off)');
-    log.log('  4) ssh (tunlite)     — your own server / edge');
+    const name = await ask(rl, t('setup.askName'), cur.name || '');
+
+    log.log(t('setup.tunnelQ'));
+    log.log(t('setup.tunnel1'));
+    log.log(t('setup.tunnel2'));
+    log.log(t('setup.tunnel3'));
+    log.log(t('setup.tunnel4'));
     const curPick = { none: '1', cloudflare: '2', 'cloudflare-named': '3', ssh: '4' }[cur.tunnel] || '3';
-    const pick = await ask(rl, 'choose 1-4', curPick);
+    const pick = await ask(rl, t('setup.choose'), curPick);
     const tunnel = { 1: 'none', 2: 'cloudflare', 3: 'cloudflare-named', 4: 'ssh' }[pick];
-    if (!tunnel) { log.error('invalid choice'); return null; }
-    const port = Number(await ask(rl, 'server port', String(cur.port || 19999)));
+    if (!tunnel) { log.error(t('setup.invalid')); return null; }
+    const port = Number(await ask(rl, t('setup.askPort'), String(cur.port || 19999)));
 
-    const answers = { name, tunnel, port };
+    const answers = { lang, name, tunnel, port };
     if (tunnel === 'cloudflare-named') {
-      answers.cfHostname = await ask(rl, 'public hostname (e.g. handmux.example.com)', cur.cfHostname || '');
-      answers.cfTunnelName = await ask(rl, 'tunnel name', cur.cfTunnelName || 'handmux');
+      answers.cfHostname = await ask(rl, t('setup.askHostname'), cur.cfHostname || '');
+      answers.cfTunnelName = await ask(rl, t('setup.askTunnelName'), cur.cfTunnelName || 'handmux');
       await provisionCloudflareNamed({ home, hostname: answers.cfHostname, tunnelName: answers.cfTunnelName, port, log });
     } else if (tunnel === 'ssh') {
-      answers.sshHost = await ask(rl, 'ssh host (user@host[:port])', cur.sshHost || '');
-      answers.remotePort = Number(await ask(rl, 'remote port on the ssh host', String(cur.remotePort || port)));
-      answers.publicUrl = await ask(rl, 'public url (blank = http://host:remotePort)', cur.publicUrl || '');
+      answers.sshHost = await ask(rl, t('setup.askSshHost'), cur.sshHost || '');
+      answers.remotePort = Number(await ask(rl, t('setup.askRemotePort'), String(cur.remotePort || port)));
+      answers.publicUrl = await ask(rl, t('setup.askPublicUrl'), cur.publicUrl || '');
       await provisionSsh({ sshHost: answers.sshHost, log });
     }
 
@@ -137,7 +148,7 @@ export async function runSetup({ home = homedir(), target = configPath(home), lo
     const cfg = mergeConfig(cur, answers);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, JSON.stringify(cfg, null, 2) + '\n', { mode: 0o600 });
-    log.log(`✓ wrote ${target}`);
+    log.log(t('setup.wrote', { path: target }));
     if (tunnel === 'ssh') printSshServerHelp(answers, log);
     if (tunnel === 'cloudflare-named' || tunnel === 'ssh') printPreviewHelp(tunnel, log);
     return cfg;
@@ -149,27 +160,27 @@ export async function runSetup({ home = homedir(), target = configPath(home), lo
 // part of push setup, done for the user. Returns the vapid object, or undefined to leave push off.
 async function askPush(rl, existing, log) {
   if (existing) {
-    if (await askYesNo(rl, 'keep push notifications configured?', true)) return existing;
+    if (await askYesNo(rl, t('setup.pushKeep'), true)) return existing;
     return undefined;
   }
-  if (!await askYesNo(rl, 'set up push notifications now? (generates VAPID keys)', false)) return undefined;
+  if (!await askYesNo(rl, t('setup.pushSetup'), false)) return undefined;
   const { publicKey, privateKey } = webpush.generateVAPIDKeys();
-  const subject = await ask(rl, 'contact (mailto: or https URL, for the push service)', 'mailto:admin@example.com');
-  log.log('✓ generated VAPID keypair');
+  const subject = await ask(rl, t('setup.pushContact'), 'mailto:admin@example.com');
+  log.log(t('setup.pushGenerated'));
   return { public: publicKey, private: privateKey, subject };
 }
 
 // Voice input (iFlytek/xfyun) — three credentials from their console; no generation possible, just paste.
 async function askVoice(rl, existing, log) {
   if (existing) {
-    if (await askYesNo(rl, 'keep voice input configured?', true)) return existing;
+    if (await askYesNo(rl, t('setup.voiceKeep'), true)) return existing;
     return undefined;
   }
-  if (!await askYesNo(rl, 'set up voice input now? (needs iFlytek/xfyun keys)', false)) return undefined;
-  const appId = await ask(rl, 'xfyun appId');
-  const apiKey = await ask(rl, 'xfyun apiKey');
-  const apiSecret = await ask(rl, 'xfyun apiSecret');
-  if (!appId || !apiKey || !apiSecret) { log.log('  (skipped — missing fields)'); return undefined; }
+  if (!await askYesNo(rl, t('setup.voiceSetup'), false)) return undefined;
+  const appId = await ask(rl, t('setup.voiceAppId'));
+  const apiKey = await ask(rl, t('setup.voiceApiKey'));
+  const apiSecret = await ask(rl, t('setup.voiceApiSecret'));
+  if (!appId || !apiKey || !apiSecret) { log.log(t('setup.voiceSkipped')); return undefined; }
   return { appId, apiKey, apiSecret };
 }
 
@@ -178,7 +189,7 @@ async function provisionCloudflareNamed({ home, hostname, tunnelName, port, log 
   const bin = await resolveCloudflared(home);
   const cfDir = path.join(home, '.cloudflared');
   if (!fs.existsSync(path.join(cfDir, 'cert.pem'))) {
-    log.log('→ logging in to Cloudflare (a browser will open) …');
+    log.log(t('setup.cfLogin'));
     spawnSync(bin, ['tunnel', 'login'], { stdio: 'inherit' });
   }
   // Idempotent: reuse the tunnel if it already exists (re-running setup, or after a stop), else create it.
@@ -188,47 +199,47 @@ async function provisionCloudflareNamed({ home, hostname, tunnelName, port, log 
   let id = findTunnelId(listed.stdout, tunnelName);
   let credentialsFile = null;
   if (id) {
-    log.log(`✓ reusing existing tunnel ${tunnelName} (${id})`);
+    log.log(t('setup.cfReuse', { name: tunnelName, id }));
     credentialsFile = path.join(cfDir, `${id}.json`);
     if (!fs.existsSync(credentialsFile)) {
-      log.error(`⚠ credentials file ${credentialsFile} not found on this machine — the tunnel was likely`);
-      log.error(`  created elsewhere. Run \`${bin} tunnel delete ${tunnelName}\` and re-run setup to recreate it here.`);
+      log.error(t('setup.cfCredMissing1', { file: credentialsFile }));
+      log.error(t('setup.cfCredMissing2', { bin, name: tunnelName }));
     }
   } else {
-    log.log(`→ creating tunnel ${tunnelName} …`);
+    log.log(t('setup.cfCreate', { name: tunnelName }));
     const created = spawnSync(bin, ['tunnel', 'create', tunnelName], { encoding: 'utf8' });
     process.stdout.write(created.stdout || ''); process.stderr.write(created.stderr || '');
     const parsed = parseTunnelCreate(`${created.stdout || ''}\n${created.stderr || ''}`);
     id = parsed.id;
     credentialsFile = parsed.credentialsFile;
   }
-  log.log(`→ routing ${hostname} → tunnel …`);
+  log.log(t('setup.cfRoute', { host: hostname }));
   // --overwrite-dns: re-running setup (or pointing a hostname already routed) must not error on the DNS step.
   const routed = spawnSync(bin, ['tunnel', 'route', 'dns', '--overwrite-dns', tunnelName, hostname], { encoding: 'utf8' });
   if (routed.status !== 0) {
     process.stderr.write(routed.stderr || '');
-    log.error(`⚠ route dns failed — is ${hostname.split('.').slice(-2).join('.')}'s DNS hosted on Cloudflare?`);
-    log.error('  Add the domain on Cloudflare (free) and point its nameservers there, then re-run setup.');
+    log.error(t('setup.cfRouteFail', { domain: hostname.split('.').slice(-2).join('.') }));
+    log.error(t('setup.cfRouteFail2'));
   }
   fs.mkdirSync(cfDir, { recursive: true });
   fs.writeFileSync(path.join(cfDir, 'config.yml'),
     cfConfigYaml({ tunnelName, credentialsFile: credentialsFile || path.join(cfDir, `${id || tunnelName}.json`), hostname, port }));
-  log.log(`✓ wrote ${path.join(cfDir, 'config.yml')}`);
+  log.log(t('setup.wrote', { path: path.join(cfDir, 'config.yml') }));
 }
 
 // drive tunlite passwordless setup inline (one password) if not already set up.
 async function provisionSsh({ sshHost, log }) {
   const bin = resolveTunlite();
-  if (checkSshAuth(sshHost, { bin }) === 0) { log.log('✓ passwordless SSH already set up'); return; }
-  log.log(`→ setting up passwordless SSH to ${sshHost} (you'll enter the password once) …`);
+  if (checkSshAuth(sshHost, { bin }) === 0) { log.log(t('setup.sshReady')); return; }
+  log.log(t('setup.sshSetup', { host: sshHost }));
   spawnSync(bin, ['setup-key', sshHost], { stdio: 'inherit' });
 }
 
 function printSshServerHelp(a, log) {
   log.log('');
-  log.log('Server side (one-time): point a reverse proxy at the forwarded loopback port.');
-  log.log(`  nginx:  proxy_pass http://127.0.0.1:${a.remotePort};  (add client_max_body_size 60m; proxy_read_timeout 90s;)`);
-  log.log(`  caddy:  ${a.publicUrl || '<your-domain>'} {  reverse_proxy 127.0.0.1:${a.remotePort}  }`);
+  log.log(t('setup.sshHelp1'));
+  log.log(t('setup.sshHelpNginx', { port: a.remotePort }));
+  log.log(t('setup.sshHelpCaddy', { url: a.publicUrl || '<your-domain>', port: a.remotePort }));
   log.log('');
 }
 
@@ -237,12 +248,12 @@ function printSshServerHelp(a, log) {
 // (so deeper needs ACM), whereas on the ssh/own-edge path the user serves their own wildcard cert. Shown
 // only for wildcard-capable tunnels (a quick tunnel can't do wildcards at all).
 function printPreviewHelp(tunnel, log) {
-  log.log('Optional — dynamic port preview (open a dev server by port on your phone):');
-  log.log('  set  "previewDomain": "..."  in the config, and route the wildcard preview domain to the gateway.');
+  log.log(t('setup.previewHelp1'));
+  log.log(t('setup.previewHelp2'));
   if (tunnel === 'cloudflare-named') {
-    log.log("  TLS: Cloudflare's free cert covers ONE level (*.example.com); deeper (*.preview.example.com) needs Advanced Certificate Manager.");
+    log.log(t('setup.previewTlsCf'));
   } else {
-    log.log("  TLS: your edge serves the wildcard cert (e.g. a Let's Encrypt *.preview.your.domain).");
+    log.log(t('setup.previewTlsEdge'));
   }
   log.log('');
 }

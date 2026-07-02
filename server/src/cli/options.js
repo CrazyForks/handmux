@@ -137,6 +137,9 @@ export function explainConfig(flags = {}, fileCfg = {}, cfgPath = null, env = pr
   const name = trace(flags, fileCfg, env, cfgPath, 'name', 'HANDMUX_APP_NAME', null);
   add('name', name, name.value == null ? '(default)' : String(name.value));
 
+  const lang = trace(flags, fileCfg, env, cfgPath, 'lang', 'HANDMUX_LANG', null);
+  add('lang', lang, lang.value == null ? '(auto — shell locale)' : String(lang.value));
+
   const token = trace(flags, fileCfg, env, cfgPath, 'token', 'HANDMUX_TOKEN', null);
   add('token', token, token.value == null ? '(generated each start)' : mask(token.value));
 

@@ -5,6 +5,11 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Added
+- **CLI now speaks Chinese** — the `handmux` command-line output (help, `start`/`status`/
+  `setup` prompts, errors, the access block) is fully localized. Language resolves from
+  `--lang en|zh`, a `"lang"` field in the config, or the shell locale (`LANG`/`LC_*` = `zh…`),
+  defaulting to English. `handmux setup` now asks for the language first, and `handmux config`
+  shows the resolved `lang`.
 - **Take over Claude sessions running outside tmux** — the inbox now detects `claude`
   processes that aren't in a tmux pane (so handmux can't steer them) and lists them in a
   collapsible footer with each session's working dir, idle/busy state, and last message. One
@@ -13,6 +18,13 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   a resumed session shares the same history file, so a single writer avoids corruption). New
   `GET /api/orphans` + `POST /api/orphans/takeover`. Detection is a process scan (ps + tmux +
   lsof), skipping Ctrl-Z-suspended and background sessions.
+
+### Changed
+- **`handmux start` on an already-running instance is clearer** — instead of a terse "already
+  running — use restart", it now reassures when this run's config matches what's live, and when
+  it differs (e.g. you changed `--tunnel`) it spells out the difference and offers to restart
+  into it (interactive only; non-TTY just prints the `handmux restart` hint). `start` still never
+  disrupts a running instance without an explicit yes.
 
 ## [0.5.3] - 2026-06-29
 

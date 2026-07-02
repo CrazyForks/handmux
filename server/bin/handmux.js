@@ -33,6 +33,7 @@ import { runSetup } from '../src/cli/setupWizard.js';
 import { hooksStatus, installHooks, uninstallHooks } from '../src/cli/claudeHooks.js';
 import { tmuxDotStatus, installTmuxDot, tmuxConfPath } from '../src/cli/tmuxConf.js';
 import { probe } from '../src/cli/probe.js';
+import { t, initLocale, setLocale } from '../src/cli/i18n/index.js';
 
 const HOME = homedir();
 const SELF = fileURLToPath(import.meta.url);
@@ -40,6 +41,17 @@ const HOOKS_SRC = path.resolve(path.dirname(SELF), '../hooks'); // server/hooks 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const { command, flags } = parseArgs(process.argv.slice(2));
+
+// Resolve the CLI language ONCE, up front, so every command (help, errors, access block) prints in it.
+// Priority: --lang > config `lang` > shell locale (LANG/LC_*) > English. The config peek is lenient — a
+// missing/broken file just means "no language hint here"; the real validation happens per-command later.
+function peekConfigLang() {
+  try {
+    const p = flags.config ? path.resolve(flags.config) : configPath(HOME);
+    return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : {};
+  } catch { return {}; }
+}
+initLocale(flags, peekConfigLang(), process.env);
 
 // There is ONE config file location: ~/.handmux/config.json (written by `handmux setup`). `--config PATH`
 // points elsewhere — that's the only escape, and it covers dev/multi-config without any cwd magic (a
@@ -51,19 +63,32 @@ function resolveFileConfig() {
   let p = null;
   if (flags.config) {                                              // explicit: must exist
     p = path.resolve(flags.config);
-    if (!fs.existsSync(p)) { console.error(`✗ --config ${p}: not found`); process.exit(2); }
+    if (!fs.existsSync(p)) { console.error(t('err.configNotFound', { path: p })); process.exit(2); }
   } else {
     const homeP = configPath(HOME);
     if (fs.existsSync(homeP)) p = homeP;
   }
   if (!p) return { path: null, cfg: {} };
   try { return { path: p, cfg: JSON.parse(fs.readFileSync(p, 'utf8')) }; }
-  catch (e) { console.error(`✗ bad config ${p}: ${e.message}`); process.exit(2); }
+  catch (e) { console.error(t('err.badConfig', { path: p, msg: e.message })); process.exit(2); }
 }
 
 // Human-readable summary of which config file a run loaded.
 function describeConfig(p) {
-  return p || '(none — flags + defaults)';
+  return p || t('config.none');
+}
+
+// Which user-visible settings THIS run would use differ from what's already running (from state.json)?
+// Kept to the two people actually re-run `start` to change — the tunnel and the port; each row is ready to
+// drop straight into the `start.running.changedRow` message ({key, from, to}). Only compares fields the
+// running state actually recorded, so an older state.json can't manufacture phantom diffs.
+function configChanges(cfg, st) {
+  const out = [];
+  for (const key of ['tunnel', 'port']) {
+    const running = st[key];
+    if (running != null && String(cfg[key]) !== String(running)) out.push({ key, from: running, to: cfg[key] });
+  }
+  return out;
 }
 
 // 一次性 [Y/n] 提问(默认 Yes)。非 TTY 直接返回 false,绝不卡住。
@@ -80,11 +105,11 @@ async function confirm(question) {
 async function preflightSsh(cfg) {
   cfg.tunliteBin = resolveTunlite();                 // 抛出 → 调用方打印并退出
   if (checkSshAuth(cfg.sshHost, { bin: cfg.tunliteBin }) === 0) return;
-  if (process.stdin.isTTY && await confirm(`passwordless SSH to ${cfg.sshHost} is not set up. Configure it now?`)) {
+  if (process.stdin.isTTY && await confirm(t('ssh.confirmSetup', { host: cfg.sshHost }))) {
     spawnSync(cfg.tunliteBin, ['setup-key', cfg.sshHost], { stdio: 'inherit' });
     if (checkSshAuth(cfg.sshHost, { bin: cfg.tunliteBin }) === 0) return;
   }
-  throw new Error(`passwordless SSH not set up — run: ${cfg.tunliteBin} setup-key ${cfg.sshHost}`);
+  throw new Error(t('ssh.notSetup', { bin: cfg.tunliteBin, host: cfg.sshHost }));
 }
 
 async function main() {
@@ -112,57 +137,74 @@ function version() {
 
 async function start() {
   const { path: cfgPath, cfg: fileCfg } = resolveFileConfig();
-  console.log(`config: ${describeConfig(cfgPath)}`);
+  console.log(t('config.loaded', { path: describeConfig(cfgPath) }));
   let cfg;
   try { cfg = resolveConfig(flags, fileCfg); }
-  catch (e) { console.error(`✗ ${e.message}`); process.exit(2); }
-
-  // Make a one-run tunnel override visible: it's easy to forget a --tunnel flag is shadowing the file.
-  if (flags.tunnel && fileCfg.tunnel && flags.tunnel !== fileCfg.tunnel) {
-    console.log(`  ↳ --tunnel ${flags.tunnel} overrides config (${fileCfg.tunnel}) for this run only`);
-  }
+  catch (e) { console.error(t('err.generic', { msg: e.message })); process.exit(2); }
 
   // tmux is the whole point — absent is fatal; an untested-old version only warns (rendering may drift).
   const tmux = checkTmux();
   if (!tmux.present) {
-    console.error('✗ tmux not found.');
-    console.error('  handmux runs on top of tmux (a terminal multiplexer) — it drives your real tmux');
-    console.error('  panes from your phone, so you need tmux on this machine first.');
+    console.error(t('tmux.notFound'));
+    console.error(t('tmux.explain1'));
+    console.error(t('tmux.explain2'));
     console.error('');
-    console.error(`  Install it:  ${tmuxInstallHint()}`);
-    console.error('  Then run `handmux start` again.');
+    console.error(t('tmux.install', { hint: tmuxInstallHint() }));
+    console.error(t('tmux.thenStart'));
     process.exit(1);
   }
-  if (!tmux.ok) console.warn(`⚠ tmux ${tmux.raw} is below the tested minimum ${MIN_TMUX}; terminal rendering may be off`);
+  if (!tmux.ok) console.warn(t('tmux.tooOld', { raw: tmux.raw, min: MIN_TMUX }));
 
+  // Already running? `start` never disrupts a live instance on its own. If this run's config matches
+  // what's running, just reassure + reprint the address. If it DIFFERS (e.g. you changed the tunnel and
+  // re-ran `start` expecting it to apply), spell out the difference and — interactively — offer to restart
+  // into it; otherwise point at `handmux restart`. The principle stays intact: we only restart on an
+  // explicit yes.
   const existing = readState(HOME);
   if (existing && isAlive(existing.supervisorPid)) {
-    console.log(`handmux already running (pid ${existing.supervisorPid}) — use 'handmux restart'`);
+    const changed = configChanges(cfg, existing);
+    if (!changed.length) {
+      console.log(t('start.running.same'));
+      await printAccess(existing);
+      return;
+    }
+    console.log(t('start.running.changedHead', { tunnel: existing.tunnel }));
+    for (const c of changed) console.log(t('start.running.changedRow', c));
+    if (process.stdin.isTTY && await confirm(t('start.running.switchQ'))) {
+      stop(); await sleep(600); return start();
+    }
+    console.log(t('start.running.hint'));
     await printAccess(existing);
     return;
+  }
+
+  // Make a one-run tunnel override visible (printed only now that we're actually starting, so it can't be
+  // mistaken for a switch when the instance was already running): a --tunnel flag shadowing the file.
+  if (flags.tunnel && fileCfg.tunnel && flags.tunnel !== fileCfg.tunnel) {
+    console.log(t('start.overrides', { flag: flags.tunnel, file: fileCfg.tunnel }));
   }
 
   // cloudflare needs a cloudflared binary; resolve (and auto-download) it up front so the failure is a
   // clear message here rather than a silent child that never prints a URL.
   if (cfg.tunnel === 'cloudflare') {
     try { cfg.cloudflaredBin = await resolveCloudflared(HOME); }
-    catch (e) { console.error(`✗ ${e.message}`); process.exit(1); }
+    catch (e) { console.error(t('err.generic', { msg: e.message })); process.exit(1); }
   }
   if (cfg.tunnel === 'cloudflare-named') {
     try { cfg.cloudflaredBin = await resolveCloudflared(HOME); }
-    catch (e) { console.error(`✗ ${e.message}`); process.exit(1); }
+    catch (e) { console.error(t('err.generic', { msg: e.message })); process.exit(1); }
     if (!fs.existsSync(path.join(HOME, '.cloudflared', 'config.yml'))) {
-      console.error('✗ named tunnel not provisioned — run `handmux setup` first'); process.exit(1);
+      console.error(t('err.namedNotProvisioned')); process.exit(1);
     }
   }
   if (cfg.tunnel === 'ssh') {
     try { await preflightSsh(cfg); }
-    catch (e) { console.error(`✗ ${e.message}`); process.exit(1); }
+    catch (e) { console.error(t('err.generic', { msg: e.message })); process.exit(1); }
   }
 
   if (cfg.foreground) {
     supervise(cfg, { home: HOME });
-    console.log(`starting handmux (tunnel: ${cfg.tunnel}, port: ${cfg.port}) — Ctrl-C to stop`);
+    console.log(t('start.foreground', { tunnel: cfg.tunnel, port: cfg.port }));
     await waitAndPrint(false);
     return;
   }
@@ -173,21 +215,21 @@ async function start() {
   const child = spawn(process.execPath, [SELF, '__supervise', '--payload', payload],
     { detached: true, stdio: ['ignore', out, out] });
   child.unref();
-  console.log(`starting handmux (tunnel: ${cfg.tunnel}, port: ${cfg.port}) …`);
+  console.log(t('start.starting', { tunnel: cfg.tunnel, port: cfg.port }));
   await waitAndPrint(true);
 }
 
 function stop() {
   const st = readState(HOME);
-  if (!st || !isAlive(st.supervisorPid)) { console.log('handmux not running'); clearState(HOME); return; }
+  if (!st || !isAlive(st.supervisorPid)) { console.log(t('stop.notRunning')); clearState(HOME); return; }
   try { process.kill(st.supervisorPid, 'SIGTERM'); } catch { /* race: already gone */ }
-  console.log(`stopped handmux (pid ${st.supervisorPid})`);
+  console.log(t('stop.stopped', { pid: st.supervisorPid }));
 }
 
 async function status() {
   const st = readState(HOME);
-  if (!st || !isAlive(st.supervisorPid)) { console.log('● handmux stopped'); return; }
-  console.log('● handmux running');
+  if (!st || !isAlive(st.supervisorPid)) { console.log(t('status.stopped')); return; }
+  console.log(t('status.running'));
   await printAccess(st);
 }
 
@@ -198,7 +240,7 @@ function runSupervise() {
 
 function logs() {
   const p = logPath(HOME);
-  if (!fs.existsSync(p)) { console.log('(no log yet — start handmux first)'); return; }
+  if (!fs.existsSync(p)) { console.log(t('logs.none')); return; }
   const lines = String(flags.lines || 200);
   const args = flags.follow ? ['-n', lines, '-f', p] : ['-n', lines, p];
   spawn('tail', args, { stdio: 'inherit' });
@@ -212,35 +254,35 @@ async function serviceCmd() {
   if (sub === 'install') return serviceInstall();
   if (sub === 'uninstall') {
     try { uninstallService({ home: HOME }); }
-    catch (e) { console.error(`✗ ${e.message}`); process.exit(1); }
+    catch (e) { console.error(t('err.generic', { msg: e.message })); process.exit(1); }
     return;
   }
-  console.error('usage: handmux service install [start-flags] | handmux service uninstall');
+  console.error(t('service.usage'));
   process.exit(2);
 }
 
 async function serviceInstall() {
   const { path: cfgPath, cfg: fileCfg } = resolveFileConfig();
-  console.log(`config: ${describeConfig(cfgPath)}`);
+  console.log(t('config.loaded', { path: describeConfig(cfgPath) }));
   let cfg;
   try { cfg = resolveConfig(flags, fileCfg); }
-  catch (e) { console.error(`✗ ${e.message}`); process.exit(2); }
+  catch (e) { console.error(t('err.generic', { msg: e.message })); process.exit(2); }
   if (cfg.tunnel === 'cloudflare' || cfg.tunnel === 'cloudflare-named') {
     try { cfg.cloudflaredBin = await resolveCloudflared(HOME); }
-    catch (e) { console.error(`✗ ${e.message}`); process.exit(1); }
+    catch (e) { console.error(t('err.generic', { msg: e.message })); process.exit(1); }
   }
   if (cfg.tunnel === 'ssh') {
     // 开机自启无 TTY:要求事先已配好免密,否则快速失败。
     cfg.tunliteBin = resolveTunlite();
     if (checkSshAuth(cfg.sshHost, { bin: cfg.tunliteBin }) !== 0) {
-      console.error(`✗ passwordless SSH not set up — run: ${cfg.tunliteBin} setup-key ${cfg.sshHost}`); process.exit(1);
+      console.error(t('err.generic', { msg: t('ssh.notSetup', { bin: cfg.tunliteBin, host: cfg.sshHost }) })); process.exit(1);
     }
   }
   const payload = Buffer.from(JSON.stringify(cfg)).toString('base64');
   const args = [process.execPath, SELF, '__supervise', '--payload', payload];
   try { installService(args, { home: HOME }); }
-  catch (e) { console.error(`✗ ${e.message}`); process.exit(1); }
-  console.log("handmux will now start at login. 'handmux service uninstall' to remove.");
+  catch (e) { console.error(t('err.generic', { msg: e.message })); process.exit(1); }
+  console.log(t('service.installed'));
 }
 
 async function setupCmd() {
@@ -249,13 +291,13 @@ async function setupCmd() {
   if (!cfg) { process.exit(2); }
   const hs = hooksStatus(HOME);
   if (hs !== 'no-claude' && hs !== 'installed'
-      && await confirm('Enable Claude Code notifications (inbox)?')) {
+      && await confirm(t('hooks.confirmEnable'))) {
     installHooks(HOME, { srcDir: HOOKS_SRC, stateFile: claudeStatePath(HOME) });
-    console.log('✓ Claude hooks installed.');
+    console.log(t('hooks.installedShort'));
     await maybeOfferTmuxDot();
   }
-  if (await confirm('Start handmux now?')) { Object.assign(flags, cfg); return start(); }
-  console.log("run 'handmux start' when you're ready.");
+  if (await confirm(t('setup.confirmStart'))) { Object.assign(flags, cfg); return start(); }
+  console.log(t('setup.later'));
 }
 
 // The per-window tmux status dot is the natural companion to the inbox hooks: the hook already writes a
@@ -265,13 +307,13 @@ async function setupCmd() {
 async function maybeOfferTmuxDot() {
   if (tmuxDotStatus(HOME) !== 'absent') return;
   if (!process.stdin.isTTY) {
-    console.log(`  Tip: to show a Claude status dot on each tmux window, run \`handmux hooks install\` from an interactive terminal — it wires ${tmuxConfPath(HOME)} for you (see tmux/README.md in the handmux package).`);
+    console.log(t('tmuxdot.tip', { conf: tmuxConfPath(HOME) }));
     return;
   }
-  if (await confirm('Also show a per-window Claude status dot in tmux? (adds a block to ~/.tmux.conf)')) {
+  if (await confirm(t('tmuxdot.confirm'))) {
     installTmuxDot(HOME);
-    console.log(`✓ tmux dot added → ${tmuxConfPath(HOME)}`);
-    console.log('  Apply with: tmux source-file ~/.tmux.conf  (it changes the shared tmux server — all clients, including your PC).');
+    console.log(t('tmuxdot.added', { path: tmuxConfPath(HOME) }));
+    console.log(t('tmuxdot.apply'));
   }
 }
 
@@ -281,21 +323,21 @@ async function hooksCmd() {
   const sub = process.argv[3];
   if (sub === 'install') {
     if (hooksStatus(HOME) === 'no-claude') {
-      console.log('Claude Code not detected (~/.claude missing) — nothing to install.');
+      console.log(t('hooks.noClaude'));
       return;
     }
     installHooks(HOME, { srcDir: HOOKS_SRC, stateFile: claudeStatePath(HOME) });
-    console.log('✓ Claude hooks installed → ~/.claude/settings.json');
-    console.log('  Restart or open a new Claude Code session to load them; the inbox lights up as panes report.');
+    console.log(t('hooks.installed'));
+    console.log(t('hooks.installedHint'));
     await maybeOfferTmuxDot();
     return;
   }
   if (sub === 'uninstall') {
     uninstallHooks(HOME);
-    console.log('✓ Claude hooks removed.');
+    console.log(t('hooks.removed'));
     return;
   }
-  console.error('usage: handmux hooks install|uninstall');
+  console.error(t('hooks.usage'));
   process.exit(2);
 }
 
@@ -306,15 +348,15 @@ function configCmd() {
   const { path: cfgPath, cfg: fileCfg } = resolveFileConfig();
   let rows;
   try { rows = explainConfig(flags, fileCfg, cfgPath); }
-  catch (e) { console.error(`✗ ${e.message}`); process.exit(2); }
-  console.log(`config file: ${cfgPath || '(none — using defaults; run `handmux setup` to create one)'}`);
+  catch (e) { console.error(t('err.generic', { msg: e.message })); process.exit(2); }
+  console.log(t('configcmd.file', { path: cfgPath || t('configcmd.fileNone') }));
   console.log('');
   const w = Math.max(...rows.map((r) => r.key.length));
   for (const r of rows) {
     console.log(`  ${r.key.padEnd(w)}  ${r.display}  ${r.origin === 'default' ? '' : `· ${r.origin}`}`.trimEnd());
   }
   console.log('');
-  console.log('  origin: flag (this run only) · file · env · default');
+  console.log(t('configcmd.legend'));
 }
 
 // Poll state.json until the public URL (or an error) shows up, then print access info. cloudflare needs
@@ -334,25 +376,25 @@ async function waitAndPrint(exitWhenDone) {
 }
 
 async function printAccess(st) {
-  if (!st) { console.log('  (no state)'); return; }
-  if (st.error) { console.error(`  ✗ ${st.error}`); return; }
+  if (!st) { console.log(t('access.noState')); return; }
+  if (st.error) { console.error(t('access.error', { msg: st.error })); return; }
   const scan = bareUrl(st.publicUrl);
   console.log('');
-  console.log(`  tunnel   ${st.tunnel}   ·   pid ${st.supervisorPid}`);
-  console.log(`  🌐 open   ${scan || '(pending…)'}`);
-  if (st.tunnel === 'none' && st.lanUrl) console.log(`  📶 lan    ${bareUrl(st.lanUrl)}`);
-  console.log(`  💻 local  ${bareUrl(st.localUrl)}`);
-  console.log(`  🔑 token  ${st.token}`);
+  console.log(t('access.tunnel', { tunnel: st.tunnel, pid: st.supervisorPid }));
+  console.log(t('access.open', { url: scan || t('access.pending') }));
+  if (st.tunnel === 'none' && st.lanUrl) console.log(t('access.lan', { url: bareUrl(st.lanUrl) }));
+  console.log(t('access.local', { url: bareUrl(st.localUrl) }));
+  console.log(t('access.token', { token: st.token }));
   // The QR carries the token so a phone scan signs in one-tap; the PRINTED links above stay token-free
   // (safe to screenshot/share — paste the token shown above to sign in there).
   await maybeQr(st.publicUrl ? publicUrlWithToken(st.publicUrl, st.token) : scan, st);
   if (st.publicUrl && st.tunnel !== 'none') {
     const ok = await probe(st.publicUrl);
-    if (ok) console.log('  ✓ reachable');
-    else console.log(`  ⚠ tunnel up but ${st.publicUrl} did not answer — check the server-side reverse proxy / DNS`);
+    if (ok) console.log(t('access.reachable'));
+    else console.log(t('access.unreachable', { url: st.publicUrl }));
   }
   console.log('');
-  console.log(`  handmux status | stop`);
+  console.log(t('access.hint'));
   console.log('');
 }
 
@@ -377,41 +419,7 @@ async function maybeQr(url, st) {
 }
 
 function help() {
-  console.log(`handmux — drive your tmux from your phone
-
-  handmux start            run it (defaults to LAN-only; no config needed)
-  handmux setup            configure tunnel / name / notifications (writes config; re-run to change)
-  handmux stop | restart | status
-  handmux logs [--follow] [--lines N]
-
-The model: 'start' runs · 'setup' configures (writes ~/.handmux/config.json) · re-run setup to change.
-A flag overrides one value for one run and never persists (flag > file > default).
-
-advanced (scripting / multiple configs):
-  handmux config                        show the effective config + where each value came from
-  handmux hooks install|uninstall         enable/disable Claude Code notifications (inbox)
-  handmux service install [start-flags]   start at login (launchd/systemd)
-  handmux service uninstall               remove the autostart entry
-  --config PATH             use this config file instead of ~/.handmux/config.json (dev / multi-config)
-  --version, -v            print the handmux version
-
-start flags (one-run overrides — for persistence use 'handmux setup'):
-  --tunnel none|cloudflare|cloudflare-named|ssh   expose method (default: none)
-  --ssh-host user@host[:port]   ssh tunnel target (tunlite)
-  --remote-port N               port bound on the ssh host (default: --port)
-  --public-url URL              public url to advertise (any tunnel, incl. none if you run your own;
-                                ssh defaults to http://host:remotePort)
-  --ssh-jump u@h[,…]            optional bastion for ssh
-  --cf-hostname H               public hostname for cloudflare-named
-  --cf-tunnel-name N            tunnel name for cloudflare-named (default: handmux)
-  --port N                  server port (default: 19999)
-  --host H                  bind host (default: 0.0.0.0)
-  --token S                 auth token (default: generated)
-  --name "My Box"           app name in the browser tab + home-screen icon label
-  --preview-domain D        enable dynamic previews (needs wildcard subdomain)
-  --foreground, -f          run in the foreground (don't daemonize)
-  --no-qr                   don't render the QR code
-`);
+  console.log(t('help.body'));
 }
 
 main();
