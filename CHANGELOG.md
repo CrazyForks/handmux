@@ -4,6 +4,16 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Added
+- **Take over Claude sessions running outside tmux** — the inbox now detects `claude`
+  processes that aren't in a tmux pane (so handmux can't steer them) and lists them in a
+  collapsible footer with each session's working dir, idle/busy state, and last message. One
+  tap opens a takeover sheet: resume the session in a fresh tmux session (or a new window of
+  an existing one) via `claude --resume`, optionally ending the original process (default on —
+  a resumed session shares the same history file, so a single writer avoids corruption). New
+  `GET /api/orphans` + `POST /api/orphans/takeover`. Detection is a process scan (ps + tmux +
+  lsof), skipping Ctrl-Z-suspended and background sessions.
+
 ## [0.5.3] - 2026-06-29
 
 ### Fixed
