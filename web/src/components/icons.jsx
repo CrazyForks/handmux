@@ -1,6 +1,9 @@
 // Monochrome line icons (Lucide, MIT) drawn with stroke=currentColor so they inherit the topbar's
 // grey and sit flush with the ☰ glyph — no colour emoji clashing with the flat dark UI. Size comes
 // from CSS (.topbar-icon svg); 1.75 stroke matches the hairline feel of the rest of the chrome.
+import claudeLogo from '../assets/agent-claude.svg';
+import codexLogo from '../assets/agent-codex.svg';
+
 const base = {
   viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
   strokeWidth: 1.75, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true,
@@ -305,10 +308,11 @@ export function RenewIcon() {
   );
 }
 
-// Agent logo — the OFFICIAL brand mark, loaded from a swappable asset file so we never ship (or hand-draw)
-// a trademarked logo in code: drop the real SVG at web/public/icons/agent-<id>.svg and it renders here and
-// everywhere AgentMark is used (inbox rows + single-pane window tabs). Sized via CSS (.agent-mark).
-const AGENT_LOGO = { claude: '/icons/agent-claude.svg', codex: '/icons/agent-codex.svg' };
+// Agent logo — the OFFICIAL brand mark, kept as a swappable asset (src/assets/agent-<id>.svg; replace the
+// file to change the logo). Imported through the bundler (top of file) so Vite content-hashes the URL — a
+// changed logo gets a NEW filename and busts the year-long immutable cache (a public/ path would stay
+// stale). Rendered everywhere AgentMark is used (inbox rows + window tabs); sized via CSS (.agent-mark).
+const AGENT_LOGO = { claude: claudeLogo, codex: codexLogo };
 
 // Pick the logo for an agent id (defaults to Claude for legacy/untagged entries).
 export function AgentMark({ agent }) {
