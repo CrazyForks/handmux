@@ -50,6 +50,7 @@ export default {
   'startup.preset_shell': 'Plain shell (default)',
   'startup.preset_claude': 'claude (launch Claude Code)',
   'startup.preset_claude_continue': 'claude -c (resume last session)',
+  'startup.preset_codex': 'codex (launch Codex CLI)',
   'startup.custom': 'Custom…',
   'startup.custom_placeholder': 'e.g. claude "fix login bug"',
 
@@ -80,8 +81,8 @@ export default {
   'inbox.needs': 'Needs you',
   'inbox.clearDone': 'Clear done',
   'inbox.empty': 'No pane status yet',
-  'inbox.enableTitle': 'Turn on Claude Code notifications',
-  'inbox.enableHint': 'Tag every Claude pane working / waiting on you / done, and get pinged when one needs you.',
+  'inbox.enableTitle': 'Turn on AI session notifications',
+  'inbox.enableHint': 'Tag every Claude / Codex pane working / waiting on you / done, and get pinged when one needs you.',
   'inbox.enableBtn': 'Enable',
   'inbox.enabling': 'Enabling…',
   'inbox.enableFailed': 'Could not enable — check the server logs.',

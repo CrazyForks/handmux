@@ -1,7 +1,7 @@
 // The drawer lists only the sessions this device has bound (stored locally) — not every live
 // tmux session. Binding/validation happens in the BindSession modal; here we just show the
 // pinned names, let the user open or unbind one, and open the bind modal. Below that, a collapsible
-// "未接管会话" section surfaces Claude sessions running outside tmux (orphans) — tap 接管 to resume
+// "未接管会话" section surfaces coding-agent sessions running outside tmux (orphans) — tap 接管 to resume
 // one into tmux (the takeover sheet, handled in App); see server/src/orphans.js.
 import { useState } from 'react';
 import { t } from '../i18n';
@@ -60,6 +60,7 @@ export default function Drawer({
                           </button>
                         </div>
                         <div className="drawer-orphan-meta">
+                          {o.agentLabel && <span className="drawer-orphan-agent">{o.agentLabel}</span>}
                           <span className={`drawer-orphan-state ${o.state === 'busy' ? 'busy' : 'idle'}`}>
                             {o.state === 'busy' ? t('inbox.orphans.busy') : t('inbox.orphans.idle')}
                           </span>

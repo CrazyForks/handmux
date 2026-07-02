@@ -21,11 +21,23 @@ import { safeUploadName } from './docPath.js';
 import { safePreviewName } from './previews.js';
 import { isAllowedUploadExt, DEFAULT_UPLOAD_EXTS } from './uploadTypes.js';
 import { hooksStatus, installHooks } from './cli/claudeHooks.js';
+import { codexHooksStatus, installCodexHooks } from './cli/codexHooks.js';
 import { claudeStatePath } from './cli/state.js';
 import { scanOrphans, takeoverOrphan, defaultProjectsDir } from './orphans.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const HOOKS_SRC = resolvePath(here, '../hooks'); // server/hooks (bundled scripts)
+
+// Summarize inbox-hook state across every coding agent for the phone: 'installed' if any agent is wired,
+// 'absent' if an agent is present but none wired (→ offer the one-tap enable), 'no-claude' if there's no
+// agent at all (→ hide the prompt). Codex 'conflict' (user's own notify) counts as present-but-not-wired.
+function combinedHooksStatus(home) {
+  const c = hooksStatus(home);      // 'no-claude' | 'installed' | 'absent'
+  const x = codexHooksStatus(home); // 'no-codex' | 'installed' | 'absent' | 'conflict'
+  if (c === 'installed' || x === 'installed') return 'installed';
+  if (c !== 'no-claude' || x !== 'no-codex') return 'absent';
+  return 'no-claude';
+}
 
 const ALLOWED_KEYS = new Set([
   'Up', 'Down', 'Left', 'Right', 'Space', 'Enter', 'Escape', 'Tab', 'BTab', 'BSpace',
@@ -438,16 +450,22 @@ export function createApiRouter({
   // Optional integrations are configured per-install (open-source installs ship without keys), so the
   // client asks what's actually available and hides controls that can't work — e.g. the mic when no
   // ASR engine is configured. Add more flags here as optional integrations land.
+  // `claudeHooks` (name kept for web back-compat) now summarizes EVERY coding agent: 'installed' if any is
+  // wired, 'absent' if an agent is present but none wired (→ offer enable), 'no-claude' if no agent at all.
   r.get('/config', (req, res) => {
-    res.json({ asr: isAsrConfigured(asrEnv), claudeHooks: hooksStatus(home) });
+    res.json({ asr: isAsrConfigured(asrEnv), claudeHooks: combinedHooksStatus(home) });
   });
 
-  // One-tap enable from the phone: install the Claude Code hooks on the host (token-gated, like every API
-  // here). Opt-in — the inbox only offers this when status is 'absent'. Never creates ~/.claude.
+  // One-tap enable from the phone: install the hooks for every present agent (Claude Code, Codex) on the
+  // host (token-gated, like every API here). Opt-in — the inbox only offers this when status is 'absent'.
+  // Never creates ~/.claude or ~/.codex; a user's own Codex `notify` is left untouched (see codexHooks.js).
   r.post('/hooks/install', (req, res) => {
     try {
-      const { status } = installHooks(home, { srcDir: HOOKS_SRC, stateFile });
-      res.json({ ok: status === 'installed', status });
+      let installed = 0;
+      if (hooksStatus(home) !== 'no-claude') { installHooks(home, { srcDir: HOOKS_SRC, stateFile }); installed++; }
+      const cx = codexHooksStatus(home);
+      if (cx !== 'no-codex' && cx !== 'conflict') { installCodexHooks(home, { srcDir: HOOKS_SRC, stateFile }); installed++; }
+      res.json({ ok: installed > 0, status: combinedHooksStatus(home) });
     } catch (e) { res.status(500).json({ ok: false, error: String(e) }); }
   });
 

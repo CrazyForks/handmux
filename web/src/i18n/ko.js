@@ -49,6 +49,7 @@ export default {
   'startup.preset_shell': '빈 셸（기본값）',
   'startup.preset_claude': 'claude（Claude Code 시작）',
   'startup.preset_claude_continue': 'claude -c（이전 세션 이어서）',
+  'startup.preset_codex': 'codex（Codex CLI 시작）',
   'startup.custom': '사용자 정의…',
   'startup.custom_placeholder': '예：claude "로그인 버그 수정"',
 
@@ -79,8 +80,8 @@ export default {
   'inbox.needs': '확인 필요',
   'inbox.clearDone': '완료 항목 지우기',
   'inbox.empty': '패널 상태 없음',
-  'inbox.enableTitle': 'Claude Code 알림 활성화',
-  'inbox.enableHint': '각 Claude 패널을 「진행 중」「확인 필요」「완료」로 표시하고, 확인이 필요할 때 푸시 알림을 보냅니다.',
+  'inbox.enableTitle': 'AI 세션 알림 활성화',
+  'inbox.enableHint': '각 Claude / Codex 패널을 「진행 중」「확인 필요」「완료」로 표시하고, 확인이 필요할 때 푸시 알림을 보냅니다.',
   'inbox.enableBtn': '활성화',
   'inbox.enabling': '활성화 중…',
   'inbox.enableFailed': '활성화에 실패했습니다——서버 로그를 확인하세요.',

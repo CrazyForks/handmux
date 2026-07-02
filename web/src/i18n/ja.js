@@ -49,6 +49,7 @@ export default {
   'startup.preset_shell': '空のシェル（デフォルト）',
   'startup.preset_claude': 'claude（Claude Code を起動）',
   'startup.preset_claude_continue': 'claude -c（前回のセッションを継続）',
+  'startup.preset_codex': 'codex（Codex CLI を起動）',
   'startup.custom': 'カスタム…',
   'startup.custom_placeholder': '例：claude "ログインバグを修正"',
 
@@ -79,8 +80,8 @@ export default {
   'inbox.needs': '要対応',
   'inbox.clearDone': '完了済みをクリア',
   'inbox.empty': 'パネルの状態なし',
-  'inbox.enableTitle': 'Claude Code 通知を有効にする',
-  'inbox.enableHint': '各 Claude パネルを「進行中」「要対応」「完了」にマークし、対応が必要なときにプッシュ通知を送信します。',
+  'inbox.enableTitle': 'AI セッション通知を有効にする',
+  'inbox.enableHint': '各 Claude / Codex パネルを「進行中」「要対応」「完了」にマークし、対応が必要なときにプッシュ通知を送信します。',
   'inbox.enableBtn': '有効にする',
   'inbox.enabling': '有効化中…',
   'inbox.enableFailed': '有効化に失敗しました——サーバーログを確認してください。',

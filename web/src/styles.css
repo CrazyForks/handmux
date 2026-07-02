@@ -980,6 +980,7 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .drawer-orphan-btn:active { background: #344168; }
 .drawer-orphan-btn:disabled { opacity: 0.45; }
 .drawer-orphan-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; min-width: 0; }
+.drawer-orphan-agent { flex: none; font-size: 10px; padding: 0 5px; border-radius: 3px; background: #333a45; color: #c7ccd1; }
 .drawer-orphan-state { flex: none; font-size: 10px; padding: 0 5px; border-radius: 3px; }
 .drawer-orphan-state.idle { background: #2e7d46; color: #fff; }
 .drawer-orphan-state.busy { background: #2f6fed; color: #fff; }

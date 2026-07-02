@@ -49,6 +49,7 @@ export default {
   'startup.preset_shell': '空白 Shell（預設）',
   'startup.preset_claude': 'claude（啟動 Claude Code）',
   'startup.preset_claude_continue': 'claude -c（繼續上次工作階段）',
+  'startup.preset_codex': 'codex（啟動 Codex CLI）',
   'startup.custom': '自訂…',
   'startup.custom_placeholder': '例如 claude "修復登入 bug"',
 
@@ -79,8 +80,8 @@ export default {
   'inbox.needs': '需要你',
   'inbox.clearDone': '清除已完成',
   'inbox.empty': '目前沒有面板狀態',
-  'inbox.enableTitle': '開啟 Claude Code 通知',
-  'inbox.enableHint': '將每個 Claude 面板標記為進行中 / 需要你 / 已完成，需要時也會推播提醒。',
+  'inbox.enableTitle': '開啟 AI 工作階段通知',
+  'inbox.enableHint': '將每個 Claude / Codex 面板標記為進行中 / 需要你 / 已完成，需要時也會推播提醒。',
   'inbox.enableBtn': '開啟',
   'inbox.enabling': '開啟中…',
   'inbox.enableFailed': '開啟失敗——請查看伺服器日誌。',
