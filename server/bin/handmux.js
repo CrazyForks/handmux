@@ -31,6 +31,7 @@ import { checkTmux, MIN_TMUX, tmuxInstallHint } from '../src/cli/tmuxVersion.js'
 import { readState, clearState, isAlive, pocketHome, logPath, configPath, claudeStatePath } from '../src/cli/state.js';
 import { runSetup } from '../src/cli/setupWizard.js';
 import { hooksStatus, installHooks, uninstallHooks } from '../src/cli/claudeHooks.js';
+import { codexHooksStatus, installCodexHooks, uninstallCodexHooks } from '../src/cli/codexHooks.js';
 import { tmuxDotStatus, installTmuxDot, tmuxConfPath } from '../src/cli/tmuxConf.js';
 import { probe } from '../src/cli/probe.js';
 import { t, initLocale, setLocale } from '../src/cli/i18n/index.js';
@@ -289,11 +290,11 @@ async function setupCmd() {
   const target = flags.config ? path.resolve(flags.config) : configPath(HOME);
   const cfg = await runSetup({ home: HOME, target });
   if (!cfg) { process.exit(2); }
-  const hs = hooksStatus(HOME);
-  if (hs !== 'no-claude' && hs !== 'installed'
-      && await confirm(t('hooks.confirmEnable'))) {
-    installHooks(HOME, { srcDir: HOOKS_SRC, stateFile: claudeStatePath(HOME) });
-    console.log(t('hooks.installedShort'));
+  // Offer to enable the inbox hooks when an agent is present but not yet wired (Claude 'absent', or Codex
+  // 'absent'). installAgentHooks() then wires every present agent (idempotent for any already installed).
+  const offerHooks = hooksStatus(HOME) === 'absent' || codexHooksStatus(HOME) === 'absent';
+  if (offerHooks && await confirm(t('hooks.confirmEnable'))) {
+    installAgentHooks();
     await maybeOfferTmuxDot();
   }
   if (await confirm(t('setup.confirmStart'))) { Object.assign(flags, cfg); return start(); }
@@ -317,23 +318,44 @@ async function maybeOfferTmuxDot() {
   }
 }
 
-// `handmux hooks install|uninstall` — opt-in wiring of the Claude Code lifecycle hooks that drive the
-// inbox/push. Never creates ~/.claude; if Claude Code isn't present we say so and exit 0 (nothing to do).
+// Install the inbox hooks for every coding agent present on this host (Claude Code, Codex — the state file
+// is shared, entries are agent-tagged). Each is opt-in by the mere presence of its config dir. Prints a
+// per-agent line and returns how many were wired, so callers can gate the tmux-dot offer / the "reload"
+// hint. Codex's single `notify` slot may already hold the user's OWN program — we never clobber it, we warn.
+function installAgentHooks() {
+  let installed = 0;
+  if (hooksStatus(HOME) !== 'no-claude') {
+    installHooks(HOME, { srcDir: HOOKS_SRC, stateFile: claudeStatePath(HOME) });
+    console.log(t('hooks.installedClaude'));
+    installed++;
+  }
+  const cx = codexHooksStatus(HOME);
+  if (cx === 'conflict') {
+    console.log(t('hooks.codexConflict', { path: path.join(HOME, '.codex', 'config.toml') }));
+  } else if (cx !== 'no-codex') {
+    installCodexHooks(HOME, { srcDir: HOOKS_SRC, stateFile: claudeStatePath(HOME) });
+    console.log(t('hooks.installedCodex'));
+    installed++;
+  }
+  return installed;
+}
+
+// `handmux hooks install|uninstall` — opt-in wiring of the coding-agent lifecycle hooks that drive the
+// inbox/push. Never creates ~/.claude or ~/.codex; if neither agent is present we say so and exit 0.
 async function hooksCmd() {
   const sub = process.argv[3];
   if (sub === 'install') {
-    if (hooksStatus(HOME) === 'no-claude') {
-      console.log(t('hooks.noClaude'));
+    if (hooksStatus(HOME) === 'no-claude' && codexHooksStatus(HOME) === 'no-codex') {
+      console.log(t('hooks.noAgents'));
       return;
     }
-    installHooks(HOME, { srcDir: HOOKS_SRC, stateFile: claudeStatePath(HOME) });
-    console.log(t('hooks.installed'));
-    console.log(t('hooks.installedHint'));
+    if (installAgentHooks() > 0) console.log(t('hooks.installedHint'));
     await maybeOfferTmuxDot();
     return;
   }
   if (sub === 'uninstall') {
     uninstallHooks(HOME);
+    uninstallCodexHooks(HOME);
     console.log(t('hooks.removed'));
     return;
   }

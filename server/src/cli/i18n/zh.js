@@ -57,12 +57,16 @@ export default {
   'access.hint': '  handmux status | stop',
 
   // hooks
-  'hooks.confirmEnable': '启用 Claude Code 通知(收件箱)?',
-  'hooks.installedShort': '✓ Claude hooks 已安装。',
+  'hooks.confirmEnable': '启用编程 agent 通知(收件箱)?',
+  'hooks.installedShort': '✓ agent hooks 已安装。',
   'hooks.noClaude': '未检测到 Claude Code(缺少 ~/.claude)—— 无需安装。',
+  'hooks.noAgents': '未检测到编程 agent(~/.claude 与 ~/.codex 都不存在)—— 无需安装。',
   'hooks.installed': '✓ Claude hooks 已安装 → ~/.claude/settings.json',
-  'hooks.installedHint': '  重启或新开一个 Claude Code 会话以加载;窗格上报后收件箱就会亮起。',
-  'hooks.removed': '✓ Claude hooks 已移除。',
+  'hooks.installedClaude': '✓ Claude Code hooks 已安装 → ~/.claude/settings.json',
+  'hooks.installedCodex': '✓ Codex hooks 已安装 → ~/.codex/config.toml(notify)',
+  'hooks.codexConflict': '⚠ Codex 的 config.toml({path})里已有你自己的 notify 程序 —— 未改动。想两者并用,请在你的 notify 里串接 handmux 的 handmux-codex-notify.cjs。',
+  'hooks.installedHint': '  重启或新开一个 agent 会话以加载;窗格上报后收件箱就会亮起。',
+  'hooks.removed': '✓ agent hooks 已移除。',
   'hooks.usage': '用法:handmux hooks install|uninstall',
 
   // tmux 状态点

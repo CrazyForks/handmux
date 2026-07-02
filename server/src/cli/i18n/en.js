@@ -58,12 +58,16 @@ export default {
   'access.hint': '  handmux status | stop',
 
   // hooks
-  'hooks.confirmEnable': 'Enable Claude Code notifications (inbox)?',
-  'hooks.installedShort': '✓ Claude hooks installed.',
+  'hooks.confirmEnable': 'Enable coding-agent notifications (inbox)?',
+  'hooks.installedShort': '✓ Agent hooks installed.',
   'hooks.noClaude': 'Claude Code not detected (~/.claude missing) — nothing to install.',
+  'hooks.noAgents': 'No coding agent detected (~/.claude and ~/.codex both missing) — nothing to install.',
   'hooks.installed': '✓ Claude hooks installed → ~/.claude/settings.json',
-  'hooks.installedHint': '  Restart or open a new Claude Code session to load them; the inbox lights up as panes report.',
-  'hooks.removed': '✓ Claude hooks removed.',
+  'hooks.installedClaude': '✓ Claude Code hooks installed → ~/.claude/settings.json',
+  'hooks.installedCodex': '✓ Codex hooks installed → ~/.codex/config.toml (notify)',
+  'hooks.codexConflict': "⚠ Codex already has its own notify program in {path} — left untouched. To use both, chain handmux's handmux-codex-notify.cjs from yours.",
+  'hooks.installedHint': '  Restart or open a new agent session to load them; the inbox lights up as panes report.',
+  'hooks.removed': '✓ Agent hooks removed.',
   'hooks.usage': 'usage: handmux hooks install|uninstall',
 
   // tmux status-dot offer

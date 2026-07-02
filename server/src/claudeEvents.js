@@ -23,6 +23,14 @@ export const classifyEvent = claude.classify;
 const PUSH_VIEW = { permission: 'needs', done: 'done' };
 const VIEW_LABEL = { needs: '需要你', done: '已完成' };
 
+// The dedup key for a pane's current push view. `needs` is view-only: Claude signals one permission gate via
+// TWO hooks (permreq then permission_prompt) at different ts, and both must collapse to a SINGLE 需要你. But
+// `done` is ts-sensitive: each finished turn is a fresh "已完成 / 该你了". For Claude, two dones are always
+// separated by a 进行中 that re-arms the dedup anyway, so keying done by ts is equivalent; for Codex — whose
+// ONLY event is turn-complete, with no working/prompt event in between — it's what makes turn 2, 3, … push
+// instead of latching on turn 1's done forever.
+function pushKey(view, ts) { return view === 'done' ? `done:${ts}` : view; }
+
 // A 进行中 (working) is a LATCHED state: set by UserPromptSubmit, normally closed by Stop. But an ESC
 // interrupt / walk-away fires NO hook at all (verified across all 26 hook event types), so working never
 // gets closed and the blue dot would stick forever. There's no event signal for the interrupt — so we
@@ -65,7 +73,7 @@ export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, 
     for (const [pane, r] of Object.entries(recorded)) {
       const c = r && typeof r.src === 'string' ? getAgent(r.agent).classify(r.src, r.payload || {}) : null;
       const view = c ? PUSH_VIEW[c.kind] : undefined;
-      if (view) lastPushed[pane] = view; // resting 需要你/已完成 → treat as seen, don't replay
+      if (view) lastPushed[pane] = pushKey(view, r.ts); // resting 需要你/已完成 → treat as seen, don't replay
     }
   }
 
@@ -114,12 +122,13 @@ export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, 
       if (live) {
         const kind = c ? c.kind : null;
         const view = PUSH_VIEW[kind]; // 'needs' | 'done' | undefined
+        const key = view ? pushKey(view, rec.ts) : undefined;
         if (kind === 'idle') {
           /* trailing idle reminder — no push, keep the dedup as the preceding done left it */
         } else if (gone || !view) {
           lastPushed[pane] = null; // 进行中 / 结束 / gone → re-arm for the next 需要你 / 已完成
-        } else if (lastPushed[pane] !== view && lp.session) {
-          lastPushed[pane] = view;
+        } else if (lastPushed[pane] !== key && lp.session) {
+          lastPushed[pane] = key;
           await sendPush(pane, view, c, lp);
         }
       }
