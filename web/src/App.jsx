@@ -465,11 +465,13 @@ export default function App() {
   const doTakeover = useCallback(async ({ target, kill }) => {
     const o = takeoverTarget;
     const out = await takeoverOrphan({ pid: o.pid, sessionId: o.sessionId, target, kill });
+    // Pin the target session into this device's list so the taken-over session is reachable later —
+    // without this a brand-new `cc-…` session would vanish from the drawer the moment you navigate away.
+    if (out.name) { setBound(addBoundSession(out.name)); reportBound(); }
     setTakeoverTarget(null);
     setInboxOpen(false);
     try {
-      const session = (await getSessions()).find((s) => s.id === out.session);
-      if (session) { setDrawerOpen(false); await openSession(session, { window: out.window, pane: out.pane }); }
+      if (out.name) { setDrawerOpen(false); await openSession({ id: out.session, name: out.name }, { window: out.window, pane: out.pane }); }
     } catch (e) { if (e instanceof UnauthorizedError) onAuthFail(); }
     try { setOrphans(await getOrphans()); } catch { /* refresh best-effort */ }
   }, [takeoverTarget, openSession, onAuthFail]);

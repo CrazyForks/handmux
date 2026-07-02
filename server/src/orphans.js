@@ -236,13 +236,14 @@ export async function takeoverOrphan(
 
   let sid;
   let wid;
+  let name; // the target session NAME — returned so the client can bind it into its session list
   if (target.mode === 'window') {
     if (!isSessionId(target.session)) return { error: 'bad target session', status: 400 };
     sid = target.session;
+    name = (await commands.listSessions()).find((s) => s.id === sid)?.name || null;
     wid = await commands.newWindow(sid, o.cwd, 'claude', cmd);
   } else {
     const existing = new Set((await commands.listSessions()).map((s) => s.name));
-    let name;
     for (let i = 1; i < 1000 && !name; i++) {
       const cand = takeoverSessionName(o.cwdLabel, i);
       if (!existing.has(cand)) name = cand;
@@ -266,7 +267,7 @@ export async function takeoverOrphan(
     const still = (await scanFn(scanOpts)).find((x) => x.pid === pid && x.sessionId === sessionId);
     if (still) { try { killProc(pid, 'SIGTERM'); killed = true; } catch { /* already exited */ } }
   }
-  return { session: sid, window: wid, pane, claudeUp: up, killed };
+  return { session: sid, name, window: wid, pane, claudeUp: up, killed };
 }
 
 async function lsofCwd(run, pid) {

@@ -193,7 +193,7 @@ describe('takeoverOrphan', () => {
       killProc: (pid, sig) => killed.push([pid, sig]),
       delay: nap,
     }, { pid: 4717, sessionId: UUID, kill: true });
-    expect(out).toMatchObject({ session: '$9', window: '@9', pane: '%9', claudeUp: true, killed: true });
+    expect(out).toMatchObject({ session: '$9', name: 'cc-zxy-1', window: '@9', pane: '%9', claudeUp: true, killed: true });
     expect(killed).toEqual([[4717, 'SIGTERM']]);
   });
 
