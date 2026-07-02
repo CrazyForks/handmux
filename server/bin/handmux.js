@@ -34,6 +34,7 @@ import { hooksStatus, installHooks, uninstallHooks } from '../src/cli/claudeHook
 import { codexHooksStatus, installCodexHooks, uninstallCodexHooks } from '../src/cli/codexHooks.js';
 import { tmuxDotStatus, installTmuxDot, tmuxConfPath } from '../src/cli/tmuxConf.js';
 import { probe } from '../src/cli/probe.js';
+import { notifyUpdate, runUpdateCheck, PKG_NAME } from '../src/cli/updateCheck.js';
 import { t, initLocale, setLocale } from '../src/cli/i18n/index.js';
 
 const HOME = homedir();
@@ -124,7 +125,9 @@ async function main() {
     case 'setup': return setupCmd();
     case 'hooks': return hooksCmd();
     case 'service': return serviceCmd();
+    case 'update': case 'upgrade': return updateCmd();
     case '__supervise': return runSupervise();
+    case '__update-check': return runUpdateCheck(HOME);
     case 'version': case '--version': case '-v': return version();
     default: return help();
   }
@@ -134,6 +137,27 @@ async function main() {
 // stays in lockstep with what npm installed; no hardcoded string to forget to bump).
 function version() {
   console.log(requireOpt('../package.json').version);
+}
+
+// `handmux update` (alias `upgrade`) — run the plain global install for the user. We don't self-patch or
+// restart a running instance; on success we refresh the update cache so the "upgrade available" notice
+// clears, and remind them to `handmux restart` to actually run the new code.
+function updateCmd() {
+  console.log(t('update.running'));
+  const r = spawnSync('npm', ['install', '-g', `${PKG_NAME}@latest`], { stdio: 'inherit' });
+  if (r.status === 0) {
+    runUpdateCheck(HOME);
+    console.log(t('update.done'));
+    console.log(t('update.restartHint'));
+  } else {
+    console.log(t('update.failed', { pkg: PKG_NAME }));
+    process.exitCode = 1;
+  }
+}
+
+// Best-effort upgrade notice from the cached "latest version" (never blocks; refreshes in the background).
+function maybeNotifyUpdate() {
+  notifyUpdate(HOME, { version: requireOpt('../package.json').version, selfPath: SELF });
 }
 
 async function start() {
@@ -415,6 +439,7 @@ async function printAccess(st) {
   console.log('');
   console.log(t('access.hint'));
   console.log('');
+  maybeNotifyUpdate();
 }
 
 // Best-effort QR (optional dependency). We borrow qrcode-terminal's QR *model* (vendored, dependency-free)

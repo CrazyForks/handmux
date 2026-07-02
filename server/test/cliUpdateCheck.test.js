@@ -1,0 +1,121 @@
+import { describe, it, expect, vi } from 'vitest';
+import fs from 'node:fs';
+import {
+  compareVersions, isNewer, shouldRefresh, fetchLatestVersion,
+  readCache, writeCache, updateCachePath, runUpdateCheck, notifyUpdate,
+  CHECK_INTERVAL_MS,
+} from '../src/cli/updateCheck.js';
+import { tmpHome } from './tmphome.js';
+
+const okRun = (out) => () => ({ status: 0, stdout: out });
+
+describe('compareVersions / isNewer', () => {
+  it('orders by major.minor.patch', () => {
+    expect(compareVersions('1.2.3', '1.2.3')).toBe(0);
+    expect(compareVersions('1.2.4', '1.2.3')).toBe(1);
+    expect(compareVersions('1.3.0', '1.2.9')).toBe(1);
+    expect(compareVersions('2.0.0', '1.9.9')).toBe(1);
+    expect(compareVersions('1.2.3', '1.2.4')).toBe(-1);
+  });
+  it('ignores prerelease/build tails and a leading v', () => {
+    expect(compareVersions('v1.2.3', '1.2.3')).toBe(0);
+    expect(compareVersions('1.2.3-rc.1', '1.2.3')).toBe(0);
+  });
+  it('unparseable inputs compare equal (no false upgrade)', () => {
+    expect(compareVersions('latest', '1.2.3')).toBe(0);
+    expect(isNewer('garbage', '1.2.3')).toBe(false);
+  });
+  it('isNewer is strict greater-than', () => {
+    expect(isNewer('1.2.4', '1.2.3')).toBe(true);
+    expect(isNewer('1.2.3', '1.2.3')).toBe(false);
+    expect(isNewer('1.2.2', '1.2.3')).toBe(false);
+  });
+});
+
+describe('shouldRefresh', () => {
+  it('refreshes when there is no cache or no timestamp', () => {
+    expect(shouldRefresh(null)).toBe(true);
+    expect(shouldRefresh({ latest: '1.0.0' })).toBe(true);
+  });
+  it('respects the interval', () => {
+    const now = 1_000_000_000;
+    expect(shouldRefresh({ checkedAt: now, latest: '1.0.0' }, now)).toBe(false);
+    expect(shouldRefresh({ checkedAt: now - CHECK_INTERVAL_MS - 1, latest: '1.0.0' }, now)).toBe(true);
+  });
+});
+
+describe('fetchLatestVersion', () => {
+  it('returns a trimmed version on success', () => {
+    expect(fetchLatestVersion({ run: okRun('1.4.2\n') })).toBe('1.4.2');
+  });
+  it('returns null on non-zero exit, empty output, garbage, or throw', () => {
+    expect(fetchLatestVersion({ run: () => ({ status: 1, stdout: '' }) })).toBeNull();
+    expect(fetchLatestVersion({ run: () => ({ status: 0, stdout: '' }) })).toBeNull();
+    expect(fetchLatestVersion({ run: () => ({ status: 0, stdout: 'not-a-version' }) })).toBeNull();
+    expect(fetchLatestVersion({ run: () => { throw new Error('ENOENT'); } })).toBeNull();
+  });
+  it('passes a timeout to the runner', () => {
+    const run = vi.fn(() => ({ status: 0, stdout: '1.0.0' }));
+    fetchLatestVersion({ run, timeoutMs: 1234 });
+    expect(run).toHaveBeenCalledWith('npm', ['view', 'handmux', 'version'], expect.objectContaining({ timeout: 1234 }));
+  });
+});
+
+describe('cache round-trip', () => {
+  it('reads back what it writes; missing/garbage → null', () => {
+    const home = tmpHome('upd-');
+    expect(readCache(home)).toBeNull();
+    writeCache(home, { checkedAt: 5, latest: '9.9.9' });
+    expect(readCache(home)).toEqual({ checkedAt: 5, latest: '9.9.9' });
+    fs.writeFileSync(updateCachePath(home), 'not json');
+    expect(readCache(home)).toBeNull();
+  });
+});
+
+describe('runUpdateCheck', () => {
+  it('stamps the fetched latest', () => {
+    const home = tmpHome('upd-');
+    runUpdateCheck(home, { now: 42, run: okRun('2.0.0') });
+    expect(readCache(home)).toEqual({ checkedAt: 42, latest: '2.0.0' });
+  });
+  it('keeps the previously-known latest when the fetch fails', () => {
+    const home = tmpHome('upd-');
+    writeCache(home, { checkedAt: 1, latest: '1.5.0' });
+    runUpdateCheck(home, { now: 99, run: () => ({ status: 1, stdout: '' }) });
+    expect(readCache(home)).toEqual({ checkedAt: 99, latest: '1.5.0' });
+  });
+});
+
+describe('notifyUpdate', () => {
+  it('prints an upgrade notice when the cache is newer than the running version', () => {
+    const home = tmpHome('upd-');
+    writeCache(home, { checkedAt: Date.now(), latest: '3.0.0' });
+    const log = vi.fn();
+    const spawnFn = vi.fn(() => ({ unref() {} }));
+    const shown = notifyUpdate(home, { version: '2.9.0', selfPath: '/x/handmux.js', now: Date.now(), log, spawnFn });
+    expect(shown).toBe(true);
+    expect(log.mock.calls.flat().join('\n')).toContain('3.0.0');
+    expect(spawnFn).not.toHaveBeenCalled(); // fresh cache → no background refresh
+  });
+
+  it('prints nothing when up to date, and refreshes in the background when stale', () => {
+    const home = tmpHome('upd-');
+    writeCache(home, { checkedAt: 0, latest: '1.0.0' }); // stale
+    const log = vi.fn();
+    const spawnFn = vi.fn(() => ({ unref() {} }));
+    const shown = notifyUpdate(home, { version: '1.0.0', selfPath: '/x/handmux.js', now: Date.now(), log, spawnFn });
+    expect(shown).toBe(false);
+    expect(log).not.toHaveBeenCalled();
+    expect(spawnFn).toHaveBeenCalledTimes(1);
+    const [, args, opts] = spawnFn.mock.calls[0];
+    expect(args).toEqual(['/x/handmux.js', '__update-check']);
+    expect(opts).toMatchObject({ detached: true });
+  });
+
+  it('does not spawn a refresh without a selfPath', () => {
+    const home = tmpHome('upd-');
+    const spawnFn = vi.fn(() => ({ unref() {} }));
+    notifyUpdate(home, { version: '1.0.0', now: Date.now(), log: () => {}, spawnFn });
+    expect(spawnFn).not.toHaveBeenCalled();
+  });
+});

@@ -43,6 +43,14 @@ export default {
   // logs
   'logs.none': '(还没有日志 —— 先运行 handmux start)',
 
+  // update
+  'update.available': '  ⬆  handmux {latest} 可升级(当前 {current})',
+  'update.how': '     升级:  handmux update  (或 npm i -g handmux@latest)',
+  'update.running': '正在升级 handmux(npm i -g handmux@latest)…',
+  'update.done': '✓ handmux 已更新。',
+  'update.restartHint': '  运行 `handmux restart` 以启用新版本。',
+  'update.failed': '✗ 升级失败。请手动运行:npm i -g {pkg}@latest(可能需要 sudo)。',
+
   // 访问信息块(printAccess)
   'access.noState': '  (无状态)',
   'access.error': '  ✗ {msg}',
@@ -140,6 +148,7 @@ export default {
   handmux setup            配置隧道 / 名称 / 通知(写入配置;重跑即可修改)
   handmux stop | restart | status
   handmux logs [--follow] [--lines N]
+  handmux update           升级到最新发布版本(npm i -g handmux@latest)
 
 模型:'start' 运行 · 'setup' 配置(写入 ~/.handmux/config.json)· 重跑 setup 即可修改。
 flag 仅本次覆盖某一项、绝不持久化(优先级 flag > file > default)。

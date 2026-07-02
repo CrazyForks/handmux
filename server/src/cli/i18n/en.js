@@ -44,6 +44,14 @@ export default {
   // logs
   'logs.none': '(no log yet — start handmux first)',
 
+  // update
+  'update.available': '  ⬆  handmux {latest} is available (you have {current})',
+  'update.how': '     upgrade:  handmux update   (or npm i -g handmux@latest)',
+  'update.running': 'Upgrading handmux (npm i -g handmux@latest)…',
+  'update.done': '✓ handmux updated.',
+  'update.restartHint': '  run `handmux restart` to run the new version.',
+  'update.failed': '✗ Upgrade failed. Try manually: npm i -g {pkg}@latest (may need sudo).',
+
   // access block (printAccess)
   'access.noState': '  (no state)',
   'access.error': '  ✗ {msg}',
@@ -141,6 +149,7 @@ export default {
   handmux setup            configure tunnel / name / notifications (writes config; re-run to change)
   handmux stop | restart | status
   handmux logs [--follow] [--lines N]
+  handmux update           upgrade to the latest published version (npm i -g handmux@latest)
 
 The model: 'start' runs · 'setup' configures (writes ~/.handmux/config.json) · re-run setup to change.
 A flag overrides one value for one run and never persists (flag > file > default).
