@@ -45,7 +45,7 @@ import DirPicker from './components/DirPicker.jsx';
 import DocLinkPopover from './components/DocLinkPopover.jsx';
 import IdeaPanel from './components/IdeaPanel.jsx';
 import Changelog from './components/Changelog.jsx';
-import { FolderIcon, GearIcon, BulbIcon, MonitorIcon, GitIcon, AgentMark } from './components/icons.jsx';
+import { FolderIcon, GearIcon, BulbIcon, MonitorIcon, GitIcon } from './components/icons.jsx';
 import { useKeyboardInset } from './hooks/useKeyboardInset.js';
 import { useLongPress } from './hooks/useLongPress.js';
 import { useBackButton } from './hooks/useBackButton.js';
@@ -765,6 +765,10 @@ export default function App() {
 
   const inboxList = inboxRows(states, seen, readTs == null ? Infinity : readTs);
   const inboxTop = topView(inboxList);
+  // windowId → agent id, for the per-window agent logo. Only meaningful for single-pane windows (WindowBar
+  // gates on that); a state entry exists only for a pane actually running an agent, so this is its agent.
+  const windowAgents = {};
+  for (const st of Object.values(states)) if (st.window && st.agent) windowAgents[st.window] = st.agent;
   const changelogUnread = !!LATEST_RELEASE && clSeen !== LATEST_RELEASE;
   const openChangelog = () => {
     setSettingsOpen(false);
@@ -780,10 +784,7 @@ export default function App() {
     <div className="app" style={inset ? { transform: `translateY(-${inset}px)` } : undefined}>
       <header className="topbar">
         <button className="hamburger" onClick={() => setDrawerOpen(true)}>☰</button>
-        <span className="session-name" {...sessionNameLongPress}>
-          {states[current?.paneId]?.agent && <AgentMark agent={states[current.paneId].agent} />}
-          {current?.session?.name ?? '—'}
-        </span>
+        <span className="session-name" {...sessionNameLongPress}>{current?.session?.name ?? '—'}</span>
         {/* Leftmost of the right-hand icon group; steady green signals a live preview. */}
         {activePreview && (
           <button className="topbar-icon preview-live" onClick={() => setPreviewSheetOpen(true)}
@@ -970,6 +971,7 @@ export default function App() {
         <>
           <WindowBar
             windows={current.windows}
+            windowAgents={windowAgents}
             currentWindowId={current.window.id}
             panes={current.panes}
             currentPaneId={current.paneId}

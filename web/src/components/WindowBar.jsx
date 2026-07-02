@@ -7,16 +7,20 @@
 // the window is already active). Selecting a window picks its remembered pane.
 import { useRef, useLayoutEffect, useState, useEffect } from 'react';
 import { useLongPress } from '../hooks/useLongPress.js';
+import { AgentMark } from './icons.jsx';
 import { t } from '../i18n';
 
 const CIRCLED = '①②③④⑤⑥⑦⑧⑨';
 const seq = (i) => (i < CIRCLED.length ? CIRCLED[i] : String(i + 1));
 const paneLabel = (p, i) => `${seq(i)} ${p.command || p.id}`;
 
-function WindowTab({ window: win, active, onSelect, onManage }) {
+// `agent` is the agent id running in this window — set ONLY for single-pane windows (a multi-pane window is
+// ambiguous, so WindowBar passes null there). When set, its logo prefixes the tab name.
+function WindowTab({ window: win, active, agent, onSelect, onManage }) {
   const lp = useLongPress(() => onManage(win), { onClick: () => onSelect(win) });
   return (
     <button data-win={win.id} className={`win-tab ${active ? 'active' : ''}`} {...lp}>
+      {agent && <AgentMark agent={agent} />}
       {win.name || win.id}
       {win.panes > 1 && <span className="win-panes">{win.panes}</span>}
     </button>
@@ -95,7 +99,7 @@ function PaneTab({ window: win, panes, currentPaneId, onManage, onSelectPane }) 
 }
 
 export default function WindowBar({
-  windows, currentWindowId, panes, currentPaneId, onSelectWindow, onSelectPane, onNewWindow, onManageWindow,
+  windows, windowAgents = {}, currentWindowId, panes, currentPaneId, onSelectWindow, onSelectPane, onNewWindow, onManageWindow,
   trackWindowId,
 }) {
   const scrollRef = useRef(null);
@@ -130,6 +134,7 @@ export default function WindowBar({
               key={w.id}
               window={w}
               active={active}
+              agent={w.panes > 1 ? null : windowAgents[w.id]}
               onSelect={onSelectWindow}
               onManage={onManageWindow}
             />

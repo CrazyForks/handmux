@@ -305,32 +305,13 @@ export function RenewIcon() {
   );
 }
 
-// Agent marks — small ORIGINAL, brand-adjacent emblems (not reproductions of the Anthropic / OpenAI
-// trademarks) that let a glance tell Claude from Codex in the inbox and topbar. Filled + colour (unlike the
-// monochrome line icons above), sized via CSS (.agent-mark).
-const markBase = { viewBox: '0 0 24 24', 'aria-hidden': true };
+// Agent logo — the OFFICIAL brand mark, loaded from a swappable asset file so we never ship (or hand-draw)
+// a trademarked logo in code: drop the real SVG at web/public/icons/agent-<id>.svg and it renders here and
+// everywhere AgentMark is used (inbox rows + single-pane window tabs). Sized via CSS (.agent-mark).
+const AGENT_LOGO = { claude: '/icons/agent-claude.svg', codex: '/icons/agent-codex.svg' };
 
-// Claude → a four-point terracotta spark (a nod to Claude's warm sunburst feel).
-export function ClaudeMark() {
-  return (
-    <svg {...markBase} className="agent-mark claude">
-      <path d="M12 2c.8 4.6 2.6 6.4 7.2 7.2C14.6 10 12.8 11.8 12 16.4 11.2 11.8 9.4 10 4.8 9.2 9.4 8.4 11.2 6.6 12 2Z" fill="#c15f3c" />
-      <path d="M18.5 14c.4 2.3 1.3 3.2 3.5 3.6-2.2.4-3.1 1.3-3.5 3.4-.4-2.1-1.3-3-3.5-3.4 2.2-.4 3.1-1.3 3.5-3.6Z" fill="#d98a6a" />
-    </svg>
-  );
-}
-
-// Codex → a hexagonal knot ring (evokes OpenAI's hex-knot family without copying the mark).
-export function CodexMark() {
-  return (
-    <svg {...markBase} className="agent-mark codex">
-      <path d="M12 2.6 20.1 7v10L12 21.4 3.9 17V7L12 2.6Z" fill="none" stroke="#10715c" strokeWidth="2" strokeLinejoin="round" />
-      <circle cx="12" cy="12" r="3.1" fill="#10a37f" />
-    </svg>
-  );
-}
-
-// Pick the mark for an agent id (defaults to Claude for legacy/untagged entries).
+// Pick the logo for an agent id (defaults to Claude for legacy/untagged entries).
 export function AgentMark({ agent }) {
-  return agent === 'codex' ? <CodexMark /> : <ClaudeMark />;
+  const id = AGENT_LOGO[agent] ? agent : 'claude';
+  return <img className="agent-mark" src={AGENT_LOGO[id]} alt={id} draggable="false" />;
 }

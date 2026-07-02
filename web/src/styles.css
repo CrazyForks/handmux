@@ -937,9 +937,9 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 }
 .inbox-row:active { background: #2f3034; }
 .inbox-row-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
-/* Agent brand mark (Claude / Codex) — flush in the inbox row and beside the topbar session name. */
-.agent-mark { width: 15px; height: 15px; flex: none; display: inline-block; }
-.session-name .agent-mark { vertical-align: -3px; margin-right: 5px; }
+/* Agent brand logo (Claude / Codex) — flush in the inbox row and on a single-pane window tab. */
+.agent-mark { width: 15px; height: 15px; flex: none; display: inline-block; object-fit: contain; }
+.win-tab .agent-mark { vertical-align: -2px; margin-right: 4px; }
 .inbox-chip { font-size: 11px; padding: 1px 6px; border-radius: 4px; flex: none; }
 .inbox-chip.needs { background: #e0a020; color: #111; }
 .inbox-chip.done { background: #2e7d46; color: #fff; }
