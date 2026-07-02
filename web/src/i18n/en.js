@@ -86,7 +86,7 @@ export default {
   'inbox.enabling': 'Enabling…',
   'inbox.enableFailed': 'Could not enable — check the server logs.',
   'inbox.orphans.title': '⚠ {n} Claude not in tmux',
-  'inbox.orphans.hint': "Running outside tmux — can't be steered from here. Take over to continue it inside tmux.",
+  'inbox.orphans.hint': 'Take over to control them remotely',
   'inbox.orphans.busy': 'busy',
   'inbox.orphans.idle': 'idle',
   'inbox.orphans.takeover': 'Take over',

@@ -85,7 +85,7 @@ export default {
   'inbox.enabling': '开启中…',
   'inbox.enableFailed': '开启失败 —— 看看服务端日志。',
   'inbox.orphans.title': '⚠ {n} 个 Claude 不在 tmux',
-  'inbox.orphans.hint': '在 tmux 外运行,这里控制不了。接管即可在 tmux 里续接。',
+  'inbox.orphans.hint': '在这里接管即可远程操控',
   'inbox.orphans.busy': '运行中',
   'inbox.orphans.idle': '空闲',
   'inbox.orphans.takeover': '接管',

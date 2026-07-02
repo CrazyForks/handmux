@@ -114,7 +114,8 @@ describe('Inbox v2', () => {
       expect(btns[0].disabled).toBe(false);         // idle + has session
       expect(btns[1].disabled).toBe(true);          // busy
       expect(btns[2].disabled).toBe(true);          // no resumable history
-      expect(btns[2].textContent).toBe('无可续接的历史');
+      expect(btns[2].getAttribute('title')).toBe('无可续接的历史'); // reason moved to tooltip (label stays 接管)
+      expect(btns.every((b) => b.textContent === '接管')).toBe(true);
       await act(async () => { btns[0].dispatchEvent(new MouseEvent('click', { bubbles: true })); });
       expect(onTakeoverRequest).toHaveBeenCalledWith(orphans[0]);
     });

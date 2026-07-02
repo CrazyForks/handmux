@@ -104,15 +104,16 @@ export default function Inbox({ rows, top, open, onToggle, onClose, onSelectRow,
                             </span>
                             <span className="inbox-loc">{o.cwdLabel || o.cwd}</span>
                             <span className="inbox-time">{relTime(o.startedAt || o.lastActivity, now)}</span>
+                            <button
+                              className="inbox-orphan-btn"
+                              disabled={disabled}
+                              title={noSession ? t('inbox.orphans.noSession') : undefined}
+                              onClick={() => onTakeoverRequest?.(o)}
+                            >
+                              {t('inbox.orphans.takeover')}
+                            </button>
                           </div>
                           {o.snippet && <div className="inbox-msg">{o.snippet}</div>}
-                          <button
-                            className="inbox-orphan-btn"
-                            disabled={disabled}
-                            onClick={() => onTakeoverRequest?.(o)}
-                          >
-                            {noSession ? t('inbox.orphans.noSession') : t('inbox.orphans.takeover')}
-                          </button>
                         </div>
                       );
                     })}
