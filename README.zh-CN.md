@@ -65,6 +65,22 @@ handmux setup                       # 或一次性配好隧道 + 名称 + 通知
 打印出来的明文链接不带 token,可安全截图/分享。只有**二维码**带 token;`🔑 token` 那行就是你的密码——
 开明文链接时把它粘进去就能登录。
 
+### Windows 用户?装进 WSL2
+
+handmux 靠 **tmux** 驱动,而 tmux 只有 Unix 版、没有原生 Windows 版。装进 **WSL2**(真正的 Linux 内核
++ 真 tmux),上面的一切原样适用:
+
+```powershell
+wsl --install     # 一次性,在 PowerShell(管理员)里:装好 WSL2 + Ubuntu,然后重启
+```
+
+然后打开 Ubuntu 终端,按上面的步骤来(`apt install tmux`、装 Node、`npm i -g handmux`)。两点 WSL 专属提醒:
+
+- **务必走隧道。** WSL2 是带独立 IP 的 NAT 虚拟机,同 wifi 的局域网地址手机连不到。直接用
+  `handmux start --tunnel cloudflare`,公网链接不受影响。
+- **自启需要 systemd。** `handmux service` 依赖 systemd;在 `/etc/wsl.conf` 里加 `[boot]` /
+  `systemd=true` 再 `wsl --shutdown` 启用一次即可。不启用的话,开个终端跑 `handmux start` 并保持窗口即可。
+
 ## 功能
 
 不止是个远程 shell——是给终端和你的编码 agent 配的一整个**手机驾驶舱**。

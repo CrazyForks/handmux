@@ -72,6 +72,24 @@ handmux setup                       # or configure tunnel + name + notifications
 The printed links are token-free — safe to screenshot or share. Only the **QR** carries the token, and
 the `🔑 token` line is your password: paste it to sign in when you open a plain link instead of scanning.
 
+### On Windows? Use WSL2
+
+handmux drives **tmux**, which is Unix-only — there's no native Windows build. Run it inside **WSL2**
+(a real Linux kernel with real tmux) and everything above works unchanged:
+
+```powershell
+wsl --install     # one-time, in PowerShell (admin): installs WSL2 + Ubuntu, then reboot
+```
+
+Then open the Ubuntu terminal and follow the steps above (`apt install tmux`, install Node,
+`npm i -g handmux`). Two WSL-specific notes:
+
+- **Use a tunnel.** WSL2 is a NAT'd VM with its own IP, so the same-wifi LAN URL won't reach your
+  phone. Start with `handmux start --tunnel cloudflare` — the public link works regardless.
+- **Autostart needs systemd.** `handmux service` uses systemd; enable it once by adding
+  `[boot]` / `systemd=true` to `/etc/wsl.conf`, then `wsl --shutdown`. Without it, just run
+  `handmux start` in a terminal you keep open.
+
 ## Features
 
 Not just a remote shell — a full **mobile cockpit** for your terminal and your coding agents.

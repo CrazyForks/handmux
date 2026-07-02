@@ -5,6 +5,10 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Added
+- **Windows / WSL2 install docs** — README (en + zh) and the landing-page docs now have a
+  Windows section: handmux is Unix-only (tmux), so run it inside WSL2, with the two WSL-specific
+  gotchas called out — use `--tunnel cloudflare` (WSL2's NAT'd IP breaks the LAN URL) and enable
+  systemd in `/etc/wsl.conf` for `handmux service` autostart.
 - **Codex CLI support (second agent)** — handmux is no longer Claude-only. A new agent-driver
   registry (`server/src/agents/`) lets the inbox, push, and orphan/takeover engine drive any
   coding agent through a descriptor; Claude Code and OpenAI's Codex CLI are the first two.
