@@ -16,7 +16,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const [, , file, pane, src, ts, host = ''] = process.argv;
+const [, , file, pane, src, ts, host = '', agent = ''] = process.argv;
 if (!file || !pane || !src) process.exit(0);
 
 let payload = {};
@@ -54,7 +54,9 @@ function update() {
   } else if (src === 'end') {
     delete obj[pane];                                        // SessionEnd (clean exit) → drop the pane
   } else {
-    obj[pane] = { ts: Number(ts) || 0, src, host, payload };
+    // agent tag lets the server dispatch classify + liveness per agent (Codex passes 'codex'); omitted for
+    // Claude so legacy entries stay byte-identical and default to claude server-side.
+    obj[pane] = { ts: Number(ts) || 0, src, host, payload, ...(agent ? { agent } : {}) };
   }
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(obj));

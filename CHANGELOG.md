@@ -8,11 +8,14 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 - **Codex CLI support (second agent)** — handmux is no longer Claude-only. A new agent-driver
   registry (`server/src/agents/`) lets the inbox, push, and orphan/takeover engine drive any
   coding agent through a descriptor; Claude Code and OpenAI's Codex CLI are the first two.
-  `handmux hooks install` now wires both — Claude via `~/.claude/settings.json`, Codex via a
-  `notify` program in `~/.codex/config.toml` (never clobbering a user's own notify). Codex's
-  only event is turn-complete, so the phone gets a "该你了 / done" push per turn; orphan Codex
-  sessions running outside tmux can be taken over with `codex resume`. New `codex` startup-command
-  preset; the inbox/enable copy now says "AI session" rather than "Claude".
+  `handmux hooks install` now wires both. Codex 0.142+ ships a Claude-parity hook system (same
+  events, same stdin payload fields), so handmux registers Codex's lifecycle hooks in
+  `~/.codex/config.toml` (a marked region, appended alongside any hooks you already have) and
+  reuses the exact Claude hook scripts + classifier — giving the phone full working / 需要你 /
+  done states for Codex, not just turn-done. Orphan Codex sessions running outside tmux can be
+  taken over with `codex resume`. New `codex` startup-command preset; the inbox/enable copy now
+  says "AI session" rather than "Claude". Verified against Codex 0.142.5 (config parse, rollout
+  session/cwd resolution, `codex resume` syntax, notify field names).
 - **CLI now speaks Chinese** — the `handmux` command-line output (help, `start`/`status`/
   `setup` prompts, errors, the access block) is fully localized. Language resolves from
   `--lang en|zh`, a `"lang"` field in the config, or the shell locale (`LANG`/`LC_*` = `zh…`),

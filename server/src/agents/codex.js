@@ -1,22 +1,14 @@
 // The OpenAI Codex CLI agent driver — the second agent, added to prove the driver contract generalizes (see
-// claude.js for the shape). Codex exposes far less than Claude Code's hook system: its ONLY extension point
-// is the `notify` program in ~/.codex/config.toml, which fires on exactly one event — `agent-turn-complete`
-// — with the payload passed as a single JSON argv. So the classify vocabulary here has just one verb:
-// turn-complete → done ("该你了"). Richer working/permission states would require tailing the live rollout
-// jsonl (a later phase); the turn-done ping is the 90% signal for the phone and needs only the notify hook.
+// claude.js for the shape). Codex 0.142+ ships a Claude-parity hook system (verified against the real CLI):
+// the SAME lifecycle events (UserPromptSubmit / PermissionRequest / Stop …) delivering the SAME stdin JSON
+// fields (prompt / tool_input / last_assistant_message / stop_hook_active …). So handmux wires Codex through
+// its config.toml hooks (see cli/codexHooks.js) reusing the shared Claude hook scripts, and Codex CLASSIFIES
+// with the very same function as Claude — full working / 需要你 / done parity, not just turn-done.
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fsp } from 'node:fs';
 import { readHead, readTail, firstCwd, isSessionUuid } from './scanUtils.js';
-
-// Map a notify event to an inbox "kind". Codex's notify JSON uses dashed keys (type: 'agent-turn-complete',
-// 'last-assistant-message'); our notify adapter records src='turn-complete' and passes the payload through.
-//   turn-complete → done   (the agent finished its turn; carries the last assistant message)
-//   anything else → null
-export function classifyCodex(src, body = {}) {
-  if (src === 'turn-complete') return { kind: 'done', msg: body['last-assistant-message'] || body.last_assistant_message || '' };
-  return null;
-}
+import { classifyClaude } from './claude.js';
 
 export const sessionsDir = (home = os.homedir()) => path.join(home, '.codex', 'sessions');
 
@@ -100,7 +92,8 @@ export const codex = {
   procName: 'codex',
   procMatch: /^(\S*\/)?codex(\s|$)/,
   takeoverPrefix: 'cx', // tmux session name prefix for a takeover (cx-<label>-<n>)
-  classify: classifyCodex,
+  classify: classifyClaude, // Codex hook payloads match Claude's field-for-field — same classifier
+
   sessions: {
     isId: isSessionUuid,
     dirOptKey: 'sessionsDir', // scanOrphans option that overrides `dir`

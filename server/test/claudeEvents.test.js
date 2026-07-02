@@ -292,29 +292,31 @@ describe('createClaudeEvents push (需要你 / 已完成 transitions, mirroring 
   });
 });
 
-describe('createClaudeEvents with a Codex-tagged pane (agent dispatch)', () => {
-  const crec = (msg, ts) => ({ ts, src: 'turn-complete', host: 'h', payload: { type: 'agent-turn-complete', 'last-assistant-message': msg }, agent: 'codex' });
+describe('createClaudeEvents with a Codex-tagged pane (agent dispatch, Claude-parity hooks)', () => {
+  const cdone = (msg, ts) => ({ ts, src: 'stop', host: 'h', payload: { last_assistant_message: msg }, agent: 'codex' });
+  const cwork = (prompt, ts) => ({ ts, src: 'prompt', host: 'h', payload: { prompt }, agent: 'codex' });
   const liveCodex = (ids) => ids.map((id) => ({ id, cmd: 'codex', session: 'proj', window: '@5', windowName: 'dev' }));
 
-  it("classifies a codex turn-complete → done via the codex driver, and prunes when the pane isn't running codex", async () => {
-    const file = stateFile({ '%1': crec('built it', 1000) });
-    const okPane = { listLivePanes: async () => liveCodex(['%1']) };
-    expect((await createClaudeEvents({ commands: okPane, push: { sendToSession: async () => ({}) }, file }).getStates())['%1'])
+  it("classifies codex hook verbs (prompt→working, stop→done) and prunes when the pane isn't running codex", async () => {
+    expect((await createClaudeEvents({ commands: { listLivePanes: async () => liveCodex(['%1']) }, push: { sendToSession: async () => ({}) }, file: stateFile({ '%1': cwork('do it', Date.now()) }) }).getStates())['%1'])
+      .toMatchObject({ kind: 'working', msg: 'do it', session: 'proj' });
+    const file = stateFile({ '%1': cdone('built it', 1000) });
+    expect((await createClaudeEvents({ commands: { listLivePanes: async () => liveCodex(['%1']) }, push: { sendToSession: async () => ({}) }, file }).getStates())['%1'])
       .toMatchObject({ kind: 'done', msg: 'built it', session: 'proj' });
     // pane flipped back to the shell → codex no longer foreground → pruned (procName mismatch, not 'claude')
     const shellPane = { listLivePanes: async () => [{ id: '%1', cmd: 'zsh', session: 'proj', window: '@5', windowName: 'dev' }] };
     expect(await createClaudeEvents({ commands: shellPane, push: { sendToSession: async () => ({}) }, file }).getStates()).toEqual({});
   });
 
-  it('re-pushes 已完成 on each new codex turn (no working event in between to re-arm)', async () => {
+  it('re-pushes 已完成 on each new codex turn (new ts re-arms the done dedup)', async () => {
     const pushed = [];
     const push = { sendToSession: async (session, payload) => { pushed.push(payload.body); return { sent: 1 }; } };
-    const file = stateFile({ '%1': crec('turn one', 1000) });
+    const file = stateFile({ '%1': cdone('turn one', 1000) });
     const commands = { listLivePanes: async () => liveCodex(['%1']) };
     const ev = createClaudeEvents({ commands, push, file });
     await ev.getStates();                                                       // done#1 → push
     await ev.getStates();                                                       // same ts → deduped
-    fs.writeFileSync(file, JSON.stringify({ '%1': crec('turn two', 2000) }));   // new turn-complete, new ts
+    fs.writeFileSync(file, JSON.stringify({ '%1': cdone('turn two', 2000) }));  // new Stop, new ts
     await ev.getStates();                                                       // done#2 → push again
     expect(pushed).toEqual(['turn one', 'turn two']);
   });

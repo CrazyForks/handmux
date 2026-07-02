@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { AGENTS, getAgent, agentForProc } from '../src/agents/index.js';
-import { classifyCodex, resolveCodexSession, rolloutSessionId, codexUserSnippet } from '../src/agents/codex.js';
+import { resolveCodexSession, rolloutSessionId, codexUserSnippet } from '../src/agents/codex.js';
 import { parseAgentProcs } from '../src/agents/scanUtils.js';
 import { scanOrphans, takeoverOrphan } from '../src/orphans.js';
 
@@ -31,15 +31,15 @@ describe('registry', () => {
   });
 });
 
-describe('codex classify', () => {
-  it('maps turn-complete → done with the last assistant message (dashed key)', () => {
-    expect(classifyCodex('turn-complete', { type: 'agent-turn-complete', 'last-assistant-message': 'done building' }))
-      .toEqual({ kind: 'done', msg: 'done building' });
-    expect(classifyCodex('turn-complete', {})).toEqual({ kind: 'done', msg: '' });
+describe('codex classify (Claude-parity hooks — same classifier)', () => {
+  const codex = getAgent('codex');
+  it('classifies the Claude-shaped hook verbs Codex now emits', () => {
+    expect(codex.classify('prompt', { prompt: 'build it' })).toEqual({ kind: 'working', msg: 'build it' });
+    expect(codex.classify('stop', { last_assistant_message: 'done' })).toEqual({ kind: 'done', msg: 'done' });
+    expect(codex.classify('permreq', { tool_name: 'Bash' })).toEqual({ kind: 'permission', msg: '需要你授权：Bash' });
   });
-  it('ignores anything else (Codex has no working/permission hook)', () => {
-    expect(classifyCodex('prompt', {})).toBeNull();
-    expect(classifyCodex('whatever', {})).toBeNull();
+  it('shares the exact classifier with Claude', () => {
+    expect(codex.classify).toBe(getAgent('claude').classify);
   });
 });
 

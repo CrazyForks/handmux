@@ -329,10 +329,7 @@ function installAgentHooks() {
     console.log(t('hooks.installedClaude'));
     installed++;
   }
-  const cx = codexHooksStatus(HOME);
-  if (cx === 'conflict') {
-    console.log(t('hooks.codexConflict', { path: path.join(HOME, '.codex', 'config.toml') }));
-  } else if (cx !== 'no-codex') {
+  if (codexHooksStatus(HOME) !== 'no-codex') {
     installCodexHooks(HOME, { srcDir: HOOKS_SRC, stateFile: claudeStatePath(HOME) });
     console.log(t('hooks.installedCodex'));
     installed++;

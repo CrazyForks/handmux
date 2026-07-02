@@ -30,10 +30,10 @@ const HOOKS_SRC = resolvePath(here, '../hooks'); // server/hooks (bundled script
 
 // Summarize inbox-hook state across every coding agent for the phone: 'installed' if any agent is wired,
 // 'absent' if an agent is present but none wired (→ offer the one-tap enable), 'no-claude' if there's no
-// agent at all (→ hide the prompt). Codex 'conflict' (user's own notify) counts as present-but-not-wired.
+// agent at all (→ hide the prompt).
 function combinedHooksStatus(home) {
   const c = hooksStatus(home);      // 'no-claude' | 'installed' | 'absent'
-  const x = codexHooksStatus(home); // 'no-codex' | 'installed' | 'absent' | 'conflict'
+  const x = codexHooksStatus(home); // 'no-codex' | 'installed' | 'absent'
   if (c === 'installed' || x === 'installed') return 'installed';
   if (c !== 'no-claude' || x !== 'no-codex') return 'absent';
   return 'no-claude';
@@ -463,8 +463,7 @@ export function createApiRouter({
     try {
       let installed = 0;
       if (hooksStatus(home) !== 'no-claude') { installHooks(home, { srcDir: HOOKS_SRC, stateFile }); installed++; }
-      const cx = codexHooksStatus(home);
-      if (cx !== 'no-codex' && cx !== 'conflict') { installCodexHooks(home, { srcDir: HOOKS_SRC, stateFile }); installed++; }
+      if (codexHooksStatus(home) !== 'no-codex') { installCodexHooks(home, { srcDir: HOOKS_SRC, stateFile }); installed++; }
       res.json({ ok: installed > 0, status: combinedHooksStatus(home) });
     } catch (e) { res.status(500).json({ ok: false, error: String(e) }); }
   });

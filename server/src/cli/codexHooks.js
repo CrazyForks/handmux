@@ -1,24 +1,34 @@
-// Install/uninstall the handmux Codex `notify` hook — the Codex analogue of claudeHooks.js. Codex's ONLY
-// extension point is a single `notify` program in ~/.codex/config.toml (fired on agent-turn-complete), so
-// this is much smaller than the Claude side: no per-event matchers, no settings-array merge.
+// Install/uninstall the handmux Codex lifecycle hooks — the Codex analogue of claudeHooks.js. Codex 0.142+
+// ships a Claude-parity hook system: the SAME event names, the SAME stdin JSON payload fields (session_id,
+// cwd, hook_event_name, prompt, tool_input, last_assistant_message, stop_hook_active…), and the SAME
+// {matcher, command} registration shape. So Codex reuses handmux's Claude hook scripts verbatim — the only
+// thing that differs is WHERE they're registered (Codex's config.toml) and that we pass agent='codex' so
+// the server tags the state entry (classify + liveness dispatch through the codex driver).
 //
-// The two Codex-specific frictions this handles:
-//  1. TOML, not JSON, and `notify` is a SINGLE root key (must appear before any [table]) — so we edit lines
-//     textually rather than parse/serialize TOML (no dependency), touching only the one `notify` line.
-//  2. Codex allows exactly one `notify`. If the user already has their own (e.g. a chime), we must NOT
-//     clobber it: we detect a foreign notify and report 'conflict' instead of overwriting.
+// Wiring: we append a MARKED region of inline `[[hooks.EVENT]]` tables to ~/.codex/config.toml. That inline
+// form is the mechanism verified to parse (vs. a standalone hooks.json whose auto-discovery is unconfirmed).
+// Multiple `[[hooks.X]]` array-of-tables entries merge, so our blocks coexist with the user's own hooks —
+// no single-slot clobber risk (unlike the old `notify` program), hence no 'conflict' state.
 //
-// Presence signal — the `codex` BINARY on PATH, NOT the existence of ~/.codex. That dir name is not unique to
-// OpenAI's Codex CLI (other tools squat ~/.codex with their own data), so keying on it risks writing our
-// config.toml into an unrelated tool's directory. The executable on PATH is the unambiguous "Codex CLI is
-// installed here" signal. Because that signal (not the dir) gates us, we MAY create ~/.codex when wiring —
-// it's Codex's own config location, which codex would create anyway.
+// Presence is gated on the `codex` BINARY on PATH (see codexOnPath), NOT on ~/.codex existing — that dir
+// name isn't unique to Codex CLI. Because the binary (not the dir) gates us, we MAY create ~/.codex.
 import fs from 'node:fs';
 import path from 'node:path';
 import { homedir } from 'node:os';
 
-const CODEX_MARK = 'handmux-codex-notify'; // our notify script's basename — identifies our line among the user's
-const SCRIPT = 'handmux-codex-notify.cjs';
+// The events we register → the verb passed to handmux-notify.sh (classified by the shared Claude classifier,
+// since Codex's payloads match): UserPromptSubmit→working, Stop→done, PermissionRequest→需要你. PostToolUse
+// is intentionally omitted — unmatched it would spawn the hook on every tool call across every pane.
+const CODEX_HOOK_EVENTS = [
+  { event: 'UserPromptSubmit', src: 'prompt' },
+  { event: 'Stop', src: 'stop' },
+  { event: 'PermissionRequest', src: 'permreq' },
+];
+
+// Shared with Claude — the same scripts drive both (stdin payloads are identical).
+const SCRIPTS = ['handmux-notify.sh', 'handmux-write.cjs'];
+const BEGIN = '# >>> handmux codex-hooks >>>';
+const END = '# <<< handmux codex-hooks <<<';
 
 // True if an executable `codex` is resolvable on PATH. Windows adds the PATHEXT suffixes.
 function codexOnPath(env = process.env) {
@@ -36,57 +46,52 @@ function codexDir(home = homedir()) { return path.join(home, '.codex'); }
 function configPath(home = homedir()) { return path.join(codexDir(home), 'config.toml'); }
 function hooksDir(home = homedir()) { return path.join(codexDir(home), 'hooks'); }
 
-// Index of the root-level `notify = …` line (before the first [table] header), or -1. TOML requires root
-// keys to precede tables, so a `notify` under some [table] is a different key and we leave it alone.
-function rootNotifyIndex(lines) {
-  for (let i = 0; i < lines.length; i++) {
-    if (/^\s*\[/.test(lines[i])) return -1;   // hit a table before any root notify
-    if (/^\s*notify\s*=/.test(lines[i])) return i;
+// Build the marked config.toml region: one `[[hooks.EVENT]]` + `[[hooks.EVENT.hooks]]` per event, each
+// running the shared notify script with the event's verb and agent='codex'. The command path is single-
+// quoted inside a TOML basic string (JSON.stringify) so a $HOME with spaces stays safe.
+export function codexHooksBlock(home = homedir()) {
+  const notify = path.join(hooksDir(home), 'handmux-notify.sh');
+  const lines = [BEGIN, '# handmux inbox hooks for Codex — delete this whole region to disable.'];
+  for (const e of CODEX_HOOK_EVENTS) {
+    const cmd = `'${notify}' ${e.src} codex`;
+    lines.push(`[[hooks.${e.event}]]`, `[[hooks.${e.event}.hooks]]`, 'type = "command"', `command = ${JSON.stringify(cmd)}`, '');
   }
-  return -1;
-}
-
-// Pure: return { text, conflict }. Sets our notify line, idempotently. If a foreign notify already occupies
-// the root slot, return { conflict:true, text:null } and let the caller refuse (don't clobber the user's).
-export function mergeCodexNotify(toml, notifyLine) {
-  const text = toml || '';
-  const lines = text.split('\n');
-  const i = rootNotifyIndex(lines);
-  if (i >= 0) {
-    if (!lines[i].includes(CODEX_MARK)) return { conflict: true, text: null };
-    lines[i] = notifyLine;                    // ours already → refresh the path (idempotent)
-    return { conflict: false, text: lines.join('\n') };
-  }
-  return { conflict: false, text: notifyLine + '\n' + text }; // none → prepend (root key before any table)
-}
-
-// Pure: remove our notify line (only if it's ours), leaving a foreign notify untouched.
-export function stripCodexNotify(toml) {
-  const lines = (toml || '').split('\n');
-  const i = rootNotifyIndex(lines);
-  if (i >= 0 && lines[i].includes(CODEX_MARK)) lines.splice(i, 1);
+  lines.push(END, '');
   return lines.join('\n');
 }
 
-// The notify line we write: [<this node binary>, <abs path to our script>]. Pinning process.execPath means
-// the hook runs under the same Node handmux uses, regardless of what's on Codex's PATH. JSON.stringify emits
-// a valid TOML inline array of basic strings (same escaping), so odd chars in the paths stay safe.
-function notifyLineFor(home) {
-  return `notify = ${JSON.stringify([process.execPath, path.join(hooksDir(home), SCRIPT)])}`;
+// Pure: splice our marked region into config.toml text — replace an existing region in place (idempotent
+// refresh), else append after the user's content. Returns the new text.
+export function mergeCodexHooks(toml, block) {
+  const text = toml || '';
+  const b = text.indexOf(BEGIN);
+  if (b >= 0) {
+    const e = text.indexOf(END, b);
+    if (e >= 0) return text.slice(0, b) + block.replace(/\n$/, '') + text.slice(e + END.length);
+  }
+  const prefix = text && !text.endsWith('\n') ? text + '\n' : text;
+  return `${prefix}${prefix ? '\n' : ''}${block}`;
+}
+
+// Pure: remove our marked region (leaving the user's own hooks/config untouched).
+export function stripCodexHooks(toml) {
+  const text = toml || '';
+  const b = text.indexOf(BEGIN);
+  if (b < 0) return text;
+  const e = text.indexOf(END, b);
+  if (e < 0) return text;
+  return (text.slice(0, b) + text.slice(e + END.length)).replace(/\n{3,}/g, '\n\n');
 }
 
 function readConf(home) {
   try { return fs.readFileSync(configPath(home), 'utf8'); } catch { return ''; }
 }
 
-// 'no-codex' → Codex CLI not on PATH (don't prompt). 'installed' → our notify present. 'conflict' → a
-// foreign notify holds the slot. 'absent' → Codex installed, no notify wired.
+// 'no-codex' → Codex CLI not on PATH (don't prompt). 'installed' → our region present. 'absent' → Codex
+// installed, hooks not wired.
 export function codexHooksStatus(home = homedir()) {
   if (!codexOnPath()) return 'no-codex';
-  const lines = readConf(home).split('\n');
-  const i = rootNotifyIndex(lines);
-  if (i < 0) return 'absent';
-  return lines[i].includes(CODEX_MARK) ? 'installed' : 'conflict';
+  return readConf(home).includes(BEGIN) ? 'installed' : 'absent';
 }
 
 function writeAtomic(file, text) {
@@ -95,27 +100,23 @@ function writeAtomic(file, text) {
   fs.renameSync(tmp, file);
 }
 
-// Install (opt-in): copy the notify script into ~/.codex/hooks/, write the env pointing at the shared state
-// file, and set the `notify` key in config.toml (creating ~/.codex if needed — safe, since codexOnPath()
-// already confirmed Codex is installed). Returns { status }:
-//   'no-codex' (Codex not installed — nothing to do) | 'conflict' (user has their own notify — refuse) | 'installed'.
+// Install (opt-in): copy the shared hook scripts into ~/.codex/hooks/, point their env at the shared state
+// file, and splice our hook region into config.toml (creating ~/.codex if needed — safe, Codex is on PATH).
+// Returns { status }: 'no-codex' (nothing to do) | 'installed'.
 export function installCodexHooks(home = homedir(), { srcDir, stateFile } = {}) {
   if (!codexOnPath()) return { status: 'no-codex' };
-  const merged = mergeCodexNotify(readConf(home), notifyLineFor(home));
-  if (merged.conflict) return { status: 'conflict' };
-
   fs.mkdirSync(hooksDir(home), { recursive: true });
-  fs.copyFileSync(path.join(srcDir, SCRIPT), path.join(hooksDir(home), SCRIPT));
-  fs.chmodSync(path.join(hooksDir(home), SCRIPT), 0o755);
-  fs.writeFileSync(path.join(hooksDir(home), 'handmux-codex-notify.env'), `HANDMUX_STATE=${stateFile}\n`, { mode: 0o600 });
-  writeAtomic(configPath(home), merged.text);
+  for (const f of SCRIPTS) fs.copyFileSync(path.join(srcDir, f), path.join(hooksDir(home), f));
+  fs.chmodSync(path.join(hooksDir(home), 'handmux-notify.sh'), 0o755);
+  fs.writeFileSync(path.join(hooksDir(home), 'handmux-notify.env'), `HANDMUX_STATE=${stateFile}\n`, { mode: 0o600 });
+  writeAtomic(configPath(home), mergeCodexHooks(readConf(home), codexHooksBlock(home)));
   return { status: 'installed' };
 }
 
-// Uninstall: strip our notify line (leaving a foreign one) and remove the copied script/env. Best-effort.
+// Uninstall: strip our config.toml region and remove the copied scripts/env. Best-effort.
 export function uninstallCodexHooks(home = homedir()) {
-  if (fs.existsSync(configPath(home))) writeAtomic(configPath(home), stripCodexNotify(readConf(home)));
-  for (const f of [SCRIPT, 'handmux-codex-notify.env']) {
+  if (fs.existsSync(configPath(home))) writeAtomic(configPath(home), stripCodexHooks(readConf(home)));
+  for (const f of [...SCRIPTS, 'handmux-notify.env']) {
     try { fs.unlinkSync(path.join(hooksDir(home), f)); } catch { /* already gone */ }
   }
   return { status: 'absent' };
