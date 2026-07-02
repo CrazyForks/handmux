@@ -61,7 +61,7 @@ export default {
   'hooks.confirmEnable': 'Enable coding-agent notifications (inbox)?',
   'hooks.installedShort': '✓ Agent hooks installed.',
   'hooks.noClaude': 'Claude Code not detected (~/.claude missing) — nothing to install.',
-  'hooks.noAgents': 'No coding agent detected (~/.claude and ~/.codex both missing) — nothing to install.',
+  'hooks.noAgents': 'No coding agent detected (no ~/.claude, and codex not on PATH) — nothing to install.',
   'hooks.installed': '✓ Claude hooks installed → ~/.claude/settings.json',
   'hooks.installedClaude': '✓ Claude Code hooks installed → ~/.claude/settings.json',
   'hooks.installedCodex': '✓ Codex hooks installed → ~/.codex/config.toml (notify)',

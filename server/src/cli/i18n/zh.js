@@ -60,7 +60,7 @@ export default {
   'hooks.confirmEnable': '启用编程 agent 通知(收件箱)?',
   'hooks.installedShort': '✓ agent hooks 已安装。',
   'hooks.noClaude': '未检测到 Claude Code(缺少 ~/.claude)—— 无需安装。',
-  'hooks.noAgents': '未检测到编程 agent(~/.claude 与 ~/.codex 都不存在)—— 无需安装。',
+  'hooks.noAgents': '未检测到编程 agent(无 ~/.claude,且 PATH 上没有 codex)—— 无需安装。',
   'hooks.installed': '✓ Claude hooks 已安装 → ~/.claude/settings.json',
   'hooks.installedClaude': '✓ Claude Code hooks 已安装 → ~/.claude/settings.json',
   'hooks.installedCodex': '✓ Codex hooks 已安装 → ~/.codex/config.toml(notify)',

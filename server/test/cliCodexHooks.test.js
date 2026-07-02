@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -6,6 +6,15 @@ import {
   mergeCodexNotify, stripCodexNotify,
   codexHooksStatus, installCodexHooks, uninstallCodexHooks,
 } from '../src/cli/codexHooks.js';
+
+// Presence is gated on the `codex` BINARY being on PATH (not on ~/.codex existing — that dir name isn't
+// unique to Codex CLI). Put a fake executable `codex` on PATH for the install/status tests.
+function fakeCodexOnPath() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codexbin-'));
+  const bin = path.join(dir, 'codex');
+  fs.writeFileSync(bin, '#!/bin/sh\n', { mode: 0o755 });
+  return dir;
+}
 
 const OURS = 'notify = ["node", "/home/u/.codex/hooks/handmux-codex-notify.cjs"]';
 
@@ -50,18 +59,23 @@ function tmpHome() { return fs.mkdtempSync(path.join(os.tmpdir(), 'cxh-')); }
 const srcDir = path.resolve(new URL('../hooks', import.meta.url).pathname);
 
 describe('installCodexHooks / status / uninstall (IO)', () => {
-  it("reports no-codex and does nothing when ~/.codex doesn't exist", () => {
+  const realPath = process.env.PATH;
+  afterEach(() => { process.env.PATH = realPath; });
+
+  it("reports no-codex and does nothing when codex is not on PATH (even if ~/.codex exists)", () => {
+    process.env.PATH = ''; // no codex binary
     const home = tmpHome();
+    fs.mkdirSync(path.join(home, '.codex'), { recursive: true }); // a FOREIGN ~/.codex (not Codex CLI)
     expect(codexHooksStatus(home)).toBe('no-codex');
     expect(installCodexHooks(home, { srcDir, stateFile: '/x' }).status).toBe('no-codex');
-    expect(fs.existsSync(path.join(home, '.codex'))).toBe(false); // never created
+    expect(fs.existsSync(path.join(home, '.codex', 'config.toml'))).toBe(false); // foreign dir untouched
   });
 
   it('installs: writes the notify key, copies the script, pins the state file', () => {
+    process.env.PATH = fakeCodexOnPath();
     const home = tmpHome();
-    fs.mkdirSync(path.join(home, '.codex'), { recursive: true });
     const stateFile = path.join(home, '.handmux', 'claude-state.json');
-    expect(codexHooksStatus(home)).toBe('absent');
+    expect(codexHooksStatus(home)).toBe('absent'); // codex installed, not yet wired (creates ~/.codex on install)
 
     const r = installCodexHooks(home, { srcDir, stateFile });
     expect(r.status).toBe('installed');
@@ -80,6 +94,7 @@ describe('installCodexHooks / status / uninstall (IO)', () => {
   });
 
   it("refuses (conflict) when the user already has a notify, leaving config.toml untouched", () => {
+    process.env.PATH = fakeCodexOnPath();
     const home = tmpHome();
     fs.mkdirSync(path.join(home, '.codex'), { recursive: true });
     const foreign = 'notify = ["/usr/local/bin/chime"]\n';
@@ -90,8 +105,8 @@ describe('installCodexHooks / status / uninstall (IO)', () => {
   });
 
   it('uninstall strips our notify and removes the copied files', () => {
+    process.env.PATH = fakeCodexOnPath();
     const home = tmpHome();
-    fs.mkdirSync(path.join(home, '.codex'), { recursive: true });
     installCodexHooks(home, { srcDir, stateFile: path.join(home, '.handmux', 's.json') });
     uninstallCodexHooks(home);
     expect(codexHooksStatus(home)).toBe('absent');

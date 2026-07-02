@@ -8,14 +8,29 @@
 //  2. Codex allows exactly one `notify`. If the user already has their own (e.g. a chime), we must NOT
 //     clobber it: we detect a foreign notify and report 'conflict' instead of overwriting.
 //
-// Iron rule (same as Claude): only ever touch ~/.handmux/ and — after explicit opt-in — ~/.codex/. If
-// ~/.codex is absent (no Codex CLI), skip and report 'no-codex'; never create it.
+// Presence signal — the `codex` BINARY on PATH, NOT the existence of ~/.codex. That dir name is not unique to
+// OpenAI's Codex CLI (other tools squat ~/.codex with their own data), so keying on it risks writing our
+// config.toml into an unrelated tool's directory. The executable on PATH is the unambiguous "Codex CLI is
+// installed here" signal. Because that signal (not the dir) gates us, we MAY create ~/.codex when wiring —
+// it's Codex's own config location, which codex would create anyway.
 import fs from 'node:fs';
 import path from 'node:path';
 import { homedir } from 'node:os';
 
 const CODEX_MARK = 'handmux-codex-notify'; // our notify script's basename — identifies our line among the user's
 const SCRIPT = 'handmux-codex-notify.cjs';
+
+// True if an executable `codex` is resolvable on PATH. Windows adds the PATHEXT suffixes.
+function codexOnPath(env = process.env) {
+  const exts = process.platform === 'win32' ? (env.PATHEXT || '.EXE;.CMD;.BAT').split(';') : [''];
+  for (const dir of (env.PATH || '').split(path.delimiter)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      try { fs.accessSync(path.join(dir, `codex${ext}`), fs.constants.X_OK); return true; } catch { /* keep looking */ }
+    }
+  }
+  return false;
+}
 
 function codexDir(home = homedir()) { return path.join(home, '.codex'); }
 function configPath(home = homedir()) { return path.join(codexDir(home), 'config.toml'); }
@@ -64,10 +79,10 @@ function readConf(home) {
   try { return fs.readFileSync(configPath(home), 'utf8'); } catch { return ''; }
 }
 
-// 'no-codex' → ~/.codex absent (don't prompt). 'installed' → our notify present. 'conflict' → a foreign
-// notify holds the slot. 'absent' → Codex present, no notify wired.
+// 'no-codex' → Codex CLI not on PATH (don't prompt). 'installed' → our notify present. 'conflict' → a
+// foreign notify holds the slot. 'absent' → Codex installed, no notify wired.
 export function codexHooksStatus(home = homedir()) {
-  if (!fs.existsSync(codexDir(home))) return 'no-codex';
+  if (!codexOnPath()) return 'no-codex';
   const lines = readConf(home).split('\n');
   const i = rootNotifyIndex(lines);
   if (i < 0) return 'absent';
@@ -81,10 +96,11 @@ function writeAtomic(file, text) {
 }
 
 // Install (opt-in): copy the notify script into ~/.codex/hooks/, write the env pointing at the shared state
-// file, and set the `notify` key in config.toml. NEVER creates ~/.codex. Returns { status }:
-//   'no-codex' (nothing to do) | 'conflict' (user has their own notify — we refuse) | 'installed'.
+// file, and set the `notify` key in config.toml (creating ~/.codex if needed — safe, since codexOnPath()
+// already confirmed Codex is installed). Returns { status }:
+//   'no-codex' (Codex not installed — nothing to do) | 'conflict' (user has their own notify — refuse) | 'installed'.
 export function installCodexHooks(home = homedir(), { srcDir, stateFile } = {}) {
-  if (!fs.existsSync(codexDir(home))) return { status: 'no-codex' };
+  if (!codexOnPath()) return { status: 'no-codex' };
   const merged = mergeCodexNotify(readConf(home), notifyLineFor(home));
   if (merged.conflict) return { status: 'conflict' };
 
