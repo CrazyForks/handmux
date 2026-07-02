@@ -14,8 +14,11 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   reuses the exact Claude hook scripts + classifier — giving the phone full working / 需要你 /
   done states for Codex, not just turn-done. Orphan Codex sessions running outside tmux can be
   taken over with `codex resume`. New `codex` startup-command preset; the inbox/enable copy now
-  says "AI session" rather than "Claude". Verified against Codex 0.142.5 (config parse, rollout
-  session/cwd resolution, `codex resume` syntax, notify field names).
+  says "AI session" rather than "Claude". Validated end-to-end against Codex 0.142.5: the
+  `UserPromptSubmit`→working and `Stop`→done hooks fire, `$TMUX_PANE` is inherited (state keyed
+  to the right pane), payloads are Claude-shaped, and `codex resume`/rollout-cwd resolution parse
+  as expected. A codex pane reports `pane_current_command` as its Node launcher (`node`), so
+  inbox liveness matches that too (else codex panes were pruned).
 - **CLI now speaks Chinese** — the `handmux` command-line output (help, `start`/`status`/
   `setup` prompts, errors, the access block) is fully localized. Language resolves from
   `--lang en|zh`, a `"lang"` field in the config, or the shell locale (`LANG`/`LC_*` = `zh…`),
