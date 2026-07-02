@@ -17,10 +17,13 @@ const click = async (el) => { await act(async () => { el.dispatchEvent(new Mouse
 describe('OrphanTakeoverSheet', () => {
   it('defaults to new session + kill on, lists existing sessions as targets', async () => {
     await render({});
-    const targets = [...container.querySelectorAll('.orphan-targets .fontbtn')];
+    const targets = [...container.querySelectorAll('.orphan-targets:not(.orphan-kill) .fontbtn')];
     expect(targets.map((b) => b.textContent)).toEqual(['新建会话', 'jly', 'work']);
     expect(targets[0].getAttribute('aria-pressed')).toBe('true'); // 新建 selected
-    expect(container.querySelector('.orphan-killtoggle').getAttribute('aria-pressed')).toBe('true');
+    const kill = [...container.querySelectorAll('.orphan-kill .fontbtn')];
+    expect(kill[0].getAttribute('aria-pressed')).toBe('true');  // 结束 (recommended) selected
+    expect(kill[1].getAttribute('aria-pressed')).toBe('false'); // 保留
+    expect(container.querySelector('.orphan-kill .orphan-reco').textContent).toBe('推荐');
   });
 
   it('confirms with new-session target + kill by default', async () => {
@@ -33,9 +36,9 @@ describe('OrphanTakeoverSheet', () => {
   it('confirms into an existing session with kill toggled off', async () => {
     const onConfirm = vi.fn(() => Promise.resolve());
     await render({ onConfirm });
-    const targets = [...container.querySelectorAll('.orphan-targets .fontbtn')];
+    const targets = [...container.querySelectorAll('.orphan-targets:not(.orphan-kill) .fontbtn')];
     await click(targets[1]); // 'jly' → $1
-    await click(container.querySelector('.orphan-killtoggle')); // kill off
+    await click([...container.querySelectorAll('.orphan-kill .fontbtn')][1]); // 保留 → kill off
     await click(container.querySelector('.bind-confirm'));
     expect(onConfirm).toHaveBeenCalledWith({ target: { mode: 'window', session: '$1' }, kill: false });
     expect(localStorage.getItem('tw_orphan_kill')).toBe('0'); // choice remembered

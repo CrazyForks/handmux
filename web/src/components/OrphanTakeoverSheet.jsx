@@ -64,9 +64,17 @@ export default function OrphanTakeoverSheet({ open, orphan, onConfirm, onClose, 
             </div>
           </div>
           <div className="opt">
-            <button className="fontbtn orphan-killtoggle" aria-pressed={kill} onClick={() => setKill((k) => !k)}>
-              <span aria-hidden="true">{kill ? '☑' : '☐'}</span> {t('inbox.orphans.killLabel')}
-            </button>
+            <div className="settings-label">{t('inbox.orphans.killTitle')}</div>
+            <div className="orphan-targets orphan-kill">
+              <button className="fontbtn" aria-pressed={kill} onClick={() => setKill(true)}>
+                {t('inbox.orphans.killEnd')}<span className="orphan-reco">{t('inbox.orphans.recommended')}</span>
+              </button>
+              <button className="fontbtn" aria-pressed={!kill} onClick={() => setKill(false)}>
+                {t('inbox.orphans.killKeep')}
+              </button>
+            </div>
+            <div className="orphan-help">{t('inbox.orphans.killWhy')}</div>
+            <div className="orphan-help">{t('inbox.orphans.reopen')}</div>
           </div>
           {error && <div className="bind-error">{error}</div>}
           <div className="settings-btns bind-actions">
