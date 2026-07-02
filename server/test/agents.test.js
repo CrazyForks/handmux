@@ -23,6 +23,7 @@ describe('registry', () => {
     for (const a of AGENTS) {
       expect(typeof a.id).toBe('string');
       expect(typeof a.procName).toBe('string');
+      expect(Array.isArray(a.procNames) && a.procNames.includes(a.procName)).toBe(true);
       expect(a.procMatch).toBeInstanceOf(RegExp);
       expect(typeof a.classify).toBe('function');
       expect(typeof a.sessions.resolve).toBe('function');

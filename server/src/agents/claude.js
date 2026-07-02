@@ -72,6 +72,9 @@ export const claude = {
   id: 'claude',
   label: 'Claude Code',
   procName: 'claude',
+  // Which tmux #{pane_current_command} values mean "this agent is still the pane's foreground app" (inbox
+  // liveness). Claude sets its process title to "claude", so an exact single-name match is right.
+  procNames: ['claude'],
   // The `claude` CLI sets its process title to "claude" (verified via ps): match the program token at the
   // start of argv — bare "claude", "claude --continue", or an absolute path ending in /claude. Anchored so
   // "vim claude.js" / "node build/claude.js" don't match.

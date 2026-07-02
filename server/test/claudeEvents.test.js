@@ -295,7 +295,14 @@ describe('createClaudeEvents push (需要你 / 已完成 transitions, mirroring 
 describe('createClaudeEvents with a Codex-tagged pane (agent dispatch, Claude-parity hooks)', () => {
   const cdone = (msg, ts) => ({ ts, src: 'stop', host: 'h', payload: { last_assistant_message: msg }, agent: 'codex' });
   const cwork = (prompt, ts) => ({ ts, src: 'prompt', host: 'h', payload: { prompt }, agent: 'codex' });
-  const liveCodex = (ids) => ids.map((id) => ({ id, cmd: 'codex', session: 'proj', window: '@5', windowName: 'dev' }));
+  // Real codex pane_current_command is "node" (the launcher stays foreground) — must NOT be pruned.
+  const liveCodex = (ids, cmd = 'node') => ids.map((id) => ({ id, cmd, session: 'proj', window: '@5', windowName: 'dev' }));
+
+  it("keeps a codex pane whose command is the node launcher (not pruned as non-codex)", async () => {
+    const file = stateFile({ '%1': cdone('ok', 1000) });
+    const states = await createClaudeEvents({ commands: { listLivePanes: async () => liveCodex(['%1'], 'node') }, push: { sendToSession: async () => ({}) }, file }).getStates();
+    expect(states['%1']).toMatchObject({ kind: 'done', msg: 'ok' });
+  });
 
   it("classifies codex hook verbs (prompt→working, stop→done) and prunes when the pane isn't running codex", async () => {
     expect((await createClaudeEvents({ commands: { listLivePanes: async () => liveCodex(['%1']) }, push: { sendToSession: async () => ({}) }, file: stateFile({ '%1': cwork('do it', Date.now()) }) }).getStates())['%1'])

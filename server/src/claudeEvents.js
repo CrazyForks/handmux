@@ -112,7 +112,7 @@ export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, 
       const lp = live ? live.get(pane) : null;
       // Dropped when tmux says the pane is gone or no longer running THIS agent (hard kill / crash /
       // Ctrl-C-out with no clean-exit event). A pane keyed by a legacy entry (no agent field) → Claude.
-      const gone = live ? (!lp || lp.cmd !== agent.procName) : false;
+      const gone = live ? (!lp || !agent.procNames.includes(lp.cmd)) : false;
 
       // (1) push side-effect — runs for every pane regardless of the output filter. Push fires on entry
       // into a 需要你 (permission) / 已完成 (done) view, deduped so a stay-put doesn't re-push. The idle

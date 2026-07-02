@@ -90,6 +90,11 @@ export const codex = {
   id: 'codex',
   label: 'Codex CLI',
   procName: 'codex',
+  // The `codex` CLI on PATH is a Node launcher that spawns the real (Rust) codex as a child but stays the
+  // pane's foreground process — so tmux #{pane_current_command} reports "node", not "codex" (verified live).
+  // Accept both for liveness; a codex-tagged state entry only exists where codex actually ran, so matching
+  // "node" can only keep it alive while that pane is still a node app (it's pruned once it returns to a shell).
+  procNames: ['codex', 'node'],
   procMatch: /^(\S*\/)?codex(\s|$)/,
   takeoverPrefix: 'cx', // tmux session name prefix for a takeover (cx-<label>-<n>)
   classify: classifyClaude, // Codex hook payloads match Claude's field-for-field — same classifier
