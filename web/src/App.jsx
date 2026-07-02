@@ -972,6 +972,7 @@ export default function App() {
           <WindowBar
             windows={current.windows}
             windowAgents={windowAgents}
+            currentAgent={states[current.paneId]?.agent}
             currentWindowId={current.window.id}
             panes={current.panes}
             currentPaneId={current.paneId}

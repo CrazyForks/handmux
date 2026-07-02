@@ -14,8 +14,7 @@ const CIRCLED = '①②③④⑤⑥⑦⑧⑨';
 const seq = (i) => (i < CIRCLED.length ? CIRCLED[i] : String(i + 1));
 const paneLabel = (p, i) => `${seq(i)} ${p.command || p.id}`;
 
-// `agent` is the agent id running in this window — set ONLY for single-pane windows (a multi-pane window is
-// ambiguous, so WindowBar passes null there). When set, its logo prefixes the tab name.
+// `agent` is the agent id running in this window; when set, its logo prefixes the tab name.
 function WindowTab({ window: win, active, agent, onSelect, onManage }) {
   const lp = useLongPress(() => onManage(win), { onClick: () => onSelect(win) });
   return (
@@ -30,7 +29,7 @@ function WindowTab({ window: win, active, agent, onSelect, onManage }) {
 // Active window with >1 pane: the tab carries the current pane inline and taps open the pane menu.
 // Long-press = manage the window. The menu reuses Dropdown's .dd-menu / .dd-option visuals; the
 // current pane is pre-selected (✓), so opening it is just "confirm or switch".
-function PaneTab({ window: win, panes, currentPaneId, onManage, onSelectPane }) {
+function PaneTab({ window: win, panes, currentPaneId, agent, onManage, onSelectPane }) {
   const [open, setOpen] = useState(false);
   // The menu is position:fixed (anchored by measured rect), not absolute: its anchor sits inside the
   // horizontally-scrolling .windowbar-scroll, whose overflow would otherwise CLIP a normal dropdown
@@ -72,6 +71,7 @@ function PaneTab({ window: win, panes, currentPaneId, onManage, onSelectPane }) 
         aria-expanded={open}
         {...lp}
       >
+        {agent && <AgentMark agent={agent} />}
         <span className="wt-name">{win.name || win.id}</span>
         <span className="wt-sep" aria-hidden="true">│</span>
         <span className="wt-pane">{paneLabel(cur, idx)}</span>
@@ -99,7 +99,7 @@ function PaneTab({ window: win, panes, currentPaneId, onManage, onSelectPane }) 
 }
 
 export default function WindowBar({
-  windows, windowAgents = {}, currentWindowId, panes, currentPaneId, onSelectWindow, onSelectPane, onNewWindow, onManageWindow,
+  windows, windowAgents = {}, currentAgent, currentWindowId, panes, currentPaneId, onSelectWindow, onSelectPane, onNewWindow, onManageWindow,
   trackWindowId,
 }) {
   const scrollRef = useRef(null);
@@ -124,6 +124,7 @@ export default function WindowBar({
                 window={w}
                 panes={panes}
                 currentPaneId={currentPaneId}
+                agent={currentAgent || windowAgents[w.id]}
                 onManage={onManageWindow}
                 onSelectPane={onSelectPane}
               />
@@ -134,7 +135,7 @@ export default function WindowBar({
               key={w.id}
               window={w}
               active={active}
-              agent={w.panes > 1 ? null : windowAgents[w.id]}
+              agent={windowAgents[w.id]}
               onSelect={onSelectWindow}
               onManage={onManageWindow}
             />
