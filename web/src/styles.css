@@ -969,13 +969,22 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 }
 .drawer-orphans-caret { margin-left: auto; }
 .drawer-orphans-hint { color: #777; font-size: 11px; padding: 0 4px 4px; }
-.drawer-orphan-cwd { color: #cdddff; }
+.drawer-orphan-row { padding: 6px 4px; }
+.drawer-orphan-row + .drawer-orphan-row { border-top: 1px solid #2a2b2f; }
+.drawer-orphan-head { display: flex; align-items: center; gap: 6px; }
+.drawer-orphan-cwd { flex: 1; min-width: 0; color: #cdddff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drawer-orphan-btn {
   flex: none; padding: 4px 10px; border: none; border-radius: 6px;
   background: #2b3550; color: #cdddff; font-size: 13px; touch-action: manipulation;
 }
 .drawer-orphan-btn:active { background: #344168; }
 .drawer-orphan-btn:disabled { opacity: 0.45; }
+.drawer-orphan-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; min-width: 0; }
+.drawer-orphan-state { flex: none; font-size: 10px; padding: 0 5px; border-radius: 3px; }
+.drawer-orphan-state.idle { background: #2e7d46; color: #fff; }
+.drawer-orphan-state.busy { background: #2f6fed; color: #fff; }
+.drawer-orphan-time { flex: none; font-size: 11px; color: #888; }
+.drawer-orphan-msg { flex: 1; min-width: 0; font-size: 11px; color: #9aa0a6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Takeover sheet: target picker (fontbtn group, aria-pressed = selected) + kill toggle. */
 .orphan-targets { display: flex; flex-wrap: wrap; gap: 6px; }
 .orphan-targets .fontbtn[aria-pressed="true"] { background: #2f6fed; color: #fff; border-color: #2f6fed; }

@@ -89,6 +89,8 @@ export default {
   'drawer.orphans.hint': 'Take over to control remotely',
   'inbox.orphans.takeover': 'Take over',
   'inbox.orphans.noSession': 'no resumable history',
+  'inbox.orphans.busy': 'busy',
+  'inbox.orphans.idle': 'idle',
   'inbox.orphans.working': 'Taking over…',
   'inbox.orphans.failed': 'Takeover failed',
   'inbox.orphans.targetLabel': 'Take over into',

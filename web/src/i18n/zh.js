@@ -88,6 +88,8 @@ export default {
   'drawer.orphans.hint': '接管即可远程操控',
   'inbox.orphans.takeover': '接管',
   'inbox.orphans.noSession': '无可续接的历史',
+  'inbox.orphans.busy': '运行中',
+  'inbox.orphans.idle': '空闲',
   'inbox.orphans.working': '接管中…',
   'inbox.orphans.failed': '接管失败',
   'inbox.orphans.targetLabel': '接管到',

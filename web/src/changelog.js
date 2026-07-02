@@ -4,6 +4,18 @@
 // is what's shown. `items` is now { zh, en } — parallel arrays (same order/count) for each locale.
 export const CHANGELOG = [
   {
+    v: '2026-07-02-takeover',
+    date: '2026-07-02',
+    items: {
+      zh: [
+        '会话抽屉底部新增「未接管会话」:一眼看到在 tmux 外跑着、手机还控制不了的 Claude（带状态、时间、最后一条消息），点「接管」即可在 tmux 里续接同一会话——自动加进会话列表并跳进去,以后手机随时回来。',
+      ],
+      en: [
+        'The session drawer now has a "not taken over" section at the bottom: Claude sessions running outside tmux that your phone can\'t steer yet (with their state, time, and last message). Tap Take over to resume the same conversation inside tmux — it\'s added to your session list and opened, so you can return to it from your phone anytime.',
+      ],
+    },
+  },
+  {
     v: '2026-06-28-i18n-ui',
     date: '2026-06-28',
     items: {

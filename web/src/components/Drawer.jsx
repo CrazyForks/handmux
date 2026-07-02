@@ -5,6 +5,7 @@
 // one into tmux (the takeover sheet, handled in App); see server/src/orphans.js.
 import { useState } from 'react';
 import { t } from '../i18n';
+import { relTime } from '../inbox.js';
 
 export default function Drawer({
   open, currentSessionName, bound, onSelectSession, onUnbind, onBind, onClose, onLogout,
@@ -46,18 +47,25 @@ export default function Drawer({
                     const noSession = !o.sessionId;
                     const disabled = o.state === 'busy' || noSession;
                     return (
-                      <div key={o.pid} className="drawer-row drawer-orphan-row">
-                        <span className="drawer-name drawer-orphan-cwd" title={o.snippet || o.cwd}>
-                          {o.cwdLabel || o.cwd}
-                        </span>
-                        <button
-                          className="drawer-orphan-btn"
-                          disabled={disabled}
-                          title={noSession ? t('inbox.orphans.noSession') : undefined}
-                          onClick={() => onTakeoverRequest?.(o)}
-                        >
-                          {t('inbox.orphans.takeover')}
-                        </button>
+                      <div key={o.pid} className="drawer-orphan-row">
+                        <div className="drawer-orphan-head">
+                          <span className="drawer-orphan-cwd" title={o.cwd}>{o.cwdLabel || o.cwd}</span>
+                          <button
+                            className="drawer-orphan-btn"
+                            disabled={disabled}
+                            title={noSession ? t('inbox.orphans.noSession') : undefined}
+                            onClick={() => onTakeoverRequest?.(o)}
+                          >
+                            {t('inbox.orphans.takeover')}
+                          </button>
+                        </div>
+                        <div className="drawer-orphan-meta">
+                          <span className={`drawer-orphan-state ${o.state === 'busy' ? 'busy' : 'idle'}`}>
+                            {o.state === 'busy' ? t('inbox.orphans.busy') : t('inbox.orphans.idle')}
+                          </span>
+                          <span className="drawer-orphan-time">{relTime(o.startedAt || o.lastActivity, Date.now())}</span>
+                          {o.snippet && <span className="drawer-orphan-msg">{o.snippet}</span>}
+                        </div>
                       </div>
                     );
                   })}
