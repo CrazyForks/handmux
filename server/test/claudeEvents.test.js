@@ -309,7 +309,7 @@ describe('createClaudeEvents with a Codex-tagged pane (agent dispatch, Claude-pa
       .toMatchObject({ kind: 'working', msg: 'do it', session: 'proj' });
     const file = stateFile({ '%1': cdone('built it', 1000) });
     expect((await createClaudeEvents({ commands: { listLivePanes: async () => liveCodex(['%1']) }, push: { sendToSession: async () => ({}) }, file }).getStates())['%1'])
-      .toMatchObject({ kind: 'done', msg: 'built it', session: 'proj' });
+      .toMatchObject({ kind: 'done', msg: 'built it', session: 'proj', agent: 'codex' }); // agent surfaced for the UI logo
     // pane flipped back to the shell → codex no longer foreground → pruned (procName mismatch, not 'claude')
     const shellPane = { listLivePanes: async () => [{ id: '%1', cmd: 'zsh', session: 'proj', window: '@5', windowName: 'dev' }] };
     expect(await createClaudeEvents({ commands: shellPane, push: { sendToSession: async () => ({}) }, file }).getStates()).toEqual({});

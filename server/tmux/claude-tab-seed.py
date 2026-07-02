@@ -40,11 +40,16 @@ DOT = {
     "working": "#[fg=#2f6fed,blink]●#[default] ",  # 蓝闪
 }
 
+# 冷启动只给【正在跑某个 agent】的窗补点。Claude 的 pane_current_command 是 "claude";Codex 的 PATH 入口
+# 是个 node 启动器,所以是 "node"(与 server 端 liveness 的 procNames 一致)。有状态条目 + 命令属于 agent
+# 才补点,避免给回到 shell 的窗残留脏点。
+AGENT_CMDS = {"claude", "codex", "node"}
+
 # window_id -> 最高优先级 kind
 top = {}
 for line in tmux("list-panes", "-a", "-F", "#{pane_current_command} #{pane_id} #{window_id}").splitlines():
     parts = line.split()
-    if len(parts) < 3 or parts[0] != "claude":
+    if len(parts) < 3 or parts[0] not in AGENT_CMDS:
         continue
     _, pane, win = parts[0], parts[1], parts[2]
     e = state.get(pane)

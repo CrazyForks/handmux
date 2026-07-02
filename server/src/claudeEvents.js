@@ -146,7 +146,7 @@ export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, 
       }
       const loc = lp ? { session: lp.session, window: lp.window, windowName: lp.windowName } : {};
       if (allow && !allow.has(loc.session)) continue;
-      out[pane] = { ...loc, kind: c.kind, msg: c.msg || '', ts: rec.ts || 0 };
+      out[pane] = { ...loc, kind: c.kind, msg: c.msg || '', ts: rec.ts || 0, agent: agent.id };
     }
     return out;
   }

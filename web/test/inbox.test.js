@@ -16,6 +16,14 @@ describe('inboxRows view mapping + rows', () => {
     expect(byPane).toEqual({ '%1': 'needs', '%2': 'working', '%3': 'done', '%4': 'done', '%5': 'done' });
     expect(rows.find((r) => r.pane === '%2')).toMatchObject({ session: 'a', window: '@2', windowName: 'run', msg: 'build it', ts: 200 });
   });
+  it('threads the agent id (defaults to claude for untagged legacy entries)', () => {
+    const rows = inboxRows({
+      '%1': { session: 'a', window: '@1', windowName: 'w', kind: 'working', ts: 1, agent: 'codex' },
+      '%2': { session: 'a', window: '@2', windowName: 'w', kind: 'working', ts: 1 }, // no agent → claude
+    }, {}, 0);
+    expect(rows.find((r) => r.pane === '%1').agent).toBe('codex');
+    expect(rows.find((r) => r.pane === '%2').agent).toBe('claude');
+  });
   it('sorts by session, then needs>done>working, then ts desc', () => {
     expect(inboxRows(states, {}, 0).map((r) => r.pane)).toEqual(['%1', '%4', '%3', '%2', '%5']);
   });

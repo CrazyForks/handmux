@@ -18,7 +18,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   `UserPromptSubmit`→working and `Stop`→done hooks fire, `$TMUX_PANE` is inherited (state keyed
   to the right pane), payloads are Claude-shaped, and `codex resume`/rollout-cwd resolution parse
   as expected. A codex pane reports `pane_current_command` as its Node launcher (`node`), so
-  inbox liveness matches that too (else codex panes were pruned).
+  inbox liveness matches that too (else codex panes were pruned). Every inbox row and the
+  current-session topbar now show a per-agent mark (Claude / Codex) so the two are
+  distinguishable at a glance.
 - **CLI now speaks Chinese** — the `handmux` command-line output (help, `start`/`status`/
   `setup` prompts, errors, the access block) is fully localized. Language resolves from
   `--lang en|zh`, a `"lang"` field in the config, or the shell locale (`LANG`/`LC_*` = `zh…`),

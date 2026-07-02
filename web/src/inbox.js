@@ -25,7 +25,7 @@ export function inboxRows(states, seen = {}, readTs = 0) {
     if (!view) continue;
     const ts = st.ts || 0;
     if (view === 'done' && !(ts > Math.max(readTs || 0, seen[pane] || 0))) continue;
-    rows.push({ pane, session: st.session, window: st.window, windowName: st.windowName, view, msg: st.msg || '', ts });
+    rows.push({ pane, session: st.session, window: st.window, windowName: st.windowName, view, msg: st.msg || '', ts, agent: st.agent || 'claude' });
   }
   rows.sort((a, b) => (
     a.session < b.session ? -1

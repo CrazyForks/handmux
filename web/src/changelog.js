@@ -8,11 +8,11 @@ export const CHANGELOG = [
     date: '2026-07-02',
     items: {
       zh: [
-'新增 Codex 支持:收件箱与推送现在同时认得 Claude 和 Codex——Codex 会话的「进行中 / 需要你 / 已完成」都会像 Claude 一样推到手机;tmux 外跑着的 Codex 会话也能一键「接管」进来(codex resume);新建会话的启动命令预设新增 codex。',
+'新增 Codex 支持:收件箱与推送现在同时认得 Claude 和 Codex——Codex 会话的「进行中 / 需要你 / 已完成」都会像 Claude 一样推到手机;tmux 外跑着的 Codex 会话也能一键「接管」进来(codex resume);新建会话的启动命令预设新增 codex。收件箱每一条、以及顶栏当前会话,都带上 Claude / Codex 标记,一眼区分是哪种 agent。',
         '会话抽屉底部新增「未接管会话」:一眼看到在 tmux 外跑着、手机还控制不了的 Claude / Codex（带状态、时间、最后一条消息），点「接管」即可在 tmux 里续接同一会话——自动加进会话列表并跳进去,以后手机随时回来。',
       ],
       en: [
-        'Added Codex support: the inbox and push now recognize both Claude and Codex — a Codex session\'s working / waiting-on-you / done states reach your phone just like Claude. You can take over Codex sessions running outside tmux (codex resume), and there\'s a new codex startup-command preset.',
+        'Added Codex support: the inbox and push now recognize both Claude and Codex — a Codex session\'s working / waiting-on-you / done states reach your phone just like Claude. You can take over Codex sessions running outside tmux (codex resume), and there\'s a new codex startup-command preset. Every inbox row and the current-session topbar now carry a Claude / Codex mark so you can tell the two apart at a glance.',
         'The session drawer now has a "not taken over" section at the bottom: Claude / Codex sessions running outside tmux that your phone can\'t steer yet (with their state, time, and last message). Tap Take over to resume the same conversation inside tmux — it\'s added to your session list and opened, so you can return to it from your phone anytime.',
       ],
     },

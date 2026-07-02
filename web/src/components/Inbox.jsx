@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { InboxIcon } from './icons.jsx';
+import { InboxIcon, AgentMark } from './icons.jsx';
 import { VIEW_LABEL, relTime, viewCounts } from '../inbox.js';
 import { t } from '../i18n';
 
@@ -69,6 +69,7 @@ export default function Inbox({ rows, top, open, onToggle, onClose, onSelectRow,
                 {g.items.map((r) => (
                   <button key={r.pane} className="inbox-row" onClick={() => onSelectRow(r)}>
                     <div className="inbox-row-head">
+                      <AgentMark agent={r.agent} />
                       <span className={`inbox-chip ${r.view}`}>{VIEW_LABEL[r.view]}</span>
                       <span className="inbox-loc">{r.windowName || r.window}</span>
                       <span className="inbox-time">{relTime(r.ts, now)}</span>

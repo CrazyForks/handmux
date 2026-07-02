@@ -45,7 +45,7 @@ import DirPicker from './components/DirPicker.jsx';
 import DocLinkPopover from './components/DocLinkPopover.jsx';
 import IdeaPanel from './components/IdeaPanel.jsx';
 import Changelog from './components/Changelog.jsx';
-import { FolderIcon, GearIcon, BulbIcon, MonitorIcon, GitIcon } from './components/icons.jsx';
+import { FolderIcon, GearIcon, BulbIcon, MonitorIcon, GitIcon, AgentMark } from './components/icons.jsx';
 import { useKeyboardInset } from './hooks/useKeyboardInset.js';
 import { useLongPress } from './hooks/useLongPress.js';
 import { useBackButton } from './hooks/useBackButton.js';
@@ -780,7 +780,10 @@ export default function App() {
     <div className="app" style={inset ? { transform: `translateY(-${inset}px)` } : undefined}>
       <header className="topbar">
         <button className="hamburger" onClick={() => setDrawerOpen(true)}>☰</button>
-        <span className="session-name" {...sessionNameLongPress}>{current?.session?.name ?? '—'}</span>
+        <span className="session-name" {...sessionNameLongPress}>
+          {states[current?.paneId]?.agent && <AgentMark agent={states[current.paneId].agent} />}
+          {current?.session?.name ?? '—'}
+        </span>
         {/* Leftmost of the right-hand icon group; steady green signals a live preview. */}
         {activePreview && (
           <button className="topbar-icon preview-live" onClick={() => setPreviewSheetOpen(true)}
