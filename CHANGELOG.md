@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-03
+
 ### Added
 - **Usage page (per-agent quota/limits)** — a new top-bar page shows Claude's 5-hour and weekly
   rate-limit bars (with reset countdowns) and Codex's quota windows, read entirely from local
