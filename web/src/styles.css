@@ -365,6 +365,13 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .cmd-del svg { width: 14px; height: 14px; display: block; }
 .cmd-empty { padding: 20px 14px; color: #888; font-size: 13px; text-align: center; }
 
+/* FavDrawer: reply chips + custom-entry adder, reusing the .cmd-* bottom-sheet chrome. */
+.fav-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.fav-chip { background: #2a3a2e; border: 1px solid #3d5a44; color: #9fe0af; border-radius: 16px; padding: 8px 14px; font-size: 14px; }
+.fav-add { display: flex; gap: 8px; margin-top: 8px; }
+.fav-add-input { flex: 1; min-width: 0; background: #16171c; border: 1px solid #444; border-radius: 6px; color: #fff; padding: 8px; font-size: 16px; }
+.fav-add-btn { border: none; border-radius: 6px; background: #3a6bff; color: #fff; padding: 0 14px; }
+
 /* Idea panel: same bottom-sheet chrome as the command panel (reuses .cmd-backdrop / .cmd-head /
    .cmd-title / .cmd-close / .cmd-empty). One compose row (add+edit, with the push-to-talk mic) over a
    draggable list. Rides above the keyboard via the .app inset transform, like .cmd-panel. */
