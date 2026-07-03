@@ -79,12 +79,6 @@ export default {
   'hooks.removed': '✓ agent hooks 已移除。',
   'hooks.usage': '用法:handmux hooks install|uninstall',
 
-  // tmux 状态点
-  'tmuxdot.tip': '  提示:想在每个 tmux 窗口上显示 Claude 状态点,请在交互终端里运行 `handmux hooks install` —— 它会替你写好 {conf}(见 handmux 包内的 tmux/README.md)。',
-  'tmuxdot.confirm': '同时在 tmux 里显示每个窗口的 Claude 状态点吗?(会往 ~/.tmux.conf 加一段)',
-  'tmuxdot.added': '✓ tmux 状态点已添加 → {path}',
-  'tmuxdot.apply': '  生效方式:tmux source-file ~/.tmux.conf  (它改的是共享 tmux 服务器 —— 对所有客户端生效,包括你的电脑)。',
-
   // service
   'service.usage': '用法:handmux service install [start-flags] | handmux service uninstall',
   'service.installed': "handmux 现在会开机自启。移除请运行 'handmux service uninstall'。",

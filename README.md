@@ -153,10 +153,6 @@ hook events in `~/.claude/settings.json` (idempotent; leaves your own hooks alon
 this too, and you can turn it on from the phone the first time you open the inbox. `handmux hooks uninstall`
 removes it. If you don't use Claude Code, this is skipped — nothing touches `~/.claude`.
 
-After installing the hooks it also offers (opt-in) to add a small block to `~/.tmux.conf` so each tmux
-window tab shows a live Claude status dot (working / needs you / done) — the same signal as the inbox, on
-your terminal. Decline it and nothing is changed; the block is marked and easy to remove later.
-
 ### start flags
 
 Flags override the config file for **one run** and never persist — handy for a quick try

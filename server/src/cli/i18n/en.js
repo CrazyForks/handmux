@@ -80,12 +80,6 @@ export default {
   'hooks.removed': '✓ Agent hooks removed.',
   'hooks.usage': 'usage: handmux hooks install|uninstall',
 
-  // tmux status-dot offer
-  'tmuxdot.tip': '  Tip: to show a Claude status dot on each tmux window, run `handmux hooks install` from an interactive terminal — it wires {conf} for you (see tmux/README.md in the handmux package).',
-  'tmuxdot.confirm': 'Also show a per-window Claude status dot in tmux? (adds a block to ~/.tmux.conf)',
-  'tmuxdot.added': '✓ tmux dot added → {path}',
-  'tmuxdot.apply': '  Apply with: tmux source-file ~/.tmux.conf  (it changes the shared tmux server — all clients, including your PC).',
-
   // service
   'service.usage': 'usage: handmux service install [start-flags] | handmux service uninstall',
   'service.installed': "handmux will now start at login. 'handmux service uninstall' to remove.",

@@ -32,7 +32,6 @@ import { readState, clearState, isAlive, pocketHome, logPath, configPath, claude
 import { runSetup } from '../src/cli/setupWizard.js';
 import { hooksStatus, installHooks, uninstallHooks } from '../src/cli/claudeHooks.js';
 import { codexHooksStatus, installCodexHooks, uninstallCodexHooks } from '../src/cli/codexHooks.js';
-import { tmuxDotStatus, installTmuxDot, tmuxConfPath } from '../src/cli/tmuxConf.js';
 import { probe } from '../src/cli/probe.js';
 import { notifyUpdate, runUpdateCheck, PKG_NAME } from '../src/cli/updateCheck.js';
 import { t, initLocale, setLocale } from '../src/cli/i18n/index.js';
@@ -319,33 +318,15 @@ async function setupCmd() {
   const offerHooks = hooksStatus(HOME) === 'absent' || codexHooksStatus(HOME) === 'absent';
   if (offerHooks && await confirm(t('hooks.confirmEnable'))) {
     installAgentHooks();
-    await maybeOfferTmuxDot();
   }
   if (await confirm(t('setup.confirmStart'))) { Object.assign(flags, cfg); return start(); }
   console.log(t('setup.later'));
 }
 
-// The per-window tmux status dot is the natural companion to the inbox hooks: the hook already writes a
-// colour into each window's `@claude_dot` on every Claude event, but tmux only SHOWS it if
-// `window-status-format` references it — otherwise it's a silent no-op. Offer to add that display block to
-// ~/.tmux.conf (opt-in, idempotent). Skip when it's already wired (ours or hand-rolled). Non-TTY: just hint.
-async function maybeOfferTmuxDot() {
-  if (tmuxDotStatus(HOME) !== 'absent') return;
-  if (!process.stdin.isTTY) {
-    console.log(t('tmuxdot.tip', { conf: tmuxConfPath(HOME) }));
-    return;
-  }
-  if (await confirm(t('tmuxdot.confirm'))) {
-    installTmuxDot(HOME);
-    console.log(t('tmuxdot.added', { path: tmuxConfPath(HOME) }));
-    console.log(t('tmuxdot.apply'));
-  }
-}
-
 // Install the inbox hooks for every coding agent present on this host (Claude Code, Codex — the state file
 // is shared, entries are agent-tagged). Each is opt-in by the mere presence of its config dir. Prints a
-// per-agent line and returns how many were wired, so callers can gate the tmux-dot offer / the "reload"
-// hint. Codex's single `notify` slot may already hold the user's OWN program — we never clobber it, we warn.
+// per-agent line and returns how many were wired, so callers can gate the "reload" hint. Codex's single
+// `notify` slot may already hold the user's OWN program — we never clobber it, we warn.
 function installAgentHooks() {
   let installed = 0;
   if (hooksStatus(HOME) !== 'no-claude') {
@@ -371,7 +352,6 @@ async function hooksCmd() {
       return;
     }
     if (installAgentHooks() > 0) console.log(t('hooks.installedHint'));
-    await maybeOfferTmuxDot();
     return;
   }
   if (sub === 'uninstall') {

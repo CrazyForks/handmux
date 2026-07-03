@@ -4,6 +4,14 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Removed
+- **The per-window tmux status dot is gone.** The Claude hook used to also write a colour into each
+  tmux window's `@claude_dot` option, and `handmux setup`/`hooks install` offered to patch
+  `~/.tmux.conf` to render it. It's removed end-to-end (writer, `~/.tmux.conf` patcher, seed/seen
+  scripts, CLI offer, docs): it was Claude-only (no Codex), keyed per-window while agents run
+  per-pane (so it mis-rendered with split panes), went stale on hard-kills, and overwrote your PC's
+  tmux status bar — all to duplicate, worse, what the phone inbox already shows accurately.
+
 ### Changed
 - **`handmux setup` defaults a new user to the zero-config tunnel** — the tunnel prompt now defaults
   to `cloudflare` (quick tunnel, instant public URL) for a first-time user with no config, instead of

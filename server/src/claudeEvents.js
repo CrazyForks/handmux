@@ -62,7 +62,6 @@ function readStateFile(file) {
 // change (the watcher, for push). No persisted state of our own — the file IS the persistence.
 export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, now = () => Date.now() } = {}) {
   const lastPushed = {}; // pane → 'needs' | 'done' | null  (in-process push-transition dedup, by display view)
-  const dotClearedFor = {}; // pane → ts of the stuck 进行中 we already cleared @claude_dot for (clear once)
   // The dedup above is in-process ONLY: a restart (e.g. ./deploy.sh) wipes it while the hook's state
   // file on disk keeps every pane's latest 需要你/已完成. Without priming, the first read after boot
   // would see an empty dedup and re-push every resting pane — a flood of "historical" notifications on
@@ -136,14 +135,8 @@ export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, 
       // (2) roster — drop ended / dead / claude-exited panes; resolve location from the live tmux row.
       if (!c || c.kind === 'end' || gone) continue;
       // Expire a 进行中 latched past the TTL (an ESC-interrupt / walk-away that never got a Stop): drop it
-      // from the roster and clear the PC @claude_dot once, so the stuck blue dot goes away. See WORKING_TTL_MS.
-      if (c.kind === 'working' && now() - (rec.ts || 0) > WORKING_TTL_MS) {
-        if (live && typeof commands.runTmux === 'function' && dotClearedFor[pane] !== rec.ts) {
-          dotClearedFor[pane] = rec.ts;
-          try { await commands.runTmux(['set-option', '-w', '-t', pane, '@claude_dot', '']); } catch { /* best effort */ }
-        }
-        continue;
-      }
+      // from the roster so the stuck working pane goes away. See WORKING_TTL_MS.
+      if (c.kind === 'working' && now() - (rec.ts || 0) > WORKING_TTL_MS) continue;
       const loc = lp ? { session: lp.session, window: lp.window, windowName: lp.windowName } : {};
       if (allow && !allow.has(loc.session)) continue;
       out[pane] = { ...loc, kind: c.kind, msg: c.msg || '', ts: rec.ts || 0, agent: agent.id };

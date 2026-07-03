@@ -142,18 +142,14 @@ describe('createClaudeEvents getStates (reads the hook state file)', () => {
     expect((await ev.getStates())['%1']).toMatchObject({ kind: 'done', msg: 'a' });
   });
 
-  it('expires a 进行中 latched past the TTL (ESC-interrupt has no closing hook) and clears its @claude_dot', async () => {
+  it('expires a 进行中 latched past the TTL (ESC-interrupt has no closing hook) → drops from roster', async () => {
     const file = stateFile({ '%9': rec('prompt', { prompt: 'interrupted, walked away' }, 1000) });
-    const cleared = [];
-    const commands = { listLivePanes: async () => liveAll(['%9']), runTmux: async (args) => { cleared.push(args); } };
+    const commands = { listLivePanes: async () => liveAll(['%9']) };
     const ev = createClaudeEvents({ commands, push, file, now: () => 1000 + 3 * 60 * 60 * 1000 }); // 3h later
     expect(await ev.getStates()).toEqual({});                                              // dropped from roster
-    expect(cleared).toContainEqual(['set-option', '-w', '-t', '%9', '@claude_dot', '']);    // PC dot cleared
-    await ev.getStates();
-    expect(cleared).toHaveLength(1);                                                        // …and only once (deduped)
   });
 
-  it('keeps a 进行中 still within the TTL (a long-running task keeps its dot)', async () => {
+  it('keeps a 进行中 still within the TTL (a long-running task stays in the roster)', async () => {
     const file = stateFile({ '%9': rec('prompt', { prompt: 'long task' }, 1000) });
     const commands = { listLivePanes: async () => liveAll(['%9']) }; // note: no runTmux → must not be called
     const ev = createClaudeEvents({ commands, push, file, now: () => 1000 + 60 * 60 * 1000 }); // 1h later < 2h

@@ -24,7 +24,6 @@
     "bin",
     "src",
     "hooks",
-    "tmux",
     "public",
     "README.zh-CN.md"
   ],
