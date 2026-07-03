@@ -4,6 +4,12 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Changed
+- **`handmux setup` defaults a new user to the zero-config tunnel** — the tunnel prompt now defaults
+  to `cloudflare` (quick tunnel, instant public URL) for a first-time user with no config, instead of
+  `cloudflare-named` (which a bare-Enter newcomer can't finish without a Cloudflare login + their own
+  domain). Re-running `setup` still defaults to your current tunnel.
+
 ## [0.6.0] - 2026-07-03
 
 ### Added

@@ -124,7 +124,10 @@ export async function runSetup({ home = homedir(), target = configPath(home), lo
     log.log(t('setup.tunnel2'));
     log.log(t('setup.tunnel3'));
     log.log(t('setup.tunnel4'));
-    const curPick = { none: '1', cloudflare: '2', 'cloudflare-named': '3', ssh: '4' }[cur.tunnel] || '3';
+    // Default to the CURRENT tunnel when re-running; for a brand-new user (no config) default to '2'
+    // (cloudflare quick tunnel — zero-config, instant public URL) rather than '3' (cloudflare-named),
+    // which a bare-Enter newcomer can't complete without a Cloudflare login + their own domain.
+    const curPick = { none: '1', cloudflare: '2', 'cloudflare-named': '3', ssh: '4' }[cur.tunnel] || '2';
     const pick = await ask(rl, t('setup.choose'), curPick);
     const tunnel = { 1: 'none', 2: 'cloudflare', 3: 'cloudflare-named', 4: 'ssh' }[pick];
     if (!tunnel) { log.error(t('setup.invalid')); return null; }
