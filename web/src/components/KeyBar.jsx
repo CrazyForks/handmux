@@ -1,24 +1,95 @@
-import { useRef } from 'react';
-import { SCROLL_COLS, KEY_LABELS, REPEAT_KEYS, keyAction } from '../keybarKeys.js';
+import { useEffect, useRef, useState } from 'react';
+import {
+  CORE_COLS, CONTEXT_PAGES, KEY_LABELS, REPEAT_KEYS, keyAction,
+  CTRL_OFF, CTRL_LOCKED, CTRL_ARMED, tapCtrl, ctrlActive, consumeCtrl, withCtrl,
+} from '../keybarKeys.js';
 import { createRepeater } from '../repeat.js';
 
-// Control pad above the input box: a horizontal strip of two-key columns that scroll left↔right
-// together (arrow cluster + common/less-common keys). Named keys go out via onKey (→ /keys),
-// literal characters via onText (→ /send, no Enter). Arrows auto-repeat while held. ⌫ and Enter
-// are not here — they live on the dock's right rail (see BottomDock).
-export default function KeyBar({ onKey, onText }) {
+// Control pad above the input box. Two zones:
+//   • a FIXED core — inverted-T arrows (Esc/Tab in the corners) + the Ctrl modifier — that never
+//     scrolls, so its keys stay under the same thumb.
+//   • a PAGED extended zone — one key set per `context` ('agent' | 'shell'), swiped page-by-page
+//     (snap paging, never free scroll). Named keys go out via onKey (→ /keys), literals via onText
+//     (→ /send, no Enter). Arrows auto-repeat while held. ⌫ and Enter live on the dock's right rail.
+// Ctrl is a sticky modifier (tap = arm one key, double-tap = lock): while active it composes the next
+// key into C-<x> (see withCtrl) and then resets. ⌫ and Enter are not here — see BottomDock.
+export default function KeyBar({ onKey, onText, context = 'agent' }) {
+  const [ctrl, setCtrl] = useState(CTRL_OFF);
+  const ctrlRef = useRef(ctrl);
+  ctrlRef.current = ctrl;
+
   const dispatch = (id) => {
     const a = keyAction(id);
     if (!a) return;
-    if (a.kind === 'key') onKey(a.name);
-    else onText(a.ch);
+    const active = ctrlActive(ctrlRef.current);
+    const act = active ? withCtrl(a) : a;
+    if (act.kind === 'key') onKey(act.name);
+    else onText(act.ch);
+    if (active) setCtrl(consumeCtrl); // one-shot Ctrl collapses after the key it composed
   };
+
+  const pages = CONTEXT_PAGES[context] || CONTEXT_PAGES.agent;
 
   return (
     <div className="keybar">
-      <div className="keybar-scroll">
-        {SCROLL_COLS.map((col) => <Col key={col.join()} col={col} dispatch={dispatch} />)}
+      <div className="keybar-core">
+        {CORE_COLS.map((col) => <Col key={col.join()} col={col} dispatch={dispatch} />)}
+        <CtrlKey state={ctrl} setState={setCtrl} />
       </div>
+      <PagedKeys pages={pages} dispatch={dispatch} />
+    </div>
+  );
+}
+
+// The Ctrl modifier key: single tap advances off→armed→locked→off; a fast double-tap (<400ms) jumps
+// straight to locked. Pointer events only (matches the arrow/⌫ pattern — no touch+mouse double-fire).
+function CtrlKey({ state, setState }) {
+  const lastRef = useRef(-Infinity); // timeStamp of the previous tap; -Infinity ⇒ no prior tap
+  const down = (e) => {
+    if (e.cancelable) e.preventDefault();
+    const now = e.timeStamp;
+    if (now - lastRef.current < 400) { lastRef.current = 0; setState(CTRL_LOCKED); }
+    else { lastRef.current = now; setState(tapCtrl); }
+  };
+  const cls = state === CTRL_LOCKED ? ' locked' : state === CTRL_ARMED ? ' armed' : '';
+  return (
+    <button type="button" className={`keybar-key keybar-ctrl${cls}`} data-key="ctrl" data-state={state}
+      aria-pressed={state !== CTRL_OFF} aria-label="Ctrl"
+      onPointerDown={down}>Ctrl</button>
+  );
+}
+
+// The paged extended zone: each page is a full-width snap target; a swipe flips one page. A row of
+// dots below tracks the current page. Paging is CSS scroll-snap (mandatory) so it can only ever rest
+// on a whole page — the "at most left/right page flip, no free scroll" the user asked for.
+function PagedKeys({ pages, dispatch }) {
+  const [page, setPage] = useState(0);
+  const ref = useRef(null);
+  // A new context swaps the whole page set — jump back to page 0 so you don't land on a stale page.
+  useEffect(() => {
+    setPage(0);
+    if (ref.current) ref.current.scrollLeft = 0;
+  }, [pages]);
+  const onScroll = () => {
+    const el = ref.current;
+    if (!el || !el.clientWidth) return;
+    const p = Math.round(el.scrollLeft / el.clientWidth);
+    setPage((cur) => (p !== cur ? p : cur));
+  };
+  return (
+    <div className="keybar-pages-wrap">
+      <div className="keybar-pages" ref={ref} onScroll={onScroll}>
+        {pages.map((cols, i) => (
+          <div className="keybar-page" key={i}>
+            {cols.map((col) => <Col key={col.join()} col={col} dispatch={dispatch} />)}
+          </div>
+        ))}
+      </div>
+      {pages.length > 1 && (
+        <div className="keybar-dots" aria-hidden="true">
+          {pages.map((_, i) => <i key={i} className={`keybar-dot${i === page ? ' on' : ''}`} />)}
+        </div>
+      )}
     </div>
   );
 }

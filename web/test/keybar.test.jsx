@@ -24,16 +24,29 @@ const fire = (node, type, EventCtor = MouseEvent) =>
   act(() => node.dispatchEvent(new EventCtor(type, { bubbles: true })));
 
 describe('KeyBar', () => {
-  it('renders every key', () => {
+  it('renders the fixed core, the Ctrl modifier, and the default (agent) context keys', () => {
     render({ onKey: vi.fn(), onText: vi.fn() });
-    for (const id of ['esc', 'up', 'tab', 'left', 'down', 'right',
-      'n1', 'n2', 'n3', 'slash', 'at', 'space', 'ctrlc', 'bang',
-      'compact', 'model', 'effort', 'plugin', 'stab', 'ctrll']) {
+    for (const id of ['esc', 'up', 'tab', 'left', 'down', 'right', 'ctrl', // core + modifier
+      'n1', 'n2', 'n3', 'slash', 'at', 'bang', 'stab', 'ctrlo', // agent page 1
+      'compact', 'model', 'effort', 'plugin', 'loop', 'skill']) { // agent page 2
       expect(btn(id)).not.toBeNull();
     }
-    // ⌫ and Enter moved to the dock's right rail — not in the KeyBar.
+    // Shell-only keys aren't in the agent context; ⌫/Enter live on the dock rail, not here.
+    expect(btn('pipe')).toBeNull();
     expect(btn('del')).toBeNull();
     expect(btn('enter')).toBeNull();
+  });
+
+  it('the shell context surfaces the buried shell symbols instead', () => {
+    const onText = vi.fn();
+    render({ onKey: vi.fn(), onText, context: 'shell' });
+    for (const id of ['pipe', 'bslash', 'tilde', 'dash', 'under', 'gt', 'lt']) {
+      expect(btn(id)).not.toBeNull();
+    }
+    fire(btn('pipe'), 'click');
+    fire(btn('gt'), 'click');
+    expect(onText).toHaveBeenCalledWith('|');
+    expect(onText).toHaveBeenCalledWith('>');
   });
 
   it('a named key calls onKey with the tmux key name', () => {
@@ -42,10 +55,10 @@ describe('KeyBar', () => {
     render({ onKey, onText });
     fire(btn('esc'), 'click');
     fire(btn('stab'), 'click');
-    fire(btn('ctrll'), 'click');
+    fire(btn('ctrlo'), 'click');
     expect(onKey).toHaveBeenCalledWith('Escape');
     expect(onKey).toHaveBeenCalledWith('BTab');
-    expect(onKey).toHaveBeenCalledWith('C-l');
+    expect(onKey).toHaveBeenCalledWith('C-o');
     expect(onText).not.toHaveBeenCalled();
   });
 
@@ -62,6 +75,31 @@ describe('KeyBar', () => {
     expect(onText).toHaveBeenCalledWith('!');
     expect(onText).toHaveBeenCalledWith('/compact');
     expect(onKey).not.toHaveBeenCalled();
+  });
+
+  it('armed Ctrl composes the next key into C-<x> then auto-resets (one-shot)', () => {
+    const onKey = vi.fn();
+    const onText = vi.fn();
+    render({ onKey, onText });
+    fire(btn('ctrl'), 'pointerdown'); // arm
+    fire(btn('n1'), 'click');         // 1 -> C-1 (a KEY, not text)
+    expect(onKey).toHaveBeenCalledWith('C-1');
+    expect(onText).not.toHaveBeenCalled();
+    onKey.mockClear();
+    fire(btn('n1'), 'click');         // modifier reset -> plain text again
+    expect(onText).toHaveBeenCalledWith('1');
+    expect(onKey).not.toHaveBeenCalled();
+  });
+
+  it('a fast double-tap locks Ctrl so it composes several keys', () => {
+    const onKey = vi.fn();
+    render({ onKey, onText: vi.fn() });
+    fire(btn('ctrl'), 'pointerdown'); // tap 1
+    fire(btn('ctrl'), 'pointerdown'); // tap 2 (same tick, <400ms) -> locked
+    fire(btn('n1'), 'click');
+    fire(btn('n2'), 'click');
+    expect(onKey).toHaveBeenCalledWith('C-1');
+    expect(onKey).toHaveBeenCalledWith('C-2'); // still active after the first — locked, not one-shot
   });
 
   it('arrow presses follow the current pane after onKey changes (no stale repeater)', () => {

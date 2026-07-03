@@ -5,6 +5,13 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Changed
+- **Keyboard: fixed core + swipe-paged extended zone + live Ctrl modifier** — the key strip no longer
+  free-scrolls. A fixed core cluster (inverted-T arrows, Esc/Tab, Ctrl) always stays put; the extended
+  keys sit in snap pages you swipe one-at-a-time (dots track the page). A new **Ctrl** key is a sticky
+  modifier — tap arms it for the next key (composing `C-<x>`), double-tap locks it — so any readline/tmux
+  binding (Ctrl+R/W/A/U/K, the prefix) is reachable without a fixed combo. The extended zone carries two
+  contexts (coding-agent menu/slash keys vs the buried shell symbols `| \ ~ - _ > < & * ;`); the model is
+  in place, per-pane context switching lands with command mode. `/keys` now accepts `C-`/`M-<letter|digit>`.
 - **Multi-pane window tab is more compact** — the expanded `name │ ① cmd ▾` tab now caps the name and
   command widths (ellipsis) and tightens padding, so a long command no longer blows the tab wide. The
   full command still shows in the pane menu.
