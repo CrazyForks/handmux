@@ -35,3 +35,6 @@ server/LICENSE
 
 # npm pack output (build artifact)
 *.tgz
+
+# superpowers brainstorm artifacts
+.superpowers/
