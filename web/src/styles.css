@@ -127,7 +127,11 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 /* Active window with >1 pane: the tab expands inline into "name │ ① cmd ▾". The trigger reuses the
    .win-tab look; the menu (below) reuses Dropdown's .dd-menu. wt-dd is the positioning anchor. */
 .wt-dd { position: relative; flex: none; }
-.wt-trigger { display: inline-flex; align-items: center; gap: 3px; padding: 4px 8px; }
+/* Match the plain .win-tab metrics so active/inactive tabs read the same: keep its 4px 10px padding
+   (no override) and let the 4px gap own the logo→name spacing — so zero the logo's own margin, else
+   it'd stack with the gap and the active tab's title would sit further right than an inactive one. */
+.wt-trigger { display: inline-flex; align-items: center; gap: 4px; }
+.wt-trigger .agent-mark { margin-right: 0; }
 /* Tight separator: negative margin pulls the name/pane in so "main│① zsh" reads compact. */
 .wt-sep { margin: 0 -1px; color: #cfe0ff; opacity: .4; font-weight: 400; }
 /* Keep the expanded pane tab compact: cap the name/command widths so a long command can't blow the
