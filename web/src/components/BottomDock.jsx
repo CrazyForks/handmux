@@ -29,17 +29,20 @@ function BottomDock({
   // user flips the toggle. The keyboard's context (shell symbols vs agent menu/slash keys) tracks it.
   const [modeOverride, setModeOverride] = useState({}); // pane → 'command' | 'agent'
   const mode = modeOverride[pane] || (agent ? 'agent' : 'command');
-  const toggleMode = () => {
-    const next = mode === 'command' ? 'agent' : 'command';
-    setModeOverride((m) => ({ ...m, [pane]: next }));
-    // Switching INTO command mode focuses the field synchronously (inside this tap gesture) so iOS
-    // pops the soft keyboard right away — command mode should feel like the keyboard is already there.
-    if (next === 'command') ref.current?.focus();
-  };
+  const toggleMode = () =>
+    setModeOverride((m) => ({ ...m, [pane]: mode === 'command' ? 'agent' : 'command' }));
+  // Live modifier state, lifted here so the KeyBar and the command-mode capture input can share it.
+  const [mods, setMods] = useState({ ctrl: 'off', shift: 'off', alt: 'off' });
+  // Entering command mode: focus the capture field so the caret sits there ready (and the soft keyboard
+  // opens where the platform allows — iOS still needs a tap on the field, which then works normally).
+  useEffect(() => {
+    if (mode === 'command') cmdRef.current?.focus();
+  }, [mode]);
   // Hardware Back closes the command panel instead of exiting the app.
   useBackButton(panelOpen, () => setPanelOpen(false));
   const [upload, setUpload] = useState(null); // { label, pct, error } during/after an upload, else null
-  const ref = useRef(null);
+  const ref = useRef(null);      // agent-mode composer textarea
+  const cmdRef = useRef(null);   // command-mode single-line capture (streams to the pane)
   const uploadRef = useRef(null);
   const upTimerRef = useRef(null);
 
@@ -140,15 +143,33 @@ function BottomDock({
     }
   };
 
-  // Command mode: the soft-keyboard Return runs the line immediately (type + Enter), the shell rhythm.
-  // Skipped while an IME is composing (isComposing — else committing a pinyin/kana word would submit)
-  // and with Shift held (an escape hatch for a literal newline). Agent mode keeps the native newline.
-  const onInputKeyDown = (e) => {
+  // Command mode types STRAIGHT into the terminal: every keystroke is streamed to tmux as it's typed
+  // (onText → send-keys + wake), and the field is wiped back to empty — so your text appears in the
+  // pane like a real shell, not staged in the box the way agent (compose) mode does. The system
+  // keyboard still drives it (so IMEs work): while an IME composes we hold, then flush the committed
+  // word on compositionend. Agent mode keeps the box as a normal composer.
+  const composingRef = useRef(false);
+  const streamInput = (el) => {
+    const text = el.value;
+    if (text) onText(text); // straight to the pane
+    el.value = ''; // keep the capture field empty — the terminal is the display
+  };
+  const onCommandInput = (e) => {
+    if (e.nativeEvent?.isComposing || composingRef.current) return; // mid-IME — wait for the commit
+    streamInput(e.target);
+  };
+  const onCompositionStart = () => { if (mode === 'command') composingRef.current = true; };
+  const onCompositionEnd = (e) => {
     if (mode !== 'command') return;
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent?.isComposing) {
-      e.preventDefault();
-      send();
-    }
+    composingRef.current = false;
+    streamInput(e.target); // the committed IME word (e.g. a Chinese character) goes to the pane now
+  };
+  // Command-mode Enter/Backspace are terminal keys (the text already streamed): Return runs the line,
+  // Backspace deletes in the shell (the capture field is empty, so there's nothing local to erase).
+  const onInputKeyDown = (e) => {
+    if (mode !== 'command' || e.nativeEvent?.isComposing) return;
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onKey('Enter'); return; }
+    if (e.key === 'Backspace') { e.preventDefault(); onKey('BSpace'); }
   };
 
   // Pick a command from the panel: fill the box (never send), close the panel, refocus so the user
@@ -261,7 +282,8 @@ function BottomDock({
         {/* 按键区:键条横滚占满,右端竖着叠两行 ⌫(上)/ Enter(下),与键条同高。
             Enter 发 /keys Enter——应答 y/n、菜单确认、推进 Claude,不发组合文本。 */}
         <div className="keyrow">
-          <KeyBar onKey={onKey} onText={onText} context={mode === 'command' ? 'shell' : 'agent'} />
+          <KeyBar onKey={onKey} onText={onText} mode={mode} onToggleMode={toggleMode}
+            onOpenFav={() => setPanelOpen((o) => !o)} mods={mods} setMods={setMods} />
           <div className="keyrow-stack">
             <button type="button" className="keyrow-del" aria-label={t('common.delete')}
               onPointerDown={delStart} onPointerUp={delStop} onPointerCancel={delStop} onPointerLeave={delStop}>⌫</button>
@@ -284,52 +306,68 @@ function BottomDock({
           {/* flex 行:＋(左)· textarea(中,占满)· ▤/麦克风/发送(右),全是 flex 兄弟、不重叠文字框,
               所以选词/移光标碰不到按键。录音时整条变绿 + 呼吸;▤常用语仅空框时出现在麦克风左边(打字即隐)。 */}
           <div className={`input-wrap ${mode}${recording ? ' recording' : ''}`}>
-            {/* Mode toggle (command ⇄ agent): the pill shows the CURRENT mode and its accent colours the
-                whole bar, so you always know which way a keystroke goes. Persistent left slot = stable. */}
-            <button type="button" className="input-mode" data-mode={mode} aria-pressed={mode === 'command'}
-              aria-label={t('dock.mode.toggle')} title={t('dock.mode.toggle')} onClick={toggleMode}>
-              {t(mode === 'command' ? 'dock.mode.command' : 'dock.mode.agent')}
-            </button>
-            <button type="button" className="input-upload" aria-label={t('dock.upload.aria')} title={t('dock.upload.title')}
-              disabled={!!upload && !upload.error} onClick={() => uploadRef.current?.click()}>
-              <PlusIcon />
-            </button>
-            {/* 离屏(非 display:none)以便程序化 .click() 在 iOS Safari 可靠唤起原生选择器,见 .browse-file-input。 */}
-            <input ref={uploadRef} className="browse-file-input" type="file" multiple
-              onChange={(e) => { uploadFiles(e.target.files); e.target.value = ''; }} />
-            <textarea
-              ref={ref}
-              className="input-text"
-              rows={1}
-              value={value}
-              // 录音中点输入框 = 立刻接管编辑:停语音 + 抑制回写(保留已识别文字,不让定稿覆盖你接着打
-              // 的字),并在手势内同步 focus —— 你点这块就是要改字,这一下必须直接弹键盘、不用再点第二次。
-              // iOS 只认「用户手势里同步调用的 focus」才立刻弹键盘;且 stop() 的重渲染可能打断原生那次聚
-              // 焦,所以这里显式夺焦兜底。也绝不能用 readOnly:iOS 点 readOnly 的 textarea 根本不给焦点。
-              onPointerDown={(e) => {
-                if (!recording) return; // 未录音:交给原生点击聚焦即可
-                stopVoiceIfRecording();
-                e.currentTarget.focus(); // 同步夺焦,确保这一下就弹出键盘
-              }}
-              onChange={(e) => { setValue(e.target.value); autoGrow(e.target); }}
-              onKeyDown={onInputKeyDown}
-              enterKeyHint={mode === 'command' ? 'go' : 'enter'}
-              placeholder={t(mode === 'command' ? 'dock.command.placeholder' : 'dock.input.placeholder')}
-              autoCapitalize="off"
-              autoCorrect="off"
-              spellCheck={false}
-            />
-            {!value && (
-              <button type="button" className="input-cmd" aria-label={t('dock.phrases')} title={t('dock.phrases')}
-                onClick={() => setPanelOpen((o) => !o)}><CommandIcon /></button>
+            {mode === 'command' ? (
+              // Command mode: a single-line capture that STREAMS every keystroke straight into the pane
+              // (onCommandInput → onText → send-keys) and wipes itself back to empty — your text lands in
+              // the terminal like a real shell, not staged in the box. Uncontrolled so `el.value = ''`
+              // clears cleanly. No compose-only affordances (upload/phrases/mic/send) — those are agent mode.
+              <input
+                ref={cmdRef}
+                className="input-text"
+                type="text"
+                onInput={onCommandInput}
+                onKeyDown={onInputKeyDown}
+                onCompositionStart={onCompositionStart}
+                onCompositionEnd={onCompositionEnd}
+                enterKeyHint="send"
+                placeholder={t('dock.command.placeholder')}
+                autoCapitalize="off"
+                autoCorrect="off"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            ) : (
+              <>
+                <button type="button" className="input-upload" aria-label={t('dock.upload.aria')} title={t('dock.upload.title')}
+                  disabled={!!upload && !upload.error} onClick={() => uploadRef.current?.click()}>
+                  <PlusIcon />
+                </button>
+                {/* 离屏(非 display:none)以便程序化 .click() 在 iOS Safari 可靠唤起原生选择器,见 .browse-file-input。 */}
+                <input ref={uploadRef} className="browse-file-input" type="file" multiple
+                  onChange={(e) => { uploadFiles(e.target.files); e.target.value = ''; }} />
+                <textarea
+                  ref={ref}
+                  className="input-text"
+                  rows={1}
+                  value={value}
+                  // 录音中点输入框 = 立刻接管编辑:停语音 + 抑制回写(保留已识别文字,不让定稿覆盖你接着打
+                  // 的字),并在手势内同步 focus —— 你点这块就是要改字,这一下必须直接弹键盘、不用再点第二次。
+                  // iOS 只认「用户手势里同步调用的 focus」才立刻弹键盘;且 stop() 的重渲染可能打断原生那次聚
+                  // 焦,所以这里显式夺焦兜底。也绝不能用 readOnly:iOS 点 readOnly 的 textarea 根本不给焦点。
+                  onPointerDown={(e) => {
+                    if (!recording) return; // 未录音:交给原生点击聚焦即可
+                    stopVoiceIfRecording();
+                    e.currentTarget.focus(); // 同步夺焦,确保这一下就弹出键盘
+                  }}
+                  onChange={(e) => { setValue(e.target.value); autoGrow(e.target); }}
+                  placeholder={t('dock.input.placeholder')}
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+                {!value && (
+                  <button type="button" className="input-cmd" aria-label={t('dock.phrases')} title={t('dock.phrases')}
+                    onClick={() => setPanelOpen((o) => !o)}><CommandIcon /></button>
+                )}
+                {micAvailable && <MicButton active={recording} disabled={voice.state === 'requesting'} onToggle={toggleMic} />}
+                {/* 发送 ↑ 常驻,空框禁用:点 = 发送组合文本,长按 = 填入。 */}
+                <button type="button" className="input-send" aria-label={t('dock.send')} title={t('dock.send.hint')}
+                  disabled={!value}
+                  onPointerDown={sendDown} onPointerUp={sendUp} onPointerCancel={sendCancel} onPointerLeave={sendCancel}>
+                  <ArrowUpIcon />
+                </button>
+              </>
             )}
-            {micAvailable && <MicButton active={recording} disabled={voice.state === 'requesting'} onToggle={toggleMic} />}
-            {/* 发送 ↑ 常驻,空框禁用:点 = 发送组合文本,长按 = 填入。 */}
-            <button type="button" className="input-send" aria-label={t('dock.send')} title={t('dock.send.hint')}
-              disabled={!value}
-              onPointerDown={sendDown} onPointerUp={sendUp} onPointerCancel={sendCancel} onPointerLeave={sendCancel}>
-              <ArrowUpIcon />
-            </button>
           </div>
         </div>
       </div>
