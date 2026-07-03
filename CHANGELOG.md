@@ -5,16 +5,6 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Added
-- **Upgrade notice + `handmux update`** — `handmux start`/`status` now show a one-line
-  "⬆ handmux X.Y.Z available" hint when a newer version is published, and `handmux update`
-  (alias `upgrade`) runs the global install for you. The check never blocks or touches the
-  network on the hot path: it prints from a once-a-day cache and refreshes in a detached
-  background worker, and the version query goes through the user's own `npm` (so it honours a
-  configured China mirror / private registry rather than hard-coding registry.npmjs.org).
-- **Windows / WSL2 install docs** — README (en + zh) and the landing-page docs now have a
-  Windows section: handmux is Unix-only (tmux), so run it inside WSL2, with the two WSL-specific
-  gotchas called out — use `--tunnel cloudflare` (WSL2's NAT'd IP breaks the LAN URL) and enable
-  systemd in `/etc/wsl.conf` for `handmux service` autostart.
 - **Codex CLI support (second agent)** — handmux is no longer Claude-only. A new agent-driver
   registry (`server/src/agents/`) lets the inbox, push, and orphan/takeover engine drive any
   coding agent through a descriptor; Claude Code and OpenAI's Codex CLI are the first two.
@@ -45,6 +35,16 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   a resumed session shares the same history file, so a single writer avoids corruption). New
   `GET /api/orphans` + `POST /api/orphans/takeover`. Detection is a process scan (ps + tmux +
   lsof), skipping Ctrl-Z-suspended and background sessions.
+- **Upgrade notice + `handmux update`** — `handmux start`/`status` now show a one-line
+  "⬆ handmux X.Y.Z available" hint when a newer version is published, and `handmux update`
+  (alias `upgrade`) runs the global install for you. The check never blocks or touches the
+  network on the hot path: it prints from a once-a-day cache and refreshes in a detached
+  background worker, and the version query goes through the user's own `npm` (so it honours a
+  configured China mirror / private registry rather than hard-coding registry.npmjs.org).
+- **Windows / WSL2 install docs** — README (en + zh) and the landing-page docs now have a
+  Windows section: handmux is Unix-only (tmux), so run it inside WSL2, with the two WSL-specific
+  gotchas called out — use `--tunnel cloudflare` (WSL2's NAT'd IP breaks the LAN URL) and enable
+  systemd in `/etc/wsl.conf` for `handmux service` autostart.
 
 ### Changed
 - **cloudflared auto-download shows progress** — the first-run `cloudflared` fetch used to buffer
