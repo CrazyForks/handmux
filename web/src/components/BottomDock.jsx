@@ -9,6 +9,7 @@ import { useAsrAvailable } from '../voice/useAsrAvailable.js';
 import { useScreenWakeLock } from '../hooks/useScreenWakeLock.js';
 import { useBackButton } from '../hooks/useBackButton.js';
 import { t } from '../i18n';
+import { MODIFIERS, modActive, consumeMods, withMods } from '../keybarKeys.js';
 
 // The bottom dock. Key area (row 1): the scrolling KeyBar with ⌫ and an Enter key pinned at its right
 // end. Enter sends a Return KEY via /keys (y/n, menu confirm, advancing Claude), NOT the composed text.
@@ -136,8 +137,17 @@ function BottomDock({
   const composingRef = useRef(false);
   const streamInput = (el) => {
     const text = el.value;
-    if (text) onText(text); // straight to the pane
     el.value = ''; // keep the capture field empty — the terminal is the display
+    if (!text) return;
+    // An armed Ctrl/Alt (from the keybar) composes the system keyboard's next single letter/digit into
+    // the tmux combo (C-<x> / M-<x>) instead of streaming the raw char; then the one-shot modifier resets.
+    const active = MODIFIERS.some((m) => modActive(mods[m]));
+    if (active && text.length === 1) {
+      const composed = withMods({ kind: 'text', ch: text }, mods);
+      if (composed.kind === 'key') { onKey(composed.name); setMods(consumeMods); return; }
+    }
+    onText(text); // straight to the pane
+    if (active) setMods(consumeMods);
   };
   const onCommandInput = (e) => {
     if (e.nativeEvent?.isComposing || composingRef.current) return; // mid-IME — wait for the commit

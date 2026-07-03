@@ -324,5 +324,15 @@ describe('BottomDock', () => {
       expect(sendText).not.toHaveBeenCalled();
       expect(onKey).not.toHaveBeenCalledWith('Enter');
     });
+
+    it('command mode: armed Ctrl turns the next typed letter into C-<x> instead of streaming it', () => {
+      const onKey = vi.fn(), onText = vi.fn();
+      render({ pane: '%1', onAuthFail: vi.fn(), onKey, onText }); // command mode (no agent)
+      fire(container.querySelector('[data-key="ctrl"]'), 'pointerdown'); // arm Ctrl on the keybar
+      const el = container.querySelector('.input-text');
+      act(() => { el.value = 'r'; el.dispatchEvent(new InputEvent('input', { bubbles: true })); }); // type 'r'
+      expect(onKey).toHaveBeenCalledWith('C-r');
+      expect(onText).not.toHaveBeenCalledWith('r');
+    });
   });
 });
