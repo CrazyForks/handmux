@@ -4,6 +4,11 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Changed
+- **Multi-pane window tab is more compact** — the expanded `name │ ① cmd ▾` tab now caps the name and
+  command widths (ellipsis) and tightens padding, so a long command no longer blows the tab wide. The
+  full command still shows in the pane menu.
+
 ### Added
 - **Usage bars: time-progress marker** — each quota bar now draws a thin vertical line at the fraction
   of its reset window that has elapsed. Usage fill left of the line = burning slower than the clock;

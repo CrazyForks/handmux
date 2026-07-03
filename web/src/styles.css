@@ -127,10 +127,14 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 /* Active window with >1 pane: the tab expands inline into "name │ ① cmd ▾". The trigger reuses the
    .win-tab look; the menu (below) reuses Dropdown's .dd-menu. wt-dd is the positioning anchor. */
 .wt-dd { position: relative; flex: none; }
-.wt-trigger { display: inline-flex; align-items: center; gap: 4px; }
+.wt-trigger { display: inline-flex; align-items: center; gap: 3px; padding: 4px 8px; }
 /* Tight separator: negative margin pulls the name/pane in so "main│① zsh" reads compact. */
 .wt-sep { margin: 0 -1px; color: #cfe0ff; opacity: .4; font-weight: 400; }
-.wt-pane { font-weight: 600; }
+/* Keep the expanded pane tab compact: cap the name/command widths so a long command can't blow the
+   tab wide — the full command still shows in the pane menu. */
+.wt-name, .wt-pane { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wt-name { max-width: 9ch; }
+.wt-pane { font-weight: 600; max-width: 11ch; }
 .wt-caret { flex: none; font-size: 11px; color: #d6e4ff; transition: transform .15s ease; }
 .wt-caret.open { transform: rotate(180deg); }
 /* Pane menu: position:fixed (anchored by JS from the tab's rect) so the scroll strip's overflow
