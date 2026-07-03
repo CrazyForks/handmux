@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act } from 'react';
+import { act, createRef } from 'react';
 import { createRoot } from 'react-dom/client';
 
 vi.mock('../src/api.js', () => ({
@@ -257,6 +257,14 @@ describe('BottomDock', () => {
     it('defaults to agent (compose) mode when a coding agent is live in the pane', () => {
       render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
       expect(seg('agent').getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('enterCommandMode() ref handle flips the pane into command mode', () => {
+      const ref = createRef();
+      render({ ref, pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+      expect(seg('agent').getAttribute('aria-pressed')).toBe('true'); // agent live → agent default
+      act(() => ref.current.enterCommandMode());
+      expect(seg('command').getAttribute('aria-pressed')).toBe('true');
     });
 
     it('the segmented switch toggles the mode, and the scroll-row keys track it', () => {

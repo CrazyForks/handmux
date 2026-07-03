@@ -166,7 +166,15 @@ function BottomDock({
   };
 
   // Let the topbar idea panel drop a picked idea into the box (fill, never send) — same path as pick.
-  useImperativeHandle(fwdRef, () => ({ fill: pick }), []);
+  useImperativeHandle(fwdRef, () => ({
+    fill: pick,
+    // Tapping the terminal (App wires Terminal.onTap here) drops into command mode and focuses the
+    // capture field synchronously within the tap gesture, so iOS opens the soft keyboard right away.
+    enterCommandMode: () => {
+      setModeOverride((m) => ({ ...m, [pane]: 'command' }));
+      cmdRef.current?.focus();
+    },
+  }), [pane]);
 
   // After an upload, append the uploaded files' absolute paths to the box (then focus to keep typing).
   // One file → the full path. Multiple → write the shared dir prefix ONCE and brace-expand the names

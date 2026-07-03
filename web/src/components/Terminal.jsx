@@ -29,8 +29,10 @@ const LIVE_SCROLL_SLACK = 15; // scrolled up within this many lines of the botto
 // a smaller font shows more rows (filled from scrollback), a larger font fewer. In AUTO mode
 // (no manual pinch) the font also shrinks so the whole pane fits — full-screen TUIs stay whole.
 // All of this lives in fit() below.
-const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }, ref) {
+const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, onTap }, ref) {
   const elRef = useRef(null);
+  const onTapRef = useRef(onTap);
+  onTapRef.current = onTap;
   const termRef = useRef(null);
   // Clickable doc-path underlines (xterm decorations), rebuilt after every full repaint. The tap
   // handler is held in a ref so the poll loop's stable closure always calls the latest prop (mirrors
@@ -551,6 +553,15 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
     host.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
     host.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
 
+    // A plain tap on the pane (not a text-selection, not a doc-link tap) enters command mode and pops
+    // the keyboard. Selection/long-press sets selActiveRef; a link tap goes through onDocLinkTap.
+    const onHostPointerUp = (e) => {
+      if (selActiveRef.current) return;
+      if (e.target?.closest?.('a')) return;
+      onTapRef.current?.();
+    };
+    host.addEventListener('pointerup', onHostPointerUp);
+
     // Rebuild the persistent doc-path UNDERLINE after each full repaint (the visual cue; the actual
     // tap is handled by the link provider above). Underline-only (no bg) so it can't trigger the
     // scroll/BCE shading trap. Markers/decorations are disposed and recreated every repaint to match
@@ -724,6 +735,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       host.removeEventListener('touchstart', onTouchStart, { capture: true });
       host.removeEventListener('touchmove', onTouchMove, { capture: true });
       host.removeEventListener('touchend', onTouchEnd, { capture: true });
+      host.removeEventListener('pointerup', onHostPointerUp);
       sub.dispose();
       linkProvider.dispose();
       for (const { deco, marker } of decosRef.current) { deco.dispose(); marker.dispose(); }
