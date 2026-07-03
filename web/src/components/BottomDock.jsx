@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { sendText, uploadFile, UnauthorizedError } from '../api.js';
 import KeyBar from './KeyBar.jsx';
-import CommandPanel from './CommandPanel.jsx';
+import FavDrawer from './FavDrawer.jsx';
 import MicButton from './MicButton.jsx';
 import { ArrowUpIcon, PlusIcon, CommandIcon } from './icons.jsx';
 import { usePushToTalk } from '../voice/usePushToTalk.js';
@@ -19,7 +19,7 @@ import { MODIFIERS, modActive, consumeMods, withMods } from '../keybarKeys.js';
 // when the box is empty.
 function BottomDock({
   pane, onAuthFail, onKey, onText, cwd = null, agent = null,
-  recent = [], favorites = [], onSent, onToggleFav, onRemoveRecent,
+  recent = [], onSent,
 }, fwdRef) {
   const [value, setValue] = useState('');
   const [panelOpen, setPanelOpen] = useState(false);
@@ -174,6 +174,14 @@ function BottomDock({
     setPanelOpen(false);
     requestAnimationFrame(() => { ref.current?.focus(); autoGrow(ref.current); });
   };
+
+  // Tap a fav → send it (type + Enter, reusing the send path). Long-press (double-tap for now) → fill.
+  const sendFav = async (text) => {
+    if (!pane) return;
+    try { await sendText(pane, text, true); onSent?.(text); }
+    catch (err) { if (err instanceof UnauthorizedError) onAuthFail?.(); }
+  };
+  const fillFav = (text) => pick(text);
 
   // Let the topbar idea panel drop a picked idea into the box (fill, never send) — same path as pick.
   useImperativeHandle(fwdRef, () => ({
@@ -367,15 +375,10 @@ function BottomDock({
           </div>
         </div>
       </div>
-      <CommandPanel
-        open={panelOpen}
-        recent={recent}
-        favorites={favorites}
-        onPick={pick}
-        onToggleFav={onToggleFav}
-        onRemoveRecent={onRemoveRecent}
-        onClose={() => setPanelOpen(false)}
-      />
+      <FavDrawer open={panelOpen} mode={mode} recent={recent}
+        onSend={(text) => { setPanelOpen(false); sendFav(text); }}
+        onFill={(text) => { setPanelOpen(false); fillFav(text); }}
+        onClose={() => setPanelOpen(false)} />
     </div>
   );
 }

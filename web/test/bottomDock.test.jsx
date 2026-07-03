@@ -104,7 +104,7 @@ describe('BottomDock', () => {
     expect(container.querySelector('.input-text').value).toBe('');
   });
 
-  it('▤ toggles the command panel', () => {
+  it('▤ toggles the 常用 drawer', () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn(), recent: ['ls'], favorites: [] });
     expect(container.querySelector('.cmd-panel')).toBe(null);
     fire(container.querySelector('.input-cmd'), 'click');
@@ -113,13 +113,22 @@ describe('BottomDock', () => {
     expect(container.querySelector('.cmd-panel')).toBe(null);
   });
 
-  it('picking a command fills the box and closes the panel WITHOUT sending', () => {
-    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn(), recent: ['ls -la'], favorites: [] });
-    fire(container.querySelector('.input-cmd'), 'click');
-    fire(container.querySelector('.cmd-text'), 'click');
-    expect(container.querySelector('.input-text').value).toBe('ls -la');
+  it('tapping a reply chip in the 常用 drawer sends it (tap = send)', async () => {
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    fire(container.querySelector('.keybar-fav'), 'click'); // 常用 button opens the drawer (agent mode)
+    const ok = [...container.querySelectorAll('.fav-chip')].find((n) => n.textContent === 'ok');
+    fire(ok, 'click');
+    await act(async () => {});
+    expect(sendText).toHaveBeenCalledWith('%1', 'ok', true);
+  });
+
+  it('double-tapping a drawer command fills the box WITHOUT sending (long-press = fill)', () => {
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    fire(container.querySelector('.keybar-fav'), 'click');
+    const compact = [...container.querySelectorAll('.cmd-text')].find((n) => n.textContent === '/compact');
+    act(() => compact.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
+    expect(container.querySelector('.input-text').value).toBe('/compact');
     expect(sendText).not.toHaveBeenCalled();
-    expect(container.querySelector('.cmd-panel')).toBe(null);
   });
 
   it('点麦克风开始/再点停止(点按切换)', async () => {
