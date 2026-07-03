@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-03
+
 ### Added
 - **Codex CLI support (second agent)** — handmux is no longer Claude-only. A new agent-driver
   registry (`server/src/agents/`) lets the inbox, push, and orphan/takeover engine drive any
