@@ -810,8 +810,8 @@ export default function App() {
           hooksStatus={hooksStatus}
           onEnableHooks={enableHooks}
         />
-        <button className="topbar-icon" onClick={() => setFileManagerOpen(true)} aria-label={t('app.files')} title={t('app.files')}><FolderIcon /></button>
         <button className="topbar-icon" onClick={() => setUsageOpen(true)} aria-label={t('usage.title')} title={t('usage.title')}><GaugeIcon /></button>
+        <button className="topbar-icon" onClick={() => setFileManagerOpen(true)} aria-label={t('app.files')} title={t('app.files')}><FolderIcon /></button>
         <button className="topbar-icon" onClick={() => setGitOpen(true)} aria-label="Git" title="Git"><GitIcon /></button>
         <button className="topbar-icon" onClick={() => setSettingsOpen(true)} aria-label={t('app.settings')} title={t('app.settings')}>
           <GearIcon />

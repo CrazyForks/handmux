@@ -188,7 +188,7 @@ export default {
   'usage.updatedMin': 'updated {n}m ago',
   'usage.updatedHr': 'updated {n}h ago',
   'usage.updatedDay': 'updated {n}d ago',
-  'usage.activityNote': 'Only refreshes while the agent is active — the timestamp shows how fresh each is.',
+  'usage.activityNote': 'Updates on new messages',
   'app.renameSession': 'Rename session',
   'app.renameWindow': 'Rename window',
   'app.moveLeft': '◀ Move left',

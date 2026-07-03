@@ -145,6 +145,7 @@ export default function UsagePage({ open, onClose, onAuthFail }) {
       <div className="settings-card usage-card" role="dialog" aria-label={t('usage.title')} aria-modal="true">
         <div className="settings-head">
           <span className="settings-title">{t('usage.title')}</span>
+          <span className="usage-head-note">{t('usage.activityNote')}</span>
           <button className="settings-close" onClick={onClose} aria-label={t('common.close')}>✕</button>
         </div>
         <div className="settings-section">
@@ -158,7 +159,6 @@ export default function UsagePage({ open, onClose, onAuthFail }) {
               <ClaudeCard claude={data.claude} now={now} />
             </>
           ) : null}
-          {data && (data.claude || data.codex) && <div className="usage-note">{t('usage.activityNote')}</div>}
         </div>
       </div>
     </>

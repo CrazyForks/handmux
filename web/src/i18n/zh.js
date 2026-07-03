@@ -187,7 +187,7 @@ export default {
   'usage.updatedMin': '{n} 分钟前更新',
   'usage.updatedHr': '{n} 小时前更新',
   'usage.updatedDay': '{n} 天前更新',
-  'usage.activityNote': '只在 agent 有活动时刷新 —— 上面的时间标明各自新旧。',
+  'usage.activityNote': '在有新消息时更新',
   'app.renameSession': '重命名会话',
   'app.renameWindow': '重命名窗口',
   'app.moveLeft': '◀ 左移',
