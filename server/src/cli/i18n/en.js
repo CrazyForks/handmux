@@ -80,6 +80,12 @@ export default {
   'hooks.removed': '✓ Agent hooks removed.',
   'hooks.usage': 'usage: handmux hooks install|uninstall',
 
+  // Claude statusLine usage capturer (powers the phone Usage page's 5h/weekly bars)
+  'statusline.confirmEnable': "Show Claude's 5h/weekly usage on the phone? (installs a Claude statusLine)",
+  'statusline.installed': '✓ Claude statusLine installed → ~/.claude/settings.json',
+  'statusline.reload': '  Open a new Claude session to load it; the Usage page fills in as it reports.',
+  'statusline.foreignHint': 'You already have a Claude statusLine — leaving it untouched. To also feed the phone Usage page, pipe it through our capturer:',
+
   // service
   'service.usage': 'usage: handmux service install [start-flags] | handmux service uninstall',
   'service.installed': "handmux will now start at login. 'handmux service uninstall' to remove.",

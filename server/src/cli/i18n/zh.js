@@ -79,6 +79,12 @@ export default {
   'hooks.removed': '✓ agent hooks 已移除。',
   'hooks.usage': '用法:handmux hooks install|uninstall',
 
+  // Claude statusLine 用量捕获(点亮手机用量页的 5h/周额度条)
+  'statusline.confirmEnable': '在手机上显示 Claude 的 5h/周额度?(会安装一个 Claude statusLine)',
+  'statusline.installed': '✓ Claude statusLine 已安装 → ~/.claude/settings.json',
+  'statusline.reload': '  新开一个 Claude 会话以加载;用量页会随上报逐渐填上。',
+  'statusline.foreignHint': '你已经有自己的 Claude statusLine —— 保持不动。想同时点亮手机用量页,把它接到我们的捕获器后面:',
+
   // service
   'service.usage': '用法:handmux service install [start-flags] | handmux service uninstall',
   'service.installed': "handmux 现在会开机自启。移除请运行 'handmux service uninstall'。",

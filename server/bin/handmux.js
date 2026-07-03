@@ -32,6 +32,8 @@ import { readState, clearState, isAlive, pocketHome, logPath, configPath, claude
 import { runSetup } from '../src/cli/setupWizard.js';
 import { hooksStatus, installHooks, uninstallHooks } from '../src/cli/claudeHooks.js';
 import { codexHooksStatus, installCodexHooks, uninstallCodexHooks } from '../src/cli/codexHooks.js';
+import { statusLineStatus, installStatusLine, uninstallStatusLine, composeHint } from '../src/cli/statusLine.js';
+import { claudeUsagePath } from '../src/usage.js';
 import { probe } from '../src/cli/probe.js';
 import { notifyUpdate, runUpdateCheck, PKG_NAME } from '../src/cli/updateCheck.js';
 import { t, initLocale, setLocale } from '../src/cli/i18n/index.js';
@@ -319,8 +321,29 @@ async function setupCmd() {
   if (offerHooks && await confirm(t('hooks.confirmEnable'))) {
     installAgentHooks();
   }
+  await maybeOfferStatusLine();
   if (await confirm(t('setup.confirmStart'))) { Object.assign(flags, cfg); return start(); }
   console.log(t('setup.later'));
+}
+
+// Offer to enable the Claude statusLine usage capturer — it feeds the phone Usage page's 5h/weekly bars
+// (Claude Code's statusLine stdin is the only documented local source of those %). Opt-in and NON-
+// DESTRUCTIVE: auto-installs only when there's no statusLine yet; if the user already has one we print a
+// one-line compose snippet and change nothing. Codex needs no capturer — its rollout already carries the
+// quota. No-op when Claude Code isn't installed or ours is already in place.
+async function maybeOfferStatusLine() {
+  const st = statusLineStatus(HOME);
+  if (st === 'no-claude' || st === 'ours') return;
+  if (st === 'foreign') {
+    console.log(t('statusline.foreignHint'));
+    console.log('  ' + composeHint(HOME, { usageFile: claudeUsagePath(HOME) }));
+    return;
+  }
+  if (await confirm(t('statusline.confirmEnable'))) {
+    installStatusLine(HOME, { srcDir: HOOKS_SRC, usageFile: claudeUsagePath(HOME) });
+    console.log(t('statusline.installed'));
+    console.log(t('statusline.reload'));
+  }
 }
 
 // Install the inbox hooks for every coding agent present on this host (Claude Code, Codex — the state file
@@ -352,11 +375,13 @@ async function hooksCmd() {
       return;
     }
     if (installAgentHooks() > 0) console.log(t('hooks.installedHint'));
+    await maybeOfferStatusLine();
     return;
   }
   if (sub === 'uninstall') {
     uninstallHooks(HOME);
     uninstallCodexHooks(HOME);
+    uninstallStatusLine(HOME);
     console.log(t('hooks.removed'));
     return;
   }

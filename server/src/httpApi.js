@@ -24,6 +24,7 @@ import { hooksStatus, installHooks } from './cli/claudeHooks.js';
 import { codexHooksStatus, installCodexHooks } from './cli/codexHooks.js';
 import { claudeStatePath } from './cli/state.js';
 import { scanOrphans, takeoverOrphan, defaultProjectsDir } from './orphans.js';
+import { getUsageCached } from './usage.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const HOOKS_SRC = resolvePath(here, '../hooks'); // server/hooks (bundled scripts)
@@ -528,6 +529,13 @@ export function createApiRouter({
     const q = req.query.sessions;
     const allowed = q === undefined ? null : String(q).split(',').map((s) => s.trim()).filter(Boolean);
     try { res.json(await claudeEvents.getStates(allowed)); } catch (e) { next(e); }
+  });
+
+  // Agent usage/quota for the Usage page. Disk-only, no credentials: Claude's 5h/weekly % from the
+  // statusLine snapshot (if the capturer is opted in), Codex's rate_limits + tokens from its newest
+  // rollout. Either side is null when unavailable. Cached briefly (see usage.js); never throws.
+  r.get('/usage', (req, res, next) => {
+    try { res.json(getUsageCached(home)); } catch (e) { next(e); }
   });
 
   // Orphan Claude sessions: `claude` processes running on this host but NOT inside a tmux pane, so
