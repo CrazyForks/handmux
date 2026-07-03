@@ -996,3 +996,25 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .orphan-targets .fontbtn[aria-pressed="true"] .orphan-reco { color: #d6f5e3; }
 .orphan-help { font-size: 11px; color: #9aa0a6; line-height: 1.5; margin-top: 6px; }
 
+
+/* Usage page — per-agent quota/limit windows (see UsagePage.jsx). */
+.usage-card { max-width: 420px; max-height: 80vh; overflow-y: auto; }
+.usage-agent { padding: 12px 0; }
+.usage-agent + .usage-agent { border-top: 1px solid #33353a; }
+.usage-agent-head { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; margin-bottom: 8px; }
+.usage-agent-head .agent-mark { width: 18px; height: 18px; }
+.usage-row { margin: 12px 0; }
+.usage-row-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; margin-bottom: 5px; }
+.usage-row-label { color: #ddd; }
+.usage-row-sub { color: #888; }
+.usage-row-pct { font-variant-numeric: tabular-nums; color: #ddd; font-weight: 600; }
+.usage-bar { height: 8px; background: #33353a; border-radius: 5px; overflow: hidden; }
+.usage-bar-fill { height: 100%; border-radius: 5px; transition: width .3s ease; }
+.usage-bar-fill.lvl-lo { background: #4ec98a; }
+.usage-bar-fill.lvl-mid { background: #e0b341; }
+.usage-bar-fill.lvl-hi { background: #ff6b6b; }
+.usage-row-reset { margin-top: 4px; font-size: 11px; color: #888; }
+.usage-empty { font-size: 13px; color: #9aa0a6; padding: 6px 0; line-height: 1.5; }
+.usage-code { display: inline-block; margin-top: 6px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; background: #1a1b1e; color: #b7f0cd; padding: 3px 8px; border-radius: 6px; }
+.usage-tokens { margin-top: 8px; font-size: 12px; color: #888; }
+.usage-note { margin-top: 10px; font-size: 11px; color: #666; line-height: 1.5; }

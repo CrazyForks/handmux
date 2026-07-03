@@ -4,6 +4,18 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Added
+- **Usage page (per-agent quota/limits)** — a new top-bar page shows Claude's 5-hour and weekly
+  rate-limit bars (with reset countdowns) and Codex's quota windows, read entirely from local
+  files on the host — no account login, no API calls. `GET /api/usage`. Codex is zero-config (its
+  rollout's `token_count` events carry `rate_limits` + cumulative tokens). Claude's 5h/weekly %
+  live only in Claude Code's statusLine stdin (the one documented local source — see
+  code.claude.com/docs/en/statusline), so a new `handmux-statusline.cjs` capturer snapshots them
+  to `~/.handmux/claude-usage.json`. Installing it is opt-in via `handmux setup` / `hooks install`
+  and **non-destructive**: it only auto-installs when no statusLine exists; an existing custom
+  statusLine is never clobbered (the CLI prints a one-line TEE compose snippet instead). Uninstall
+  reverts only our own.
+
 ### Removed
 - **The per-window tmux status dot is gone.** The Claude hook used to also write a colour into each
   tmux window's `@claude_dot` option, and `handmux setup`/`hooks install` offered to patch

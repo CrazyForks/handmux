@@ -32,6 +32,7 @@ import Terminal from './components/Terminal.jsx';
 import BottomDock from './components/BottomDock.jsx';
 import TokenPrompt from './components/TokenPrompt.jsx';
 import Settings from './components/Settings.jsx';
+import UsagePage from './components/UsagePage.jsx';
 import Inbox from './components/Inbox.jsx';
 import OrphanTakeoverSheet from './components/OrphanTakeoverSheet.jsx';
 import { useClaudeHooks } from './useClaudeHooks.js';
@@ -45,7 +46,7 @@ import DirPicker from './components/DirPicker.jsx';
 import DocLinkPopover from './components/DocLinkPopover.jsx';
 import IdeaPanel from './components/IdeaPanel.jsx';
 import Changelog from './components/Changelog.jsx';
-import { FolderIcon, GearIcon, BulbIcon, MonitorIcon, GitIcon } from './components/icons.jsx';
+import { FolderIcon, GearIcon, BulbIcon, MonitorIcon, GitIcon, GaugeIcon } from './components/icons.jsx';
 import { useKeyboardInset } from './hooks/useKeyboardInset.js';
 import { useLongPress } from './hooks/useLongPress.js';
 import { useBackButton } from './hooks/useBackButton.js';
@@ -63,6 +64,7 @@ export default function App() {
   const [needToken, setNeedToken] = useState(!getToken());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [usageOpen, setUsageOpen] = useState(false);
   const [bindOpen, setBindOpen] = useState(false);
   const [newWinOpen, setNewWinOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState(null); // { kind:'session'|'window', id, name } | null
@@ -192,6 +194,7 @@ export default function App() {
   useBackButton(previewSheetOpen, () => setPreviewSheetOpen(false));
   useBackButton(drawerOpen, () => setDrawerOpen(false));
   useBackButton(inboxOpen, () => setInboxOpen(false));
+  useBackButton(usageOpen, () => setUsageOpen(false));
   useBackButton(bindOpen, () => setBindOpen(false));
   useBackButton(newWinOpen, () => setNewWinOpen(false));
   useBackButton(ideaOpen, () => setIdeaOpen(false));
@@ -808,12 +811,18 @@ export default function App() {
           onEnableHooks={enableHooks}
         />
         <button className="topbar-icon" onClick={() => setFileManagerOpen(true)} aria-label={t('app.files')} title={t('app.files')}><FolderIcon /></button>
+        <button className="topbar-icon" onClick={() => setUsageOpen(true)} aria-label={t('usage.title')} title={t('usage.title')}><GaugeIcon /></button>
         <button className="topbar-icon" onClick={() => setGitOpen(true)} aria-label="Git" title="Git"><GitIcon /></button>
         <button className="topbar-icon" onClick={() => setSettingsOpen(true)} aria-label={t('app.settings')} title={t('app.settings')}>
           <GearIcon />
           {changelogUnread && <span className="topbar-dot" aria-hidden="true" />}
         </button>
       </header>
+      <UsagePage
+        open={usageOpen}
+        onClose={() => setUsageOpen(false)}
+        onAuthFail={onAuthFail}
+      />
       <Settings
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}

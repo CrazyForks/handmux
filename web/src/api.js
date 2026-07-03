@@ -37,6 +37,7 @@ async function req(path, opts = {}) {
 }
 
 export const getSessions = () => req('/api/sessions');
+export const getUsage = () => req('/api/usage');
 export const getWindows = (session) => req(`/api/windows?session=${encodeURIComponent(session)}`);
 export const getPanes = (window) => req(`/api/panes?window=${encodeURIComponent(window)}`);
 export const getHistory = (pane, lines = 1500, since) =>

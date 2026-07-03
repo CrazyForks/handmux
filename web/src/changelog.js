@@ -4,6 +4,18 @@
 // is what's shown. `items` is now { zh, en } — parallel arrays (same order/count) for each locale.
 export const CHANGELOG = [
   {
+    v: '2026-07-03-usage',
+    date: '2026-07-03',
+    items: {
+      zh: [
+        '新增「用量」页(顶栏仪表盘图标):一眼看 Claude 的 5 小时 / 本周额度进度条 + 重置倒计时,以及 Codex 的额度环。全部读主机本地文件,不登录账号、不调用 API。Codex 零配置即用;Claude 的实时额度需要在电脑上运行一次 handmux hooks install(会装一个 statusLine 捕获器,已有自定义 statusLine 的绝不覆盖)。',
+      ],
+      en: [
+        'New "Usage" page (gauge icon in the top bar): see Claude\'s 5-hour / weekly limit bars with reset countdowns, plus Codex\'s quota ring — at a glance. All read from local files on the host: no account login, no API calls. Codex works with zero setup; Claude\'s live limits need a one-time `handmux hooks install` on the computer (it adds a statusLine capturer and never clobbers an existing custom statusLine).',
+      ],
+    },
+  },
+  {
     v: '2026-07-02-codex',
     date: '2026-07-02',
     items: {

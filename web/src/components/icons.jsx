@@ -232,6 +232,16 @@ export function MonitorIcon() {
   );
 }
 
+// 📊 用量/额度(Lucide gauge)——打开用量页(Claude/Codex 额度)。
+export function GaugeIcon() {
+  return (
+    <svg {...base}>
+      <path d="M12 14l4-4" />
+      <path d="M3.34 19a10 10 0 1 1 17.32 0" />
+    </svg>
+  );
+}
+
 // 📱 手机视图(Lucide smartphone)——预览切到移动端视口。
 export function SmartphoneIcon() {
   return (
