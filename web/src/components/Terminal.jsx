@@ -553,13 +553,18 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
     host.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
     host.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
 
-    // A plain tap on the pane (not a text-selection, not a doc-link tap) enters command mode and pops
-    // the keyboard. Selection/long-press sets selActiveRef; a link tap goes through onDocLinkTap.
+    // A plain tap on the pane (not a text-selection, not a scroll-drag, not a doc-link tap) enters
+    // command mode and pops the keyboard. Selection/long-press sets selActiveRef; a link tap goes through
+    // onDocLinkTap; a pointer that moved far between down and up is a scroll/drag, not a tap.
+    let tapStart = null;
+    const onHostPointerDown = (e) => { tapStart = { x: e.clientX, y: e.clientY }; };
     const onHostPointerUp = (e) => {
       if (selActiveRef.current) return;
       if (e.target?.closest?.('a')) return;
+      if (tapStart && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 10) return; // moved → scroll
       onTapRef.current?.();
     };
+    host.addEventListener('pointerdown', onHostPointerDown);
     host.addEventListener('pointerup', onHostPointerUp);
 
     // Rebuild the persistent doc-path UNDERLINE after each full repaint (the visual cue; the actual
@@ -735,6 +740,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
       host.removeEventListener('touchstart', onTouchStart, { capture: true });
       host.removeEventListener('touchmove', onTouchMove, { capture: true });
       host.removeEventListener('touchend', onTouchEnd, { capture: true });
+      host.removeEventListener('pointerdown', onHostPointerDown);
       host.removeEventListener('pointerup', onHostPointerUp);
       sub.dispose();
       linkProvider.dispose();

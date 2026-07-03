@@ -11,12 +11,11 @@ import { useBackButton } from '../hooks/useBackButton.js';
 import { t } from '../i18n';
 import { MODIFIERS, modActive, consumeMods, withMods } from '../keybarKeys.js';
 
-// The bottom dock. Key area (row 1): the scrolling KeyBar with ⌫ and an Enter key pinned at its right
-// end. Enter sends a Return KEY via /keys (y/n, menu confirm, advancing Claude), NOT the composed text.
-// Input row (row 2) runs to the far right: ▤ command panel at the left (only on an empty box), the
-// textarea, and ALWAYS the inline tap-toggle mic + a persistent blue send ↑ at the right (tap = type+
-// Enter, long-press = 填入). ▤ shows only on an empty box; the send ↑ is always present but DISABLED
-// when the box is empty.
+// The bottom dock. Key area (row 1): the two-row KeyBar — a fixed row (命令|对话 mode switch + 常用 +
+// Esc/Tab/Ctrl/Shift) above a horizontally-scrolling symbol/arrow row. Input row (row 2): in COMMAND
+// mode a bare capture <input> that streams each keystroke straight into the pane; in AGENT mode the
+// composer (＋ upload, textarea, ▤/常用 on an empty box, mic, send ↑ — tap = type+Enter, long-press =
+// 填入). ⌫ and Enter come from the system keyboard.
 function BottomDock({
   pane, onAuthFail, onKey, onText, cwd = null, agent = null,
   recent = [], onSent,
@@ -115,7 +114,7 @@ function BottomDock({
   };
 
   // Type the text then Enter (the server pauses between them so a TUI registers Enter as "send"
-  // rather than a newline). An empty box sends a bare Enter — this absorbs the old keybar Enter.
+  // rather than a newline).
   const send = async () => {
     if (!pane) return;
     stopVoiceIfRecording();
