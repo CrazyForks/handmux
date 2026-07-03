@@ -1,6 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { sendText, uploadFile, UnauthorizedError } from '../api.js';
-import { createRepeater } from '../repeat.js';
 import KeyBar from './KeyBar.jsx';
 import CommandPanel from './CommandPanel.jsx';
 import MicButton from './MicButton.jsx';
@@ -100,20 +99,6 @@ function BottomDock({
     anchorRef.current = { head: value.slice(0, sel), tail: value.slice(sel) };
     voice.start();
   };
-
-  // ⌫ auto-repeats while held (like the keybar arrows). The repeater is created once but always
-  // calls the LATEST onKey via a ref — onKey is rebuilt with the new pane id on every pane switch,
-  // so without this a held ⌫ would keep deleting in the stale (first) pane. Pointer events only,
-  // so a tap fires exactly one BSpace (see KeyBar for the touch+mouse double-fire we avoid).
-  const delRepRef = useRef(null);
-  const onKeyRef = useRef(onKey);
-  onKeyRef.current = onKey;
-  const delStart = (e) => {
-    if (e.cancelable) e.preventDefault();
-    if (!delRepRef.current) delRepRef.current = createRepeater(() => onKeyRef.current('BSpace'));
-    delRepRef.current.start();
-  };
-  const delStop = () => delRepRef.current?.stop();
 
   // Grow to fit content; CSS max-height caps it at 3 lines, after which it scrolls. +2 accounts
   // for the border under box-sizing: border-box.
@@ -279,16 +264,9 @@ function BottomDock({
   return (
     <div className="bottom-dock">
       <div className="dock-left">
-        {/* 按键区:键条横滚占满,右端竖着叠两行 ⌫(上)/ Enter(下),与键条同高。
-            Enter 发 /keys Enter——应答 y/n、菜单确认、推进 Claude,不发组合文本。 */}
         <div className="keyrow">
           <KeyBar onKey={onKey} onText={onText} mode={mode} onToggleMode={toggleMode}
             onOpenFav={() => setPanelOpen((o) => !o)} mods={mods} setMods={setMods} />
-          <div className="keyrow-stack">
-            <button type="button" className="keyrow-del" aria-label={t('common.delete')}
-              onPointerDown={delStart} onPointerUp={delStop} onPointerCancel={delStop} onPointerLeave={delStop}>⌫</button>
-            <button type="button" className="keyrow-enter" onClick={() => onKey('Enter')}>Enter</button>
-          </div>
         </div>
         {upload && (
           <div className={`dock-upload${upload.error ? ' error' : ''}`}>

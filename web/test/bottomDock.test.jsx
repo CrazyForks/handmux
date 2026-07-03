@@ -46,18 +46,10 @@ const typeInto = (node, text) => act(() => {
 });
 
 describe('BottomDock', () => {
-  it('puts ⌫ and an Enter key at the right end of the key area', () => {
+  it('no dedicated ⌫/Enter rail — those come from the system keyboard now', () => {
     render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-    expect(container.querySelector('.keyrow-del').textContent).toBe('⌫');
-    expect(container.querySelector('.keyrow-enter').textContent).toBe('Enter'); // 文字,不是 ⏎ 符号
-  });
-
-  it('the key-area Enter sends a raw Enter via onKey (NOT the composed text)', () => {
-    const onKey = vi.fn();
-    render({ pane: '%1', onAuthFail: vi.fn(), onKey, onText: vi.fn() });
-    fire(container.querySelector('.keyrow-enter'), 'click');
-    expect(onKey).toHaveBeenCalledWith('Enter');
-    expect(sendText).not.toHaveBeenCalled();
+    expect(container.querySelector('.keyrow-del')).toBeNull();
+    expect(container.querySelector('.keyrow-enter')).toBeNull();
   });
 
   it('a tap on the 发送 ↑ submits the typed text with enter=true', async () => {
@@ -110,27 +102,6 @@ describe('BottomDock', () => {
     voice.state = 'idle'; voice.partial = '';
     await render({ pane: '%1', agent: 'claude', onSent: () => {} });
     expect(container.querySelector('.input-text').value).toBe('');
-  });
-
-  it('⌫ sends a Backspace via onKey', () => {
-    const onKey = vi.fn();
-    render({ pane: '%1', onAuthFail: vi.fn(), onKey, onText: vi.fn() });
-    fire(container.querySelector('.keyrow-del'), 'pointerdown');
-    fire(container.querySelector('.keyrow-del'), 'pointerup');
-    expect(onKey).toHaveBeenCalledWith('BSpace');
-  });
-
-  it('holding ⌫ repeats Backspace, releasing stops', () => {
-    vi.useFakeTimers();
-    const onKey = vi.fn();
-    render({ pane: '%1', onAuthFail: vi.fn(), onKey, onText: vi.fn() });
-    fire(container.querySelector('.keyrow-del'), 'pointerdown');     // 1 (immediate)
-    act(() => vi.advanceTimersByTime(400 + 120 + 120));             // +2
-    fire(container.querySelector('.keyrow-del'), 'pointerup');
-    act(() => vi.advanceTimersByTime(1000));
-    expect(onKey).toHaveBeenCalledTimes(3);
-    expect(onKey).toHaveBeenCalledWith('BSpace');
-    vi.useRealTimers();
   });
 
   it('▤ toggles the command panel', () => {

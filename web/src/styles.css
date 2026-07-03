@@ -245,16 +245,9 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
    rides up above the keyboard as one unit. */
 .bottom-dock { display: flex; gap: 8px; padding: 8px; background: #2a2b2e; align-items: stretch; }
 .dock-left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-/* 按键区一行:键条横滚占满,右端竖着叠两行 ⌫(上)/ Enter(下),与键条同高、不随横滚跑。
-   输入行(下方)单独一行,通到最右。 */
+/* 按键区一行:两行键盘(固定行 + 横滚行)通到最右;⌫/Enter 交给系统键盘。 */
 .keyrow { display: flex; align-items: stretch; gap: 6px; }
 .keyrow .keybar { flex: 1; min-width: 0; }
-.keyrow-stack { flex: none; width: 66px; display: flex; flex-direction: column; gap: 4px; }
-/* min-height 把这两行键(连带同高的键条)抬高一点点,好按。 */
-.keyrow-del, .keyrow-enter { flex: 1; width: 100%; min-height: 40px; border: none; border-radius: 6px; background: #33353a; color: #e6e6e6; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
-.keyrow-del { font: 19px/1 ui-monospace, 'SF Mono', Menlo, monospace; }
-.keyrow-enter { font-size: 15px; }
-.keyrow-del:active, .keyrow-enter:active { background: #4a7cff; color: #fff; }
 /* Two-row keyboard: a FIXED row (mode switch + 常用 + Esc/Tab/Ctrl/Shift) that never scrolls, and a
    horizontally-scrolling row (arrows + symbols + Alt). ⌫/Enter live on the system keyboard now. */
 .keybar { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -293,16 +286,9 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .input-wrap { position: relative; flex: 1; min-width: 0; display: flex; align-items: flex-end; gap: 2px;
   padding: 4px; border: 1px solid #444; border-radius: 6px; background: #1a1b1e; }
 .input-wrap:focus-within { border-color: #07c160; box-shadow: 0 0 0 1px rgba(7,193,96,.45); }
-/* Command mode recolours the whole bar (blue accent) so the mode is unmissable at a glance — the
-   ambient indicator, on top of the mode pill's own label. */
+/* Command mode recolours the whole bar (blue accent) so the mode is unmissable at a glance. */
 .input-wrap.command { border-color: #3a6bff; background: #16171c; }
 .input-wrap.command:focus-within { border-color: #4a7cff; box-shadow: 0 0 0 1px rgba(74,124,255,.5); }
-/* Mode toggle pill: compact, always in the left slot. Blue when in command mode. */
-.input-mode { flex: none; align-self: stretch; min-width: 40px; padding: 0 8px;
-  border: none; border-radius: 6px; background: #33353a; color: #b9bcc4;
-  font: 12px/1 ui-monospace, 'SF Mono', Menlo, monospace; white-space: nowrap;
-  touch-action: manipulation; -webkit-user-select: none; user-select: none; }
-.input-mode[data-mode="command"] { background: #3a6bff; color: #fff; }
 /* ＋上传:嵌输入框最左、贴最后一行(多行跟到底部);点=弹原生多选,传到会话 .upload。 */
 .input-upload { flex: none; width: 34px; height: 34px;
   display: inline-flex; align-items: center; justify-content: center;
