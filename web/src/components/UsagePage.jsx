@@ -38,20 +38,33 @@ function Updated({ at, now }) {
   return <div className="usage-updated">{line}</div>;
 }
 
-function Bar({ pct }) {
-  const p = Math.max(0, Math.min(100, pct ?? 0));
-  const lvl = p >= 80 ? 'hi' : p >= 50 ? 'mid' : 'lo';
-  return <div className="usage-bar"><div className={`usage-bar-fill lvl-${lvl}`} style={{ width: `${p}%` }} /></div>;
+// How far the current reset window has elapsed (0–100), so the bar can mark where "on-pace" is: usage left
+// of the line = burning slower than time, right of it = faster. Needs both the window length and its reset.
+function timeElapsedPct(resetsAt, windowMinutes, nowMs) {
+  if (!resetsAt || !windowMinutes) return null;
+  const remain = resetsAt - Math.floor(nowMs / 1000);
+  return Math.max(0, Math.min(100, (1 - remain / (windowMinutes * 60)) * 100));
 }
 
-function LimitRow({ label, pct, reset, sub }) {
+function Bar({ pct, timePct }) {
+  const p = Math.max(0, Math.min(100, pct ?? 0));
+  const lvl = p >= 80 ? 'hi' : p >= 50 ? 'mid' : 'lo';
+  return (
+    <div className="usage-bar">
+      <div className={`usage-bar-fill lvl-${lvl}`} style={{ width: `${p}%` }} />
+      {timePct != null && <div className="usage-bar-time" style={{ left: `${timePct}%` }} title={t('usage.timeMark')} />}
+    </div>
+  );
+}
+
+function LimitRow({ label, pct, reset, sub, timePct }) {
   return (
     <div className="usage-row">
       <div className="usage-row-head">
         <span className="usage-row-label">{label}{sub && <span className="usage-row-sub"> · {sub}</span>}</span>
         <span className="usage-row-pct">{Math.round(pct)}%</span>
       </div>
-      <Bar pct={pct} />
+      <Bar pct={pct} timePct={timePct} />
       {reset && <div className="usage-row-reset">{reset}</div>}
     </div>
   );
@@ -72,17 +85,21 @@ function ClaudeCard({ claude, now }) {
         <>
           {claude.rateLimits.fiveHour && (
             <LimitRow label={t('usage.win5h')} pct={claude.rateLimits.fiveHour.usedPercent}
-              reset={fmtReset(claude.rateLimits.fiveHour.resetsAt, now)} />
+              reset={fmtReset(claude.rateLimits.fiveHour.resetsAt, now)}
+              timePct={timeElapsedPct(claude.rateLimits.fiveHour.resetsAt, 300, now)} />
           )}
           {claude.rateLimits.sevenDay && (
             <LimitRow label={t('usage.winWeekly')} pct={claude.rateLimits.sevenDay.usedPercent}
-              reset={fmtReset(claude.rateLimits.sevenDay.resetsAt, now)} />
+              reset={fmtReset(claude.rateLimits.sevenDay.resetsAt, now)}
+              timePct={timeElapsedPct(claude.rateLimits.sevenDay.resetsAt, 10080, now)} />
           )}
           {claude.rateLimits.sevenDayOpus && (
-            <LimitRow label={t('usage.winWeekly')} sub="Opus" pct={claude.rateLimits.sevenDayOpus.usedPercent} />
+            <LimitRow label={t('usage.winWeekly')} sub="Opus" pct={claude.rateLimits.sevenDayOpus.usedPercent}
+              timePct={timeElapsedPct(claude.rateLimits.sevenDayOpus.resetsAt, 10080, now)} />
           )}
           {claude.rateLimits.sevenDaySonnet && (
-            <LimitRow label={t('usage.winWeekly')} sub="Sonnet" pct={claude.rateLimits.sevenDaySonnet.usedPercent} />
+            <LimitRow label={t('usage.winWeekly')} sub="Sonnet" pct={claude.rateLimits.sevenDaySonnet.usedPercent}
+              timePct={timeElapsedPct(claude.rateLimits.sevenDaySonnet.resetsAt, 10080, now)} />
           )}
         </>
       )}
@@ -101,11 +118,13 @@ function CodexCard({ codex, now }) {
         <>
           {rl?.primary && (
             <LimitRow label={winLabel(rl.primary.windowMinutes) || t('usage.winPrimary')}
-              pct={rl.primary.usedPercent} reset={fmtReset(rl.primary.resetsAt, now)} />
+              pct={rl.primary.usedPercent} reset={fmtReset(rl.primary.resetsAt, now)}
+              timePct={timeElapsedPct(rl.primary.resetsAt, rl.primary.windowMinutes, now)} />
           )}
           {rl?.secondary && (
             <LimitRow label={winLabel(rl.secondary.windowMinutes) || t('usage.winSecondary')}
-              pct={rl.secondary.usedPercent} reset={fmtReset(rl.secondary.resetsAt, now)} />
+              pct={rl.secondary.usedPercent} reset={fmtReset(rl.secondary.resetsAt, now)}
+              timePct={timeElapsedPct(rl.secondary.resetsAt, rl.secondary.windowMinutes, now)} />
           )}
           {!rl?.primary && !rl?.secondary && <div className="usage-empty">{t('usage.codexNoQuota')}</div>}
         </>

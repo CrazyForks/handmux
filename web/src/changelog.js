@@ -4,6 +4,18 @@
 // is what's shown. `items` is now { zh, en } — parallel arrays (same order/count) for each locale.
 export const CHANGELOG = [
   {
+    v: '2026-07-04-usage-timeline',
+    date: '2026-07-04',
+    items: {
+      zh: [
+        '用量进度条新增「时间竖线」:标出当前重置窗口已过去的时间比例。已用量在竖线左边=烧得比时间慢(稳),越过竖线=烧得偏快,一眼看出自己的节奏。',
+      ],
+      en: [
+        'Usage bars now show a "time marker": a thin vertical line at how far the current reset window has elapsed. Usage left of the line = you\'re burning slower than the clock; past it = faster — pacing at a glance.',
+      ],
+    },
+  },
+  {
     v: '2026-07-03-usage',
     date: '2026-07-03',
     items: {

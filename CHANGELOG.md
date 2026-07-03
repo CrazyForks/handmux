@@ -4,6 +4,11 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Added
+- **Usage bars: time-progress marker** — each quota bar now draws a thin vertical line at the fraction
+  of its reset window that has elapsed. Usage fill left of the line = burning slower than the clock;
+  past it = faster. Derived from `resetsAt` + the window length (Claude 5h/weekly; Codex `windowMinutes`).
+
 ## [0.7.0] - 2026-07-03
 
 ### Added

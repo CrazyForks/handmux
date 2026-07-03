@@ -188,6 +188,7 @@ export default {
   'usage.updatedHr': '{n} 小时前更新',
   'usage.updatedDay': '{n} 天前更新',
   'usage.activityNote': '在有新消息时更新',
+  'usage.timeMark': '本窗口已过去的时间',
   'app.renameSession': '重命名会话',
   'app.renameWindow': '重命名窗口',
   'app.moveLeft': '◀ 左移',

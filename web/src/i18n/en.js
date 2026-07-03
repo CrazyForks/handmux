@@ -189,6 +189,7 @@ export default {
   'usage.updatedHr': 'updated {n}h ago',
   'usage.updatedDay': 'updated {n}d ago',
   'usage.activityNote': 'Updates on new messages',
+  'usage.timeMark': 'Time elapsed in this window',
   'app.renameSession': 'Rename session',
   'app.renameWindow': 'Rename window',
   'app.moveLeft': '◀ Move left',
