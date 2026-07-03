@@ -1,34 +1,34 @@
 import { describe, it, expect } from 'vitest';
 import {
-  CORE_COLS, CONTEXT_PAGES, KEY_LABELS, REPEAT_KEYS, keyAction,
-  CTRL_OFF, CTRL_ARMED, CTRL_LOCKED, tapCtrl, ctrlActive, consumeCtrl, withCtrl,
+  FIXED_KEYS, SCROLL_KEYS, MODIFIERS, KEY_LABELS, REPEAT_KEYS, keyAction,
+  MOD_OFF, MOD_ARMED, MOD_LOCKED, tapMod, modActive, consumeMods, withMods,
 } from '../src/keybarKeys.js';
 
 describe('keybarKeys layout', () => {
-  it('the fixed core is the inverted-T arrow cluster (Esc/Tab on the top corners)', () => {
-    expect(CORE_COLS).toEqual([
-      ['esc', 'left'],
-      ['up', 'down'],
-      ['tab', 'right'],
-    ]);
+  it('the fixed row holds the four most-used keys (Esc/Tab + Ctrl/Shift modifiers)', () => {
+    expect(FIXED_KEYS).toEqual(['esc', 'tab', 'ctrl', 'shift']);
   });
 
-  it('every context is a list of pages of two-key columns, each key labelled', () => {
-    for (const pages of Object.values(CONTEXT_PAGES)) {
-      expect(Array.isArray(pages)).toBe(true);
-      for (const page of pages) {
-        for (const col of page) {
-          expect(col).toHaveLength(2);
-          for (const id of col) expect(typeof KEY_LABELS[id]).toBe('string');
-        }
-      }
+  it('ctrl/shift/alt are the live modifiers', () => {
+    expect(MODIFIERS).toEqual(['ctrl', 'shift', 'alt']);
+  });
+
+  it('the scroll row leads with the arrow cluster in both modes', () => {
+    expect(SCROLL_KEYS.command.slice(0, 4)).toEqual(['left', 'up', 'down', 'right']);
+    expect(SCROLL_KEYS.agent.slice(0, 4)).toEqual(['left', 'up', 'down', 'right']);
+  });
+
+  it('command scroll row carries the buried shell symbols; agent carries menu/slash keys', () => {
+    expect(SCROLL_KEYS.command).toEqual(expect.arrayContaining(['pipe', 'bslash', 'tilde', 'gt', 'under']));
+    expect(SCROLL_KEYS.agent).toEqual(expect.arrayContaining(['slash', 'at', 'n1', 'n2', 'n3']));
+  });
+
+  it('both scroll rows end with Alt, and every key is labelled', () => {
+    for (const row of [SCROLL_KEYS.command, SCROLL_KEYS.agent]) {
+      expect(row).toContain('alt');
+      for (const id of row) expect(typeof KEY_LABELS[id]).toBe('string');
     }
-  });
-
-  it('shell context surfaces the buried shell symbols; agent context the menu/slash keys', () => {
-    const flat = (ctx) => CONTEXT_PAGES[ctx].flat(2);
-    expect(flat('shell')).toEqual(expect.arrayContaining(['pipe', 'bslash', 'tilde', 'gt', 'under']));
-    expect(flat('agent')).toEqual(expect.arrayContaining(['n1', 'n2', 'n3', 'stab', 'compact']));
+    for (const id of FIXED_KEYS) expect(typeof KEY_LABELS[id]).toBe('string');
   });
 
   it('only arrows auto-repeat', () => {
@@ -37,58 +37,48 @@ describe('keybarKeys layout', () => {
 });
 
 describe('keyAction', () => {
-  it('maps named keys (arrows, Esc/Tab, Shift+Tab->BTab, Ctrl combos, Home/End)', () => {
+  it('maps named keys and shell symbols', () => {
     expect(keyAction('esc')).toEqual({ kind: 'key', name: 'Escape' });
-    expect(keyAction('up')).toEqual({ kind: 'key', name: 'Up' });
-    expect(keyAction('right')).toEqual({ kind: 'key', name: 'Right' });
     expect(keyAction('tab')).toEqual({ kind: 'key', name: 'Tab' });
-    expect(keyAction('stab')).toEqual({ kind: 'key', name: 'BTab' });
-    expect(keyAction('ctrlc')).toEqual({ kind: 'key', name: 'C-c' });
-    expect(keyAction('ctrlr')).toEqual({ kind: 'key', name: 'C-r' });
-    expect(keyAction('home')).toEqual({ kind: 'key', name: 'Home' });
-    expect(keyAction('end')).toEqual({ kind: 'key', name: 'End' });
-  });
-
-  it('maps literal-character keys: shell symbols and slash-command shortcuts', () => {
+    expect(keyAction('up')).toEqual({ kind: 'key', name: 'Up' });
     expect(keyAction('pipe')).toEqual({ kind: 'text', ch: '|' });
     expect(keyAction('bslash')).toEqual({ kind: 'text', ch: '\\' });
-    expect(keyAction('tilde')).toEqual({ kind: 'text', ch: '~' });
-    expect(keyAction('gt')).toEqual({ kind: 'text', ch: '>' });
     expect(keyAction('n1')).toEqual({ kind: 'text', ch: '1' });
-    expect(keyAction('compact')).toEqual({ kind: 'text', ch: '/compact' });
-    expect(keyAction('btw')).toEqual({ kind: 'text', ch: '/btw ' }); // trailing space, ready for the note
-    expect(keyAction('loop')).toEqual({ kind: 'text', ch: '/loop ' });
+    expect(keyAction('slash')).toEqual({ kind: 'text', ch: '/' });
   });
-
-  it('returns null for an unknown id', () => {
+  it('returns null for a modifier id or unknown id (modifiers are not dispatched as keys)', () => {
+    expect(keyAction('ctrl')).toBe(null);
+    expect(keyAction('shift')).toBe(null);
     expect(keyAction('nope')).toBe(null);
   });
 });
 
-describe('Ctrl live modifier', () => {
+describe('live modifiers (ctrl/shift/alt)', () => {
   it('a tap cycles off -> armed -> locked -> off', () => {
-    expect(tapCtrl(CTRL_OFF)).toBe(CTRL_ARMED);
-    expect(tapCtrl(CTRL_ARMED)).toBe(CTRL_LOCKED);
-    expect(tapCtrl(CTRL_LOCKED)).toBe(CTRL_OFF);
+    expect(tapMod(MOD_OFF)).toBe(MOD_ARMED);
+    expect(tapMod(MOD_ARMED)).toBe(MOD_LOCKED);
+    expect(tapMod(MOD_LOCKED)).toBe(MOD_OFF);
+  });
+  it('modActive true when armed or locked', () => {
+    expect(modActive(MOD_OFF)).toBe(false);
+    expect(modActive(MOD_ARMED)).toBe(true);
+    expect(modActive(MOD_LOCKED)).toBe(true);
+  });
+  it('consuming collapses armed modifiers to off but keeps locked ones', () => {
+    expect(consumeMods({ ctrl: MOD_ARMED, shift: MOD_LOCKED, alt: MOD_OFF }))
+      .toEqual({ ctrl: MOD_OFF, shift: MOD_LOCKED, alt: MOD_OFF });
   });
 
-  it('ctrlActive is true when armed or locked', () => {
-    expect(ctrlActive(CTRL_OFF)).toBe(false);
-    expect(ctrlActive(CTRL_ARMED)).toBe(true);
-    expect(ctrlActive(CTRL_LOCKED)).toBe(true);
+  it('withMods composes Ctrl -> C-<x>, Alt -> M-<x> for letters/digits', () => {
+    expect(withMods({ kind: 'text', ch: 'r' }, { ctrl: MOD_ARMED })).toEqual({ kind: 'key', name: 'C-r' });
+    expect(withMods({ kind: 'text', ch: '1' }, { alt: MOD_LOCKED })).toEqual({ kind: 'key', name: 'M-1' });
   });
-
-  it('consuming collapses an armed (one-shot) modifier but keeps a locked one', () => {
-    expect(consumeCtrl(CTRL_ARMED)).toBe(CTRL_OFF);
-    expect(consumeCtrl(CTRL_LOCKED)).toBe(CTRL_LOCKED);
-    expect(consumeCtrl(CTRL_OFF)).toBe(CTRL_OFF);
+  it('withMods: Shift+Tab -> BTab, Shift+arrow -> S-<Arrow>', () => {
+    expect(withMods({ kind: 'key', name: 'Tab' }, { shift: MOD_ARMED })).toEqual({ kind: 'key', name: 'BTab' });
+    expect(withMods({ kind: 'key', name: 'Up' }, { shift: MOD_ARMED })).toEqual({ kind: 'key', name: 'S-Up' });
   });
-
-  it('withCtrl turns a letter/digit into C-<x>, leaves named keys and symbols alone', () => {
-    expect(withCtrl({ kind: 'text', ch: 'r' })).toEqual({ kind: 'key', name: 'C-r' });
-    expect(withCtrl({ kind: 'text', ch: '1' })).toEqual({ kind: 'key', name: 'C-1' });
-    expect(withCtrl({ kind: 'text', ch: 'W' })).toEqual({ kind: 'key', name: 'C-w' }); // lowercased
-    expect(withCtrl({ kind: 'text', ch: '|' })).toEqual({ kind: 'text', ch: '|' }); // symbol untouched
-    expect(withCtrl({ kind: 'key', name: 'Up' })).toEqual({ kind: 'key', name: 'Up' }); // named untouched
+  it('withMods leaves symbols/other untouched and no active modifier is a passthrough', () => {
+    expect(withMods({ kind: 'text', ch: '|' }, { ctrl: MOD_ARMED })).toEqual({ kind: 'text', ch: '|' });
+    expect(withMods({ kind: 'text', ch: 'r' }, { ctrl: MOD_OFF })).toEqual({ kind: 'text', ch: 'r' });
   });
 });

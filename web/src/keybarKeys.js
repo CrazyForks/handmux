@@ -1,107 +1,88 @@
-// Pure key model for the mobile keyboard. The view (KeyBar.jsx) renders these ids; keyAction()
-// decides how each one is sent: a named tmux key via /keys, or a literal character via /send
-// (enter:false). Kept DOM-free so it unit-tests on its own.
-//
-// Layout is split into two zones (see KeyBar.jsx):
-//   • CORE_COLS  — a FIXED cluster (inverted-T arrows with Esc/Tab in the corners) plus the Ctrl
-//                  modifier key. Always visible, never scrolls/pages — muscle memory stays put.
-//   • CONTEXT_PAGES[ctx] — the paged extended zone. One key set per context (shell vs coding-agent),
-//                  each a list of PAGES you swipe between (snap paging, never free scroll).
-// ⌫ and Enter are not modelled here — they live on the dock's right rail (BottomDock), wired straight
-// to /keys (BSpace) and the text-submit path.
+// Pure key model for the mobile keyboard (DOM-free, unit-tested on its own). The view (KeyBar.jsx)
+// renders two rows: a FIXED row (never scrolls) and a per-mode SCROLL row. keyAction() decides how a
+// key is sent — a named tmux key via /keys, or a literal character via /send (enter:false).
 
-// The fixed core: inverted-T arrow cluster with Esc/Tab on the top corners (Esc ▲ Tab / ◀ ▼ ▶).
-// Each column is a [top, bottom] pair. The Ctrl modifier key is rendered separately (it is stateful,
-// not a plain dispatch — see the modifier section below).
-export const CORE_COLS = [
-  ['esc', 'left'],
-  ['up', 'down'],
-  ['tab', 'right'],
-];
+// Fixed row, right side: the four most-used keys. Esc/Tab are direct keys; Ctrl/Shift are live
+// modifiers (see below). (The mode-switch segmented control and the 常用 button render on this row's
+// LEFT — they live in the view, not this table.)
+export const FIXED_KEYS = ['esc', 'tab', 'ctrl', 'shift'];
 
-// The paged extended zone, per context. page = list of [top, bottom] columns; a context = list of
-// pages. Swipe left/right flips whole pages (the view snaps — no half-keys, no momentum overshoot).
-//   • agent — coding-agent (Claude Code / Codex / …): 1/2/3 menu picks, Shift+Tab mode-cycle, Ctrl+O,
-//             then the slash-command shortcuts (type text, user submits).
-//   • shell — plain shell: the symbols iOS buries (| \ ~ - _ > < & * ;), Ctrl+C/Space, Home/End, and
-//             a few readline combos (the rest come from the live Ctrl modifier: Ctrl+r/w/a/u/k …).
-export const CONTEXT_PAGES = {
-  agent: [
-    [['n1', 'slash'], ['n2', 'at'], ['n3', 'bang']],
-    [['stab', 'ctrlo'], ['ctrlc', 'space'], ['compact', 'clear']],
-    [['model', 'btw'], ['effort', 'plugin'], ['loop', 'skill']],
-  ],
-  shell: [
-    [['pipe', 'tilde'], ['bslash', 'amp'], ['gt', 'lt']],
-    [['dash', 'under'], ['star', 'semi'], ['ctrlc', 'space']],
-    [['home', 'end'], ['stab', 'ctrll'], ['ctrlr', 'ctrle']],
-  ],
+// Live modifiers rendered as sticky keys. Alt sits on the scroll row; ctrl/shift on the fixed row.
+export const MODIFIERS = ['ctrl', 'shift', 'alt'];
+
+// Scroll row per mode: arrow cluster first, then the mode-relevant keys, then Alt. Horizontal scroll.
+export const SCROLL_KEYS = {
+  command: ['left', 'up', 'down', 'right',
+    'pipe', 'bslash', 'tilde', 'dash', 'under', 'gt', 'lt', 'amp', 'semi', 'star', 'alt'],
+  agent: ['left', 'up', 'down', 'right',
+    'slash', 'at', 'n1', 'n2', 'n3', 'bang', 'ctrlo', 'ctrll', 'alt'],
 };
 
-// Modifier/control keys are spelled out (friendlier than ⇥ / ⇧⇥ / ^C glyphs).
 export const KEY_LABELS = {
-  esc: 'Esc', up: '▲', tab: 'Tab', left: '◀', down: '▼', right: '▶',
-  home: 'Home', end: 'End',
-  n1: '1', n2: '2', n3: '3', slash: '/', at: '@', space: 'Space', bang: '!',
+  esc: 'Esc', tab: 'Tab', ctrl: 'Ctrl', shift: '⇧', alt: 'Alt',
+  up: '▲', down: '▼', left: '◀', right: '▶',
+  n1: '1', n2: '2', n3: '3', slash: '/', at: '@', bang: '!',
   pipe: '|', bslash: '\\', tilde: '~', dash: '-', under: '_',
   gt: '>', lt: '<', amp: '&', star: '*', semi: ';',
-  ctrlc: 'Ctrl+C', ctrll: 'Ctrl+L', ctrlo: 'Ctrl+O', ctrle: 'Ctrl+E', ctrlr: 'Ctrl+R',
-  stab: 'Shift+Tab',
-  // Slash-command shortcuts: the label drops the leading '/' to fit a narrow key (keyAction still
-  // sends the full '/compact' etc.). The context they live in already reads as "commands".
-  compact: 'compact', clear: 'clear', model: 'model', btw: 'btw',
-  effort: 'effort', plugin: 'plugin', loop: 'loop', skill: 'skill',
+  ctrlo: 'Ctrl+O', ctrll: 'Ctrl+L',
 };
 
-// Only the arrows repeat while held (scroll/select continuously).
+// Only the arrows auto-repeat while held.
 export const REPEAT_KEYS = new Set(['up', 'down', 'left', 'right']);
 
 const NAMED = {
-  esc: 'Escape', space: 'Space',
+  esc: 'Escape', tab: 'Tab',
   up: 'Up', down: 'Down', left: 'Left', right: 'Right',
-  tab: 'Tab', stab: 'BTab', home: 'Home', end: 'End',
-  ctrlc: 'C-c', ctrll: 'C-l', ctrlo: 'C-o', ctrle: 'C-e', ctrlr: 'C-r',
+  ctrlo: 'C-o', ctrll: 'C-l',
 };
 const CHARS = {
   slash: '/', at: '@', n1: '1', n2: '2', n3: '3', bang: '!',
   pipe: '|', bslash: '\\', tilde: '~', dash: '-', under: '_',
   gt: '>', lt: '<', amp: '&', star: '*', semi: ';',
-  compact: '/compact', clear: '/clear', model: '/model', btw: '/btw ',
-  effort: '/effort', plugin: '/plugin', loop: '/loop ', skill: '/skill',
 };
 
 export function keyAction(id) {
   if (id in NAMED) return { kind: 'key', name: NAMED[id] };
   if (id in CHARS) return { kind: 'text', ch: CHARS[id] };
-  return null;
+  return null; // modifiers (ctrl/shift/alt) and unknowns are not dispatched as keys
 }
 
-// ── Ctrl live modifier ──────────────────────────────────────────────────────────────────────────
-// A phone keyboard has no physical Ctrl, so the toolbar Ctrl key is a STICKY modifier applied to the
-// NEXT key pressed: 'off' → tap → 'armed' (one-shot: composes the next key then auto-resets) → tap →
-// 'locked' (persists across keys until tapped off) → tap → 'off'. A fast double-tap jumps to locked.
-// This unlocks arbitrary readline/tmux bindings (Ctrl+r/w/a/u/k, the tmux prefix) from one key,
-// instead of enumerating fixed combos.
-export const CTRL_OFF = 'off';
-export const CTRL_ARMED = 'armed';
-export const CTRL_LOCKED = 'locked';
+// ── Live modifiers ────────────────────────────────────────────────────────────────────────────
+// Each modifier is 'off' | 'armed' (one-shot: composes the next key then resets) | 'locked' (sticky
+// until tapped off). A single tap cycles; a fast double-tap (view-side) jumps to locked.
+export const MOD_OFF = 'off';
+export const MOD_ARMED = 'armed';
+export const MOD_LOCKED = 'locked';
 
-// One tap advances the cycle off → armed → locked → off.
-export function tapCtrl(state) {
-  if (state === CTRL_ARMED) return CTRL_LOCKED;
-  if (state === CTRL_LOCKED) return CTRL_OFF;
-  return CTRL_ARMED;
+export function tapMod(state) {
+  if (state === MOD_ARMED) return MOD_LOCKED;
+  if (state === MOD_LOCKED) return MOD_OFF;
+  return MOD_ARMED;
 }
-export const ctrlActive = (state) => state === CTRL_ARMED || state === CTRL_LOCKED;
-// After a key composes with Ctrl: an armed (one-shot) modifier collapses to off; a locked one stays.
-export const consumeCtrl = (state) => (state === CTRL_ARMED ? CTRL_OFF : state);
+export const modActive = (state) => state === MOD_ARMED || state === MOD_LOCKED;
 
-// Compose a resolved keyAction with an active Ctrl: a single letter or digit becomes the tmux combo
-// C-<x> (a named key); anything else (already-named keys, multi-char slash shortcuts, symbols) is
-// left untouched — Ctrl+symbol/Ctrl+slash-command has no useful terminal meaning.
-export function withCtrl(action) {
-  if (action && action.kind === 'text' && /^[a-z0-9]$/i.test(action.ch)) {
-    return { kind: 'key', name: `C-${action.ch.toLowerCase()}` };
+// mods is a { ctrl, shift, alt } map of states. Any armed one is active (either specific test below).
+const anyActive = (mods) => MODIFIERS.some((m) => modActive(mods[m]));
+// After a key composes: armed modifiers collapse to off, locked ones persist.
+export function consumeMods(mods) {
+  const out = {};
+  for (const m of MODIFIERS) out[m] = mods[m] === MOD_ARMED ? MOD_OFF : (mods[m] ?? MOD_OFF);
+  return out;
+}
+
+// Compose a resolved keyAction with the active modifiers into a tmux key:
+//   Ctrl + letter/digit -> C-<x>;  Alt + letter/digit -> M-<x>
+//   Shift + Tab -> BTab;  Shift + arrow -> S-Up/S-Down/S-Left/S-Right
+// Anything else (symbols, no active modifier) passes through unchanged.
+export function withMods(action, mods) {
+  if (!action || !anyActive(mods)) return action;
+  const ctrl = modActive(mods.ctrl), shift = modActive(mods.shift), alt = modActive(mods.alt);
+  if (shift && action.kind === 'key') {
+    if (action.name === 'Tab') return { kind: 'key', name: 'BTab' };
+    if (['Up', 'Down', 'Left', 'Right'].includes(action.name)) return { kind: 'key', name: `S-${action.name}` };
+  }
+  if ((ctrl || alt) && action.kind === 'text' && /^[a-z0-9]$/i.test(action.ch)) {
+    return { kind: 'key', name: `${ctrl ? 'C' : 'M'}-${action.ch.toLowerCase()}` };
   }
   return action;
 }
