@@ -51,8 +51,9 @@ const NAMED_KEYS = new Set([
   'Home', 'End', 'PageUp', 'PageDown',
 ]);
 const MOD_KEY = /^[CM]-[a-z0-9]$/; // Ctrl-/Alt- + one letter or digit — C-r, C-a, M-b, …
+const SHIFT_KEY = /^S-(Up|Down|Left|Right)$/; // Shift + arrow (Shift+Tab is the named key BTab)
 export function isAllowedKey(k) {
-  return typeof k === 'string' && (NAMED_KEYS.has(k) || MOD_KEY.test(k));
+  return typeof k === 'string' && (NAMED_KEYS.has(k) || MOD_KEY.test(k) || SHIFT_KEY.test(k));
 }
 
 // Pause between typing the text and pressing Enter on a /send. A TUI like Claude Code needs a

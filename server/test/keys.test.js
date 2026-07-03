@@ -16,6 +16,12 @@ describe('isAllowedKey', () => {
     }
   });
 
+  it('accepts Shift+arrow and Shift+Tab (BTab) for the Shift modifier', () => {
+    for (const k of ['S-Up', 'S-Down', 'S-Left', 'S-Right', 'BTab']) {
+      expect(isAllowedKey(k)).toBe(true);
+    }
+  });
+
   it('rejects anything outside the vocabulary or modifier shape', () => {
     for (const k of ['', 'rm -rf', 'C-', 'C-rf', 'C-C', 'X-a', 'C-;', 'Enter;ls',
       'Nope', undefined, null, 42, ['C-c']]) {
