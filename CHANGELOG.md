@@ -5,25 +5,33 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Changed
-- **Keyboard: fixed core + swipe-paged extended zone + live Ctrl modifier** — the key strip no longer
-  free-scrolls. A fixed core cluster (inverted-T arrows, Esc/Tab, Ctrl) always stays put; the extended
-  keys sit in snap pages you swipe one-at-a-time (dots track the page). A new **Ctrl** key is a sticky
-  modifier — tap arms it for the next key (composing `C-<x>`), double-tap locks it — so any readline/tmux
-  binding (Ctrl+R/W/A/U/K, the prefix) is reachable without a fixed combo. The extended zone carries two
-  contexts (coding-agent menu/slash keys vs the buried shell symbols `| \ ~ - _ > < & * ;`); the model is
-  in place, per-pane context switching lands with command mode. `/keys` now accepts `C-`/`M-<letter|digit>`.
+- **Keyboard: two rows + live Ctrl/Shift/Alt modifiers** — the key area is now a **fixed row** (the
+  `命令 | 对话` mode switch + a 常用 button on the left, then the four most-used keys Esc/Tab/Ctrl/Shift)
+  above a **horizontally-scrolling row** (arrow cluster + the buried shell symbols `| \ ~ - _ > < & ; *`
+  + Alt). Ctrl/Shift/Alt are sticky modifiers — tap arms for the next key (composing `C-<x>` / `BTab` /
+  `M-<x>` / `S-<arrow>`), double-tap locks — so any readline/tmux binding is reachable without a fixed
+  combo. Dropped the swipe-paging; the scroll row's symbols track the mode. ⌫ and Enter now come from
+  the system keyboard (the dedicated rail is gone). `/keys` accepts `C-`/`M-<letter|digit>` and `S-<arrow>`.
+- **Multi-pane window tab is more compact** — the expanded `name │ ① cmd ▾` tab now caps the name and
+  command widths (ellipsis) and tightens padding, so a long command no longer blows the tab wide. The
+  full command still shows in the pane menu.
 - **Multi-pane window tab is more compact** — the expanded `name │ ① cmd ▾` tab now caps the name and
   command widths (ellipsis) and tightens padding, so a long command no longer blows the tab wide. The
   full command still shows in the pane menu.
 
 ### Added
-- **Command mode (type straight into the shell)** — the dock now has two input modes. **Command**: a
-  single-line field whose Return runs the line immediately (the shell rhythm) with the keyboard on the
-  shell-symbol context; **Agent (chat)**: the existing multi-line composer for prose prompts (voice,
-  upload, phrases) with the menu/slash keyboard. The mode defaults from whether a coding agent is live
-  in the pane (`states.agent`) and sticks per-pane once you tap the pill to override; the whole bar
-  recolours so the active mode is unmissable. (Optimistic at-cursor echo is a later stage — command
-  mode currently submits the whole line on Return.)
+- **Command mode (type straight into the terminal)** — the dock now has two input modes. **Command**:
+  every keystroke streams straight into the pane like a real shell (the capture field stays empty, the
+  terminal is the display); the system keyboard's ⌫/↵ delete/run in the shell, an IME commits whole
+  words, and an armed Ctrl composes the next typed letter into `C-<x>`. **Agent (chat)**: the existing
+  multi-line composer for prose prompts (voice, upload, 常用). The mode defaults from whether a coding
+  agent is live in the pane (`states.agent`) and sticks per-pane; switch it with the `命令 | 对话`
+  segmented control or by tapping the terminal body (which drops into command mode and pops the keyboard).
+  (Optimistic at-cursor echo is a later stage — for now a typed char appears after one round-trip.)
+- **「常用」drawer (mode-aware, customizable)** — the 常用 button opens a bottom drawer whose contents
+  follow the mode: **agent** shows one-tap reply chips (ok / 继续 / yes / no) and Claude slash-commands
+  (`/compact` `/clear` `/model`); **command** shows your saved commands. Tap sends immediately; you can
+  add and delete your own entries, kept in two separate per-mode lists.
 - **Usage bars: time-progress marker** — each quota bar now draws a thin vertical line at the fraction
   of its reset window that has elapsed. Usage fill left of the line = burning slower than the clock;
   past it = faster. Derived from `resetsAt` + the window length (Claude 5h/weekly; Codex `windowMinutes`).
