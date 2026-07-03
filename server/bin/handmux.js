@@ -335,6 +335,8 @@ async function maybeOfferStatusLine() {
   const st = statusLineStatus(HOME);
   if (st === 'no-claude' || st === 'ours') return;
   if (st === 'foreign') {
+    // Deploy the capturer script (doesn't touch their statusLine) so the compose one-liner is runnable.
+    installStatusLine(HOME, { srcDir: HOOKS_SRC, usageFile: claudeUsagePath(HOME) });
     console.log(t('statusline.foreignHint'));
     console.log('  ' + composeHint(HOME, { usageFile: claudeUsagePath(HOME) }));
     return;

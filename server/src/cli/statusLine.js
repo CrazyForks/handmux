@@ -53,11 +53,13 @@ export function composeHint(home = homedir(), { usageFile } = {}) {
 export function installStatusLine(home = homedir(), { srcDir, usageFile } = {}) {
   if (!fs.existsSync(claudeDir(home))) return { status: 'no-claude' };
   const status = statusLineStatus(home);
-  if (status === 'foreign') return { status: 'foreign' }; // never clobber the user's own statusline
+  // Always deploy the capturer script (it's ours, inert until invoked) so the compose one-liner works even
+  // in the foreign case. Only the settings.statusLine write is gated on not clobbering the user's own.
   const hooksDir = path.join(claudeDir(home), 'hooks');
   fs.mkdirSync(hooksDir, { recursive: true });
   const dest = path.join(hooksDir, SCRIPT);
   fs.copyFileSync(path.join(srcDir, SCRIPT), dest);
+  if (status === 'foreign') return { status: 'foreign', script: dest }; // never touch their statusLine
   const settings = readSettings(home);
   settings.statusLine = { type: 'command', command: `node ${dest} ${usageFile}` };
   writeJsonAtomic(settingsPath(home), settings);

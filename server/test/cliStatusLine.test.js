@@ -52,13 +52,14 @@ describe('installStatusLine', () => {
     expect(sl.command).toContain(usageFile(home));
   });
 
-  it('NEVER clobbers a foreign statusLine', () => {
+  it('NEVER clobbers a foreign statusLine (but still deploys the capturer for compose)', () => {
     const home = withClaude('sl-');
     writeSettings(home, { statusLine: { type: 'command', command: 'bash ~/.claude/mystatus.sh' } });
     const r = installStatusLine(home, { srcDir: SRC, usageFile: usageFile(home) });
     expect(r.status).toBe('foreign');
     expect(settings(home).statusLine.command).toBe('bash ~/.claude/mystatus.sh'); // untouched
-    expect(fs.existsSync(path.join(home, '.claude', 'hooks', 'handmux-statusline.cjs'))).toBe(false);
+    // the script IS copied so the TEE compose one-liner is runnable — settings just isn't rewired
+    expect(fs.existsSync(path.join(home, '.claude', 'hooks', 'handmux-statusline.cjs'))).toBe(true);
   });
 
   it("'no-claude' and does nothing when ~/.claude is absent", () => {
