@@ -40,10 +40,20 @@ function combinedHooksStatus(home) {
   return 'no-claude';
 }
 
-const ALLOWED_KEYS = new Set([
+// Keys the mobile keyboard may send via /keys. A controlled vocabulary of named tmux keys, PLUS
+// live-modifier combinations (Ctrl/Alt + a single letter or digit) so the keyboard's Ctrl modifier
+// can compose any readline/tmux binding (C-r, C-w, C-a, the tmux prefix, …) without enumerating each
+// one here. tmux send-keys key names are themselves a closed set, so this stays a strict allowlist
+// (never a passthrough): a key either names an approved token or matches the modifier shape, or it's
+// rejected. The old fixed C-c/C-d/C-z/C-l/C-r/C-o/C-e all still match `C-[a-z0-9]`.
+const NAMED_KEYS = new Set([
   'Up', 'Down', 'Left', 'Right', 'Space', 'Enter', 'Escape', 'Tab', 'BTab', 'BSpace',
-  'C-c', 'C-d', 'C-z', 'C-l', 'C-r', 'C-o', 'C-e',
+  'Home', 'End', 'PageUp', 'PageDown',
 ]);
+const MOD_KEY = /^[CM]-[a-z0-9]$/; // Ctrl-/Alt- + one letter or digit — C-r, C-a, M-b, …
+export function isAllowedKey(k) {
+  return typeof k === 'string' && (NAMED_KEYS.has(k) || MOD_KEY.test(k));
+}
 
 // Pause between typing the text and pressing Enter on a /send. A TUI like Claude Code needs a
 // beat to ingest the pasted line; without it, the Enter can fold into the input as a newline
@@ -437,7 +447,7 @@ export function createApiRouter({
   r.post('/keys', async (req, res, next) => {
     const { pane, keys } = req.body || {};
     if (!isPaneId(pane)) return res.status(400).json({ error: 'bad pane id' });
-    if (!Array.isArray(keys) || keys.some((k) => !ALLOWED_KEYS.has(k))) {
+    if (!Array.isArray(keys) || keys.some((k) => !isAllowedKey(k))) {
       return res.status(400).json({ error: 'disallowed key' });
     }
     try {
