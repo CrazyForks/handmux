@@ -60,7 +60,7 @@ function LimitRow({ label, pct, reset, sub }) {
 function ClaudeCard({ claude, now }) {
   return (
     <section className="usage-agent">
-      <div className="usage-agent-head"><AgentMark agent="claude" /><span>Claude Code</span></div>
+      <div className="usage-agent-head"><AgentMark agent="claude" /><span>Claude Code</span><Updated at={claude?.updatedAt} now={now} /></div>
       {!claude ? (
         <div className="usage-empty">
           <div>{t('usage.claudeOff')}</div>
@@ -84,7 +84,6 @@ function ClaudeCard({ claude, now }) {
           {claude.rateLimits.sevenDaySonnet && (
             <LimitRow label={t('usage.winWeekly')} sub="Sonnet" pct={claude.rateLimits.sevenDaySonnet.usedPercent} />
           )}
-          <Updated at={claude.updatedAt} now={now} />
         </>
       )}
     </section>
@@ -95,7 +94,7 @@ function CodexCard({ codex, now }) {
   const rl = codex?.rateLimits;
   return (
     <section className="usage-agent">
-      <div className="usage-agent-head"><AgentMark agent="codex" /><span>Codex CLI</span></div>
+      <div className="usage-agent-head"><AgentMark agent="codex" /><span>Codex CLI</span><Updated at={codex?.updatedAt} now={now} /></div>
       {!codex ? (
         <div className="usage-empty">{t('usage.codexOff')}</div>
       ) : (
@@ -109,7 +108,6 @@ function CodexCard({ codex, now }) {
               pct={rl.secondary.usedPercent} reset={fmtReset(rl.secondary.resetsAt, now)} />
           )}
           {!rl?.primary && !rl?.secondary && <div className="usage-empty">{t('usage.codexNoQuota')}</div>}
-          <Updated at={codex.updatedAt} now={now} />
         </>
       )}
     </section>

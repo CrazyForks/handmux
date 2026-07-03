@@ -1016,6 +1016,8 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .usage-row-reset { margin-top: 4px; font-size: 11px; color: #888; }
 .usage-empty { font-size: 13px; color: #9aa0a6; padding: 6px 0; line-height: 1.5; }
 .usage-code { display: inline-block; margin-top: 6px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; background: #1a1b1e; color: #b7f0cd; padding: 3px 8px; border-radius: 6px; }
-.usage-updated { margin-top: 8px; font-size: 11px; color: #777; }
-/* freshness note to the right of the Usage title (title has margin-right:auto → this sits at the right) */
-.usage-head-note { margin-right: 10px; font-size: 11px; color: #777; }
+/* per-agent freshness stamp, pushed to the far right of the agent header row */
+.usage-updated { margin-left: auto; font-size: 11px; color: #777; }
+/* freshness note sits right beside the Usage title (left-aligned); its auto margin sends close to the right */
+.usage-card .settings-title { margin-right: 8px; }
+.usage-head-note { margin-right: auto; font-size: 11px; color: #777; }
