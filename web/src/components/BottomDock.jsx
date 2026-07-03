@@ -29,8 +29,13 @@ function BottomDock({
   // user flips the toggle. The keyboard's context (shell symbols vs agent menu/slash keys) tracks it.
   const [modeOverride, setModeOverride] = useState({}); // pane → 'command' | 'agent'
   const mode = modeOverride[pane] || (agent ? 'agent' : 'command');
-  const toggleMode = () =>
-    setModeOverride((m) => ({ ...m, [pane]: mode === 'command' ? 'agent' : 'command' }));
+  const toggleMode = () => {
+    const next = mode === 'command' ? 'agent' : 'command';
+    setModeOverride((m) => ({ ...m, [pane]: next }));
+    // Switching INTO command mode focuses the field synchronously (inside this tap gesture) so iOS
+    // pops the soft keyboard right away — command mode should feel like the keyboard is already there.
+    if (next === 'command') ref.current?.focus();
+  };
   // Hardware Back closes the command panel instead of exiting the app.
   useBackButton(panelOpen, () => setPanelOpen(false));
   const [upload, setUpload] = useState(null); // { label, pct, error } during/after an upload, else null

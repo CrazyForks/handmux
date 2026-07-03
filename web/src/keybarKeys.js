@@ -27,12 +27,14 @@ export const CORE_COLS = [
 //             a few readline combos (the rest come from the live Ctrl modifier: Ctrl+r/w/a/u/k …).
 export const CONTEXT_PAGES = {
   agent: [
-    [['n1', 'slash'], ['n2', 'at'], ['n3', 'bang'], ['stab', 'ctrlo'], ['ctrlc', 'space']],
-    [['compact', 'clear'], ['model', 'btw'], ['effort', 'plugin'], ['loop', 'skill']],
+    [['n1', 'slash'], ['n2', 'at'], ['n3', 'bang']],
+    [['stab', 'ctrlo'], ['ctrlc', 'space'], ['compact', 'clear']],
+    [['model', 'btw'], ['effort', 'plugin'], ['loop', 'skill']],
   ],
   shell: [
-    [['pipe', 'tilde'], ['bslash', 'amp'], ['gt', 'lt'], ['dash', 'under'], ['ctrlc', 'space']],
-    [['star', 'semi'], ['home', 'end'], ['stab', 'ctrll'], ['ctrlr', 'ctrle']],
+    [['pipe', 'tilde'], ['bslash', 'amp'], ['gt', 'lt']],
+    [['dash', 'under'], ['star', 'semi'], ['ctrlc', 'space']],
+    [['home', 'end'], ['stab', 'ctrll'], ['ctrlr', 'ctrle']],
   ],
 };
 
@@ -45,8 +47,10 @@ export const KEY_LABELS = {
   gt: '>', lt: '<', amp: '&', star: '*', semi: ';',
   ctrlc: 'Ctrl+C', ctrll: 'Ctrl+L', ctrlo: 'Ctrl+O', ctrle: 'Ctrl+E', ctrlr: 'Ctrl+R',
   stab: 'Shift+Tab',
-  compact: '/compact', clear: '/clear', model: '/model', btw: '/btw',
-  effort: '/effort', plugin: '/plugin', loop: '/loop', skill: '/skill',
+  // Slash-command shortcuts: the label drops the leading '/' to fit a narrow key (keyAction still
+  // sends the full '/compact' etc.). The context they live in already reads as "commands".
+  compact: 'compact', clear: 'clear', model: 'model', btw: 'btw',
+  effort: 'effort', plugin: 'plugin', loop: 'loop', skill: 'skill',
 };
 
 // Only the arrows repeat while held (scroll/select continuously).

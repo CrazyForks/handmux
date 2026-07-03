@@ -272,19 +272,19 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
    next no matter how many columns or how wide a label — narrow screens just shrink the keys. */
 .keybar-page { flex: 0 0 100%; width: 100%; scroll-snap-align: start; display: flex; gap: 4px; }
 .keybar-page > .keybar-col { flex: 1 1 0; min-width: 0; }
-.keybar-page .keybar-key { min-width: 0; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; }
+.keybar-page .keybar-key { min-width: 0; padding: 0 4px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
 .keybar-dots { display: flex; gap: 5px; justify-content: center; align-items: center; height: 6px; }
 .keybar-dot { width: 5px; height: 5px; border-radius: 50%; background: #4a4c52; transition: background .15s; }
 .keybar-dot.on { background: #9a9da5; }
 /* Ctrl modifier: a full-height key that lights up while armed (one-shot) or locked (sticky). */
-.keybar-ctrl { align-self: stretch; min-width: 46px; }
+.keybar-ctrl { align-self: stretch; min-width: 40px; padding: 0 6px; }
 .keybar-ctrl.armed { background: #4a7cff; color: #fff; }
 .keybar-ctrl.locked { background: #3a6bff; color: #fff; box-shadow: inset 0 -3px 0 0 #ffd24a; }
 /* A column stacks its two keys; align-items: stretch makes both keys take the column's width
    (so the wider of the two — e.g. Shift+Tab over Ctrl+C — sets a shared, aligned width). */
 .keybar-col { display: flex; flex-direction: column; gap: 4px; }
 .keybar-key {
-  flex: 1; min-width: 42px; min-height: 34px; padding: 0 8px;
+  flex: 1; min-width: 38px; min-height: 34px; padding: 0 6px;
   border: none; border-radius: 6px; white-space: nowrap;
   background: #33353a; color: #e6e6e6; font: 13px/1 ui-monospace, 'SF Mono', Menlo, monospace;
   touch-action: manipulation; -webkit-user-select: none; user-select: none;
@@ -296,7 +296,7 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .keybar-key[data-key="esc"],
 .keybar-key[data-key="tab"],
 .keybar-key[data-key="up"],
-.keybar-key[data-key="down"] { min-width: 52px; }
+.keybar-key[data-key="down"] { min-width: 42px; }
 /* Input row: ▤ (command panel) + the auto-growing command field. stretch makes ▤ grow to match the
    textarea's height as it gets taller. (填入 is a long-press on 发送 — see BottomDock.)
    ▤ width matches the Esc/◀ keybar column above it so the input row's left edge lines up. */
