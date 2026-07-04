@@ -998,7 +998,6 @@ export default function App() {
               pane={current.paneId}
               onAuthFail={onAuthFail}
               onDocLinkTap={onDocLinkTap}
-              onTap={() => dockRef.current?.enterCommandMode()}
             />
           )}
           <BottomDock

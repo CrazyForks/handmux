@@ -11,30 +11,29 @@ import { useBackButton } from '../hooks/useBackButton.js';
 import { t } from '../i18n';
 import { MODIFIERS, modActive, consumeMods, withMods } from '../keybarKeys.js';
 
-// The bottom dock. Key area (row 1): the two-row KeyBar — a fixed row (命令|对话 mode switch + 常用 +
-// Esc/Tab/Ctrl/Shift) above a horizontally-scrolling symbol/arrow row. Input row (row 2): in COMMAND
-// mode a bare capture <input> that streams each keystroke straight into the pane; in AGENT mode the
-// composer (＋ upload, textarea, ▤/常用 on an empty box, mic, send ↑ — tap = type+Enter, long-press =
-// 填入). ⌫ and Enter come from the system keyboard.
+// The bottom dock is a two-page pager (swipe the whole area left/right to switch; two dots above show
+// which page is current):
+//   • COMMAND page — a fixed 3-row keyboard (KeyBar, inverted-T arrows) whose ⌨ key pops / dismisses the
+//     system keyboard; a hidden capture <input> receives the keystrokes and streams each one straight
+//     into the pane (the terminal is the display, there is no visible box).
+//   • CHAT page — the composer (＋ upload, textarea, ▤/常用, mic, send ↑ — tap = type+Enter, long-press =
+//     填入). The mode defaults from whether a coding agent is live in the pane, and sticks per-pane.
 function BottomDock({
   pane, onAuthFail, onKey, onText, cwd = null, agent = null,
   recent = [], onSent,
 }, fwdRef) {
   const [value, setValue] = useState('');
   const [panelOpen, setPanelOpen] = useState(false);
-  // Input mode. 'command' = a single-line field whose Return runs the line in the shell (that rhythm);
-  // 'agent' = the multi-line composer for prose prompts (voice/upload/phrases). The default follows
-  // whether a coding agent is live in this pane (states.agent, passed in), and sticks per-pane once the
-  // user flips the toggle. The keyboard's context (shell symbols vs agent menu/slash keys) tracks it.
   const [modeOverride, setModeOverride] = useState({}); // pane → 'command' | 'agent'
   const mode = modeOverride[pane] || (agent ? 'agent' : 'command');
-  const toggleMode = () =>
-    setModeOverride((m) => ({ ...m, [pane]: mode === 'command' ? 'agent' : 'command' }));
+  const setMode = (next) => setModeOverride((m) => ({ ...m, [pane]: next }));
   // Live modifier state, lifted here so the KeyBar and the command-mode capture input can share it.
   const [mods, setMods] = useState({ ctrl: 'off', shift: 'off', alt: 'off' });
-  // Command mode does NOT auto-focus — the keyboard pops only when you tap the terminal (enterCommandMode).
-  // Entering AGENT mode restores the composer's grown height for any preserved multi-line text: the
-  // textarea remounts on a mode switch, so its imperative height would otherwise reset to a single row.
+  // Whether the system keyboard is up (the capture input is focused) — lights the ⌨ toggle. Kept in
+  // sync by the capture's onFocus/onBlur, so tapping the terminal (which blurs it) also drops the flag.
+  const [keyboardUp, setKeyboardUp] = useState(false);
+  // Entering CHAT mode restores the composer's grown height for any preserved multi-line text (the
+  // textarea remounts on a page switch, so its imperative height would otherwise reset to one row).
   useEffect(() => {
     if (mode === 'agent') requestAnimationFrame(() => autoGrow(ref.current));
   }, [mode]);
@@ -167,8 +166,31 @@ function BottomDock({
     if (e.key === 'Backspace') { e.preventDefault(); onKey('BSpace'); }
   };
 
+  // ⌨ toggle: focus the hidden capture (pops the system keyboard) or blur it (dismisses it). onFocus/
+  // onBlur keep `keyboardUp` in sync, so tapping the terminal — which blurs the capture — also hides it.
+  const toggleKeyboard = () => {
+    const el = cmdRef.current;
+    if (!el) return;
+    if (document.activeElement === el) el.blur(); else el.focus();
+  };
+
+  // Swipe the whole pager left/right to switch pages (command ↔ chat). Only a clear horizontal swipe
+  // acts, so taps and typing pass through; no preventDefault, so the composer/keys still work normally.
+  const swipeRef = useRef(null);
+  const onPagerTouchStart = (e) => {
+    swipeRef.current = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+  };
+  const onPagerTouchEnd = (e) => {
+    const s = swipeRef.current; swipeRef.current = null;
+    if (!s) return;
+    const p = e.changedTouches[0];
+    const dx = p.clientX - s.x, dy = p.clientY - s.y;
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return; // not a clear horizontal swipe
+    setMode(dx < 0 ? 'agent' : 'command'); // swipe left → chat (page 2); swipe right → command (page 1)
+  };
+
   // Pick a command from the panel: fill the box (never send), close the panel, refocus so the user
-  // can edit before submitting with the rail's Enter.
+  // can edit before submitting.
   const pick = (cmd) => {
     setValue(cmd);
     setPanelOpen(false);
@@ -184,15 +206,7 @@ function BottomDock({
   const fillFav = (text) => pick(text);
 
   // Let the topbar idea panel drop a picked idea into the box (fill, never send) — same path as pick.
-  useImperativeHandle(fwdRef, () => ({
-    fill: pick,
-    // Tapping the terminal (App wires Terminal.onTap here) drops into command mode and focuses the
-    // capture field synchronously within the tap gesture, so iOS opens the soft keyboard right away.
-    enterCommandMode: () => {
-      setModeOverride((m) => ({ ...m, [pane]: 'command' }));
-      cmdRef.current?.focus();
-    },
-  }), [pane]);
+  useImperativeHandle(fwdRef, () => ({ fill: pick }), []);
 
   // After an upload, append the uploaded files' absolute paths to the box (then focus to keep typing).
   // One file → the full path. Multiple → write the shared dir prefix ONCE and brace-expand the names
@@ -290,48 +304,54 @@ function BottomDock({
   return (
     <div className="bottom-dock">
       <div className="dock-left">
-        <div className="keyrow">
-          <KeyBar onKey={onKey} onText={onText} mode={mode} onToggleMode={toggleMode}
-            onOpenFav={() => setPanelOpen((o) => !o)} mods={mods} setMods={setMods} />
+        {/* Two-dot page indicator (command · chat); the filled dot marks the current page. */}
+        <div className="dock-dots" aria-hidden="true">
+          <i className={`dock-dot${mode === 'command' ? ' on' : ''}`} data-page="command" />
+          <i className={`dock-dot${mode === 'agent' ? ' on' : ''}`} data-page="agent" />
         </div>
-        {upload && (
-          <div className={`dock-upload${upload.error ? ' error' : ''}`}>
-            <span className="dock-upload-label">
-              {upload.label}{!upload.error && ` ${Math.round(upload.pct * 100)}%`}
-            </span>
-            {!upload.error && (
-              <span className="dock-upload-track">
-                <span className="dock-upload-fill" style={{ width: `${Math.round(upload.pct * 100)}%` }} />
-              </span>
-            )}
-          </div>
-        )}
-        <div className={`dock-input-row ${mode}`}>
-          {/* flex 行:＋(左)· textarea(中,占满)· ▤/麦克风/发送(右),全是 flex 兄弟、不重叠文字框,
-              所以选词/移光标碰不到按键。录音时整条变绿 + 呼吸;▤常用语仅空框时出现在麦克风左边(打字即隐)。 */}
-          <div className={`input-wrap ${mode}${recording ? ' recording' : ''}`}>
-            {mode === 'command' ? (
-              // Command mode shows NO visible box — the terminal is the display. This capture <input> is
-              // visually hidden (see .cmd-capture) but stays focusable: tapping the terminal focuses it
-              // (enterCommandMode) to pop the system keyboard, then each keystroke streams straight into
-              // the pane (onCommandInput → onText → send-keys) and the field wipes back to empty.
+        <div className="dock-pager" onTouchStart={onPagerTouchStart} onTouchEnd={onPagerTouchEnd}>
+          {mode === 'command' ? (
+            <div className="dock-page command">
+              {/* Hidden capture: the ⌨ key focuses it to pop the system keyboard; each keystroke then
+                  streams straight into the pane and the field wipes to empty (the terminal is the
+                  display). onFocus/onBlur track whether the keyboard is up. */}
               <input
                 ref={cmdRef}
-                className="input-text cmd-capture"
+                className="cmd-capture"
                 type="text"
                 onInput={onCommandInput}
                 onKeyDown={onInputKeyDown}
                 onCompositionStart={onCompositionStart}
                 onCompositionEnd={onCompositionEnd}
+                onFocus={() => setKeyboardUp(true)}
+                onBlur={() => setKeyboardUp(false)}
                 enterKeyHint="send"
-                placeholder={t('dock.command.placeholder')}
+                aria-label={t('dock.command.placeholder')}
                 autoCapitalize="off"
                 autoCorrect="off"
                 autoComplete="off"
                 spellCheck={false}
               />
-            ) : (
-              <>
+              <KeyBar onKey={onKey} onText={onText} mods={mods} setMods={setMods}
+                onOpenFav={() => setPanelOpen((o) => !o)} onToggleKeyboard={toggleKeyboard} keyboardUp={keyboardUp} />
+            </div>
+          ) : (
+            <div className="dock-page chat">
+              {upload && (
+                <div className={`dock-upload${upload.error ? ' error' : ''}`}>
+                  <span className="dock-upload-label">
+                    {upload.label}{!upload.error && ` ${Math.round(upload.pct * 100)}%`}
+                  </span>
+                  {!upload.error && (
+                    <span className="dock-upload-track">
+                      <span className="dock-upload-fill" style={{ width: `${Math.round(upload.pct * 100)}%` }} />
+                    </span>
+                  )}
+                </div>
+              )}
+              {/* flex 行:＋(左)· textarea(中,占满)· ▤/麦克风/发送(右),全是 flex 兄弟、不重叠文字框,
+                  所以选词/移光标碰不到按键。录音时整条变绿 + 呼吸;▤常用语仅空框时出现在麦克风左边(打字即隐)。 */}
+              <div className={`input-wrap${recording ? ' recording' : ''}`}>
                 <button type="button" className="input-upload" aria-label={t('dock.upload.aria')} title={t('dock.upload.title')}
                   disabled={!!upload && !upload.error} onClick={() => uploadRef.current?.click()}>
                   <PlusIcon />
@@ -370,9 +390,9 @@ function BottomDock({
                   onPointerDown={sendDown} onPointerUp={sendUp} onPointerCancel={sendCancel} onPointerLeave={sendCancel}>
                   <ArrowUpIcon />
                 </button>
-              </>
-            )}
-          </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       <FavDrawer open={panelOpen} mode={mode} recent={recent}

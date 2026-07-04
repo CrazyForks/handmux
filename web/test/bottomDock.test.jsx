@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, createRef } from 'react';
+import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 
 vi.mock('../src/api.js', () => ({
@@ -115,7 +115,7 @@ describe('BottomDock', () => {
 
   it('tapping a reply chip in the 常用 drawer sends it (tap = send)', async () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-    fire(container.querySelector('.keybar-fav'), 'click'); // 常用 button opens the drawer (agent mode)
+    fire(container.querySelector('.input-cmd'), 'click'); // ▤ opens the drawer (chat/agent page)
     const ok = [...container.querySelectorAll('.fav-chip')].find((n) => n.textContent === 'ok');
     fire(ok, 'click');
     await act(async () => {});
@@ -124,7 +124,7 @@ describe('BottomDock', () => {
 
   it('double-tapping a drawer command fills the box WITHOUT sending (long-press = fill)', () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-    fire(container.querySelector('.keybar-fav'), 'click');
+    fire(container.querySelector('.input-cmd'), 'click');
     const compact = [...container.querySelectorAll('.cmd-text')].find((n) => n.textContent === '/compact');
     act(() => compact.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
     expect(container.querySelector('.input-text').value).toBe('/compact');
@@ -255,35 +255,51 @@ describe('BottomDock', () => {
     const keydown = (node, key, opts = {}) =>
       act(() => node.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...opts })));
 
-    const seg = (m) => container.querySelector(`[data-seg="${m}"]`);
+    const dot = (m) => container.querySelector(`.dock-dot[data-page="${m}"]`);
+    const cap = () => container.querySelector('.cmd-capture');
+    // jsdom has no TouchEvent — set touches on a plain Event so React's onTouchStart/End still fire.
+    const swipe = (dx) => act(() => {
+      const pager = container.querySelector('.dock-pager');
+      const s = new Event('touchstart', { bubbles: true }); s.touches = [{ clientX: 200, clientY: 100 }];
+      pager.dispatchEvent(s);
+      const e = new Event('touchend', { bubbles: true }); e.changedTouches = [{ clientX: 200 + dx, clientY: 100 }];
+      pager.dispatchEvent(e);
+    });
 
-    it('defaults to command mode for a plain shell pane (no agent)', () => {
+    it('defaults to the command page for a plain shell pane (no agent)', () => {
       render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-      expect(seg('command').getAttribute('aria-pressed')).toBe('true');
-      expect(container.querySelector('.input-wrap').classList.contains('command')).toBe(true);
+      expect(dot('command').classList.contains('on')).toBe(true);
+      expect(container.querySelector('.dock-page.command')).not.toBeNull();
+      expect(cap()).not.toBeNull();                                 // hidden capture present
+      expect(container.querySelector('.keybar-grid')).not.toBeNull(); // command keyboard present
     });
 
-    it('defaults to agent (compose) mode when a coding agent is live in the pane', () => {
+    it('defaults to the chat page when a coding agent is live in the pane', () => {
       render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-      expect(seg('agent').getAttribute('aria-pressed')).toBe('true');
+      expect(dot('agent').classList.contains('on')).toBe(true);
+      expect(container.querySelector('.dock-page.chat')).not.toBeNull();
+      expect(container.querySelector('.keybar-grid')).toBeNull();   // no keyboard on the chat page
     });
 
-    it('enterCommandMode() ref handle flips the pane into command mode', () => {
-      const ref = createRef();
-      render({ ref, pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-      expect(seg('agent').getAttribute('aria-pressed')).toBe('true'); // agent live → agent default
-      act(() => ref.current.enterCommandMode());
-      expect(seg('command').getAttribute('aria-pressed')).toBe('true');
-    });
-
-    it('the segmented switch toggles the mode, and the scroll-row keys track it', () => {
+    it('swiping the pager switches pages (left → chat, right → command)', () => {
       render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() }); // command by default
-      expect(container.querySelector('[data-key="pipe"]')).not.toBeNull();
-      expect(container.querySelector('[data-key="n1"]')).toBeNull();
-      fire(seg('agent'), 'click'); // → agent
-      expect(seg('agent').getAttribute('aria-pressed')).toBe('true');
-      expect(container.querySelector('[data-key="n1"]')).not.toBeNull();
-      expect(container.querySelector('[data-key="pipe"]')).toBeNull();
+      swipe(-80); // clear leftward swipe → chat
+      expect(dot('agent').classList.contains('on')).toBe(true);
+      expect(container.querySelector('.dock-page.chat')).not.toBeNull();
+      swipe(80); // rightward swipe → command
+      expect(dot('command').classList.contains('on')).toBe(true);
+      expect(container.querySelector('.keybar-grid')).not.toBeNull();
+    });
+
+    it('the ⌨ key toggles focus on the hidden capture (pops / dismisses the keyboard)', () => {
+      render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+      const kbd = container.querySelector('[data-key="kbd"]');
+      expect(kbd.classList.contains('on')).toBe(false);
+      fire(kbd, 'click');
+      expect(document.activeElement).toBe(cap());        // focused → keyboard up
+      expect(kbd.classList.contains('on')).toBe(true);
+      fire(kbd, 'click');
+      expect(document.activeElement).not.toBe(cap());    // blurred → keyboard down
     });
 
     // Uncontrolled command capture: set value then fire a native input event so React's onInput runs.
@@ -295,18 +311,18 @@ describe('BottomDock', () => {
     it('command mode streams each keystroke straight to the pane and wipes the field', () => {
       const onText = vi.fn();
       render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText }); // command by default
-      const el = container.querySelector('.input-text');
+      const el = cap();
       streamKey(el, 'l');
       streamKey(el, 's');
       expect(onText).toHaveBeenNthCalledWith(1, 'l');
       expect(onText).toHaveBeenNthCalledWith(2, 's');
-      expect(el.value).toBe(''); // nothing staged in the box — the text is in the terminal
+      expect(el.value).toBe(''); // nothing staged — the text is in the terminal
     });
 
     it('command mode: Return runs the line, Backspace deletes in the shell (terminal keys)', () => {
       const onKey = vi.fn();
       render({ pane: '%1', onAuthFail: vi.fn(), onKey, onText: vi.fn() });
-      const el = container.querySelector('.input-text');
+      const el = cap();
       keydown(el, 'Enter');
       keydown(el, 'Backspace');
       expect(onKey).toHaveBeenCalledWith('Enter');
@@ -316,7 +332,7 @@ describe('BottomDock', () => {
     it('command mode: an IME holds until commit, then streams the whole word', () => {
       const onText = vi.fn();
       render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText });
-      const el = container.querySelector('.input-text');
+      const el = cap();
       act(() => el.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true })));
       streamKey(el, 'ni', { isComposing: true }); // mid-composition input is held
       expect(onText).not.toHaveBeenCalled();
@@ -338,7 +354,7 @@ describe('BottomDock', () => {
       const onKey = vi.fn(), onText = vi.fn();
       render({ pane: '%1', onAuthFail: vi.fn(), onKey, onText }); // command mode (no agent)
       fire(container.querySelector('[data-key="ctrl"]'), 'pointerdown'); // arm Ctrl on the keybar
-      const el = container.querySelector('.input-text');
+      const el = cap();
       act(() => { el.value = 'r'; el.dispatchEvent(new InputEvent('input', { bubbles: true })); }); // type 'r'
       expect(onKey).toHaveBeenCalledWith('C-r');
       expect(onText).not.toHaveBeenCalledWith('r');

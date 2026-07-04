@@ -1,51 +1,44 @@
-// Pure key model for the mobile keyboard (DOM-free, unit-tested on its own). The view (KeyBar.jsx)
-// renders two rows: a FIXED row (never scrolls) and a per-mode SCROLL row. keyAction() decides how a
-// key is sent — a named tmux key via /keys, or a literal character via /send (enter:false).
+// Pure key model for the mobile COMMAND keyboard (DOM-free, unit-tested on its own). Command mode shows
+// a fixed 3-row grid (no horizontal scroll); agent/chat mode has no keybar at all. keyAction() decides
+// how a key is sent — a named tmux key via /keys, or a literal character via /send (enter:false).
 
-// Fixed row, right side: the most-used keys. Esc/Tab/⌫ are direct keys; Ctrl/Shift are live modifiers
-// (see below). ⌫ (del → BSpace) is here because command mode shows no box — you delete in the shell
-// straight from the keybar. (The mode-switch segmented control and the 常用 button render on this row's
-// LEFT — they live in the view, not this table.)
-export const FIXED_KEYS = ['esc', 'tab', 'ctrl', 'shift', 'del'];
+// The command keyboard: a fixed 3×7 grid, never scrolls. The arrows form the classic inverted-T in the
+// centre (Esc ▲ Tab / ◀ ▼ ▶). Corners: ⌨ keyboard-toggle (top-left), ⌫ (top-right), 常用 (bottom-left),
+// enter (bottom-right). 'kbd' and 'fav' are CONTROL ids handled by the view (KeyBar), not dispatched via
+// keyAction. ctrl/shift/alt are live modifiers.
+export const COMMAND_ROWS = [
+  ['kbd', 'esc', 'up', 'tab', 'ctrl', 'shift', 'del'],
+  ['pipe', 'left', 'down', 'right', 'alt', 'slash', 'tilde'],
+  ['fav', 'dash', 'under', 'bslash', 'gt', 'lt', 'enter'],
+];
 
-// Live modifiers rendered as sticky keys. Alt sits on the scroll row; ctrl/shift on the fixed row.
+// Control ids: rendered as special buttons by the view, never dispatched as keys.
+export const CONTROL_KEYS = ['kbd', 'fav'];
+
+// Live modifiers rendered as sticky keys (tap = arm one key, double-tap = lock).
 export const MODIFIERS = ['ctrl', 'shift', 'alt'];
 
-// Scroll row per mode: arrow cluster first, then the mode-relevant keys, then Alt. Horizontal scroll.
-export const SCROLL_KEYS = {
-  command: ['left', 'up', 'down', 'right',
-    'pipe', 'bslash', 'tilde', 'dash', 'under', 'gt', 'lt', 'amp', 'semi', 'star', 'alt'],
-  agent: ['left', 'up', 'down', 'right',
-    'slash', 'at', 'n1', 'n2', 'n3', 'bang', 'ctrlo', 'ctrll', 'alt'],
-};
-
 export const KEY_LABELS = {
-  esc: 'Esc', tab: 'Tab', ctrl: 'Ctrl', shift: 'Shift', alt: 'Alt', del: '⌫',
-  up: '▲', down: '▼', left: '◀', right: '▶',
-  n1: '1', n2: '2', n3: '3', slash: '/', at: '@', bang: '!',
-  pipe: '|', bslash: '\\', tilde: '~', dash: '-', under: '_',
-  gt: '>', lt: '<', amp: '&', star: '*', semi: ';',
-  ctrlo: 'Ctrl+O', ctrll: 'Ctrl+L',
+  kbd: '⌨', esc: 'Esc', up: '▲', tab: 'Tab', ctrl: 'Ctrl', shift: 'Shift', del: '⌫',
+  pipe: '|', left: '◀', down: '▼', right: '▶', alt: 'Alt', slash: '/', tilde: '~',
+  fav: '常用', dash: '-', under: '_', bslash: '\\', gt: '>', lt: '<', enter: 'enter',
 };
 
-// Arrows and ⌫ auto-repeat while held (hold ⌫ to delete a run of characters).
+// Arrows and ⌫ auto-repeat while held.
 export const REPEAT_KEYS = new Set(['up', 'down', 'left', 'right', 'del']);
 
 const NAMED = {
-  esc: 'Escape', tab: 'Tab', del: 'BSpace',
+  esc: 'Escape', tab: 'Tab', del: 'BSpace', enter: 'Enter',
   up: 'Up', down: 'Down', left: 'Left', right: 'Right',
-  ctrlo: 'C-o', ctrll: 'C-l',
 };
 const CHARS = {
-  slash: '/', at: '@', n1: '1', n2: '2', n3: '3', bang: '!',
-  pipe: '|', bslash: '\\', tilde: '~', dash: '-', under: '_',
-  gt: '>', lt: '<', amp: '&', star: '*', semi: ';',
+  pipe: '|', slash: '/', tilde: '~', dash: '-', under: '_', bslash: '\\', gt: '>', lt: '<',
 };
 
 export function keyAction(id) {
   if (id in NAMED) return { kind: 'key', name: NAMED[id] };
   if (id in CHARS) return { kind: 'text', ch: CHARS[id] };
-  return null; // modifiers (ctrl/shift/alt) and unknowns are not dispatched as keys
+  return null; // control ids (kbd/fav) + modifiers (ctrl/shift/alt) are not dispatched as keys
 }
 
 // ── Live modifiers ────────────────────────────────────────────────────────────────────────────
@@ -62,7 +55,7 @@ export function tapMod(state) {
 }
 export const modActive = (state) => state === MOD_ARMED || state === MOD_LOCKED;
 
-// mods is a { ctrl, shift, alt } map of states. Any armed one is active (either specific test below).
+// mods is a { ctrl, shift, alt } map of states. Any armed/locked one is active.
 const anyActive = (mods) => MODIFIERS.some((m) => modActive(mods[m]));
 // After a key composes: armed modifiers collapse to off, locked ones persist.
 export function consumeMods(mods) {

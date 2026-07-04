@@ -1,19 +1,17 @@
 import { useRef } from 'react';
 import {
-  FIXED_KEYS, SCROLL_KEYS, MODIFIERS, KEY_LABELS, REPEAT_KEYS, keyAction,
+  COMMAND_ROWS, MODIFIERS, KEY_LABELS, REPEAT_KEYS, keyAction,
   MOD_LOCKED, tapMod, modActive, consumeMods, withMods,
 } from '../keybarKeys.js';
 import { createRepeater } from '../repeat.js';
+import { KeyboardIcon } from './icons.jsx';
 
-// Two-row keyboard above the system keyboard:
-//   • FIXED row (never scrolls): [命令|对话] segmented switch + 常用 button (left), then the four
-//     most-used keys Esc/Tab/Ctrl/Shift (right).
-//   • SCROLL row (horizontal): the arrow cluster + the mode's symbol/menu keys + Alt.
-// Named keys go out via onKey (→ /keys), literals via onText (→ /send). Ctrl/Shift/Alt are sticky
-// modifiers (tap = arm one key, double-tap = lock) composing the next key (C-<x> / BTab / M-<x>).
-// The modifier state (`mods`) is CONTROLLED — lifted to BottomDock so the command-mode capture input
-// can share it. keyAction ids come from keybarKeys.js.
-export default function KeyBar({ onKey, onText, mode = 'agent', onToggleMode, onOpenFav, mods, setMods }) {
+// The command keyboard: a fixed 3×7 grid (never scrolls) with the arrows as an inverted-T in the centre
+// (Esc ▲ Tab / ◀ ▼ ▶). ⌨ (top-left) toggles the system keyboard; ⌫ (top-right) and enter (bottom-right)
+// are direct keys; 常用 (bottom-left) opens the favourites; Ctrl/Shift/Alt are sticky modifiers. Named
+// keys go out via onKey (→ /keys), literals via onText (→ /send). `mods` is controlled (lifted to
+// BottomDock so the hidden capture input can share it).
+export default function KeyBar({ onKey, onText, mods, setMods, onOpenFav, onToggleKeyboard, keyboardUp }) {
   const modsRef = useRef(mods);
   modsRef.current = mods;
 
@@ -26,33 +24,27 @@ export default function KeyBar({ onKey, onText, mode = 'agent', onToggleMode, on
     if (active) setMods(consumeMods);
   };
 
-  const scroll = SCROLL_KEYS[mode] || SCROLL_KEYS.agent;
+  const cell = (id) => {
+    if (id === 'kbd') {
+      return (
+        <button key="kbd" type="button" className={`keybar-key keybar-kbd${keyboardUp ? ' on' : ''}`}
+          data-key="kbd" aria-pressed={!!keyboardUp} aria-label="键盘"
+          onClick={onToggleKeyboard}><KeyboardIcon /></button>
+      );
+    }
+    if (id === 'fav') {
+      return (
+        <button key="fav" type="button" className="keybar-key keybar-fav" data-key="fav"
+          aria-label="常用" onClick={onOpenFav}>{KEY_LABELS.fav}</button>
+      );
+    }
+    if (MODIFIERS.includes(id)) return <ModKey key={id} id={id} state={mods[id]} setMods={setMods} />;
+    return <Key key={id} id={id} dispatch={dispatch} />;
+  };
 
-  return (
-    <div className="keybar">
-      <div className="keybar-fixed">
-        <Segmented mode={mode} onToggleMode={onToggleMode} />
-        <button type="button" className="keybar-fav" onClick={onOpenFav} aria-label="常用">常用</button>
-        <span className="keybar-spacer" />
-        {FIXED_KEYS.map((id) => MODIFIERS.includes(id)
-          ? <ModKey key={id} id={id} state={mods[id]} setMods={setMods} />
-          : <Key key={id} id={id} dispatch={dispatch} />)}
-      </div>
-      <div className="keybar-scroll">
-        {scroll.map((id) => MODIFIERS.includes(id)
-          ? <ModKey key={id} id={id} state={mods[id]} setMods={setMods} />
-          : <Key key={id} id={id} dispatch={dispatch} />)}
-      </div>
-    </div>
-  );
-}
-
-function Segmented({ mode, onToggleMode }) {
-  const seg = (m, label) => (
-    <button type="button" className={`keybar-seg-opt${mode === m ? ' on' : ''}`} data-seg={m}
-      aria-pressed={mode === m} onClick={() => { if (mode !== m) onToggleMode?.(); }}>{label}</button>
-  );
-  return <div className="keybar-seg">{seg('command', '命令')}{seg('agent', '对话')}</div>;
+  // A 7-column grid: flattening the rows keeps every column aligned, so ▲ sits directly above ▼ (the
+  // inverted-T reads cleanly) and the corners land where they should.
+  return <div className="keybar-grid">{COMMAND_ROWS.flat().map(cell)}</div>;
 }
 
 // Sticky modifier key: single tap cycles off→armed→locked→off; a fast double-tap (<400ms) locks.
@@ -80,7 +72,7 @@ function Key({ id, dispatch }) {
   if (!REPEAT_KEYS.has(id)) {
     return <button type="button" className="keybar-key" data-key={id} onClick={() => dispatch(id)}>{label}</button>;
   }
-  // Held arrow repeats. Pointer events only (a tap = one pointerdown, no touch+mouse double-fire).
+  // Held arrow / ⌫ repeats. Pointer events only (a tap = one pointerdown, no touch+mouse double-fire).
   const start = (e) => {
     if (e.cancelable) e.preventDefault();
     if (!repRef.current) repRef.current = createRepeater(() => dispatchRef.current(id));

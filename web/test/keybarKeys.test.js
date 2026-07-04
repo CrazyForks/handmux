@@ -1,34 +1,35 @@
 import { describe, it, expect } from 'vitest';
 import {
-  FIXED_KEYS, SCROLL_KEYS, MODIFIERS, KEY_LABELS, REPEAT_KEYS, keyAction,
+  COMMAND_ROWS, CONTROL_KEYS, MODIFIERS, KEY_LABELS, REPEAT_KEYS, keyAction,
   MOD_OFF, MOD_ARMED, MOD_LOCKED, tapMod, modActive, consumeMods, withMods,
 } from '../src/keybarKeys.js';
 
-describe('keybarKeys layout', () => {
-  it('the fixed row holds the most-used keys (Esc/Tab + Ctrl/Shift modifiers + ⌫)', () => {
-    expect(FIXED_KEYS).toEqual(['esc', 'tab', 'ctrl', 'shift', 'del']);
+describe('command grid layout', () => {
+  it('is a fixed 3×7 grid', () => {
+    expect(COMMAND_ROWS).toHaveLength(3);
+    for (const row of COMMAND_ROWS) expect(row).toHaveLength(7);
   });
 
-  it('ctrl/shift/alt are the live modifiers', () => {
+  it('pins the corners: ⌨ top-left, ⌫ top-right, 常用 bottom-left, enter bottom-right', () => {
+    expect(COMMAND_ROWS[0][0]).toBe('kbd');
+    expect(COMMAND_ROWS[0][6]).toBe('del');
+    expect(COMMAND_ROWS[2][0]).toBe('fav');
+    expect(COMMAND_ROWS[2][6]).toBe('enter');
+  });
+
+  it('places the arrows as an inverted-T (Esc ▲ Tab / ◀ ▼ ▶)', () => {
+    // Row 0 cols 1..3 = Esc ▲ Tab ; Row 1 cols 1..3 = ◀ ▼ ▶ (▲ directly above ▼).
+    expect(COMMAND_ROWS[0].slice(1, 4)).toEqual(['esc', 'up', 'tab']);
+    expect(COMMAND_ROWS[1].slice(1, 4)).toEqual(['left', 'down', 'right']);
+  });
+
+  it('ctrl/shift/alt are the live modifiers; kbd/fav are controls', () => {
     expect(MODIFIERS).toEqual(['ctrl', 'shift', 'alt']);
+    expect(CONTROL_KEYS).toEqual(['kbd', 'fav']);
   });
 
-  it('the scroll row leads with the arrow cluster in both modes', () => {
-    expect(SCROLL_KEYS.command.slice(0, 4)).toEqual(['left', 'up', 'down', 'right']);
-    expect(SCROLL_KEYS.agent.slice(0, 4)).toEqual(['left', 'up', 'down', 'right']);
-  });
-
-  it('command scroll row carries the buried shell symbols; agent carries menu/slash keys', () => {
-    expect(SCROLL_KEYS.command).toEqual(expect.arrayContaining(['pipe', 'bslash', 'tilde', 'gt', 'under']));
-    expect(SCROLL_KEYS.agent).toEqual(expect.arrayContaining(['slash', 'at', 'n1', 'n2', 'n3']));
-  });
-
-  it('both scroll rows end with Alt, and every key is labelled', () => {
-    for (const row of [SCROLL_KEYS.command, SCROLL_KEYS.agent]) {
-      expect(row).toContain('alt');
-      for (const id of row) expect(typeof KEY_LABELS[id]).toBe('string');
-    }
-    for (const id of FIXED_KEYS) expect(typeof KEY_LABELS[id]).toBe('string');
+  it('every grid id is labelled', () => {
+    for (const row of COMMAND_ROWS) for (const id of row) expect(typeof KEY_LABELS[id]).toBe('string');
   });
 
   it('arrows and ⌫ auto-repeat', () => {
@@ -37,19 +38,19 @@ describe('keybarKeys layout', () => {
 });
 
 describe('keyAction', () => {
-  it('maps named keys and shell symbols', () => {
+  it('maps named keys, symbols, and Enter/Backspace', () => {
     expect(keyAction('esc')).toEqual({ kind: 'key', name: 'Escape' });
     expect(keyAction('tab')).toEqual({ kind: 'key', name: 'Tab' });
     expect(keyAction('up')).toEqual({ kind: 'key', name: 'Up' });
+    expect(keyAction('enter')).toEqual({ kind: 'key', name: 'Enter' });
     expect(keyAction('del')).toEqual({ kind: 'key', name: 'BSpace' });
     expect(keyAction('pipe')).toEqual({ kind: 'text', ch: '|' });
     expect(keyAction('bslash')).toEqual({ kind: 'text', ch: '\\' });
-    expect(keyAction('n1')).toEqual({ kind: 'text', ch: '1' });
-    expect(keyAction('slash')).toEqual({ kind: 'text', ch: '/' });
   });
-  it('returns null for a modifier id or unknown id (modifiers are not dispatched as keys)', () => {
+  it('returns null for control ids, modifier ids, and unknowns', () => {
+    expect(keyAction('kbd')).toBe(null);
+    expect(keyAction('fav')).toBe(null);
     expect(keyAction('ctrl')).toBe(null);
-    expect(keyAction('shift')).toBe(null);
     expect(keyAction('nope')).toBe(null);
   });
 });
@@ -69,7 +70,6 @@ describe('live modifiers (ctrl/shift/alt)', () => {
     expect(consumeMods({ ctrl: MOD_ARMED, shift: MOD_LOCKED, alt: MOD_OFF }))
       .toEqual({ ctrl: MOD_OFF, shift: MOD_LOCKED, alt: MOD_OFF });
   });
-
   it('withMods composes Ctrl -> C-<x>, Alt -> M-<x> for letters/digits', () => {
     expect(withMods({ kind: 'text', ch: 'r' }, { ctrl: MOD_ARMED })).toEqual({ kind: 'key', name: 'C-r' });
     expect(withMods({ kind: 'text', ch: '1' }, { alt: MOD_LOCKED })).toEqual({ kind: 'key', name: 'M-1' });

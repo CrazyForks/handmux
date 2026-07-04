@@ -318,6 +318,16 @@ export function RenewIcon() {
   );
 }
 
+// ⌨ Keyboard (Lucide keyboard) — the command-mode toggle that pops / dismisses the system keyboard.
+export function KeyboardIcon() {
+  return (
+    <svg {...base}>
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="M6 8h.001M10 8h.001M14 8h.001M18 8h.001M8 12h.001M12 12h.001M16 12h.001M7 16h10" />
+    </svg>
+  );
+}
+
 // Agent logo — the OFFICIAL brand mark, kept as a swappable asset (src/assets/agent-<id>.svg; replace the
 // file to change the logo). Imported through the bundler (top of file) so Vite content-hashes the URL — a
 // changed logo gets a NEW filename and busts the year-long immutable cache (a public/ path would stay

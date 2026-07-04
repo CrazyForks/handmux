@@ -7,82 +7,75 @@ let container, root;
 beforeEach(() => { container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container); });
 afterEach(() => { act(() => root.unmount()); container.remove(); vi.useRealTimers(); });
 
-// mods are controlled (lifted to BottomDock in the app). Wrap KeyBar in a tiny stateful harness so the
-// modifier arm/lock transitions actually take effect between fires.
+// mods are controlled (lifted to BottomDock). Wrap KeyBar in a tiny stateful harness so the modifier
+// arm/lock transitions actually take effect between fires.
 function Harness(props) {
   const [mods, setMods] = useState({ ctrl: 'off', shift: 'off', alt: 'off' });
   return <KeyBar mods={mods} setMods={setMods} {...props} />;
 }
 const render = (props) => act(() => root.render(
-  <Harness onKey={vi.fn()} onText={vi.fn()} mode="agent" onToggleMode={vi.fn()} onOpenFav={vi.fn()} {...props} />));
+  <Harness onKey={vi.fn()} onText={vi.fn()} onOpenFav={vi.fn()} onToggleKeyboard={vi.fn()} keyboardUp={false} {...props} />));
 const btn = (id) => container.querySelector(`[data-key="${id}"]`);
 const fire = (node, type, EventCtor = MouseEvent) => act(() => node.dispatchEvent(new EventCtor(type, { bubbles: true })));
 
-describe('KeyBar two rows', () => {
-  it('fixed row has the segmented switch, 常用, and Esc/Tab/Ctrl/Shift', () => {
+describe('KeyBar command grid', () => {
+  it('renders the full 3×7 grid (⌨/常用 controls, Esc/Tab/⌫/enter, arrows, modifiers, symbols)', () => {
     render();
-    expect(container.querySelector('.keybar-seg')).not.toBeNull();
-    expect(container.querySelector('.keybar-fav')).not.toBeNull();
-    for (const id of ['esc', 'tab', 'ctrl', 'shift', 'del']) expect(btn(id)).not.toBeNull();
+    for (const id of ['kbd', 'fav', 'esc', 'tab', 'del', 'enter',
+      'up', 'down', 'left', 'right', 'ctrl', 'shift', 'alt', 'pipe', 'slash', 'tilde', 'dash', 'under', 'bslash', 'gt', 'lt']) {
+      expect(btn(id)).not.toBeNull();
+    }
   });
 
-  it('agent mode scroll row shows menu/slash keys; command mode shows shell symbols', () => {
-    render({ mode: 'agent' });
-    expect(btn('n1')).not.toBeNull();
-    expect(btn('pipe')).toBeNull();
-    render({ mode: 'command' });
-    expect(btn('pipe')).not.toBeNull();
-    expect(btn('n1')).toBeNull();
+  it('a named key calls onKey, a symbol calls onText, enter/⌫ map correctly', () => {
+    const onKey = vi.fn(), onText = vi.fn();
+    render({ onKey, onText });
+    fire(btn('esc'), 'click');
+    fire(btn('pipe'), 'click');
+    fire(btn('enter'), 'click');
+    fire(btn('del'), 'pointerdown'); fire(btn('del'), 'pointerup'); // ⌫ is a repeat key
+    expect(onKey).toHaveBeenCalledWith('Escape');
+    expect(onText).toHaveBeenCalledWith('|');
+    expect(onKey).toHaveBeenCalledWith('Enter');
+    expect(onKey).toHaveBeenCalledWith('BSpace');
   });
 
-  it('the segmented switch reflects mode and calls onToggleMode on the other side', () => {
-    const onToggleMode = vi.fn();
-    render({ mode: 'command', onToggleMode });
-    const seg = container.querySelector('.keybar-seg');
-    expect(seg.querySelector('[data-seg="command"]').getAttribute('aria-pressed')).toBe('true');
-    fire(seg.querySelector('[data-seg="agent"]'), 'click');
-    expect(onToggleMode).toHaveBeenCalled();
+  it('⌨ calls onToggleKeyboard and lights up when the keyboard is up', () => {
+    const onToggleKeyboard = vi.fn();
+    render({ onToggleKeyboard, keyboardUp: true });
+    expect(btn('kbd').classList.contains('on')).toBe(true);
+    fire(btn('kbd'), 'click');
+    expect(onToggleKeyboard).toHaveBeenCalled();
   });
 
-  it('常用 button calls onOpenFav', () => {
+  it('常用 calls onOpenFav', () => {
     const onOpenFav = vi.fn();
     render({ onOpenFav });
-    fire(container.querySelector('.keybar-fav'), 'click');
+    fire(btn('fav'), 'click');
     expect(onOpenFav).toHaveBeenCalled();
   });
 
-  it('a named key calls onKey; a symbol calls onText', () => {
-    const onKey = vi.fn(), onText = vi.fn();
-    render({ mode: 'command', onKey, onText });
-    fire(btn('esc'), 'click');
-    fire(btn('pipe'), 'click');
-    expect(onKey).toHaveBeenCalledWith('Escape');
-    expect(onText).toHaveBeenCalledWith('|');
-  });
-
-  it('armed Ctrl composes the next letter into C-<x> then resets', () => {
-    const onKey = vi.fn(), onText = vi.fn();
-    render({ mode: 'agent', onKey, onText });
-    fire(btn('ctrl'), 'pointerdown'); // arm
-    fire(btn('n1'), 'click');         // 1 -> C-1
-    expect(onKey).toHaveBeenCalledWith('C-1');
-    onKey.mockClear();
-    fire(btn('n1'), 'click');         // reset -> plain text
-    expect(onText).toHaveBeenCalledWith('1');
-  });
-
-  it('armed Shift turns Tab into BTab (Shift+Tab)', () => {
+  it('armed Shift turns Tab into BTab and ▲ into S-Up, then resets', () => {
     const onKey = vi.fn();
-    render({ mode: 'agent', onKey });
-    fire(btn('shift'), 'pointerdown');
+    render({ onKey });
+    fire(btn('shift'), 'pointerdown'); // arm
     fire(btn('tab'), 'click');
     expect(onKey).toHaveBeenCalledWith('BTab');
+    fire(btn('shift'), 'pointerdown'); // arm again (the first one was consumed)
+    fire(btn('up'), 'pointerdown'); fire(btn('up'), 'pointerup'); // ▲ is a repeat key
+    expect(onKey).toHaveBeenCalledWith('S-Up');
+  });
+
+  it('a Ctrl tap arms it (lights up)', () => {
+    render();
+    fire(btn('ctrl'), 'pointerdown');
+    expect(btn('ctrl').classList.contains('armed')).toBe(true);
   });
 
   it('holding an arrow repeats, releasing stops', () => {
     vi.useFakeTimers();
     const onKey = vi.fn();
-    render({ mode: 'command', onKey });
+    render({ onKey });
     fire(btn('up'), 'pointerdown');
     act(() => vi.advanceTimersByTime(400 + 120 + 120));
     fire(btn('up'), 'pointerup');
