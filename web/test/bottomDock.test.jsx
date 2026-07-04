@@ -364,8 +364,15 @@ describe('BottomDock', () => {
 
     it('a drag shorter than the commit threshold snaps back (harder to trigger)', () => {
       render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() }); // command by default
-      swipe(-80); // 80px < 90px threshold → does NOT switch, stays on command
+      swipe(-80); // 80px == commit threshold, strict < → does NOT switch, stays on command
       expect(activePage('command')).toBe(true);
+    });
+
+    it('a tiny horizontal jitter (like a key press) never locks into a page swipe', () => {
+      render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() }); // command by default
+      swipe(-12); // under the 16px decide gate → never becomes a swipe; the track never moves
+      expect(activePage('command')).toBe(true);
+      expect(container.querySelector('.dock-track').style.transform).toBe(''); // no inline drag transform
     });
 
     // A right-drag that STARTS on the quick-command strip: it carries over into a page swipe to command
@@ -397,8 +404,9 @@ describe('BottomDock', () => {
       const track = container.querySelector('.dock-track');
       track.style.transform = 'translate3d(-137px, 0, 0)'; // pretend a swipe was interrupted mid-way
       render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn(), recent: ['x'] });
-      // any at-rest render re-asserts a page-aligned transform (clientWidth is 0 in jsdom → 0px)
-      expect(track.style.transform).toBe('translate3d(0px, 0, 0)');
+      // an at-rest render drops the inline transform → the CSS class (at-chat for chat) owns rest again
+      expect(track.style.transform).toBe('');
+      expect(track.classList.contains('at-chat')).toBe(true); // page-aligned to chat via the class
     });
 
     it('the ⌨ key toggles focus on the hidden capture (pops / dismisses the keyboard)', () => {

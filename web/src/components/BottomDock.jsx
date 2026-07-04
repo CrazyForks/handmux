@@ -25,7 +25,7 @@ const KEY_FAVS = { ESC: 'Escape', Esc: 'Escape', Tab: 'Tab' };
 
 // How far (px) a horizontal drag must travel before releasing commits a page switch. Higher = harder to
 // trigger a swap by accident (was 50).
-const SWIPE_COMMIT_PX = 90;
+const SWIPE_COMMIT_PX = 80;
 
 // Quick-command chips are tinted by CATEGORY (three styles, not a per-label rainbow): a KEY (ESC/Tab) =
 // grey, a slash-command (/compact …) = blue, everything else (ok/go on/1/2/3 …) = green.
@@ -69,37 +69,31 @@ function BottomDock({
   pageIndexRef.current = pageIndex;
   const setModeRef = useRef(setMode); // latest setMode (closes over the current pane)
   setModeRef.current = setMode;
-  const firstSnapRef = useRef(true);
-  const draggingRef = useRef(false);   // a finger drag owns the transform right now — don't self-heal
-  const animatingUntilRef = useRef(0); // a snap animation is in flight until this ts — don't self-heal
-  // The track's horizontal position is driven imperatively — a 60fps finger drag can't go through React
-  // state without fighting re-renders. setX writes an absolute translate; settleTo snaps to a PAGE-ALIGNED
-  // rest.
-  const TRACK_EASE = 'transform .3s cubic-bezier(.22,.61,.36,1)';
+  const draggingRef = useRef(false); // a finger drag owns the transform right now
   const trackW = () => pagerRef.current?.clientWidth || 0;
-  const setX = (px, animate) => {
-    const track = trackRef.current;
-    if (!track) return;
-    track.style.transition = animate ? TRACK_EASE : 'none';
-    track.style.transform = `translate3d(${px}px, 0, 0)`;
+  // The track's RESTING position is owned by React/CSS: the `.dock-track` gets an `at-chat` class for
+  // page 1, which a CSS rule maps to translateX(-50%) with a transition (page 0 = no class = 0). Because
+  // rest is class-driven it is ALWAYS exactly page-aligned — the track can NEVER get stuck between pages.
+  // A 60fps finger drag can't go through React, so during a drag we override with an imperative inline
+  // transform (transition off); on release we CLEAR the inline transform so the class owns rest again and
+  // animates the snap. This is the root fix for the old "stuck at half" state, which happened because the
+  // rest position used to be imperative too and only re-asserted on a React render (rare in command mode).
+  const setDragX = (px) => {
+    const t = trackRef.current;
+    if (!t) return;
+    t.style.transition = 'none';
+    t.style.transform = `translate3d(${px}px, 0, 0)`;
   };
-  const settleTo = (index, animate) => setX(-index * trackW(), animate);
-  // Snap to the current page whenever it changes (animated after the first render); mark the animation
-  // window so the self-heal below leaves the slide alone.
-  useEffect(() => {
-    settleTo(pageIndex, !firstSnapRef.current);
-    if (!firstSnapRef.current) animatingUntilRef.current = Date.now() + 360;
-    firstSnapRef.current = false;
-  }, [pageIndex]);
-  // ROOT GUARD against the "stuck between pages" state (finger lifted mid-swipe, browser hijacked the
-  // touch, a missed touchend): whenever we're at rest — no active drag, no snap animation in flight —
-  // re-assert the page-aligned transform on EVERY render. The transform is imperative, so if a gesture is
-  // ever interrupted it can drift off a page boundary and nothing settles it; the terminal polls
-  // constantly, so the very next render snaps it back. Idempotent when already aligned (invisible normally).
-  useLayoutEffect(() => {
-    if (draggingRef.current || Date.now() < animatingUntilRef.current) return;
-    settleTo(pageIndex, false);
-  });
+  const releaseTrack = () => {
+    const t = trackRef.current;
+    if (!t || !t.style.transform) return;
+    t.style.transition = ''; // fall back to the CSS transition
+    t.style.transform = '';  // fall back to the CSS class → page-aligned rest (animated)
+  };
+  // Safety net: on any AT-REST render, drop a lingering inline transform so the class snaps the track to
+  // its page. Covers a gesture interrupted so badly that onEnd never fired (browser-hijacked touch,
+  // missed touchend) — plus onStart clears it on the next touch, so a stuck track always self-corrects.
+  useLayoutEffect(() => { if (!draggingRef.current) releaseTrack(); });
   // Size the pager to the ACTIVE page's natural height. This is genuinely variable: the chat composer
   // grows with its text and can be taller OR shorter than the keyboard. Set it INSTANTLY — the CSS height
   // transition is gone (styles.css): the terminal above is a poll-and-repaint surface, so animating the
@@ -120,6 +114,7 @@ function BottomDock({
     if (!pager) return;
     let d = null;
     const onStart = (e) => {
+      releaseTrack(); // drop any inline transform a previous (interrupted) gesture may have left behind
       // Remember if the drag began on the horizontally-scrolling quick-command strip: that gesture is
       // normally the strip's own native scroll, but at its LEFT edge a further right-drag should carry
       // over into a page swipe to command mode (decided in onMove once we know the direction).
@@ -132,9 +127,13 @@ function BottomDock({
       if (!d || e.touches.length !== 1) return;
       const dx = e.touches[0].clientX - d.x, dy = e.touches[0].clientY - d.y;
       if (!d.decided) {
-        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        // Need real travel before deciding, and only lock to a swipe when the drag is CLEARLY horizontal
+        // (dominates the vertical by 1.4×). This keeps a press-and-hold on a key — e.g. auto-repeating the
+        // ◀ arrow, whose finger jitters a few px — from being mistaken for a page swipe and dragging the
+        // track. (A key press stays under the 16px gate; a deliberate swipe blows past it.)
+        if (Math.abs(dx) < 16 && Math.abs(dy) < 16) return;
         d.decided = true;
-        d.horiz = Math.abs(dx) > Math.abs(dy);
+        d.horiz = Math.abs(dx) > Math.abs(dy) * 1.4;
         // Drag started on the strip: only steal it as a page swipe when the strip can't scroll further
         // in that direction toward another page — i.e. it's at its LEFT edge and you're dragging RIGHT
         // (which reveals the command page). Otherwise hand the whole gesture to the strip's native scroll.
@@ -145,27 +144,26 @@ function BottomDock({
       }
       if (!d.horiz) return; // a vertical drag (or a strip-scroll we handed off) → leave it to native
       e.preventDefault();
-      draggingRef.current = true; // the finger owns the transform now — suspend the self-heal
+      draggingRef.current = true; // the finger owns the transform now
       d.dx = dx;
       const w = trackW() || 1;
       let vx = dx; // follow the finger, but resist dragging past the ends (only two pages)
       if (pageIndexRef.current === 0) vx = Math.min(0, Math.max(-w, vx));
       else vx = Math.max(0, Math.min(w, vx));
-      setX(-pageIndexRef.current * w + vx, false);
+      setDragX(-pageIndexRef.current * w + vx);
     };
     const onEnd = () => {
-      draggingRef.current = false; // finger's gone — the self-heal may take over again
-      if (!d || !d.horiz) { d = null; return; }
+      draggingRef.current = false; // finger's gone
+      if (!d || !d.horiz) { d = null; releaseTrack(); return; }
       const cur = pageIndexRef.current, dx = d.dx;
       d = null;
       let target = cur;
       if (cur === 0 && dx < -SWIPE_COMMIT_PX) target = 1;      // dragged far left off command → chat
       else if (cur === 1 && dx > SWIPE_COMMIT_PX) target = 0;  // dragged far right off chat → command
-      // Settle to a page-aligned rest RIGHT NOW, imperatively — never wait on a React re-render (that
-      // timing gap is exactly what left the track stuck at half). Guard the animation window so the
-      // self-heal doesn't snap it flat. Then sync React state if the page changed (idempotent settle).
-      settleTo(target, true);
-      animatingUntilRef.current = Date.now() + 360;
+      // Hand the rest position back to the CSS class: clearing the inline transform lets the class snap
+      // the track to a page (animated). If the page changed, flip React state — the class follows it. The
+      // track is now ALWAYS class-aligned at rest, so it can't stay stuck between pages.
+      releaseTrack();
       if (target !== cur) setModeRef.current(target === 1 ? 'agent' : 'command');
     };
     pager.addEventListener('touchstart', onStart, { passive: true });
@@ -445,7 +443,7 @@ function BottomDock({
           <i className={`dock-dot${mode === 'agent' ? ' on' : ''}`} data-page="agent" />
         </div>
         <div className="dock-pager" ref={pagerRef}>
-          <div className="dock-track" ref={trackRef}>
+          <div className={`dock-track${pageIndex === 1 ? ' at-chat' : ''}`} ref={trackRef}>
             <div className={`dock-page command${mode === 'command' ? ' on' : ''}`}>
               {/* Hidden capture: the ⌨ key focuses it to pop the system keyboard; each keystroke then
                   streams straight into the pane and the field wipes to empty (the terminal is the
