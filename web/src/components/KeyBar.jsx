@@ -10,6 +10,11 @@ import { createRepeater } from '../repeat.js';
 // on the system keyboard). preventDefault on pointer-down keeps focus on the capture; onClick still fires.
 const keepFocus = (e) => { if (e.cancelable) e.preventDefault(); };
 
+// How long a repeat key (arrow / ⌫) must be held STILL before it commits to auto-repeat. Long enough
+// that brushing an arrow mid-swipe and pausing briefly doesn't fire it (which recalled shell history) —
+// a real swipe moves past the 8px gate well inside this window and cancels the repeat.
+const HOLD_MS = 300;
+
 // The command keyboard: a fixed 2×7 grid (never scrolls). Row 1: Esc/Tab, the ~ / @ symbols and ⌫;
 // row 2: the sticky Ctrl/Shift/Alt modifiers, then the inverted-T arrows (▲ over ◀ ▼ ▶) left of Enter.
 // The ⌨ keyboard-toggle and the user's saved commands live in the quick-bar ABOVE this grid (BottomDock).
@@ -84,14 +89,14 @@ function Key({ id, dispatch, keyHeldRef }) {
       onPointerDown={keepFocus} onClick={() => dispatch(id)}>{label}</button>;
   }
   // Held arrow / ⌫ auto-repeats — but a page swipe can start on a key too, so we must NOT fire on
-  // touch-down. A short guard disambiguates: hold still past it → the repeater kicks in (first press +
+  // touch-down. A HOLD_MS guard disambiguates: hold still past it → the repeater kicks in (first press +
   // repeat); release before it → one press (a tap); move the finger (a swipe) → cancel, no press.
   const clearGuard = () => { const g = gRef.current; if (g?.guard) { clearTimeout(g.guard); g.guard = null; } };
   const down = (e) => {
     if (e.cancelable) e.preventDefault();
     if (!repRef.current) repRef.current = createRepeater(() => dispatchRef.current(id));
     const g = { x: e.clientX, y: e.clientY, held: false, moved: false, guard: null };
-    g.guard = setTimeout(() => { g.held = true; g.guard = null; repRef.current.start(); }, 140);
+    g.guard = setTimeout(() => { g.held = true; g.guard = null; repRef.current.start(); }, HOLD_MS);
     gRef.current = g;
     claim(true); // this touch is a key press until proven a swipe
   };

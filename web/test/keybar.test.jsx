@@ -89,8 +89,8 @@ describe('KeyBar command grid', () => {
     const onKey = vi.fn();
     render({ onKey });
     fire(btn('up'), 'pointerdown');
-    // 140ms guard → first press; then 400ms repeat delay + two 120ms intervals → two more.
-    act(() => vi.advanceTimersByTime(140 + 400 + 120 + 120));
+    // 300ms hold guard → first press; then 400ms repeat delay + two 120ms intervals → two more.
+    act(() => vi.advanceTimersByTime(300 + 400 + 120 + 120));
     fire(btn('up'), 'pointerup');
     act(() => vi.advanceTimersByTime(1000));
     expect(onKey).toHaveBeenCalledTimes(3);
@@ -102,7 +102,7 @@ describe('KeyBar command grid', () => {
     const onKey = vi.fn();
     render({ onKey });
     fire(btn('up'), 'pointerdown');
-    act(() => vi.advanceTimersByTime(60)); // still inside the 140ms guard
+    act(() => vi.advanceTimersByTime(60)); // still inside the 300ms hold guard
     fire(btn('up'), 'pointerup');
     act(() => vi.advanceTimersByTime(1000));
     expect(onKey).toHaveBeenCalledTimes(1);
