@@ -1,8 +1,29 @@
 import { describe, it, expect } from 'vitest';
 import {
   COMMAND_ROWS, CONTROL_KEYS, MODIFIERS, KEY_LABELS, REPEAT_KEYS, keyAction,
-  MOD_OFF, MOD_ARMED, MOD_LOCKED, tapMod, modActive, consumeMods, withMods,
+  MOD_OFF, MOD_ARMED, MOD_LOCKED, tapMod, modActive, consumeMods, withMods, buildChord,
 } from '../src/keybarKeys.js';
+
+describe('buildChord (save a key combo from the 按键 tab)', () => {
+  it('Ctrl/Alt + letter → C-x / M-x with a ⌃/⌥ label (shift folds away for letters)', () => {
+    expect(buildChord({ ctrl: true }, 'c')).toEqual({ name: 'C-c', label: '⌃C' });
+    expect(buildChord({ ctrl: true }, 'C')).toEqual({ name: 'C-c', label: '⌃C' });
+    expect(buildChord({ alt: true }, 'x')).toEqual({ name: 'M-x', label: '⌥X' });
+    expect(buildChord({ ctrl: true, alt: true }, 'k')).toEqual({ name: 'C-M-k', label: '⌃⌥K' });
+  });
+  it('named base keys stack modifiers; Shift+Tab is the dedicated BTab', () => {
+    expect(buildChord({ shift: true }, 'Tab')).toEqual({ name: 'BTab', label: '⇧Tab' });
+    expect(buildChord({ ctrl: true }, 'up')).toEqual({ name: 'C-Up', label: '⌃Up' });
+    expect(buildChord({ shift: true }, 'left')).toEqual({ name: 'S-Left', label: '⇧Left' });
+    expect(buildChord({}, 'enter')).toEqual({ name: 'Enter', label: 'Enter' });
+    expect(buildChord({}, 'esc')).toEqual({ name: 'Escape', label: 'Esc' });
+  });
+  it('returns null for nothing sendable (empty, or a bare char with no modifier)', () => {
+    expect(buildChord({}, '')).toBeNull();
+    expect(buildChord({}, 'c')).toBeNull();       // just typing, not a key
+    expect(buildChord({}, 'foo')).toBeNull();     // unknown multi-char base
+  });
+});
 
 describe('command grid layout', () => {
   it('is a fixed 2×7 grid', () => {

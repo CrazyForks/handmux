@@ -46,7 +46,11 @@ export function saveFavs(mode, items) {
 export function addFav(mode, item) {
   const items = loadFavs(mode);
   if (items.some((f) => f.text === item.text)) return items; // dedupe by text
-  return saveFavs(mode, [...items, { kind: item.kind, text: item.text, enter: !!item.enter }]);
+  // A key fav (kind 'key') carries a pretty label (⌃C); a command carries the enter flag.
+  const next = item.kind === 'key'
+    ? { kind: 'key', text: item.text, label: item.label }
+    : { kind: item.kind, text: item.text, enter: !!item.enter };
+  return saveFavs(mode, [...items, next]);
 }
 
 export function removeFav(mode, text) {

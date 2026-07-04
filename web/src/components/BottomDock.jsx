@@ -407,14 +407,17 @@ function BottomDock({
     if (KEY_FAVS[text]) { onKey(KEY_FAVS[text]); return; }
     sendFav(text);
   };
-  // COMMAND quick-bar tap. A KEY_FAVS label (ESC/Tab) fires the key. Otherwise: a with-Enter fav TYPES +
-  // runs it (sendFav = type + Enter, server-paced); a plain fav just types into the shell (the shell is
-  // the display, like every other command-mode keystroke — you press Enter yourself).
+  // COMMAND quick-bar tap. A key fav (kind 'key', e.g. C-c) or a legacy KEY_FAVS label (ESC/Tab) fires
+  // the terminal key. Otherwise: a with-Enter fav TYPES + runs it (sendFav = type + Enter, server-paced);
+  // a plain fav just types into the shell (the shell is the display — you press Enter yourself).
   const runCmdFav = (f) => {
+    if (f.kind === 'key') { onKey(f.text); return; }
     if (KEY_FAVS[f.text]) { onKey(KEY_FAVS[f.text]); return; }
     if (f.enter) { sendFav(f.text); return; }
     onText(f.text);
   };
+  // A command chip's label: a key fav shows its pretty ⌃C label, a command shows its text.
+  const favLabel = (f) => (f.kind === 'key' ? (f.label || f.text) : f.text);
 
   // Let the topbar idea panel drop a picked idea into the box (fill, never send) — same path as pick.
   useImperativeHandle(fwdRef, () => ({ fill: pick }), []);
@@ -564,12 +567,12 @@ function BottomDock({
                   {cmdFavs.map((f) => (
                     <button key={`g:${f.text}`} type="button" className="quick-cmd quick-cmd-plain"
                       onPointerDown={keepFocus} onClick={() => runCmdFav(f)}>
-                      {f.text}{f.enter && <span className="qc-enter" aria-hidden="true">⏎</span>}</button>
+                      {favLabel(f)}{f.kind !== 'key' && f.enter && <span className="qc-enter" aria-hidden="true">⏎</span>}</button>
                   ))}
                   {winFavs.map((f) => (
                     <button key={`w:${f.text}`} type="button" className="quick-cmd quick-cmd-win"
                       onPointerDown={keepFocus} onClick={() => runCmdFav(f)}>
-                      {f.text}{f.enter && <span className="qc-enter" aria-hidden="true">⏎</span>}</button>
+                      {favLabel(f)}{f.kind !== 'key' && f.enter && <span className="qc-enter" aria-hidden="true">⏎</span>}</button>
                   ))}
                   <button type="button" className="quick-cmd quick-cmd-add" aria-label={t('cmd.editTitle')}
                     onPointerDown={keepFocus} onClick={() => setCmdEditOpen(true)}><GearIcon /></button>
@@ -652,10 +655,10 @@ function BottomDock({
         onSend={(text) => { setPanelOpen(false); runFav(text); }}
         onFill={(text) => { setPanelOpen(false); fillFav(text); }}
         onClose={() => setPanelOpen(false)} />
-      {/* Command-mode saved-command editor (opened by the ⚙ in the command quick-bar): two sections —
-          global + this window — each reorderable, each add with a 「带回车」toggle. Its own sheet, never
-          touches the agent list. */}
-      <CmdFavEditor open={cmdEditOpen} windowId={windowId} onClose={() => setCmdEditOpen(false)} />
+      {/* Command-mode saved-command editor (opened by the ⚙ in the command quick-bar): two list sections
+          (global + this window) over one add row whose 命令/按键 tab picks what you add. Mounted only while
+          open so it seeds fresh each time. Never touches the agent list. */}
+      {cmdEditOpen && <CmdFavEditor windowId={windowId} onClose={() => setCmdEditOpen(false)} />}
     </div>
   );
 }
