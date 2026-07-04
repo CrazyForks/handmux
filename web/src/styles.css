@@ -338,13 +338,13 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .input-send:active { background: #3a66e0; }
 .input-send:disabled { background: #3a3c42; color: #6b7280; } /* 空框:禁用态(灰) */
 .input-send svg { width: 20px; height: 20px; display: block; }
-/* 历史:麦克风左侧的图标按钮。空框时后面跟「历史」文字(药丸展开);一打字文字消失、只剩图标。 */
-.input-history { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 34px;
-  border: none; border-radius: 8px; background: transparent; color: #8a93a0; padding: 0 6px;
-  font: inherit; font-size: 12.5px; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+/* 历史:麦克风左侧的图标按钮,只在空框时出现(打字即整体隐藏)。仅一个图标。 */
+.input-history { flex: none; width: 34px; height: 34px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: 8px; background: transparent; color: #8a93a0; padding: 0;
+  touch-action: manipulation; -webkit-user-select: none; user-select: none; }
 .input-history svg { width: 20px; height: 20px; display: block; }
 .input-history:active { color: #4a7cff; }
-.input-history-label { line-height: 1; white-space: nowrap; }
 /* 录音态:整条输入框变绿 + 明显的呼吸发光(替代单独的"聆听中"提示)。粗绿边 + 一明一暗的绿光晕。 */
 .input-wrap.recording { background: rgba(7,193,96,.14); border: 2px solid #07c160; animation: rec-breathe 1.3s ease-in-out infinite; }
 .input-wrap.recording .input-text { color: #eafff3; }

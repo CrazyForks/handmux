@@ -93,13 +93,12 @@ describe('BottomDock', () => {
     expect([...container.querySelectorAll('.quick-cmd')].some((b) => b.textContent === '/compact')).toBe(true);
   });
 
-  it('历史按钮:空框显示图标+文字,打字后收起文字只留图标', () => {
+  it('历史按钮:空框只显示图标,打字后整个按钮隐藏', () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-    expect(container.querySelector('.input-history svg')).not.toBeNull();        // 图标常在
-    expect(container.querySelector('.input-history-label')).not.toBeNull();      // 空框:带文字
+    expect(container.querySelector('.input-history')).not.toBeNull();      // 空框:图标在
+    expect(container.querySelector('.input-history svg')).not.toBeNull();  // 只有一个图标
     typeInto(container.querySelector('.input-text'), 'ls');
-    expect(container.querySelector('.input-history svg')).not.toBeNull();        // 仍有图标
-    expect(container.querySelector('.input-history-label')).toBeNull();          // 打字后:文字收起
+    expect(container.querySelector('.input-history')).toBeNull();          // 打字后:整个隐藏
   });
 
   it('快捷栏命令 chip 点即发送(打字+回车);ESC 发 Escape 键而非文字', async () => {
