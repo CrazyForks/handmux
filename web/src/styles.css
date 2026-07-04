@@ -252,7 +252,7 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 /* Swipe carousel: a two-page track (command | chat) that follows the finger and snaps with an ease
    animation (transform set imperatively in BottomDock). Both pages stay mounted so they slide into view. */
 .dock-pager { overflow: hidden; min-width: 0; transition: height .28s cubic-bezier(.22,.61,.36,1); }
-.dock-track { display: flex; align-items: flex-end; width: 200%; will-change: transform; }
+.dock-track { display: flex; align-items: flex-start; width: 200%; will-change: transform; }
 .dock-track > .dock-page { flex: 0 0 50%; width: 50%; min-width: 0; }
 .dock-page.command { position: relative; } /* anchors the hidden .cmd-capture */
 /* Command keyboard: a fixed 3×7 grid, never scrolls. Equal columns keep the arrows aligned as an

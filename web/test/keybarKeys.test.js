@@ -10,16 +10,20 @@ describe('command grid layout', () => {
     for (const row of COMMAND_ROWS) expect(row).toHaveLength(7);
   });
 
-  it('pins the corners: ⌨ top-left, ⌫ top-right, 常用 bottom-left; Enter at the middle-row right edge', () => {
+  it('pins the corners: ⌨ top-left, ⌫ top-right, 常用 bottom-left, Enter bottom-right', () => {
     expect(COMMAND_ROWS[0][0]).toBe('kbd');
     expect(COMMAND_ROWS[0][6]).toBe('del');
     expect(COMMAND_ROWS[2][0]).toBe('fav');
-    expect(COMMAND_ROWS[1][6]).toBe('enter');
+    expect(COMMAND_ROWS[2][6]).toBe('enter');
   });
 
-  it('places the arrows as an inverted-T at the bottom-right (▲ over ◀ ▼ ▶)', () => {
-    expect(COMMAND_ROWS[1][5]).toBe('up');                         // ▲ above ▼
-    expect(COMMAND_ROWS[2].slice(4)).toEqual(['left', 'down', 'right']); // ◀ ▼ ▶ on the bottom row
+  it('puts the sticky modifiers on the first row', () => {
+    for (const m of ['ctrl', 'shift', 'alt']) expect(COMMAND_ROWS[0]).toContain(m);
+  });
+
+  it('places the arrows as an inverted-T just left of Enter (▲ over ◀ ▼ ▶)', () => {
+    expect(COMMAND_ROWS[1][4]).toBe('up');                              // ▲ above ▼
+    expect(COMMAND_ROWS[2].slice(3, 6)).toEqual(['left', 'down', 'right']); // ◀ ▼ ▶, left of Enter
   });
 
   it('ctrl/shift/alt are the live modifiers; kbd/fav are controls', () => {
