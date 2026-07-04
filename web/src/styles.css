@@ -210,7 +210,7 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
    NOTE: font-size below 16px makes iOS Safari zoom the page when the field is focused. */
 /* 文字框本身透明无边框——圆角药丸框由 .input-wrap 画(见下方);这样 textarea 只占中间一段,
    左右按钮是它的 flex 兄弟、不再盖在它上面,选词/移光标碰不到按键。font-size 16 防 iOS 聚焦缩放。 */
-.input-text { flex: 1; min-width: 0; padding: 7px 6px; border: none; background: transparent; color: #fff; font-family: inherit; font-size: 16px; line-height: 22px; max-height: 156px; resize: none; overflow-y: auto; display: block; }
+.input-text { flex: 1; min-width: 0; padding: 7px 6px 7px 11px; border: none; background: transparent; color: #fff; font-family: inherit; font-size: 16px; line-height: 22px; max-height: 156px; resize: none; overflow-y: auto; display: block; }
 .input-text:focus { outline: none; }
 .input-text::placeholder { color: #6b7280; }
 .token-prompt button { padding: 8px 14px; border: none; border-radius: 6px; background: #4a7cff; color: #fff; }
@@ -291,6 +291,10 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
   padding: 5px 6px 5px 5px; border: 1px solid #3a3d44; border-radius: 20px; background: #202227;
   box-shadow: 0 1px 6px rgba(0,0,0,.35); transition: border-color .15s, box-shadow .15s; }
 .input-wrap:focus-within { border-color: #07c160; box-shadow: 0 0 0 1px rgba(7,193,96,.4), 0 2px 12px rgba(0,0,0,.4); }
+/* The 34px buttons flex-end (pin to bottom for multi-line), but a single-line textarea is ~4px taller
+   than a button, so pinned-to-bottom reads ~2px low. Lift them 2px → centred on one line, still hugging
+   the bottom when the box grows. */
+.input-wrap > .input-history, .input-wrap > .input-mic, .input-wrap > .input-send { margin-bottom: 2px; }
 /* Command page shows NO box — the terminal is the display. The capture <input> is hidden but focusable
    (the ⌨ key focuses it to pop the system keyboard); each keystroke then streams into the pane. */
 .cmd-capture { position: absolute; left: 0; bottom: 0; width: 2px; height: 2px; padding: 0; margin: 0;
