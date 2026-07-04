@@ -26,6 +26,14 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   (ESC, Tab, Ctrl+C, …). The seeded ESC/Tab/⌫ defaults are now proper key favs so they render and edit like
   any other. Chat has no per-window list and no 带回车 toggle (a chat tap always sends).
 
+### Changed
+- **Upload picker now filters to allowed types and rejects an unsupported pick up front.** Both upload
+  entries (chat composer ＋附件 and the file-browser upload button) carry an `accept` hint (images +
+  text/code + documents) so the native picker guides you toward valid files, and pre-check the picked
+  files client-side: a disallowed pick (an executable, `.zip`, a video, an extensionless binary) is
+  dropped with an instant 「不支持的文件类型」note instead of failing halfway with a server 415. Mirrors
+  the server's extension allow-list (`server/src/uploadTypes.js`), which remains the real enforcement.
+
 ### Fixed
 - **Saved key combos with a modifier + a named key (Ctrl+Arrow, Ctrl+Tab, …) were silently dropped** — the
   `/keys` allowlist only accepted a modifier on a single letter/digit (`C-r`) or a bare named key (`Up`,

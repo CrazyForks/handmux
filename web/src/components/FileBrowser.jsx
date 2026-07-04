@@ -1,6 +1,7 @@
 // web/src/components/FileBrowser.jsx
 import { useEffect, useRef, useState } from 'react';
 import { fetchDir, downloadFile, uploadFile, createDir } from '../api.js';
+import { UPLOAD_ACCEPT, splitUploadable } from '../uploadTypes.js';
 import { joinPath } from '../docPath.js';
 import { FolderIcon, FileIcon, ImageIcon, ArrowUpIcon, DownloadIcon, LocateIcon, FolderPlusIcon, UploadIcon, CopyIcon } from './icons.jsx';
 import ActionSheet from './ActionSheet.jsx';
@@ -203,8 +204,11 @@ export default function FileBrowser({ path, onNavigate, onOpenDoc, onJumpToCwd, 
   // With multiple files the progress label carries a (n/total) counter and a partial failure lists
   // the offenders; a single file keeps its specific server error (e.g. 文件过大).
   const doUpload = async (files) => {
-    const list = (Array.isArray(files) ? files : [files]).filter(Boolean);
-    if (!list.length) return [];
+    const { allowed: list, rejected } = splitUploadable(files);
+    if (!list.length) {
+      if (rejected.length) setErr(t('filebrowser.uploadRejected', { names: rejected.join('、') }));
+      return rejected;
+    }
     setUploading(true);
     setErr('');
     const total = list.length;
@@ -224,7 +228,8 @@ export default function FileBrowser({ path, onNavigate, onOpenDoc, onJumpToCwd, 
     setUploading(false);
     setProgress(null);
     if (failed.length && total > 1) setErr(t('filebrowser.uploadPartialFailed', { names: failed.join('、') }));
-    return failed;
+    else if (rejected.length) setErr(t('filebrowser.uploadRejected', { names: rejected.join('、') }));
+    return [...failed, ...rejected];
   };
   // A file shared in via the system share sheet (Web Share Target) → upload it to the CURRENT dir,
   // then clear it. Only clears on success, so a failure leaves it for a retry elsewhere.
@@ -319,6 +324,7 @@ export default function FileBrowser({ path, onNavigate, onOpenDoc, onJumpToCwd, 
             className="browse-file-input"
             type="file"
             multiple
+            accept={UPLOAD_ACCEPT}
             onChange={(e) => { doUpload(Array.from(e.target.files || [])); e.target.value = ''; }}
           />
         )}

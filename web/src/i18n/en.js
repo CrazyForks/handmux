@@ -170,7 +170,6 @@ export default {
   'cmd.addPlaceholder': 'Add a command…',
   'cmd.tabCmd': 'Command',
   'cmd.tabKey': 'Key',
-  'cmd.keyPlaceholder': 'base key: c, Up, Tab…',
   'cmd.addTo': 'Add to',
   'cmd.addTitle': 'Add',
   'cmd.editItem': 'Edit',
@@ -189,6 +188,7 @@ export default {
   'dock.upload.title': 'Upload file (saved to home upload area, not the project)',
   'dock.upload.progress': 'Uploading {name}{tag}',
   'dock.upload.failed': 'Upload failed: {names}',
+  'dock.upload.rejected': 'Unsupported file type: {names}',
 
   // app
   'app.nameExists': 'That name already exists',
@@ -308,6 +308,7 @@ export default {
   'filebrowser.uploading': 'Uploading {name}{tag}',
   'filebrowser.uploadFailed': 'Upload failed',
   'filebrowser.uploadPartialFailed': 'These files failed to upload: {names}',
+  'filebrowser.uploadRejected': 'Unsupported file type: {names}',
   'filebrowser.sessionDir': 'Session directory',
   'filebrowser.jumpToSessionDir': 'Jump to current session directory',
   'filebrowser.parentDir': 'Parent directory',

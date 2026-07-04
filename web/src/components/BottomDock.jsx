@@ -5,6 +5,7 @@ import FavDrawer from './FavDrawer.jsx';
 import CmdFavEditor from './CmdFavEditor.jsx';
 import MicButton from './MicButton.jsx';
 import { loadFavs, cmdScope } from '../favStore.js';
+import { UPLOAD_ACCEPT, splitUploadable } from '../uploadTypes.js';
 import { ArrowUpIcon, UploadIcon, ClockIcon, KeyboardIcon, GearIcon } from './icons.jsx';
 import { usePushToTalk } from '../voice/usePushToTalk.js';
 import { useAsrAvailable } from '../voice/useAsrAvailable.js';
@@ -44,14 +45,49 @@ const keepDockFocus = (e) => {
 // trigger a swap by accident (was 50).
 const SWIPE_COMMIT_PX = 80;
 
-// Quick-command chips are tinted by CATEGORY (three styles, not a per-label rainbow): a KEY (ESC/Tab) =
-// grey, a slash-command (/compact …) = blue, everything else (ok/go on/1/2/3 …) = green.
-// → .qc-esc / .qc-cmd / .qc-reply.
+// Chat chips are tinted by CATEGORY (three styles, not a per-label rainbow): a slash-command (/compact …)
+// = blue, everything else (ok/go on/1/2/3 …) = green. Key favs (kind 'key') are tinted grey directly at
+// the call site (they bypass this); the KEY_FAVS branch here only still catches a LEGACY text fav named
+// ESC/Tab/⌫ from an older saved list. → .qc-esc / .qc-cmd / .qc-reply.
 const chipTint = (text) => {
   if (KEY_FAVS[text]) return 'esc';
   if (text.startsWith('/')) return 'cmd';
   return 'reply';
 };
+
+// A quick-command chip that carries TWO actions on one press (pointer events only, no onClick — so it never
+// clashes with the pager's tap-vs-swipe gesture): a clean tap fires onTap, holding past CHIP_HOLD_MS fires
+// onHold with a haptic tick. A drag past the 8px gate (the strip scrolling under the finger) cancels both,
+// so a horizontal scroll never triggers the chip. pointerdown preventDefault keeps the focused field (system
+// keyboard / composer) from blurring — the same keepFocus trick the keybar uses. onHold omitted → tap only.
+const CHIP_HOLD_MS = 450;
+function HoldButton({ className, onTap, onHold, children, ...rest }) {
+  const st = useRef({ timer: null, long: false, moved: false, x: 0, y: 0 });
+  const down = (e) => {
+    if (e.cancelable) e.preventDefault();
+    const s = st.current; s.long = false; s.moved = false; s.x = e.clientX; s.y = e.clientY;
+    if (!onHold) return;
+    s.timer = setTimeout(() => { s.long = true; navigator.vibrate?.(12); onHold(); }, CHIP_HOLD_MS);
+  };
+  const move = (e) => {
+    const s = st.current;
+    if (s.moved) return;
+    if (Math.abs(e.clientX - s.x) > 8 || Math.abs(e.clientY - s.y) > 8) { s.moved = true; clearTimeout(s.timer); }
+  };
+  const up = () => {
+    const s = st.current;
+    clearTimeout(s.timer); s.timer = null;
+    if (s.moved) { s.moved = false; return; } // was a scroll/drag → no tap
+    if (s.long) { s.long = false; return; }   // hold already fired
+    onTap();
+  };
+  const cancel = () => { const s = st.current; clearTimeout(s.timer); s.timer = null; s.long = false; s.moved = false; };
+  return (
+    <button type="button" className={className} {...rest}
+      onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel} onPointerLeave={cancel}>
+      {children}</button>
+  );
+}
 
 function BottomDock({
   pane, onAuthFail, onKey, onText, cwd = null, agent = null, windowId = null,
@@ -427,6 +463,11 @@ function BottomDock({
   };
   // A command chip's label: a key fav shows its pretty ⌃C label, a command shows its text.
   const favLabel = (f) => (f.kind === 'key' ? (f.label || f.text) : f.text);
+  // Long-press action for a command chip: only a ⏎ (with-Enter) command gets one — HOLD types it WITHOUT
+  // the Enter, so you can edit/append in the shell before running it yourself. Keys and plain (type-only)
+  // commands already do exactly that on a tap, so they have no distinct hold (returns undefined = tap only).
+  const holdTypeOnly = (f) =>
+    (f.kind === 'key' || KEY_FAVS[f.text] || !f.enter ? undefined : () => onText(f.text));
 
   // Let the topbar idea panel drop a picked idea into the box (fill, never send) — same path as pick.
   useImperativeHandle(fwdRef, () => ({ fill: pick }), []);
@@ -454,8 +495,15 @@ function BottomDock({
   // Progress shows per-file with an (n/total) counter; a partial failure leaves a red note that
   // self-clears. Succeeded paths (absolute) get pasted into the box.
   const uploadFiles = async (files) => {
-    const list = Array.from(files || []);
-    if (!list.length) return;
+    const { allowed: list, rejected } = splitUploadable(files);
+    if (!list.length) {
+      if (rejected.length) {
+        clearTimeout(upTimerRef.current);
+        setUpload({ label: t('dock.upload.rejected', { names: rejected.join('、') }), error: true });
+        upTimerRef.current = setTimeout(() => setUpload(null), 3500);
+      }
+      return;
+    }
     clearTimeout(upTimerRef.current);
     const total = list.length;
     const paths = [];
@@ -473,8 +521,10 @@ function BottomDock({
       }
     }
     if (paths.length) insertPaths(paths);
-    if (failed.length) {
-      setUpload({ label: t('dock.upload.failed', { names: failed.join('、') }), error: true });
+    if (failed.length || rejected.length) {
+      const bad = [...failed, ...rejected];
+      const key = failed.length ? 'dock.upload.failed' : 'dock.upload.rejected';
+      setUpload({ label: t(key, { names: bad.join('、') }), error: true });
       upTimerRef.current = setTimeout(() => setUpload(null), 3500);
     } else {
       setUpload(null);
@@ -572,16 +622,17 @@ function BottomDock({
                 </div>
                 <div className="quick-scroll">
                   {/* Global commands first (grey), then this window's (green). A with-Enter fav shows a
-                      trailing ⏎ so you know a tap will RUN it, not just type it. */}
+                      trailing ⏎ so you know a tap will RUN it; HOLD a ⏎ command to type it WITHOUT Enter
+                      (drop it in the shell and edit/append before you run it yourself). */}
                   {cmdFavs.map((f) => (
-                    <button key={`g:${f.text}`} type="button" className="quick-cmd quick-cmd-plain"
-                      onPointerDown={keepFocus} onClick={() => runCmdFav(f)}>
-                      {favLabel(f)}{f.kind !== 'key' && f.enter && <span className="qc-enter" aria-hidden="true">⏎</span>}</button>
+                    <HoldButton key={`g:${f.text}`} className="quick-cmd quick-cmd-plain"
+                      onTap={() => runCmdFav(f)} onHold={holdTypeOnly(f)}>
+                      {favLabel(f)}{f.kind !== 'key' && f.enter && <span className="qc-enter" aria-hidden="true">⏎</span>}</HoldButton>
                   ))}
                   {winFavs.map((f) => (
-                    <button key={`w:${f.text}`} type="button" className="quick-cmd quick-cmd-win"
-                      onPointerDown={keepFocus} onClick={() => runCmdFav(f)}>
-                      {favLabel(f)}{f.kind !== 'key' && f.enter && <span className="qc-enter" aria-hidden="true">⏎</span>}</button>
+                    <HoldButton key={`w:${f.text}`} className="quick-cmd quick-cmd-win"
+                      onTap={() => runCmdFav(f)} onHold={holdTypeOnly(f)}>
+                      {favLabel(f)}{f.kind !== 'key' && f.enter && <span className="qc-enter" aria-hidden="true">⏎</span>}</HoldButton>
                   ))}
                   <button type="button" className="quick-cmd quick-cmd-add" aria-label={t('cmd.editTitle')}
                     onPointerDown={keepFocus} onClick={() => setCmdEditOpen(true)}><GearIcon /></button>
@@ -611,10 +662,13 @@ function BottomDock({
                     <UploadIcon /><span>{t('dock.attach')}</span></button>
                 </div>
                 <div className="quick-scroll">
+                  {/* Tap a chip to send it; HOLD a message chip to FILL it into the composer to edit before
+                      sending (a key fav has nothing to edit, so it has no hold). */}
                   {favs.map((f) => (
-                    <button key={f.text} type="button"
+                    <HoldButton key={f.text}
                       className={`quick-cmd qc-${f.kind === 'key' ? 'esc' : chipTint(f.text)}`}
-                      onClick={() => runChatFav(f)}>{f.kind === 'key' ? (f.label || f.text) : f.text}</button>
+                      onTap={() => runChatFav(f)} onHold={f.kind === 'key' ? undefined : () => pick(f.text)}>
+                      {favLabel(f)}</HoldButton>
                   ))}
                   <button type="button" className="quick-cmd quick-cmd-add" aria-label={t('chat.editTitle')}
                     onClick={() => setChatEditOpen(true)}><GearIcon /></button>
@@ -622,6 +676,7 @@ function BottomDock({
               </div>
               {/* 离屏(非 display:none)以便程序化 .click() 在 iOS Safari 可靠唤起原生选择器,见 .browse-file-input。 */}
               <input ref={uploadRef} className="browse-file-input" type="file" multiple
+                accept={UPLOAD_ACCEPT}
                 onChange={(e) => { uploadFiles(e.target.files); e.target.value = ''; }} />
               {/* flex 行:textarea(占满)· 麦克风 · 发送,全是 flex 兄弟、不重叠文字框,所以选词/移光标碰不到
                   按键。录音时整条变绿 + 呼吸。＋上传与▤常用已上移到快捷栏。 */}

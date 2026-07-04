@@ -169,7 +169,6 @@ export default {
   'cmd.addPlaceholder': '加一条命令…',
   'cmd.tabCmd': '命令',
   'cmd.tabKey': '按键',
-  'cmd.keyPlaceholder': '基键:c、Up、Tab…',
   'cmd.addTo': '添加到',
   'cmd.addTitle': '添加',
   'cmd.editItem': '编辑',
@@ -188,6 +187,7 @@ export default {
   'dock.upload.title': '上传文件(存到家目录上传区,不进项目)',
   'dock.upload.progress': '上传 {name}{tag}',
   'dock.upload.failed': '上传失败：{names}',
+  'dock.upload.rejected': '不支持的文件类型：{names}',
 
   // app
   'app.nameExists': '该名已存在',
@@ -307,6 +307,7 @@ export default {
   'filebrowser.uploading': '上传 {name}{tag}',
   'filebrowser.uploadFailed': '上传失败',
   'filebrowser.uploadPartialFailed': '以下文件上传失败：{names}',
+  'filebrowser.uploadRejected': '不支持的文件类型：{names}',
   'filebrowser.sessionDir': '会话目录',
   'filebrowser.jumpToSessionDir': '跳到当前会话目录',
   'filebrowser.parentDir': '上级目录',
