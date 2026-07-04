@@ -23,12 +23,21 @@ import { MODIFIERS, modActive, consumeMods, withMods } from '../keybarKeys.js';
 //     填入). The mode defaults from whether a coding agent is live in the pane, and sticks per-pane.
 // Quick-bar labels that are terminal KEYS, not text: tapping them fires onKey (e.g. ESC → interrupt)
 // instead of typing the letters + Enter. Keyed by the item's label so a user can add/remove them freely.
-const KEY_FAVS = { ESC: 'Escape', Esc: 'Escape', Tab: 'Tab' };
+const KEY_FAVS = { ESC: 'Escape', Esc: 'Escape', Tab: 'Tab', '⌫': 'BSpace' };
 
 // Command mode keeps the system keyboard open via the hidden capture. A quick-bar <button> tap would
 // steal focus → the capture blurs → the keyboard collapses. preventDefault on pointer-down keeps focus
 // on the capture; onClick still fires. (Same trick the KeyBar keys use.)
 const keepFocus = (e) => { if (e.cancelable) e.preventDefault(); };
+
+// One handler on the whole dock: tapping ANYWHERE inside it (keys, chips, buttons, gaps, the composer's
+// padding) must NOT blur the focused field and drop the phone keyboard — only a tap on a real text field
+// should take focus / move the caret. preventDefault on pointer-down keeps focus where it is; onClick
+// still fires so every button works. Skipping inputs/textarea lets the composer be focused + caret-placed.
+const keepDockFocus = (e) => {
+  if (e.target.closest?.('input, textarea, [contenteditable]')) return;
+  if (e.cancelable) e.preventDefault();
+};
 
 // How far (px) a horizontal drag must travel before releasing commits a page switch. Higher = harder to
 // trigger a swap by accident (was 50).
@@ -478,7 +487,7 @@ function BottomDock({
 
   return (
     <div className="bottom-dock">
-      <div className="dock-left">
+      <div className="dock-left" onPointerDown={keepDockFocus}>
         {/* Two-dot page indicator (command · chat); the filled dot marks the current page. A tiny label
             sits at the top-left, absolutely positioned so it adds no height (stays in the dots' row).
             It's also the reliable mode switch: TAP it to flip command ⇄ chat (swiping still works, but the

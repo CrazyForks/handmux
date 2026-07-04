@@ -103,6 +103,22 @@ describe('BottomDock', () => {
     expect(container.querySelector('.input-history')).toBeNull();          // 打字后:整个隐藏
   });
 
+  // Tapping anywhere in the dock that isn't a text field must keep the phone keyboard up: the dock's
+  // pointer-down preventDefaults so the focused field never blurs. The text field itself is exempt.
+  const downOn = (node) => { const e = new MouseEvent('pointerdown', { bubbles: true, cancelable: true }); act(() => node.dispatchEvent(e)); return e; };
+  it('tapping non-input dock areas keeps focus (preventDefault); the composer itself does not', () => {
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    expect(downOn(container.querySelector('.dock-page.chat .quick-cmd')).defaultPrevented).toBe(true);  // a chip
+    expect(downOn(container.querySelector('.dock-page.chat .quick-bar')).defaultPrevented).toBe(true);  // empty bar area
+    expect(downOn(container.querySelector('.input-text')).defaultPrevented).toBe(false);                // the field: exempt
+  });
+
+  it('command mode: tapping a key / the keyboard area keeps the capture focused (preventDefault)', () => {
+    render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() }); // command
+    expect(downOn(container.querySelector('.keybar-grid')).defaultPrevented).toBe(true);   // a gap in the grid
+    expect(downOn(container.querySelector('[data-key="esc"]')).defaultPrevented).toBe(true); // a key
+  });
+
   it('快捷栏命令 chip 点即发送(打字+回车);ESC 发 Escape 键而非文字', async () => {
     const onKey = vi.fn();
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey, onText: vi.fn() });
