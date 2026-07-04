@@ -27,12 +27,12 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   any other. Chat has no per-window list and no 带回车 toggle (a chat tap always sends).
 
 ### Changed
-- **Touch targets raised toward the 44pt HIG minimum.** Standalone toolbar icon buttons (the ☰ hamburger,
-  topbar file/settings/inbox icons, and the file-browser bar's up/cwd/mkdir/upload squares) are now 44×44,
-  and list-row action icons (favourite/copy/delete/reorder, session unbind, idea delete, file download) get a
-  ≥44pt-tall hit box while keeping their compact glyphs. The topbar and browse-bar padding was tightened so
-  the taller controls don't inflate bar height. Deliberately left compact: the command keyboard grid, window
-  tabs, dock input buttons, quick-command chips and the preview head. CSS-only.
+- **Touch targets raised toward the 44pt HIG minimum.** The file-browser bar's up/cwd/mkdir/upload squares
+  are now 44×44, and list-row action icons (favourite/copy/delete/reorder, session unbind, idea delete, file
+  download) get a ≥44pt-tall hit box while keeping their compact glyphs. The topbar stays deliberately compact
+  — its icon buttons are a comfortable 34×34 (bigger than before, but the bar itself is tighter) with the
+  unread badges re-anchored to hug each glyph. Also left compact: the command keyboard grid, window tabs,
+  dock input buttons, quick-command chips and the preview head. CSS-only.
 - **Sheet/modal close buttons unified to one iOS style.** Every panel's close control (`.settings-close`
   across the modals, `.cmd-close` across the bottom sheets) is now the same subtle filled-grey circle with a
   centred X — regardless of whether it renders the `✕` glyph or the `<XIcon/>` SVG — instead of a bare grey

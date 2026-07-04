@@ -36,15 +36,15 @@
 html, body, #root { height: 100%; margin: 0; overscroll-behavior: none; }
 body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; color: #e6e6e6; }
 .app { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-.topbar { display: flex; align-items: center; gap: 8px; padding: 2px 8px; background: #2a2b2e; }
+.topbar { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: #2a2b2e; }
 .hamburger { font-size: 20px; background: none; border: none; color: #e6e6e6;
-  width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0; margin-left: -6px; touch-action: manipulation; }
+  width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; padding: 0; margin-left: -4px; touch-action: manipulation; }
 .session-name { font-weight: 600; margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fontbtn { min-width: 36px; padding: 4px 10px; border: none; border-radius: 8px; background: #33353a; color: #e6e6e6; font-size: 14px; touch-action: manipulation; }
 .fontbtn[aria-pressed="true"] { background: #2a4060; color: #7ab4f5; }
 /* Topbar file + settings icons: frameless monochrome line icons in the chrome's grey, sized to sit
    level with the ☰ glyph. stroke=currentColor picks up this color. */
-.topbar-icon { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: none; background: none; color: #e6e6e6; touch-action: manipulation; }
+.topbar-icon { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; border: none; background: none; color: #e6e6e6; touch-action: manipulation; }
 .topbar-icon:active { color: var(--blue); }
 .topbar-icon svg { width: 21px; height: 21px; display: block; }
 /* Settings modal: centered card over a dim backdrop (mirrors the drawer's palette). */
@@ -623,10 +623,10 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .rel-items li { font-size: 13px; line-height: 1.5; color: #e6e6e6; margin: 3px 0; }
 /* Unread dot — on the settings gear (topbar) and the changelog row label. */
 .topbar-icon { position: relative; }
-.topbar-dot { position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%;
+.topbar-dot { position: absolute; top: 7px; right: 7px; width: 7px; height: 7px; border-radius: 50%;
   background: var(--red); box-shadow: 0 0 0 2px #1b1c1f; }
 /* Idea count badge on the bulb icon — muted, not alarming. */
-.idea-badge { position: absolute; top: 2px; right: 1px; min-width: 14px; height: 14px;
+.idea-badge { position: absolute; top: 5px; right: 4px; min-width: 14px; height: 14px;
   border-radius: 7px; padding: 0 3px; box-sizing: border-box;
   background: #3d5068; color: #a8c4e0; font-size: 9px; font-weight: 700;
   line-height: 14px; text-align: center; pointer-events: none; }
@@ -1133,7 +1133,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .inbox-btn { position: relative; }
 /* Single priority dot in the icon's top-right corner: highest active state across all panes. */
 .inbox-dot {
-  position: absolute; top: 1px; right: 1px; width: 9px; height: 9px; border-radius: 50%;
+  position: absolute; top: 4px; right: 4px; width: 9px; height: 9px; border-radius: 50%;
   border: 1.5px solid #2a2b2e; /* ring in the topbar colour so it reads as a separate badge */
 }
 .inbox-dot.needs { background: #e0a020; }
