@@ -279,7 +279,8 @@ export default {
   // git
   'git.errReadRepo': 'リポジトリを読み込めませんでした',
   'git.errLoad': '読み込みに失敗しました',
-  'git.errNoRepoInDir': 'このディレクトリに git リポジトリがありません',
+  'git.noRepoInDir': 'このディレクトリにはまだ git リポジトリがありません — 別のディレクトリを選ぶか、ここで git init してください。',
+  'git.outsideRoots': 'このフォルダは handmux がアクセスできる範囲外です — ホームディレクトリと /tmp のみ開けます。リポジトリをホーム配下に移すとここで閲覧できます。',
   'git.errReadDir': 'ディレクトリを読み込めませんでした',
   'git.commitDetail': 'コミット詳細',
   'git.diff': '差分',
@@ -332,6 +333,8 @@ export default {
   'push.sendFailed': '送信に失敗しました',
   'api.loadFailed': '読み込みに失敗しました',
   'api.uploadFailed': 'アップロードに失敗しました',
+  'upload.title': 'アップロード中',
+  'upload.processing': '送信完了 — サーバーで受信中…',
   'api.uploadBadDir': 'そのディレクトリへはアップロードできません',
   'api.uploadDuplicate': '同名のファイルが既に存在します',
   'api.uploadTooLarge': 'ファイルが大きすぎます（上限 50MB）',

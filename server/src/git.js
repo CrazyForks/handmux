@@ -3,13 +3,37 @@ import { homedir } from 'node:os';
 import { join, basename, isAbsolute } from 'node:path';
 import { execFile } from 'node:child_process';
 import { isUnder } from './docPath.js';
+import { defaultExtraRoots } from './docs.js';
 
 // 只读子命令白名单：命令层硬过滤，杜绝任何写操作混入。
 const READONLY = new Set(['rev-parse', 'status', 'log', 'for-each-ref', 'diff', 'show', 'diff-tree']);
 const MAX_BUFFER = 8 * 1024 * 1024;
 
-export function createGit({ home } = {}) {
+export function createGit({ home, extraRoots = [] } = {}) {
   const realHomeP = fs.realpath(home);
+  // Same multi-root allow-list as createDocs: $HOME plus a few roots OUTSIDE it (/tmp, $TMPDIR) so a repo
+  // an agent is working in under /tmp is reachable from the phone. Resolved once — realpath'd, deduped,
+  // missing ones skipped, extras already inside home dropped (home covers them). Keeps git browsing in
+  // lock-step with the file/doc browser; git.js used to be home-only, which rejected legit repos under
+  // /tmp with a red "outside home".
+  const rootsP = (async () => {
+    const rh = await realHomeP;
+    const out = [rh];
+    for (const r of extraRoots) {
+      if (typeof r !== 'string' || !r) continue;
+      let real;
+      try { real = await fs.realpath(r); } catch { continue; } // not present on this host → skip
+      if (isUnder(real, rh) || out.includes(real)) continue;   // already covered by home / dup
+      out.push(real);
+    }
+    return out;
+  })();
+  // The allowed root that contains `real` (longest match wins should roots ever nest), or null.
+  const rootOf = (real, roots) => {
+    let best = null;
+    for (const r of roots) if (isUnder(real, r) && (!best || r.length > best.length)) best = r;
+    return best;
+  };
 
   function git(cwd, args) {
     const sub = args[0];
@@ -23,10 +47,9 @@ export function createGit({ home } = {}) {
 
   async function resolveRepo(rawPath) {
     if (typeof rawPath !== 'string' || !isAbsolute(rawPath)) return { error: 'not absolute', status: 400 };
-    const rh = await realHomeP;
     let real;
     try { real = await fs.realpath(rawPath); } catch { return { error: 'not found', status: 404 }; }
-    if (!isUnder(real, rh)) return { error: 'outside home', status: 400 };
+    if (!rootOf(real, await rootsP)) return { error: 'outside home', status: 400 };
     return { real };
   }
 
@@ -182,4 +205,4 @@ export function createGit({ home } = {}) {
   return { resolveRepo, isRepo, detectRepos, status, log, branches, diff, commit };
 }
 
-export const defaultGit = createGit({ home: homedir() });
+export const defaultGit = createGit({ home: homedir(), extraRoots: defaultExtraRoots() });

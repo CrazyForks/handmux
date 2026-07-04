@@ -23,6 +23,7 @@ vi.mock('../src/api.js', () => ({
   downloadFile: vi.fn(async () => {}),
   uploadFile: vi.fn(async () => ({ name: 'x', size: 1 })),
   createDir: vi.fn(async (dir, name) => ({ path: `${dir}/${name}` })),
+  UploadAbort: class UploadAbort extends Error {},
 }));
 
 // Mixed entries used by pickMode tests (exposed so individual tests can install them).
@@ -249,7 +250,7 @@ describe('FileBrowser', () => {
     expect(btn.disabled).toBe(false);
     await click(btn);
     await settle();
-    expect(uploadFile).toHaveBeenCalledWith('/home/u/docs', file, expect.any(Function));
+    expect(uploadFile).toHaveBeenCalledWith('/home/u/docs', file, expect.any(Function), false, { signal: expect.any(Object) });
     expect(onPendingConsumed).toHaveBeenCalled();
   });
 
@@ -270,7 +271,7 @@ describe('FileBrowser', () => {
     Object.defineProperty(fileInput, 'files', { value: [file], configurable: true });
     await act(async () => { fileInput.dispatchEvent(new Event('change', { bubbles: true })); });
     await settle();
-    expect(uploadFile).toHaveBeenCalledWith('/home/u/docs', file, expect.any(Function));
+    expect(uploadFile).toHaveBeenCalledWith('/home/u/docs', file, expect.any(Function), false, { signal: expect.any(Object) });
     expect(fetchDir).toHaveBeenLastCalledWith('/home/u/docs'); // reloaded after success
   });
 });

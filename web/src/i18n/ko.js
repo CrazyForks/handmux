@@ -279,7 +279,8 @@ export default {
   // git
   'git.errReadRepo': '저장소를 읽을 수 없습니다',
   'git.errLoad': '불러오기에 실패했습니다',
-  'git.errNoRepoInDir': '이 디렉토리에 git 저장소가 없습니다',
+  'git.noRepoInDir': '아직 git 저장소가 없습니다 — 다른 디렉토리를 선택하거나 여기서 git init 하세요.',
+  'git.outsideRoots': '이 폴더는 handmux가 열 수 있는 범위 밖입니다 — 홈 디렉토리와 /tmp만 접근할 수 있습니다. 저장소를 홈 디렉토리 아래로 옮기면 여기서 볼 수 있습니다.',
   'git.errReadDir': '디렉토리를 읽을 수 없습니다',
   'git.commitDetail': '커밋 상세',
   'git.diff': '변경 사항',
@@ -332,6 +333,8 @@ export default {
   'push.sendFailed': '전송에 실패했습니다',
   'api.loadFailed': '불러오기에 실패했습니다',
   'api.uploadFailed': '업로드에 실패했습니다',
+  'upload.title': '업로드 중',
+  'upload.processing': '전송 완료 — 서버에서 수신 중…',
   'api.uploadBadDir': '해당 디렉토리에는 업로드할 수 없습니다',
   'api.uploadDuplicate': '같은 이름의 파일이 이미 존재합니다',
   'api.uploadTooLarge': '파일이 너무 큽니다（최대 50MB）',

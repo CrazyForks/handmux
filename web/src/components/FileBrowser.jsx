@@ -1,6 +1,7 @@
 // web/src/components/FileBrowser.jsx
 import { useEffect, useRef, useState } from 'react';
-import { fetchDir, downloadFile, uploadFile, createDir } from '../api.js';
+import { fetchDir, downloadFile, uploadFile, createDir, UploadAbort } from '../api.js';
+import { startUpload, updateUpload, finishUpload } from '../uploadJob.js';
 import { UPLOAD_ACCEPT, splitUploadable } from '../uploadTypes.js';
 import { joinPath } from '../docPath.js';
 import { FolderIcon, FileIcon, ImageIcon, ArrowUpIcon, DownloadIcon, LocateIcon, FolderPlusIcon, UploadIcon, CopyIcon } from './icons.jsx';
@@ -213,23 +214,33 @@ export default function FileBrowser({ path, onNavigate, onOpenDoc, onJumpToCwd, 
     setErr('');
     const total = list.length;
     const failed = [];
-    for (let i = 0; i < total; i++) {
-      const file = list[i];
-      const tag = total > 1 ? `（${i + 1}/${total}）` : '';
-      setProgress({ label: t('filebrowser.uploading', { name: file.name, tag }), pct: 0 });
-      try {
-        await uploadFile(dir.path, file, (pct) => setProgress({ label: t('filebrowser.uploading', { name: file.name, tag }), pct }));
-      } catch (e) {
-        failed.push(file.name);
-        if (total === 1) setErr(e?.message || t('filebrowser.uploadFailed'));
+    // Active-transfer progress + Cancel live in the app-wide <UploadOverlay/> (uploadJob store); one
+    // AbortController for the batch so Cancel aborts the in-flight file and breaks the loop. Download
+    // keeps its own inline `progress` bar — only uploads move to the overlay.
+    const ac = new AbortController();
+    startUpload(ac, t('filebrowser.uploading', { name: list[0].name, tag: total > 1 ? `（1/${total}）` : '' }));
+    try {
+      for (let i = 0; i < total; i++) {
+        if (ac.signal.aborted) break;
+        const file = list[i];
+        const tag = total > 1 ? `（${i + 1}/${total}）` : '';
+        updateUpload({ label: t('filebrowser.uploading', { name: file.name, tag }), phase: 'sending', pct: 0 });
+        try {
+          await uploadFile(dir.path, file, (pct, phase) => updateUpload({ pct, phase }), false, { signal: ac.signal });
+        } catch (e) {
+          if (e instanceof UploadAbort) break;      // canceled → stop, keep already-uploaded files
+          // Keep the specific reason (too large / bad type / …) so the error explains why, not just "failed".
+          failed.push({ name: file.name, reason: e?.message || t('filebrowser.uploadFailed') });
+        }
       }
+    } finally {
+      finishUpload();
     }
     await load(dir.path, {}); // refresh listing so the new files show
     setUploading(false);
-    setProgress(null);
-    if (failed.length && total > 1) setErr(t('filebrowser.uploadPartialFailed', { names: failed.join('、') }));
+    if (failed.length) setErr(failed.map((x) => `${x.name}：${x.reason}`).join('；'));
     else if (rejected.length) setErr(t('filebrowser.uploadRejected', { names: rejected.join('、') }));
-    return [...failed, ...rejected];
+    return [...failed.map((x) => x.name), ...rejected];
   };
   // A file shared in via the system share sheet (Web Share Target) → upload it to the CURRENT dir,
   // then clear it. Only clears on success, so a failure leaves it for a retry elsewhere.

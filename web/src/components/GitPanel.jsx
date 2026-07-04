@@ -58,6 +58,9 @@ export default function GitPanel({ open, pane, windowId, inset = 0, onClose }) {
 
   const [data, setData] = useState(null);   // drill payload { key, payload } — tagged with its viewKey
   const [error, setError] = useState(null);
+  // A soft, non-error note (grey, not red): e.g. the directory you picked simply has no git repo in it —
+  // that's an expected outcome, not a failure, so it must never look like the red error line.
+  const [notice, setNotice] = useState(null);
 
   // Hardware/browser Back steps back ONE level and only closes the panel at the repo home — never
   // blows the whole app away mid-navigation. We MIRROR the navigation depth into browser history:
@@ -97,7 +100,7 @@ export default function GitPanel({ open, pane, windowId, inset = 0, onClose }) {
   useEffect(() => {
     if (!open) return undefined;
     let cancelled = false;
-    setStack([]); setViewedBranch(null); setError(null);
+    setStack([]); setViewedBranch(null); setError(null); setNotice(null);
     const stored = getGitRepos(windowId);
     if (stored.length) {
       setRepos(stored);
@@ -116,8 +119,12 @@ export default function GitPanel({ open, pane, windowId, inset = 0, onClose }) {
         if (cancelled) return;
         setRepos(next);
         setActive(next[0] ?? null);
-      } catch {
-        if (!cancelled) setError(t('git.errReadRepo'));
+      } catch (e) {
+        if (cancelled) return;
+        // "outside home" isn't a failure — the repo just sits outside the area handmux can browse.
+        // Explain why (and what's reachable) in the soft grey note, not the red error line.
+        if (e?.message === 'outside home') setNotice(t('git.outsideRoots'));
+        else setError(t('git.errReadRepo'));
       }
     })();
     return () => { cancelled = true; };
@@ -139,7 +146,7 @@ export default function GitPanel({ open, pane, windowId, inset = 0, onClose }) {
     if (!open || !active) { setChanges(null); setBranches(null); return undefined; }
     let cancelled = false;
     // Switching repo resets the viewed branch and the commits paging back to the first page.
-    setChanges(null); setBranches(null); setCommits(null); setViewedBranch(null); setCommitLimit(20); setError(null);
+    setChanges(null); setBranches(null); setCommits(null); setViewedBranch(null); setCommitLimit(20); setError(null); setNotice(null);
     (async () => {
       try {
         const [st, br] = await Promise.all([gitStatus(active), gitBranches(active)]);
@@ -207,10 +214,11 @@ export default function GitPanel({ open, pane, windowId, inset = 0, onClose }) {
   const switchRepo = (p) => { setActive(p); setStack([]); setViewedBranch(null); };
   const onPick = async (dir) => {
     window.history.back();   // dismiss the picker (pops its history entry → onPop closes it)
+    setNotice(null);
     try {
       const { repos: found = [] } = await apiRepos(dir);
       if (!mountedRef.current) return;
-      if (!found.length) { setError(t('git.errNoRepoInDir')); return; }
+      if (!found.length) { setNotice(t('git.noRepoInDir')); return; }
       const foundPaths = found.map((r) => r.path);
       // Use the ref so we always write to the current windowId even if the prop was stale in this closure.
       const wid = windowIdRef.current;
@@ -223,8 +231,10 @@ export default function GitPanel({ open, pane, windowId, inset = 0, onClose }) {
       });
       const firstNew = foundPaths.find((p) => !repos.includes(p)) || foundPaths[0];
       switchRepo(firstNew);
-    } catch {
-      if (mountedRef.current) setError(t('git.errReadDir'));
+    } catch (e) {
+      if (!mountedRef.current) return;
+      if (e?.message === 'outside home') setNotice(t('git.outsideRoots'));
+      else setError(t('git.errReadDir'));
     }
   };
   const unbind = (p) => {
@@ -349,7 +359,8 @@ export default function GitPanel({ open, pane, windowId, inset = 0, onClose }) {
 
       <div className="git-body">
         {error && <div className="git-error">{error}</div>}
-        {!active && !error && (
+        {notice && !error && !drilledIn && <div className="git-notice">{notice}</div>}
+        {!active && !error && !notice && (
           <div className="git-empty">{t('git.noRepoBound')}</div>
         )}
 

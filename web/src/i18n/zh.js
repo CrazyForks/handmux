@@ -342,7 +342,8 @@ export default {
   // git
   'git.errReadRepo': '无法读取仓库',
   'git.errLoad': '加载失败',
-  'git.errNoRepoInDir': '该目录下没有 git 仓库',
+  'git.noRepoInDir': '这个目录还不是 git 仓库 —— 换一个目录,或在这里 git init 一下。',
+  'git.outsideRoots': '这个目录在 handmux 可访问范围之外 —— 只开放主目录和 /tmp。把仓库放到主目录下,就能在这里查看了。',
   'git.errReadDir': '无法读取该目录',
   'git.commitDetail': '提交详情',
   'git.diff': '差异',
@@ -395,6 +396,8 @@ export default {
   'push.sendFailed': '发送失败',
   'api.loadFailed': '加载失败',
   'api.uploadFailed': '上传失败',
+  'upload.title': '上传中',
+  'upload.processing': '已发送,服务器接收中…',
   'api.uploadBadDir': '无法上传到该目录',
   'api.uploadDuplicate': '已存在同名文件',
   'api.uploadTooLarge': '文件过大（上限 50MB）',

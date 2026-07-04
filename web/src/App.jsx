@@ -44,6 +44,7 @@ import RenameModal from './components/RenameModal.jsx';
 import ActionSheet from './components/ActionSheet.jsx';
 import FileManager from './components/FileManager.jsx';
 import GitPanel from './components/GitPanel.jsx';
+import UploadOverlay from './components/UploadOverlay.jsx';
 import DirPicker from './components/DirPicker.jsx';
 import DocLinkPopover from './components/DocLinkPopover.jsx';
 import IdeaPanel from './components/IdeaPanel.jsx';
@@ -961,6 +962,9 @@ export default function App() {
         onPendingConsumed={() => setPendingShare(null)}
       />
       <GitPanel open={gitOpen} pane={current?.paneId} windowId={current?.window?.id} inset={inset} onClose={() => setGitOpen(false)} />
+      {/* App-wide upload lock (portal on <body>) — driven by the shared uploadJob store from either the
+          chat ＋ or the file browser; blocks interaction during a transfer, Cancel is the only control. */}
+      <UploadOverlay />
       {/* Auto-closes when there's no active preview (stopped/expired); 收起 just slides it down. */}
       <PreviewSheet
         open={previewSheetOpen && !!activePreview}

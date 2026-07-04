@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
-import { sendText, uploadFile, UnauthorizedError } from '../api.js';
+import { sendText, uploadFile, UnauthorizedError, UploadAbort } from '../api.js';
+import { startUpload, updateUpload, finishUpload } from '../uploadJob.js';
 import KeyBar from './KeyBar.jsx';
 import FavDrawer from './FavDrawer.jsx';
 import CmdFavEditor from './CmdFavEditor.jsx';
@@ -522,27 +523,40 @@ function BottomDock({
       return;
     }
     clearTimeout(upTimerRef.current);
+    setUpload(null);                                  // the inline note is only for post-run errors now
     const total = list.length;
     const paths = [];
     const failed = [];
-    for (let i = 0; i < total; i++) {
-      const f = list[i];
-      const tag = total > 1 ? `（${i + 1}/${total}）` : '';
-      setUpload({ label: t('dock.upload.progress', { name: f.name, tag }), pct: 0 });
-      try {
-        const res = await uploadFile(cwd || '', f, (pct) => setUpload({ label: t('dock.upload.progress', { name: f.name, tag }), pct }), true);
-        if (res?.path) paths.push(res.path);
-      } catch (err) {
-        if (err instanceof UnauthorizedError) { onAuthFail?.(); setUpload(null); return; }
-        failed.push(f.name);
+    // One AbortController for the whole batch → the overlay's Cancel aborts the in-flight file and we
+    // break out of the loop. Active-transfer feedback lives in the app-wide overlay (uploadJob store).
+    const ac = new AbortController();
+    startUpload(ac, t('dock.upload.progress', { name: list[0].name, tag: total > 1 ? `（1/${total}）` : '' }));
+    try {
+      for (let i = 0; i < total; i++) {
+        if (ac.signal.aborted) break;
+        const f = list[i];
+        const tag = total > 1 ? `（${i + 1}/${total}）` : '';
+        updateUpload({ label: t('dock.upload.progress', { name: f.name, tag }), phase: 'sending', pct: 0 });
+        try {
+          const res = await uploadFile(cwd || '', f, (pct, phase) => updateUpload({ pct, phase }), true, { signal: ac.signal });
+          if (res?.path) paths.push(res.path);
+        } catch (err) {
+          if (err instanceof UploadAbort) break;      // user canceled → stop the batch, keep done files
+          if (err instanceof UnauthorizedError) { onAuthFail?.(); finishUpload(); setUpload(null); return; }
+          // Keep the SPECIFIC reason (uploadFile maps it: too large / bad type / …) so the note explains why.
+          failed.push({ name: f.name, reason: err?.message || t('api.uploadFailed') });
+        }
       }
+    } finally {
+      finishUpload();
     }
     if (paths.length) insertPaths(paths);
     if (failed.length || rejected.length) {
-      const bad = [...failed, ...rejected];
-      const key = failed.length ? 'dock.upload.failed' : 'dock.upload.rejected';
-      setUpload({ label: t(key, { names: bad.join('、') }), error: true });
-      upTimerRef.current = setTimeout(() => setUpload(null), 3500);
+      // Each failure carries its own reason (name：why); rejected types keep their one-line note.
+      const parts = failed.map((x) => `${x.name}：${x.reason}`);
+      if (rejected.length) parts.push(t('dock.upload.rejected', { names: rejected.join('、') }));
+      setUpload({ label: parts.join('；'), error: true });
+      upTimerRef.current = setTimeout(() => setUpload(null), 5000);
     } else {
       setUpload(null);
     }
@@ -658,16 +672,11 @@ function BottomDock({
               <KeyBar onKey={onKey} onText={onText} mods={mods} setMods={setMods} keyHeldRef={keyHeldRef} />
             </div>
             <div className={`dock-page chat${mode === 'agent' ? ' on' : ''}`}>
+              {/* Inline note = post-run errors / rejected types only; active-transfer progress + cancel
+                  now live in the app-wide <UploadOverlay/>. */}
               {upload && (
-                <div className={`dock-upload${upload.error ? ' error' : ''}`}>
-                  <span className="dock-upload-label">
-                    {upload.label}{!upload.error && ` ${Math.round(upload.pct * 100)}%`}
-                  </span>
-                  {!upload.error && (
-                    <span className="dock-upload-track">
-                      <span className="dock-upload-fill" style={{ width: `${Math.round(upload.pct * 100)}%` }} />
-                    </span>
-                  )}
+                <div className="dock-upload error">
+                  <span className="dock-upload-label">{upload.label}</span>
                 </div>
               )}
               {/* 快捷栏(药丸上方):左侧两个固定文字项(添加附件·历史记录,纯文字、样式独立)+ 右侧一排可横滑

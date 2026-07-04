@@ -42,9 +42,11 @@ describe('POST /api/upload', () => {
     expect(res.body).toMatchObject({ name: '中文报告.txt', size: 2 });
     expect(await fs.readdir(join(home, 'sub'))).toContain('中文报告.txt');
   });
-  it('409s a name that already exists (no overwrite)', async () => {
-    await post().field('dir', join(home, 'sub')).attach('file', Buffer.from('new'), 'exists.txt').expect(409);
-    expect(await fs.readFile(join(home, 'sub', 'exists.txt'), 'utf8')).toBe('old');
+  it('auto-suffixes a name that already exists (never overwrites)', async () => {
+    const res = await post().field('dir', join(home, 'sub')).attach('file', Buffer.from('new'), 'exists.txt').expect(201);
+    expect(res.body).toMatchObject({ name: 'exists (1).txt', size: 3 });   // Finder-style "(n)" suffix
+    expect(await fs.readFile(join(home, 'sub', 'exists.txt'), 'utf8')).toBe('old');       // original untouched
+    expect(await fs.readFile(join(home, 'sub', 'exists (1).txt'), 'utf8')).toBe('new');   // new file beside it
   });
   it('415s a disallowed extension', async () => {
     await post().field('dir', join(home, 'sub')).attach('file', Buffer.from('x'), 'a.exe').expect(415);

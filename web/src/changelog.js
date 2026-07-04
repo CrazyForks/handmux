@@ -4,6 +4,24 @@
 // is what's shown. `items` is now { zh, en } — parallel arrays (same order/count) for each locale.
 export const CHANGELOG = [
   {
+    v: '2026-07-05-upload',
+    date: '2026-07-05',
+    items: {
+      zh: [
+        '上传体验重做:进度条不再一冲到 100% 就假装完事——先显示真实发送进度,字节发完后转成「服务器接收中…」,大文件不再像卡死。上传中可随时「取消」,已传完的文件会保留。',
+        '重名不再报错:上传一个已存在的文件名会自动改名(如 `报告 (1).pdf`),绝不覆盖原文件。上传失败时也会告诉你具体原因(过大 / 不支持的类型)。',
+        '现在可以上传视频了(mp4、mov、webm 等)。',
+        'Git 面板现在能打开 `/tmp` 等家目录以外的仓库(比如 agent 在 /tmp 里干活的项目),不再报红。',
+      ],
+      en: [
+        'Upload redone: the bar no longer jumps to 100% and then hangs — it shows real send progress, then flips to “receiving on the server…” once bytes are flushed, so a big file no longer looks stuck. You can Cancel mid-upload; already-uploaded files are kept.',
+        'Name clashes no longer fail: uploading an existing name auto-renames (e.g. `report (1).pdf`) and never overwrites. Failures now tell you why (too large / unsupported type).',
+        'Video files can now be uploaded (mp4, mov, webm, …).',
+        'The git panel can now open repos outside your home directory (e.g. a project an agent is working in under `/tmp`) instead of erroring.',
+      ],
+    },
+  },
+  {
     v: '2026-07-04-usage-timeline',
     date: '2026-07-04',
     items: {

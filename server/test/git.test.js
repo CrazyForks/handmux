@@ -59,6 +59,24 @@ describe('detectRepos', () => {
   it('rejects a path outside home', async () => {
     expect((await git.detectRepos('/etc')).error).toBe('outside home');
   });
+  it('accepts a repo under an extra root outside home', async () => {
+    // A second temp tree, NOT under `home`, handed in as an extra root — mirrors the /tmp allow-list the
+    // default git shares with the file/doc browser. Without extraRoots this same repo is 'outside home'.
+    const alt = await fs.mkdtemp(join(tmpdir(), 'gitviewer-alt-'));
+    try {
+      const r = join(alt, 'proj');
+      await fs.mkdir(r);
+      await gitC(r, 'init', '-q', '-b', 'main');
+      const gated = createGit({ home });
+      expect((await gated.detectRepos(r)).error).toBe('outside home');
+      const opened = createGit({ home, extraRoots: [alt] });
+      const out = await opened.detectRepos(r);
+      expect(out.error).toBeUndefined();
+      expect(out.repos.map((x) => x.path)).toEqual([r]);
+    } finally {
+      await fs.rm(alt, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('status', () => {

@@ -35,6 +35,15 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   kind `cmd`, otherwise a `reply`); 按键 reuses the 粘滞键 + base-key pickers to bind a real terminal key
   (ESC, Tab, Ctrl+C, …). The seeded ESC/Tab/⌫ defaults are now proper key favs so they render and edit like
   any other. Chat has no per-window list and no 带回车 toggle (a chat tap always sends).
+- **Video files are now uploadable.** The upload allow-list (both the `accept` hint and the server's
+  `DEFAULT_UPLOAD_EXTS`) gained the common video extensions (`mp4`, `m4v`, `mov`, `webm`, `mkv`, `avi`,
+  `wmv`, `flv`, `3gp`, `ogv`, `mpeg`, `mpg`).
+- **Uploading a name that already exists auto-renames instead of failing.** The server picks the first
+  free Finder-style `name (1).ext`, `name (2).ext`, … — it never overwrites, and the response carries the
+  actual final name so the pasted path is correct. (Previously a clash returned 409 → a bare 「上传失败」.)
+- **Git panel can browse repos outside `$HOME` (under `/tmp`, `$TMPDIR`).** It now shares the same
+  multi-root allow-list the file/doc browser already used, so a repo an agent is working in under `/tmp`
+  opens on the phone instead of erroring out.
 
 ### Changed
 - **Touch targets raised toward the 44pt HIG minimum.** The file-browser bar's up/cwd/mkdir/upload squares
@@ -58,10 +67,17 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   intact. Pure restyle — no behaviour change.
 - **Upload picker now filters to allowed types and rejects an unsupported pick up front.** Both upload
   entries (chat composer ＋附件 and the file-browser upload button) carry an `accept` hint (images +
-  text/code + documents) so the native picker guides you toward valid files, and pre-check the picked
-  files client-side: a disallowed pick (an executable, `.zip`, a video, an extensionless binary) is
+  text/code + documents + video) so the native picker guides you toward valid files, and pre-check the
+  picked files client-side: a disallowed pick (an executable, `.zip`, an extensionless binary) is
   dropped with an instant 「不支持的文件类型」note instead of failing halfway with a server 415. Mirrors
   the server's extension allow-list (`server/src/uploadTypes.js`), which remains the real enforcement.
+- **Upload progress is honest, and the transfer is cancellable.** The bar used to jump to 100% the
+  instant the browser flushed the bytes to the socket/proxy, then sit there through the real wait
+  (server receive + disk write + response — the bulk of a big file behind nginx/a tunnel). It now runs
+  in two phases: a real % while sending, then an indeterminate 「服务器接收中…」spinner once bytes are
+  flushed. During a transfer an app-wide overlay blocks stray taps (HIG: don't leave a long op without an
+  out) — the only control is **Cancel**, which aborts the in-flight request and stops the batch (files
+  already uploaded are kept). Covers both upload entries (chat ＋附件 and the file browser).
 
 ### Fixed
 - **Saved key combos with a modifier + a named key (Ctrl+Arrow, Ctrl+Tab, …) were silently dropped** — the
@@ -91,6 +107,14 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   percent-encoded svg+xml data-URIs in `<img>`, so those two logos vanished while every other (inline
   `<svg>`) icon showed. Now inlined as a real DOM `<svg>` (`?raw` import), which every engine renders;
   still rides the content-hashed JS so a changed logo busts the cache.
+- **Git panel showed a red error where it shouldn't.** A legit repo under `/tmp` (outside `$HOME`) failed
+  with a red 「无法读取仓库」 (the git browser was still home-only while the file browser had moved to a
+  multi-root allow-list — see Added). And picking a directory with no repo, or one genuinely outside the
+  accessible area, rendered in the red error line too. Now: repos under `/tmp`/`$TMPDIR` just open;
+  no-repo / out-of-scope are soft grey **instructive** notes (say why + what to do: pick another dir,
+  `git init`, or move it under home) — red is reserved for real failures.
+- **Upload failures now say why.** A failed upload showed a bare 「上传失败」; it now surfaces the specific
+  reason (file too large, unsupported type, …) per file, in both the chat composer and the file browser.
 
 ### Changed
 - **Chat composer: quick-command bar above the pill** — moved the ＋ upload and ▤ 常用 out of the input

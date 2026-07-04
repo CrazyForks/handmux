@@ -279,7 +279,8 @@ export default {
   // git
   'git.errReadRepo': '無法讀取儲存庫',
   'git.errLoad': '載入失敗',
-  'git.errNoRepoInDir': '該目錄下沒有 git 儲存庫',
+  'git.noRepoInDir': '這個目錄還不是 git 儲存庫 —— 換一個目錄,或在這裡 git init 一下。',
+  'git.outsideRoots': '這個目錄在 handmux 可存取範圍之外 —— 只開放主目錄和 /tmp。把儲存庫放到主目錄下,就能在這裡檢視了。',
   'git.errReadDir': '無法讀取該目錄',
   'git.commitDetail': '提交詳情',
   'git.diff': '差異',
@@ -332,6 +333,8 @@ export default {
   'push.sendFailed': '傳送失敗',
   'api.loadFailed': '載入失敗',
   'api.uploadFailed': '上傳失敗',
+  'upload.title': '上傳中',
+  'upload.processing': '已傳送,伺服器接收中…',
   'api.uploadBadDir': '無法上傳到該目錄',
   'api.uploadDuplicate': '已存在同名檔案',
   'api.uploadTooLarge': '檔案過大（上限 50MB）',

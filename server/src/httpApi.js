@@ -294,11 +294,26 @@ export function createApiRouter({
     } catch (e) { next(e); }
   });
 
+  // First free filename in `dir`: the name as-is, else Finder-style "base (1).ext", "base (2).ext", …
+  // (the suffix goes before the extension). Bounded; a pathological fallback keeps it from looping.
+  async function freeUploadName(dir, name) {
+    const dot = name.lastIndexOf('.');
+    const base = dot > 0 ? name.slice(0, dot) : name;
+    const ext = dot > 0 ? name.slice(dot) : '';
+    let cand = name;
+    for (let n = 1; n <= 999; n++) {
+      try { await fsp.access(joinPath(dir, cand)); } // exists → try the next suffix
+      catch { return cand; }                          // ENOENT → free
+      cand = `${base} (${n})${ext}`;
+    }
+    return `${base} (${randomBytes(3).toString('hex')})${ext}`;
+  }
+
   // Upload a file into a directory under $HOME. Multipart streamed via busboy (the file never fully
   // buffers in memory, and the size cap aborts mid-stream). Guards, in order: target dir must be a
   // non-hidden subdir of home (resolveUploadDir); filename sanitised to a dotless basename; extension
-  // in the allow-list; no overwrite of an existing name. The client appends `dir` BEFORE the file
-  // part, so the field is known by the time the file event fires.
+  // in the allow-list. A name clash auto-suffixes (never overwrites). The client appends `dir` BEFORE
+  // the file part, so the field is known by the time the file event fires.
   r.post('/upload', (req, res) => {
     let bb;
     // defParamCharset:'utf8' — browsers put a non-ASCII (e.g. Chinese) filename into the multipart
@@ -330,11 +345,13 @@ export function createApiRouter({
         const target = stash ? await docs.resolveStashDir(dir) : await docs.resolveUploadDir(dir);
         if (target.error) { file.resume(); return done(target.status, { error: target.error }); }
 
-        const dest = joinPath(target.real, name);
-        try { await fsp.access(dest); file.resume(); return done(409, { error: 'exists' }); }
-        catch { /* name free → proceed */ }
+        // Finder-style de-dup: never 409 / overwrite on a name clash — pick the first free "base (n).ext".
+        // Resolved up front for the response; re-resolved at link time if the race is lost (see below).
+        const origName = name;
+        let finalName = await freeUploadName(target.real, origName);
+        let dest = joinPath(target.real, finalName);
 
-        tmp = joinPath(target.real, `.${name}.uploading-${randomBytes(6).toString('hex')}`);
+        tmp = joinPath(target.real, `.${finalName}.uploading-${randomBytes(6).toString('hex')}`);
         ws = createWriteStream(tmp);
         ws.on('error', () => { file.resume(); cleanup().finally(() => done(500, { error: 'write failed' })); });
         ws.on('finish', async () => {
@@ -343,13 +360,22 @@ export function createApiRouter({
           // maxUploadBytes is allowed; only strictly-larger trips it.)
           if (file.truncated) { await cleanup(); return done(413, { error: 'too large' }); }
           try {
-            // link (NOT rename): if the name appeared meanwhile (a concurrent upload won the race)
-            // link throws EEXIST → the loser gets 409. So we NEVER silently overwrite another file.
-            try { await fsp.link(tmp, dest); }
-            catch (e) { if (e.code === 'EEXIST') { await cleanup(); return done(409, { error: 'exists' }); } throw e; }
+            // link (NOT rename): if the name appeared meanwhile (a concurrent upload won the race) link
+            // throws EEXIST → we pick the NEXT free suffix and retry, so we still never overwrite another
+            // file, and a clash auto-suffixes rather than 409s.
+            let linked = false;
+            for (let attempt = 0; attempt < 6 && !linked; attempt++) {
+              try { await fsp.link(tmp, dest); linked = true; }
+              catch (e) {
+                if (e.code !== 'EEXIST') throw e;
+                finalName = await freeUploadName(target.real, origName);
+                dest = joinPath(target.real, finalName);
+              }
+            }
+            if (!linked) { await cleanup(); return done(409, { error: 'exists' }); }
             await cleanup(); // link made dest a second name for the data; drop the temp name
             const st = await fsp.stat(dest);
-            done(201, { name, size: st.size, path: dest }); // absolute path: the dock pastes it into the box
+            done(201, { name: finalName, size: st.size, path: dest }); // absolute path: the dock pastes it in
           } catch { await cleanup(); done(500, { error: 'finalize failed' }); }
         });
         file.pipe(ws);

@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { UPLOAD_ACCEPT, isAllowedUploadName, splitUploadable } from '../src/uploadTypes.js';
 
 describe('uploadTypes', () => {
-  it('allows text/code, images and documents; rejects executables and extensionless names', () => {
-    for (const ok of ['a.txt', 'main.py', 'App.tsx', 'shot.PNG', 'doc.pdf', 'sheet.xlsx']) {
+  it('allows text/code, images, documents and video; rejects executables and extensionless names', () => {
+    for (const ok of ['a.txt', 'main.py', 'App.tsx', 'shot.PNG', 'doc.pdf', 'sheet.xlsx', 'clip.mp4', 'demo.MOV']) {
       expect(isAllowedUploadName(ok)).toBe(true);
     }
-    for (const bad of ['run', 'tool.exe', 'a.bin', 'lib.so', 'archive.zip', 'clip.mp4', '']) {
+    for (const bad of ['run', 'tool.exe', 'a.bin', 'lib.so', 'archive.zip', '']) {
       expect(isAllowedUploadName(bad)).toBe(false);
     }
   });

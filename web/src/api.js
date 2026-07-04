@@ -201,8 +201,20 @@ export const deletePreview = (name) =>
 // browser adds multipart/form-data with the correct boundary.
 // stash=true → 传到 ~/.handmux/uploads 下按 cwd 分的空间(服务端按需创建,dir 此时是会话 cwd);
 // 返回体含文件绝对路径。文件落在家目录、不进项目树,避免被误提交。
-export function uploadFile(dir, file, onProgress, stash = false) {
+// Thrown when the caller aborts an upload via its AbortSignal — a normal outcome (user hit Cancel),
+// NOT a failure, so callers should swallow it silently rather than show a red error.
+export class UploadAbort extends Error {
+  constructor() { super('upload aborted'); this.name = 'UploadAbort'; }
+}
+
+// onProgress(fraction 0..1, phase) — phase is 'sending' while bytes stream out, then 'processing' once
+// the browser has flushed the whole body to the socket/proxy. IMPORTANT: 'sending' 100% does NOT mean
+// done — over nginx/a tunnel the body is buffered at the edge fast, then the real wait (server receive
+// + disk write + response) happens with nothing left to report. We surface that as the indeterminate
+// 'processing' phase so the UI stops sitting at a frozen, misleading 100%. `signal` cancels in flight.
+export function uploadFile(dir, file, onProgress, stash = false, { signal } = {}) {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new UploadAbort());
     const token = getToken();
     const fd = new FormData();
     fd.append('dir', dir);
@@ -211,9 +223,16 @@ export function uploadFile(dir, file, onProgress, stash = false) {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/upload');
     xhr.setRequestHeader('Authorization', `Bearer ${token ?? ''}`);
-    xhr.upload.onprogress = (e) => { if (onProgress && e.lengthComputable) onProgress(e.loaded / e.total); };
-    xhr.onerror = () => reject(new Error(t('api.uploadFailed')));
+    xhr.upload.onprogress = (e) => { if (onProgress && e.lengthComputable) onProgress(e.loaded / e.total, 'sending'); };
+    // Body fully handed off — the browser is done sending; what's left is server-side and unreportable.
+    xhr.upload.onload = () => { onProgress?.(1, 'processing'); };
+    const onAbort = () => xhr.abort();
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
+    const cleanup = () => { if (signal) signal.removeEventListener('abort', onAbort); };
+    xhr.onabort = () => { cleanup(); reject(new UploadAbort()); };
+    xhr.onerror = () => { cleanup(); reject(new Error(t('api.uploadFailed'))); };
     xhr.onload = () => {
+      cleanup();
       if (xhr.status === 401) return reject(new UnauthorizedError());
       if (xhr.status >= 200 && xhr.status < 300) {
         try { return resolve(JSON.parse(xhr.responseText)); } catch { return resolve({}); }

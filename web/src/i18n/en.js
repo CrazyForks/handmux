@@ -343,7 +343,8 @@ export default {
   // git
   'git.errReadRepo': 'Cannot read repository',
   'git.errLoad': 'Load failed',
-  'git.errNoRepoInDir': 'No git repository in this directory',
+  'git.noRepoInDir': 'No git repository here yet — pick another directory, or run git init in this one.',
+  'git.outsideRoots': "This folder is outside the area handmux can open — only your home directory and /tmp are reachable. Move the repo under your home directory to browse it here.",
   'git.errReadDir': 'Cannot read this directory',
   'git.commitDetail': 'Commit details',
   'git.diff': 'Diff',
@@ -396,6 +397,8 @@ export default {
   'push.sendFailed': 'Send failed',
   'api.loadFailed': 'Load failed',
   'api.uploadFailed': 'Upload failed',
+  'upload.title': 'Uploading',
+  'upload.processing': 'Sent — receiving on the server…',
   'api.uploadBadDir': 'Cannot upload to this directory',
   'api.uploadDuplicate': 'A file with this name already exists',
   'api.uploadTooLarge': 'File too large (50MB limit)',
