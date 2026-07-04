@@ -5,6 +5,12 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Fixed
+- **Dock could get stuck resting between the two pages** — the swipe track's transform is driven
+  imperatively for a 60fps finger-follow, so if a gesture was ever interrupted (browser hijacked the
+  touch, a missed `touchend`) it could come to rest off a page boundary — showing half the keyboard and
+  half the composer — with nothing to snap it back. Added a self-heal: at rest (no active drag, no snap
+  animation in flight) every render re-asserts the page-aligned transform, so any drift is corrected on
+  the very next render (the terminal polls constantly). Root guard, not a per-symptom patch.
 - **Agent logos (Claude/Codex) invisible in iOS home-screen PWA** — `AgentMark` was the only icon
   rendered as `<img src="data:image/svg+xml,…">`; iOS standalone WKWebView doesn't reliably render
   percent-encoded svg+xml data-URIs in `<img>`, so those two logos vanished while every other (inline

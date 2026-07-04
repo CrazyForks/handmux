@@ -66,9 +66,11 @@ function BottomDock({
   const setModeRef = useRef(setMode); // latest setMode (closes over the current pane)
   setModeRef.current = setMode;
   const firstSnapRef = useRef(true);
+  const draggingRef = useRef(false);   // a finger drag owns the transform right now — don't self-heal
+  const animatingUntilRef = useRef(0); // a snap animation is in flight until this ts — don't self-heal
   // The track's horizontal position is driven imperatively — a 60fps finger drag can't go through React
   // state without fighting re-renders. setX writes an absolute translate; settleTo snaps to a PAGE-ALIGNED
-  // rest. Everything that ends a gesture calls settleTo, so the track can never come to rest between pages.
+  // rest.
   const TRACK_EASE = 'transform .3s cubic-bezier(.22,.61,.36,1)';
   const trackW = () => pagerRef.current?.clientWidth || 0;
   const setX = (px, animate) => {
@@ -78,8 +80,22 @@ function BottomDock({
     track.style.transform = `translate3d(${px}px, 0, 0)`;
   };
   const settleTo = (index, animate) => setX(-index * trackW(), animate);
-  // Snap to the current page whenever it changes (animated after the first render).
-  useEffect(() => { settleTo(pageIndex, !firstSnapRef.current); firstSnapRef.current = false; }, [pageIndex]);
+  // Snap to the current page whenever it changes (animated after the first render); mark the animation
+  // window so the self-heal below leaves the slide alone.
+  useEffect(() => {
+    settleTo(pageIndex, !firstSnapRef.current);
+    if (!firstSnapRef.current) animatingUntilRef.current = Date.now() + 360;
+    firstSnapRef.current = false;
+  }, [pageIndex]);
+  // ROOT GUARD against the "stuck between pages" state (finger lifted mid-swipe, browser hijacked the
+  // touch, a missed touchend): whenever we're at rest — no active drag, no snap animation in flight —
+  // re-assert the page-aligned transform on EVERY render. The transform is imperative, so if a gesture is
+  // ever interrupted it can drift off a page boundary and nothing settles it; the terminal polls
+  // constantly, so the very next render snaps it back. Idempotent when already aligned (invisible normally).
+  useLayoutEffect(() => {
+    if (draggingRef.current || Date.now() < animatingUntilRef.current) return;
+    settleTo(pageIndex, false);
+  });
   // Size the pager to the ACTIVE page's natural height. This is genuinely variable: the chat composer
   // grows with its text and can be taller OR shorter than the keyboard. Set it INSTANTLY — the CSS height
   // transition is gone (styles.css): the terminal above is a poll-and-repaint surface, so animating the
@@ -125,6 +141,7 @@ function BottomDock({
       }
       if (!d.horiz) return; // a vertical drag (or a strip-scroll we handed off) → leave it to native
       e.preventDefault();
+      draggingRef.current = true; // the finger owns the transform now — suspend the self-heal
       d.dx = dx;
       const w = trackW() || 1;
       let vx = dx; // follow the finger, but resist dragging past the ends (only two pages)
@@ -133,6 +150,7 @@ function BottomDock({
       setX(-pageIndexRef.current * w + vx, false);
     };
     const onEnd = () => {
+      draggingRef.current = false; // finger's gone — the self-heal may take over again
       if (!d || !d.horiz) { d = null; return; }
       const cur = pageIndexRef.current, dx = d.dx;
       d = null;
@@ -140,9 +158,10 @@ function BottomDock({
       if (cur === 0 && dx < -50) target = 1;      // dragged far left off command → chat
       else if (cur === 1 && dx > 50) target = 0;  // dragged far right off chat → command
       // Settle to a page-aligned rest RIGHT NOW, imperatively — never wait on a React re-render (that
-      // timing gap is exactly what left the track stuck at half). Then sync React state if the page
-      // changed; its pageIndex effect re-runs settleTo to the same target, which is idempotent.
+      // timing gap is exactly what left the track stuck at half). Guard the animation window so the
+      // self-heal doesn't snap it flat. Then sync React state if the page changed (idempotent settle).
       settleTo(target, true);
+      animatingUntilRef.current = Date.now() + 360;
       if (target !== cur) setModeRef.current(target === 1 ? 'agent' : 'command');
     };
     pager.addEventListener('touchstart', onStart, { passive: true });

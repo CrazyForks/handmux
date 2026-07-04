@@ -386,6 +386,15 @@ describe('BottomDock', () => {
       expect(activePage('chat')).toBe(true); // stayed on chat
     });
 
+    it('self-heals a transform left stuck between pages (a missed touchend) on the next render', () => {
+      render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+      const track = container.querySelector('.dock-track');
+      track.style.transform = 'translate3d(-137px, 0, 0)'; // pretend a swipe was interrupted mid-way
+      render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn(), recent: ['x'] });
+      // any at-rest render re-asserts a page-aligned transform (clientWidth is 0 in jsdom → 0px)
+      expect(track.style.transform).toBe('translate3d(0px, 0, 0)');
+    });
+
     it('the ⌨ key toggles focus on the hidden capture (pops / dismisses the keyboard)', () => {
       render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
       const kbd = container.querySelector('[data-key="kbd"]');
