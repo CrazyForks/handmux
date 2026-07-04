@@ -36,14 +36,15 @@
 html, body, #root { height: 100%; margin: 0; overscroll-behavior: none; }
 body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; color: #e6e6e6; }
 .app { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-.topbar { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: #2a2b2e; }
-.hamburger { font-size: 20px; background: none; border: none; color: #e6e6e6; }
+.topbar { display: flex; align-items: center; gap: 8px; padding: 2px 8px; background: #2a2b2e; }
+.hamburger { font-size: 20px; background: none; border: none; color: #e6e6e6;
+  width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0; margin-left: -6px; touch-action: manipulation; }
 .session-name { font-weight: 600; margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fontbtn { min-width: 36px; padding: 4px 10px; border: none; border-radius: 8px; background: #33353a; color: #e6e6e6; font-size: 14px; touch-action: manipulation; }
 .fontbtn[aria-pressed="true"] { background: #2a4060; color: #7ab4f5; }
 /* Topbar file + settings icons: frameless monochrome line icons in the chrome's grey, sized to sit
    level with the ☰ glyph. stroke=currentColor picks up this color. */
-.topbar-icon { display: inline-flex; align-items: center; padding: 4px; border: none; background: none; color: #e6e6e6; touch-action: manipulation; }
+.topbar-icon { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: none; background: none; color: #e6e6e6; touch-action: manipulation; }
 .topbar-icon:active { color: var(--blue); }
 .topbar-icon svg { width: 21px; height: 21px; display: block; }
 /* Settings modal: centered card over a dim backdrop (mirrors the drawer's palette). */
@@ -239,7 +240,7 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .drawer-row { display: flex; align-items: center; gap: 6px; border-radius: 8px; }
 .drawer-name { flex: 1; min-width: 0; padding: 8px 4px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drawer-session.active { background: var(--blue); color: #fff; }
-.drawer-unbind { flex: none; background: none; border: none; color: #888; font-size: 14px; padding: 6px 8px; touch-action: manipulation; }
+.drawer-unbind { flex: none; background: none; border: none; color: #888; font-size: 14px; padding: 6px 8px; touch-action: manipulation; display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 44px; }
 .drawer-session.active .drawer-unbind { color: #d6e4ff; }
 .drawer-empty { padding: 12px 4px; color: #888; font-size: 13px; }
 /* Open the bind modal — the only way to add a session, since the list is user-curated. */
@@ -462,14 +463,14 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 /* In the editor the row text is a <button> (tap to edit) — strip the native chrome, keep it left-aligned. */
 button.cmd-text { background: none; border: none; text-align: left; }
 .cmd-text:active { color: #9db8ff; }
-.cmd-star { flex: none; background: none; border: none; color: #667; padding: 6px 8px; touch-action: manipulation; display: inline-flex; align-items: center; }
+.cmd-star { flex: none; background: none; border: none; color: #667; padding: 6px 8px; touch-action: manipulation; display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 44px; }
 .cmd-star svg { width: 16px; height: 16px; display: block; }
 .cmd-star.on { color: #ffd27a; }
 .cmd-star.on svg { fill: currentColor; }
-.cmd-copy { flex: none; background: none; border: none; color: #8a93a0; padding: 6px 8px; touch-action: manipulation; display: inline-flex; align-items: center; }
+.cmd-copy { flex: none; background: none; border: none; color: #8a93a0; padding: 6px 8px; touch-action: manipulation; display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 44px; }
 .cmd-copy svg { width: 15px; height: 15px; display: block; }
 .cmd-copy:active { color: #9db8ff; }
-.cmd-del { flex: none; background: none; border: none; color: #888; padding: 6px 8px; touch-action: manipulation; display: inline-flex; align-items: center; }
+.cmd-del { flex: none; background: none; border: none; color: #888; padding: 6px 8px; touch-action: manipulation; display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 44px; }
 .cmd-del svg { width: 14px; height: 14px; display: block; }
 .cmd-empty { padding: 20px 14px; color: #888; font-size: 13px; text-align: center; }
 /* History scope hint — a quiet line at the top of the send-log ("current window only"). */
@@ -492,7 +493,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .cmd-fav-text { flex: 1; }
 .cmd-enter { margin-left: 7px; opacity: .65; font-size: 12px; }
 /* ▲▼ reorder buttons — the up one is the same chevron flipped. Disabled at the list ends. */
-.cmd-move { flex: none; background: none; border: none; color: #8a93a0; padding: 6px 5px; touch-action: manipulation; display: inline-flex; align-items: center; }
+.cmd-move { flex: none; background: none; border: none; color: #8a93a0; padding: 6px 5px; touch-action: manipulation; display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 44px; }
 .cmd-move svg { width: 16px; height: 16px; display: block; }
 .cmd-move.up svg { transform: rotate(180deg); }
 .cmd-move:active { color: #9db8ff; }
@@ -606,7 +607,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .idea-text:active { color: #9db8ff; }
 .idea-send { flex: none; background: #2c2e33; color: #9db8ff; border: none; border-radius: 8px;
   padding: 6px 10px; font-size: 13px; touch-action: manipulation; }
-.idea-del { flex: none; background: none; border: none; color: #888; font-size: 14px; padding: 6px 8px; touch-action: manipulation; }
+.idea-del { flex: none; background: none; border: none; color: #888; font-size: 14px; padding: 6px 8px; touch-action: manipulation; display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 44px; }
 
 /* Changelog ("新功能") bottom sheet — same chrome as the command/idea panels. */
 .changelog-panel {
@@ -936,7 +937,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 
 /* 新增 pane — the path browser */
 .browse-view { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
-.browse-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #1d2630; background: #0e131a; }
+.browse-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid #1d2630; background: #0e131a; }
 /* Root prefix as a dropdown (home / tmp / TMPDIR) — replaces the static ~/ when the server exposes
    extra roots. Trigger matches the old .browse-home prefix tone; the menu reuses Dropdown's .dd-*. */
 .browse-root-dd { flex: 0 0 auto; }
@@ -944,12 +945,12 @@ button.cmd-text { background: none; border: none; text-align: left; }
   background: transparent; border: none; color: #6b86a3; font-size: 13px; }
 .browse-root .dd-caret { font-size: 10px; }
 .browse-root-dd .dd-menu { left: 0; right: auto; min-width: 120px; }
-.browse-up { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px;
+.browse-up { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px;
   background: #11161d; border: 1px solid #1d2630; border-radius: 8px; color: #9fb0c0; }
 .browse-up:disabled { opacity: .4; }
 .browse-up svg { width: 18px; height: 18px; }
 /* Jump-to-session-dir button — same square chrome as .browse-up, sits beside it in the browse bar. */
-.browse-cwd { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px;
+.browse-cwd { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px;
   background: #11161d; border: 1px solid #1d2630; border-radius: 8px; color: #9fb0c0; }
 .browse-cwd svg { width: 18px; height: 18px; }
 .browse-path { flex: 1; min-width: 0; display: flex; align-items: center; border-radius: 8px;
@@ -989,7 +990,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browse-entry-icon svg { width: 17px; height: 17px; }
 .browse-entry-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Upload button in the browse bar — same square icon chrome as .browse-up/.browse-mkdir. */
-.browse-upload { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px;
+.browse-upload { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px;
   background: #11161d; border: 1px solid #1d2630; border-radius: 8px; color: #9fb0c0; }
 .browse-upload:disabled { opacity: .4; }
 .browse-upload svg { width: 18px; height: 18px; }
@@ -997,7 +998,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
    .click()ed programmatically on iOS Safari. The classic visually-hidden recipe keeps it clickable. */
 .browse-file-input { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 /* New-folder button — same square chrome as .browse-up, sits at the right end of the browse bar. */
-.browse-mkdir { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px;
+.browse-mkdir { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px;
   background: #11161d; border: 1px solid #1d2630; border-radius: 8px; color: #9fb0c0; }
 .browse-mkdir:disabled { opacity: .4; }
 .browse-mkdir svg { width: 18px; height: 18px; }
@@ -1017,7 +1018,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browse-entry-row { display: flex; align-items: center; }
 .browse-entry-row .browse-entry { flex: 1; min-width: 0; }
 .browse-entry-size { flex: 0 0 auto; margin-left: auto; padding-left: 8px; color: #6b7a89; font-size: 12px; font-variant-numeric: tabular-nums; }
-.browse-dl, .browse-copy { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border: none; background: none; color: #6b86a3; margin-left: 4px; }
+.browse-dl, .browse-copy { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 44px; border: none; background: none; color: #6b86a3; margin-left: 4px; }
 .browse-dl svg, .browse-copy svg { width: 17px; height: 17px; }
 .browse-copy:active { color: #9db8ff; }
 /* pickMode: sticky confirm bar at the bottom of the directory list. */
