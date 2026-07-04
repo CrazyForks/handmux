@@ -179,6 +179,17 @@ describe('storage', () => {
     expect(list[29]).toBe('cmd5');  // cmd0..cmd4 dropped
   });
 
+  it('a legacy flat-array session value does NOT swallow window-scoped recent writes (survives restart)', () => {
+    // Before recent became window-scoped it was flat: { [session]: string[] }. An upgraded user has a
+    // legacy ARRAY under a session key; writing arr['@0']=… sets a non-index prop JSON.stringify drops,
+    // so every send vanished on reload. The write must persist and round-trip through storage.
+    localStorage.setItem('tw_recent', JSON.stringify({ main: ['old-flat'] }));
+    expect(getRecent('main', '@0')).toEqual([]);                 // legacy array is not a per-window map
+    expect(pushRecent('main', '@0', 'new')).toEqual(['new']);
+    expect(getRecent('main', '@0')).toEqual(['new']);            // persisted, not swallowed
+    expect(JSON.parse(localStorage.getItem('tw_recent')).main['@0']).toEqual(['new']); // round-trips
+  });
+
   it('isolates recent by session AND window, and removes a single entry', () => {
     pushRecent('main', '@0', 'x');
     pushRecent('main', '@1', 'z');   // same session, different window → separate history

@@ -156,17 +156,22 @@ export const getOrphanKill = () => localStorage.getItem(ORPHAN_KILL_KEY) !== '0'
 export const setOrphanKill = (on) => localStorage.setItem(ORPHAN_KILL_KEY, on ? '1' : '0');
 
 // Recent (sent) commands scoped per session NAME + WINDOW — the composer history is window-level, so each
-// tmux window keeps its own send log (names/window ids are stable across tmux restarts). Stored nested
-// { [session]: { [window]: [...] } } like ideas. pushRecent dedupes to the front and caps the list.
+// tmux window keeps its own send log. Stored nested { [session]: { [window]: [...] } } like ideas.
+// pushRecent dedupes to the front and caps the list.
+const winMap = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
 export function getRecent(session, window) {
   if (!session || !window) return [];
-  return readMap(RECENT_KEY)[session]?.[window] ?? [];
+  return winMap(readMap(RECENT_KEY)[session])[window] ?? [];
 }
 // Overwrite one window's list (add/delete funnel through here); an empty list drops the window key (and
 // an emptied session key) so storage doesn't accrete husks — same shape as setIdeas.
+// NOTE: coerce all[session] through winMap. Recent used to be flat ({ [session]: string[] }) before it
+// became window-scoped, so an upgraded user can have a legacy ARRAY under a session key. Writing
+// arr[windowId]=… would set a non-index property that JSON.stringify SILENTLY DROPS — so every send
+// vanished on reload (visible in memory, gone after restart). Treat a non-object session value as empty.
 function setRecent(session, window, list) {
   const all = readMap(RECENT_KEY);
-  const wins = all[session] || {};
+  const wins = winMap(all[session]);
   if (list && list.length) wins[window] = list;
   else delete wins[window];
   if (Object.keys(wins).length) all[session] = wins;
