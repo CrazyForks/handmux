@@ -4,6 +4,13 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Fixed
+- **Agent logos (Claude/Codex) invisible in iOS home-screen PWA** — `AgentMark` was the only icon
+  rendered as `<img src="data:image/svg+xml,…">`; iOS standalone WKWebView doesn't reliably render
+  percent-encoded svg+xml data-URIs in `<img>`, so those two logos vanished while every other (inline
+  `<svg>`) icon showed. Now inlined as a real DOM `<svg>` (`?raw` import), which every engine renders;
+  still rides the content-hashed JS so a changed logo busts the cache.
+
 ### Changed
 - **Chat composer: quick-command bar above the pill** — moved the ＋ upload and ▤ 常用 out of the input
   pill into a dedicated row above it. The row's left holds two fixed, text-only actions (`添加附件` ·

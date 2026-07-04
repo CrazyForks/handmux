@@ -1,8 +1,8 @@
 // Monochrome line icons (Lucide, MIT) drawn with stroke=currentColor so they inherit the topbar's
 // grey and sit flush with the ☰ glyph — no colour emoji clashing with the flat dark UI. Size comes
 // from CSS (.topbar-icon svg); 1.75 stroke matches the hairline feel of the rest of the chrome.
-import claudeLogo from '../assets/agent-claude.svg';
-import codexLogo from '../assets/agent-codex.svg';
+import claudeLogo from '../assets/agent-claude.svg?raw';
+import codexLogo from '../assets/agent-codex.svg?raw';
 
 const base = {
   viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
@@ -331,13 +331,15 @@ export function KeyboardIcon({ down = false }) {
 }
 
 // Agent logo — the OFFICIAL brand mark, kept as a swappable asset (src/assets/agent-<id>.svg; replace the
-// file to change the logo). Imported through the bundler (top of file) so Vite content-hashes the URL — a
-// changed logo gets a NEW filename and busts the year-long immutable cache (a public/ path would stay
-// stale). Rendered everywhere AgentMark is used (inbox rows + window tabs); sized via CSS (.agent-mark).
+// file to change the logo). Imported as raw SVG source (?raw) and inlined as a REAL DOM <svg>, not an
+// <img src="data:…svg…">: iOS standalone-PWA WKWebView doesn't reliably render percent-encoded svg+xml
+// data-URIs in <img> (only these two logos vanished while every other icon — all inline <svg> — showed).
+// Inlining still rides the content-hashed JS, so a changed logo busts the cache. Sized via CSS (.agent-mark).
 const AGENT_LOGO = { claude: claudeLogo, codex: codexLogo };
 
 // Pick the logo for an agent id (defaults to Claude for legacy/untagged entries).
 export function AgentMark({ agent }) {
   const id = AGENT_LOGO[agent] ? agent : 'claude';
-  return <img className="agent-mark" src={AGENT_LOGO[id]} alt={id} draggable="false" />;
+  return <span className="agent-mark" role="img" aria-label={id}
+    dangerouslySetInnerHTML={{ __html: AGENT_LOGO[id] }} />;
 }
