@@ -5,6 +5,10 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Fixed
+- **History (send log) kept vanishing moments after a send** — the window-level history was keyed by the
+  tmux window NAME, which tmux auto-renames to the running command; the moment the name changed the read
+  key drifted and `getRecent` returned nothing, so the list "cleared itself." Now keyed by the stable
+  window ID (`@N`) for both read and write.
 - **Dock could get stuck resting between the two pages** — the swipe track's transform used to be
   imperative even at REST, and rest was only re-asserted on a React render (rare in command mode), so an
   interrupted gesture (browser-hijacked touch, missed `touchend`, or a press-and-hold on the ◀ arrow whose

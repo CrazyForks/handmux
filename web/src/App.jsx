@@ -510,9 +510,11 @@ export default function App() {
   }, []);
 
   // Reload the recent (send) history whenever the open session OR window changes — history is
-  // window-level, keyed by session NAME + window (stable across tmux restarts — see storage.js).
+  // window-level, keyed by session NAME + window ID. Use the tmux window ID (@N), which is stable for the
+  // window's life — NOT window.name, which tmux auto-renames to the running command, so keying by name
+  // made the key drift under you and the history "vanish" moments after a send.
   const recentSession = current?.session?.name;
-  const recentWin = current?.window?.name || current?.window?.id;
+  const recentWin = current?.window?.id;
   useEffect(() => {
     setRecent(recentSession && recentWin ? getRecent(recentSession, recentWin) : []);
   }, [recentSession, recentWin]);
@@ -584,7 +586,7 @@ export default function App() {
   const onCommandSent = useCallback((cmd) => {
     termRef.current?.wake?.(); // a dock send/fill landed → wake the poll loop (covers BottomDock too)
     const name = current?.session?.name;
-    const win = current?.window?.name || current?.window?.id;
+    const win = current?.window?.id; // stable window ID, not the auto-renamed window.name
     if (name && win) setRecent(pushRecent(name, win, cmd));
   }, [current]);
 
@@ -595,7 +597,7 @@ export default function App() {
   // ✕ on a history row: drop that one entry from THIS window's recent history.
   const removeRecentCmd = useCallback((cmd) => {
     const name = current?.session?.name;
-    const win = current?.window?.name || current?.window?.id;
+    const win = current?.window?.id; // stable window ID, not the auto-renamed window.name
     if (name && win) setRecent(removeRecent(name, win, cmd));
   }, [current]);
 
