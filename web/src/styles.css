@@ -306,13 +306,23 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .quick-fix:active { background: #363a43; }
 .quick-fix:disabled { opacity: .4; }
 /* 可横滑的自定义命令区:溢出横向滚动、隐藏滚动条;chip 单行不换、不压缩。 */
-.quick-scroll { flex: 1; min-width: 0; display: flex; gap: 6px; overflow-x: auto;
+.quick-scroll { flex: 1; min-width: 0; display: flex; gap: 5px; overflow-x: auto;
   scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .quick-scroll::-webkit-scrollbar { display: none; }
-.quick-cmd { flex: none; white-space: nowrap; border: 1px solid #3a3d44; border-radius: 15px;
-  background: transparent; color: #9aa0aa; font: inherit; font-size: 13px; padding: 5px 12px; line-height: 1;
+/* 命令 chip:紧凑(小字小内边)+ 带色。每个 chip 取一个色相(--rgb 三元组),文字/描边用该色、底填淡影,
+   一眼看去是一排彩色标签;按下加深。色相由 .qc-* 变体给(见下),ESC 固定红。rgba(var(--rgb),a) 全面兼容。 */
+.quick-cmd { flex: none; white-space: nowrap; border: 1px solid; border-radius: 12px;
+  color: rgb(var(--rgb)); border-color: rgba(var(--rgb), .5); background: rgba(var(--rgb), .13);
+  font: inherit; font-size: 12px; padding: 3px 9px; line-height: 1.25;
   touch-action: manipulation; -webkit-user-select: none; user-select: none; }
-.quick-cmd:active { border-color: #4a7cff; color: #cdd6ff; background: rgba(74,124,255,.12); }
+.quick-cmd:active { background: rgba(var(--rgb), .26); border-color: rgb(var(--rgb)); }
+.qc-esc { --rgb: 255,107,107; }
+.qc-0 { --rgb: 110,168,255; }
+.qc-1 { --rgb: 95,208,138; }
+.qc-2 { --rgb: 185,140,255; }
+.qc-3 { --rgb: 240,179,90; }
+.qc-4 { --rgb: 255,143,176; }
+.qc-5 { --rgb: 79,208,196; }
 /* 上传进度条:浮在输入行上方一条(失败时变红、文案自带原因),沿用 browse-progress 配色。 */
 .dock-upload { padding: 6px 4px 2px; }
 .dock-upload-label { display: block; color: #9fb6d0; font-size: 12px; margin-bottom: 4px; font-variant-numeric: tabular-nums; }

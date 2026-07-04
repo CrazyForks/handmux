@@ -23,6 +23,16 @@ import { MODIFIERS, modActive, consumeMods, withMods } from '../keybarKeys.js';
 // instead of typing the letters + Enter. Keyed by the item's label so a user can add/remove them freely.
 const KEY_FAVS = { ESC: 'Escape', Esc: 'Escape' };
 
+// Every quick-command chip is tinted so the strip reads as a colourful palette (「都带颜色」). ESC is
+// forced red (it interrupts); every other label gets a stable colour from a 6-way hash of its text, so
+// user-added commands are coloured too and a given label always keeps the same hue. → .qc-esc / .qc-0..5.
+const chipTint = (text) => {
+  if (KEY_FAVS[text]) return 'esc';
+  let h = 0;
+  for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) >>> 0;
+  return h % 6;
+};
+
 function BottomDock({
   pane, onAuthFail, onKey, onText, cwd = null, agent = null,
   recent = [], onSent,
@@ -452,7 +462,8 @@ function BottomDock({
                 </div>
                 <div className="quick-scroll">
                   {favs.map((f) => (
-                    <button key={f.text} type="button" className="quick-cmd" onClick={() => runFav(f.text)}>{f.text}</button>
+                    <button key={f.text} type="button" className={`quick-cmd qc-${chipTint(f.text)}`}
+                      onClick={() => runFav(f.text)}>{f.text}</button>
                   ))}
                 </div>
               </div>
