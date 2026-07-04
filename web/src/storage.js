@@ -14,6 +14,7 @@ const PREVIEW_DIR_KEY = 'tw_preview_dir';   // { [windowId]: absPath } — last 
 const STARTUP_CMD_KEY = 'tw_startup_cmd';   // last startup command chosen in new window/session (e.g. "claude")
 const IDEAS_KEY = 'tw_ideas';               // { [sessionName]: { [windowName]: Idea[] } } — per-window todo list
 const CHANGELOG_SEEN_KEY = 'tw_changelog_seen'; // the latest changelog entry id (v) the user has opened
+const VERSION_SEEN_KEY = 'tw_version_seen';     // the npm "latest" version already acknowledged in Settings
 const GIT_REPOS_KEY = 'tw_git_repos';          // { [windowId]: absPath[] } —
 const GIT_DIRS_KEY = 'tw_git_dirs';            // { [windowId]: absPath[] } — dirs the user picked repos from (history, newest first) bound git repos per window absolute paths (order = tab order)
 
@@ -262,6 +263,11 @@ export function setIdeas(session, window, list) {
 // shows an unread dot while the newest changelog id differs from this.
 export const getChangelogSeen = () => localStorage.getItem(CHANGELOG_SEEN_KEY);
 export const setChangelogSeen = (v) => { if (v) localStorage.setItem(CHANGELOG_SEEN_KEY, v); };
+
+// The npm "latest" version the user has already acknowledged (opening Settings once). The gear's update dot
+// stays off for this version even if they never upgrade — it only relights when npm publishes a newer one.
+export const getVersionSeen = () => localStorage.getItem(VERSION_SEEN_KEY);
+export const setVersionSeen = (v) => { if (v) localStorage.setItem(VERSION_SEEN_KEY, v); };
 
 // Window rename: tmux keeps the window id but the name (our key) changes, so move the ideas across.
 export function renameWindowIdeas(session, oldWindow, newWindow) {

@@ -83,6 +83,9 @@ export const signAsr = () => req('/api/asr/sign', { timeoutMs: 8000 });
 // Which optional integrations this install has configured (e.g. { asr: true }). Drives the UI hiding
 // controls that can't work — voice/ASR ships disabled on open-source installs without iFlytek keys.
 export const getConfig = () => req('/api/config', { timeoutMs: 8000 });
+// { current, latest, updateAvailable } — is the installed CLI behind the latest npm release? Checked once
+// per app launch; when true the phone hints the user to run `handmux update` on their computer.
+export const getServerVersion = () => req('/api/version', { timeoutMs: 8000 });
 // Enable the Claude Code lifecycle hooks on the host (one-tap from the inbox). Token-gated like every API;
 // 15s timeout covers the file copy + settings merge. Returns { ok, status }.
 export const installClaudeHooks = () => req('/api/hooks/install', { method: 'POST', timeoutMs: 15000 });

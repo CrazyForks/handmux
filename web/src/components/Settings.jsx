@@ -9,6 +9,7 @@ import { t, getLangCode, setLang, AVAILABLE } from '../i18n';
 // font-size control. Font reads/writes the live terminal through termRef — the same persisted
 // size the two-finger pinch drives — so the modal and the gesture stay in sync.
 export default function Settings({ open, onClose, termRef, onColAdjust, onColRestore, onOpenChangelog, changelogUnread,
+  updateInfo = null,
   activePreview = null, pane = null, lastPreviewDir = null, dynamicEnabled = false,
   getColCount = null,
   onStartPreview, onStartDynamicPreview, onOpenPreview, onRenew, onStop }) {
@@ -127,12 +128,20 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
         </div>
 
         <div className="settings-section">
-          <div className="settings-label">{t('settings.whats_new')}</div>
+          <div className="settings-label">{t('settings.version')}</div>
           <div className="settings-btns">
+            <span className="settings-value">{updateInfo?.current ? `v${updateInfo.current}` : '—'}</span>
             <button className="fontbtn" onClick={onOpenChangelog}>
               {t('settings.view_changelog')}{changelogUnread && <span className="settings-dot" aria-label={t('settings.has_update')} />}
             </button>
           </div>
+          {/* The upgrade is a computer-side `handmux update`; the phone can only show the notice, so no button. */}
+          {updateInfo?.updateAvailable && (
+            <div className="settings-update">
+              <div className="settings-update-title">{t('settings.update_available', { v: updateInfo.latest })}</div>
+              <div className="settings-update-how">{t('settings.update_how')} <code>handmux update</code></div>
+            </div>
+          )}
         </div>
 
 

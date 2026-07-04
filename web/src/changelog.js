@@ -11,11 +11,13 @@ export const CHANGELOG = [
         '用量进度条新增「时间竖线」:标出当前重置窗口已过去的时间比例。已用量在竖线左边=烧得比时间慢(稳),越过竖线=烧得偏快,一眼看出自己的节奏。',
         '命令模式的常用命令分成「全局」和「当前窗口」两组:快捷栏里全局的(灰)排前、当前窗口的(绿)排后。尾部改成 ⚙ 齿轮,点开更高的编辑器分两区、各自 ▲▼ 排序。新增区一行搞定:顶部「命令/按键」大 Tab 选类型,左侧开关选加到全局还是本窗口。命令可勾「带回车」(点一下直接执行,末尾带 ⏎);按键用 ⌃⇧⌥ + 一个基键拼出组合键(如 Ctrl+C),点一下直接发到终端。',
         '聊天模式的快捷条也能自定义了:末尾同样是 ⚙,点开编辑器,「消息/按键」两个 Tab —— 消息就是一句发给 agent 的话(以 / 开头当斜杠命令),按键用同一套 ⌃⇧⌥ + 基键拼组合键(ESC/Tab/退格默认就在里面)。点任意一条可回到弹窗改,▲▼ 排序。',
+        '新增版本更新提示:每次打开检测一次,服务端落后于 npm 最新版时设置齿轮亮红点,进设置能看到当前/最新版本号,按提示在电脑上跑 `handmux update` 升级即可。',
       ],
       en: [
         'Usage bars now show a "time marker": a thin vertical line at how far the current reset window has elapsed. Usage left of the line = you\'re burning slower than the clock; past it = faster — pacing at a glance.',
         'Command mode\'s saved commands now split into "Global" and "This window": the quick-bar shows global ones (grey) first, then this window\'s (green). The trailing ＋ is now a ⚙ opening a taller two-section editor, each reorderable with ▲▼. One add row does it all: a big Command/Key tab picks the type, a left switch picks which list it lands in. Commands can tick "Send Enter" (a tap runs it, marked ⏎); keys are built from ⌃⇧⌥ + a base key into a combo like Ctrl+C that fires straight into the terminal.',
         'Chat mode\'s quick-bar is now customizable too: the same ⚙ at the end opens an editor with a Message/Key tab — a message is a line sent to the agent (starts with / for a slash-command), a key is built from the same ⌃⇧⌥ + base-key picker (ESC/Tab/Backspace ship as defaults). Tap any row to re-open the card and edit it, ▲▼ to reorder.',
+        'New update notice: checked once each time you open the app — when the server is behind the latest npm release, the settings gear lights a dot and Settings shows the current/latest version so you can run `handmux update` on your computer.',
       ],
     },
   },

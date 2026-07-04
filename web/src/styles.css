@@ -84,6 +84,14 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .settings-note { font-size: 13px; color: #9aa0a6; flex: 1 1 auto; min-width: 0; }
 /* Persistent one-liner under the toggle spelling out which two events push (需要你 / 已完成). */
 .settings-hint { font-size: 12px; color: #7c8088; line-height: 1.5; margin-top: 8px; }
+/* npm-update notice: a tinted card under the version row. The upgrade runs on the computer (`handmux update`),
+   so this is informational, not a tappable action. */
+.settings-update { margin-top: 10px; padding: 8px 10px; border-radius: 8px;
+  background: rgba(var(--blue-rgb), .12); border: .5px solid rgba(var(--blue-rgb), .35); }
+.settings-update-title { font-size: 14px; color: var(--blue); font-weight: 600; }
+.settings-update-how { font-size: 12px; color: #9aa0a8; line-height: 1.5; margin-top: 3px; }
+.settings-update-how code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+  color: #e6e8ec; background: rgba(120,120,128,.22); padding: 1px 5px; border-radius: 5px; }
 /* "dynamic preview not enabled" explainer: dimmer + left rule so it reads as an aside, not an action. */
 .settings-hint.preview-dynamic-disabled { color: #6b6f77; border-left: 2px solid #34373d; padding-left: 8px; margin-top: 6px; }
 /* Small spinner shown while (un)subscribing, so the user waits instead of mis-tapping. */

@@ -7,6 +7,7 @@ import {
   pushRecentDoc, getPaneBase, setPaneBase,
   getInboxSeen, markInboxSeen, getInboxReadTs, setInboxReadTs,
   renameWindowIdeas, getChangelogSeen, setChangelogSeen,
+  getVersionSeen, setVersionSeen,
   getPreviewDir, setPreviewDir, getIdeas,
 } from './storage.js';
 import { LATEST_RELEASE } from './changelog.js';
@@ -16,6 +17,7 @@ import {
   renameSession, renameWindow, deleteWindow, swapWindows, fetchDoc, fetchImageUrl, UnauthorizedError,
   getStates, getOrphans, takeoverOrphan,
   getPreviews, createPreview, deletePreview,
+  getServerVersion,
 } from './api.js';
 import { previewName } from './previewName.js';
 import PreviewSheet from './components/PreviewSheet.jsx';
@@ -94,6 +96,8 @@ export default function App() {
   const [ideaCount, setIdeaCount] = useState(0);   // idea count for the current window (badge)
   const [changelogOpen, setChangelogOpen] = useState(false); // "what's new" sheet open
   const [clSeen, setClSeen] = useState(getChangelogSeen); // latest changelog id the user has opened
+  const [updateInfo, setUpdateInfo] = useState(null); // { current, latest, updateAvailable } — npm update hint (checked once per launch)
+  const [verSeen, setVerSeen] = useState(getVersionSeen); // npm "latest" already acknowledged by opening Settings
   const [seen, setSeen] = useState(getInboxSeen); // pane → last-viewed ts (inbox read state)
   const [readTs, setReadTs] = useState(getInboxReadTs); // server-ts high-water mark for done history (null=unset)
   const termRef = useRef(null);
@@ -112,6 +116,13 @@ export default function App() {
     } catch { /* ignore */ }
   }, []);
   useEffect(() => { refreshPreviews(); }, [refreshPreviews]);
+
+  // Update check: once per app launch (not polled), ask the server whether the installed CLI is behind the
+  // latest npm release. The result lights the gear's dot and drives the "run `handmux update`" hint in Settings.
+  useEffect(() => {
+    if (needToken) return;
+    getServerVersion().then(setUpdateInfo).catch(() => { /* best-effort; no hint on failure */ });
+  }, [needToken]);
 
   // The preview name for the open session-window, and its active entry (if any, not expired).
   const curPreviewName = current
@@ -779,6 +790,15 @@ export default function App() {
   const windowAgents = {};
   for (const st of Object.values(states)) if (st.window && st.agent) windowAgents[st.window] = st.agent;
   const changelogUnread = !!LATEST_RELEASE && clSeen !== LATEST_RELEASE;
+  // The gear's dot fuses two phases of "there's something new": an available npm update (before you upgrade)
+  // and, after upgrading+reloading, the unread changelog it brought. `updateDot` stays off once the user has
+  // opened Settings for this `latest` (verSeen), even if they don't upgrade — it relights only on a newer release.
+  const updateDot = !!updateInfo?.updateAvailable && updateInfo.latest !== verSeen;
+  const gearDot = changelogUnread || updateDot;
+  const openSettings = () => {
+    setSettingsOpen(true);
+    if (updateInfo?.latest) { setVersionSeen(updateInfo.latest); setVerSeen(updateInfo.latest); } // acknowledge → clears updateDot
+  };
   const openChangelog = () => {
     setSettingsOpen(false);
     setChangelogOpen(true);
@@ -819,9 +839,9 @@ export default function App() {
         <button className="topbar-icon" onClick={() => setUsageOpen(true)} aria-label={t('usage.title')} title={t('usage.title')}><GaugeIcon /></button>
         <button className="topbar-icon" onClick={() => setFileManagerOpen(true)} aria-label={t('app.files')} title={t('app.files')}><FolderIcon /></button>
         <button className="topbar-icon" onClick={() => setGitOpen(true)} aria-label="Git" title="Git"><GitIcon /></button>
-        <button className="topbar-icon" onClick={() => setSettingsOpen(true)} aria-label={t('app.settings')} title={t('app.settings')}>
+        <button className="topbar-icon" onClick={openSettings} aria-label={t('app.settings')} title={t('app.settings')}>
           <GearIcon />
-          {changelogUnread && <span className="topbar-dot" aria-hidden="true" />}
+          {gearDot && <span className="topbar-dot" aria-hidden="true" />}
         </button>
       </header>
       <UsagePage
@@ -838,6 +858,7 @@ export default function App() {
         onColRestore={tmuxRestore}
         onOpenChangelog={openChangelog}
         changelogUnread={changelogUnread}
+        updateInfo={updateInfo}
         activePreview={activePreview}
         pane={current?.paneId}
         lastPreviewDir={getPreviewDir(current?.window?.id)}

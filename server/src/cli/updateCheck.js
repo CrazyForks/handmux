@@ -60,6 +60,24 @@ export function fetchLatestVersion({ timeoutMs = 4000, run = spawnSync } = {}) {
   } catch { return null; }
 }
 
+// Non-blocking refresh for the long-running server: query npm asynchronously (never stalls the event loop
+// the way the CLI's spawnSync path would) and persist the same {checkedAt, latest} cache the CLI reads. The
+// /api/version route calls this when the cache is stale, so the phone opening the app keeps `latest` current
+// without the user re-running the CLI. Best-effort: npm missing/offline/blocked leaves the prior latest.
+export function refreshLatestAsync(home, { now = Date.now(), spawnFn = spawn, timeoutMs = 4000 } = {}) {
+  try {
+    const child = spawnFn('npm', ['view', PKG_NAME, 'version'], { timeout: timeoutMs });
+    let out = '';
+    child.stdout?.on('data', (d) => { out += d; });
+    child.on('close', (code) => {
+      const v = String(out).trim();
+      const latest = (code === 0 && parts(v)) ? v : (readCache(home)?.latest ?? null);
+      writeCache(home, { checkedAt: now, latest });
+    });
+    child.on('error', () => { /* npm missing/offline — leave the cache untouched */ });
+  } catch { /* best effort */ }
+}
+
 // The hidden `__update-check` worker (runs detached, prints nothing): refresh the cache. On a failed fetch
 // keep the previously-known latest but still stamp checkedAt, so a flaky network doesn't re-spawn every run.
 export function runUpdateCheck(home, { now = Date.now(), ...opts } = {}) {

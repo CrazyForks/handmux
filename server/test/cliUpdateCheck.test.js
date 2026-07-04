@@ -1,11 +1,23 @@
 import { describe, it, expect, vi } from 'vitest';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import {
   compareVersions, isNewer, shouldRefresh, fetchLatestVersion,
   readCache, writeCache, updateCachePath, runUpdateCheck, notifyUpdate,
-  CHECK_INTERVAL_MS,
+  refreshLatestAsync, CHECK_INTERVAL_MS,
 } from '../src/cli/updateCheck.js';
 import { tmpHome } from './tmphome.js';
+
+// A fake async child: `stdout` streams the given output, then `close` fires with the exit code.
+function fakeChild(out, code) {
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  queueMicrotask(() => {
+    if (out != null) child.stdout.emit('data', out);
+    child.emit('close', code);
+  });
+  return child;
+}
 
 const okRun = (out) => () => ({ status: 0, stdout: out });
 
@@ -117,5 +129,31 @@ describe('notifyUpdate', () => {
     const spawnFn = vi.fn(() => ({ unref() {} }));
     notifyUpdate(home, { version: '1.0.0', now: Date.now(), log: () => {}, spawnFn });
     expect(spawnFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('refreshLatestAsync (server, non-blocking)', () => {
+  it('writes the fetched latest + timestamp on success', async () => {
+    const home = tmpHome('upd-');
+    const spawnFn = vi.fn(() => fakeChild('1.2.4\n', 0));
+    refreshLatestAsync(home, { now: 5000, spawnFn });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(spawnFn).toHaveBeenCalledWith('npm', ['view', 'handmux', 'version'], expect.objectContaining({ timeout: 4000 }));
+    expect(readCache(home)).toEqual({ checkedAt: 5000, latest: '1.2.4' });
+  });
+
+  it('keeps the previously-known latest when the query fails', async () => {
+    const home = tmpHome('upd-');
+    writeCache(home, { checkedAt: 0, latest: '1.0.0' });
+    refreshLatestAsync(home, { now: 9000, spawnFn: () => fakeChild('', 1) });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(readCache(home)).toEqual({ checkedAt: 9000, latest: '1.0.0' });
+  });
+
+  it('never throws when npm is missing (spawn error)', async () => {
+    const home = tmpHome('upd-');
+    const spawnFn = () => { const c = new EventEmitter(); c.stdout = new EventEmitter(); queueMicrotask(() => c.emit('error', new Error('ENOENT'))); return c; };
+    expect(() => refreshLatestAsync(home, { now: 1, spawnFn })).not.toThrow();
+    await new Promise((r) => setTimeout(r, 0));
   });
 });

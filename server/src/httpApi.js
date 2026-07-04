@@ -25,9 +25,18 @@ import { codexHooksStatus, installCodexHooks } from './cli/codexHooks.js';
 import { claudeStatePath } from './cli/state.js';
 import { scanOrphans, takeoverOrphan, defaultProjectsDir } from './orphans.js';
 import { getUsageCached } from './usage.js';
+import { readFileSync } from 'node:fs';
+import { readCache, isNewer, shouldRefresh, refreshLatestAsync } from './cli/updateCheck.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const HOOKS_SRC = resolvePath(here, '../hooks'); // server/hooks (bundled scripts)
+
+// The installed CLI version (server/package.json) — read once. The phone compares this against the cached
+// npm "latest" to surface an update hint ("run `handmux update` on your computer"); see the /version route.
+const PKG_VERSION = (() => {
+  try { return JSON.parse(readFileSync(resolvePath(here, '../package.json'), 'utf8')).version || null; }
+  catch { return null; }
+})();
 
 // Summarize inbox-hook state across every coding agent for the phone: 'installed' if any agent is wired,
 // 'absent' if an agent is present but none wired (→ offer the one-tap enable), 'no-claude' if there's no
@@ -469,6 +478,18 @@ export function createApiRouter({
   // wired, 'absent' if an agent is present but none wired (→ offer enable), 'no-claude' if no agent at all.
   r.get('/config', (req, res) => {
     res.json({ asr: isAsrConfigured(asrEnv), claudeHooks: combinedHooksStatus(home) });
+  });
+
+  // Update hint for the phone: is the globally-installed CLI behind the latest npm release? `current` is
+  // this server's version; `latest` comes from the same cache the CLI maintains (~/.handmux/update-check.json).
+  // We never block on the network here — if the cache is stale we kick a best-effort async refresh (throttled
+  // to once a day, like the CLI) and return the currently-known value. The upgrade itself is a computer-side
+  // `handmux update`; the phone only shows the notice.
+  r.get('/version', (req, res) => {
+    const cache = readCache(home);
+    if (shouldRefresh(cache)) refreshLatestAsync(home);
+    const latest = cache?.latest ?? null;
+    res.json({ current: PKG_VERSION, latest, updateAvailable: !!(latest && PKG_VERSION && isNewer(latest, PKG_VERSION)) });
   });
 
   // One-tap enable from the phone: install the hooks for every present agent (Claude Code, Codex) on the

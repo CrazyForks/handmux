@@ -3,6 +3,7 @@ import { tmpHome } from './tmphome.js';
 import request from 'supertest';
 import express from 'express';
 import { createApiRouter } from '../src/httpApi.js';
+import { writeCache } from '../src/cli/updateCheck.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -739,5 +740,27 @@ describe('orphans routes', () => {
   it('POST /api/orphans/takeover 409s for a pid that is not a live orphan', async () => {
     await auth(request(app).post('/api/orphans/takeover'))
       .send({ pid: 2147483000, sessionId: '4442e3d0-8d46-4cce-9822-b86558f69922' }).expect(409);
+  });
+});
+
+describe('GET /version (update hint)', () => {
+  const appWithHome = (home) => {
+    const app = express();
+    app.use('/api', createApiRouter({ token: 'good', commands: baseCommands, home }));
+    return app;
+  };
+  // Fresh cache (checkedAt: now) so the route never spawns a real `npm view` during the test.
+  it('flags an available update when the cached npm latest is ahead of the installed version', async () => {
+    const home = tmpHome('ver-');
+    writeCache(home, { checkedAt: Date.now(), latest: '999.0.0' });
+    const res = await auth(request(appWithHome(home)).get('/api/version')).expect(200);
+    expect(res.body).toMatchObject({ latest: '999.0.0', updateAvailable: true });
+    expect(typeof res.body.current).toBe('string');
+  });
+  it('reports no update when the cached latest is not newer', async () => {
+    const home = tmpHome('ver-');
+    writeCache(home, { checkedAt: Date.now(), latest: '0.0.1' });
+    const res = await auth(request(appWithHome(home)).get('/api/version')).expect(200);
+    expect(res.body.updateAvailable).toBe(false);
   });
 });

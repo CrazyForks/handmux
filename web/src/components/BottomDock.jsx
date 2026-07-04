@@ -177,6 +177,23 @@ function BottomDock({
     if (mode === 'agent') autoGrow(ref.current); // measure multi-line text before sizing (never clipped)
     syncPagerHeight();
   });
+  // Keep the LATEST syncPagerHeight reachable from the long-lived ResizeObserver below (it closes over the
+  // current `mode`, so the observer must call through a ref, never a stale capture).
+  const syncRef = useRef(syncPagerHeight);
+  syncRef.current = syncPagerHeight;
+  // The invariant the pager height must hold: it always equals the ACTIVE page's real content height. The
+  // React-render + single-rAF syncs above can miss an async settle (the composer restoring multi-line text,
+  // a web-font/quick-bar reflow, the upload row appearing) — and a dock left too tall strands hidden terminal
+  // rows, because the terminal only re-fits when its area GREW (Terminal.jsx). So observe both pages directly
+  // and re-sync on ANY content-height change: the dock can never go stale, so the terminal area shrinks/grows
+  // to the truth and re-fits. Skipped while a finger drag owns the height (it must hold steady through a swipe).
+  useEffect(() => {
+    const pager = pagerRef.current;
+    if (!pager || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => { if (!draggingRef.current) syncRef.current(); });
+    pager.querySelectorAll('.dock-page').forEach((p) => ro.observe(p));
+    return () => ro.disconnect();
+  }, []);
   // Entering CHAT restores the composer's grown height for preserved multi-line text — then RE-syncs the
   // pager. The sync above runs BEFORE that async grow settles, so without this the dock (and the terminal
   // sized to fit above it) can be left at a stale height until the next render: the "swiped to chat and the

@@ -5,6 +5,16 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Added
+- **Update notice on the phone: know when the installed CLI is behind npm.** A new token-gated
+  `GET /api/version` returns `{ current, latest, updateAvailable }` — `current` is this server's installed
+  version, `latest` comes from the same once-a-day npm cache the CLI keeps (`~/.handmux/update-check.json`),
+  refreshed asynchronously (never blocking the request) when stale. The web app checks it **once per launch**
+  (not polled): if a newer release exists, the settings gear lights its dot and Settings shows a
+  「有新版本 vX 可用 · 在电脑上运行 `handmux update`」card (the upgrade is computer-side, so it's a notice,
+  not a button). The gear's dot is shared with the changelog-unread signal — update-available before you
+  upgrade, then the changelog it brought after — and clears once you've opened Settings for that version
+  (`tw_version_seen`), relighting only when npm publishes a newer one. Settings also now shows the current
+  version number.
 - **Command mode: saved commands split into GLOBAL + THIS-WINDOW lists.** The command page's quick-bar
   now shows your global commands (grey, first) followed by the current tmux window's own commands (green),
   keyed by the stable window id. The trailing ＋ became a ⚙ that opens a taller editor with two sections,
