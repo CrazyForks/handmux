@@ -24,6 +24,7 @@ let root;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear(); // hermetic favs — chat list falls back to the seeded defaults
   voice.state = 'idle'; voice.partial = '';
   voice.start.mockClear(); voice.stop.mockClear();
   container = document.createElement('div');
@@ -38,6 +39,8 @@ afterEach(() => {
 
 const render = (props) => act(() => root.render(<BottomDock {...props} />));
 const fire = (node, type) => act(() => node.dispatchEvent(new MouseEvent(type, { bubbles: true })));
+// Quick-command chips are HoldButtons (pointer events, no onClick): a clean tap = pointerdown + pointerup.
+const tap = (node) => { fire(node, 'pointerdown'); fire(node, 'pointerup'); };
 
 // React tracks the controlled value via the native setter; set it then fire `input` so onChange runs.
 const typeInto = (node, text) => act(() => {
@@ -123,15 +126,41 @@ describe('BottomDock', () => {
     const onKey = vi.fn();
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey, onText: vi.fn() });
     const chip = (txt) => [...container.querySelectorAll('.quick-cmd')].find((n) => n.textContent === txt);
-    fire(chip('/compact'), 'click');
+    tap(chip('/compact'));
     await act(async () => {});
     expect(sendText).toHaveBeenCalledWith('%1', '/compact', true);   // 命令:打字+回车
-    fire(chip('Esc'), 'click');                                      // key fav, label 'Esc'
+    tap(chip('Esc'));                                                // key fav, label 'Esc'
     expect(onKey).toHaveBeenCalledWith('Escape');                    // ESC:发按键
     expect(sendText).not.toHaveBeenCalledWith('%1', 'Escape', true); // 不是当文字发
-    fire(chip('Tab'), 'click');
+    tap(chip('Tab'));
     expect(onKey).toHaveBeenCalledWith('Tab');                       // Tab:也发按键(和 ESC 同色类)
     expect(sendText).not.toHaveBeenCalledWith('%1', 'Tab', true);
+  });
+
+  it('长按聊天消息 chip → 填入输入框(不发送);按键 chip 无长按', async () => {
+    vi.useFakeTimers();
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    const chip = (txt) => [...container.querySelectorAll('.dock-page.chat .quick-cmd')].find((n) => n.textContent === txt);
+    fire(chip('ok'), 'pointerdown');
+    await act(async () => { await vi.advanceTimersByTimeAsync(450); }); // 按住过阈值 → 填入
+    fire(chip('ok'), 'pointerup');
+    expect(container.querySelector('.input-text').value).toBe('ok');    // 落进输入框
+    expect(sendText).not.toHaveBeenCalled();                            // 没发送
+    vi.useRealTimers();
+  });
+
+  it('长按命令模式的「带回车」命令 → 只输入不回车(可编辑再自己跑)', async () => {
+    localStorage.setItem('hm_favs6_command', JSON.stringify([{ kind: 'cmd', text: 'git status', enter: true }]));
+    vi.useFakeTimers();
+    const onText = vi.fn();
+    render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText }); // command mode (no agent)
+    const chip = [...container.querySelectorAll('.dock-page.command .quick-cmd')].find((n) => n.textContent.startsWith('git status'));
+    fire(chip, 'pointerdown');
+    await act(async () => { await vi.advanceTimersByTimeAsync(450); }); // 长按
+    fire(chip, 'pointerup');
+    expect(onText).toHaveBeenCalledWith('git status'); // 只输入,不回车
+    expect(sendText).not.toHaveBeenCalled();           // 不是 type+Enter
+    vi.useRealTimers();
   });
 
   it('录音中点发送:先停语音、发当前文字,后续定稿不再回写', async () => {

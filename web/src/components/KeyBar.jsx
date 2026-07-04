@@ -5,6 +5,12 @@ import {
 } from '../keybarKeys.js';
 import { createRepeater } from '../repeat.js';
 
+// Friendly screen-reader names for the symbol / arrow keys (their visible label is just a glyph like ▲ ~ /).
+const KEY_ARIA = {
+  up: 'Up', down: 'Down', left: 'Left', right: 'Right',
+  tilde: 'Tilde', slash: 'Slash', at: 'At', del: 'Backspace',
+};
+
 // In command mode the hidden capture <input> holds the system keyboard open. A <button> tap would move
 // focus to itself → the capture blurs → the keyboard collapses (so you couldn't tap Ctrl then a letter
 // on the system keyboard). preventDefault on pointer-down keeps focus on the capture; onClick still fires.
@@ -85,7 +91,7 @@ function Key({ id, dispatch, keyHeldRef }) {
     // Fires on CLICK (release), never on touch-down — a left/right page swipe that starts on the key
     // moves off and cancels the click, so dragging across never triggers it. keepFocus keeps the system
     // keyboard open (tapping this key mustn't blur the capture input).
-    return <button type="button" className="keybar-key" data-key={id}
+    return <button type="button" className="keybar-key" data-key={id} aria-label={KEY_ARIA[id] || label}
       onPointerDown={keepFocus} onClick={() => dispatch(id)}>{label}</button>;
   }
   // Held arrow / ⌫ auto-repeats — but a page swipe can start on a key too, so we must NOT fire on
@@ -121,7 +127,7 @@ function Key({ id, dispatch, keyHeldRef }) {
     gRef.current = null; // swipe / leave / cancel → no press
   };
   return (
-    <button type="button" className="keybar-key" data-key={id}
+    <button type="button" className="keybar-key" data-key={id} aria-label={KEY_ARIA[id] || label}
       onPointerDown={down} onPointerMove={move} onPointerUp={up}
       onPointerCancel={cancel} onPointerLeave={cancel}>{label}</button>
   );

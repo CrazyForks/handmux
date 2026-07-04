@@ -79,10 +79,12 @@ function Dropdown({ value, options, onChange, placeholder }) {
   );
 }
 
-function List({ title, accent, items, onMove, onDel, onEdit }) {
+// `showTitle` is false for a lone list (chat variant) — a single sticky "常用" header is just redundant
+// chrome; command mode keeps it because it distinguishes the 全局 vs 窗口 sections.
+function List({ title, accent, items, showTitle = true, onMove, onDel, onEdit }) {
   return (
     <div className={`cmd-esection ${accent}`}>
-      <div className={`cmd-section ${accent}`}><span className="cmd-section-name">{title}</span></div>
+      {showTitle && <div className={`cmd-section ${accent}`}><span className="cmd-section-name">{title}</span></div>}
       {items.length === 0 && <div className="cmd-empty">{t('cmd.empty')}</div>}
       {items.map((f, i) => (
         <div key={f.text} className="cmd-row">
@@ -276,6 +278,7 @@ export default function CmdFavEditor({ windowId, inset = 0, variant = 'command',
         <div className="cmd-list">
           {scopes.map((s) => (
             <List key={s.key} title={s.title} accent={s.accent} items={items[s.key] || []}
+              showTitle={scopes.length > 1}
               onMove={(txt, d) => doMove(s.key, txt, d)} onDel={(txt) => doDel(s.key, txt)}
               onEdit={(f) => setCard({ edit: { fav: f, scope: s.key } })} />
           ))}

@@ -331,8 +331,8 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .quick-scroll { flex: 1; min-width: 0; display: flex; align-items: stretch; gap: 5px; overflow-x: auto;
   scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .quick-scroll::-webkit-scrollbar { display: none; }
-/* 命令 chip:按类别上色(仅三色):ESC(柔和红)、斜杠命令蓝、其余(ok/继续/1/2/3)绿。文字/描边用该色、
-   底填淡影,按下加深。竖内边距给足(好按),色相由 .qc-esc/.qc-cmd/.qc-reply 给。rgba(var(--rgb),a) 全面兼容。 */
+/* 聊天 chip:按类别上色(仅三色):按键(ESC/Tab/⌫)灰、斜杠命令蓝、其余(ok/继续/1/2/3)绿。文字/描边用该
+   色、底填淡影,按下加深。竖内边距给足(好按),色相由 .qc-esc/.qc-cmd/.qc-reply 给。rgba(var(--rgb),a) 全面兼容。 */
 .quick-cmd { flex: none; display: inline-flex; align-items: center; white-space: nowrap;
   border: 1px solid; border-radius: 12px;
   color: rgb(var(--rgb)); border-color: rgba(var(--rgb), .5); background: rgba(var(--rgb), .13);
