@@ -5,6 +5,12 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Changed
+- **Chat composer: quick-command bar above the pill** — moved the ＋ upload and ▤ 常用 out of the input
+  pill into a dedicated row above it. The row's left holds two fixed, text-only actions (`添加附件` ·
+  `历史记录`, styled distinctly from the commands); its right is a horizontally-scrollable strip of
+  user-editable vibe commands (`ESC 继续 ok 1 2 3 /compact …`). Tapping a command sends it immediately —
+  `ESC` fires the Escape key (interrupt), the rest type + Enter. Add/remove commands via 历史记录 (they
+  persist per-mode and feed the strip). The strip scrolls without hijacking the page swipe.
 - **Keyboard: two rows + live Ctrl/Shift/Alt modifiers** — the key area is now a **fixed row** (the
   `命令 | 对话` mode switch + a 常用 button on the left, then the four most-used keys Esc/Tab/Ctrl/Shift)
   above a **horizontally-scrolling row** (arrow cluster + the buried shell symbols `| \ ~ - _ > < & ; *`

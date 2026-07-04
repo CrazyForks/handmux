@@ -295,14 +295,24 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
    (the ⌨ key focuses it to pop the system keyboard); each keystroke then streams into the pane. */
 .cmd-capture { position: absolute; left: 0; bottom: 0; width: 2px; height: 2px; padding: 0; margin: 0;
   border: 0; opacity: 0; background: transparent; color: transparent; }
-/* ＋上传:嵌输入框最左、贴最后一行(多行跟到底部);点=弹原生多选,传到会话 .upload。 */
-.input-upload { flex: none; width: 34px; height: 34px;
-  display: inline-flex; align-items: center; justify-content: center;
-  border: none; border-radius: 6px; background: transparent; color: #8a93a0; padding: 0;
+/* 快捷栏:药丸上方一行。左侧两个固定项(添加附件·历史记录)+ 右侧可横滑的自定义命令 chip。
+   两组样式刻意区分:固定项=实心填充小方块(纯文字、稍亮)、命令=描边圆药丸(灰字)。 */
+.quick-bar { display: flex; align-items: center; gap: 8px; padding: 0 2px 6px; }
+.quick-fixed { flex: none; display: flex; gap: 6px; padding-right: 8px;
+  border-right: 1px solid #33363d; } /* 竖分隔线,进一步分开固定区与命令区 */
+.quick-fix { flex: none; border: none; border-radius: 8px; background: #2b2e35; color: #d5d9e0;
+  font: inherit; font-size: 13px; font-weight: 600; padding: 6px 11px; line-height: 1;
   touch-action: manipulation; -webkit-user-select: none; user-select: none; }
-.input-upload:active { color: #4a7cff; }
-.input-upload:disabled { opacity: .4; }
-.input-upload svg { width: 22px; height: 22px; display: block; }
+.quick-fix:active { background: #363a43; }
+.quick-fix:disabled { opacity: .4; }
+/* 可横滑的自定义命令区:溢出横向滚动、隐藏滚动条;chip 单行不换、不压缩。 */
+.quick-scroll { flex: 1; min-width: 0; display: flex; gap: 6px; overflow-x: auto;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.quick-scroll::-webkit-scrollbar { display: none; }
+.quick-cmd { flex: none; white-space: nowrap; border: 1px solid #3a3d44; border-radius: 15px;
+  background: transparent; color: #9aa0aa; font: inherit; font-size: 13px; padding: 5px 12px; line-height: 1;
+  touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+.quick-cmd:active { border-color: #4a7cff; color: #cdd6ff; background: rgba(74,124,255,.12); }
 /* 上传进度条:浮在输入行上方一条(失败时变红、文案自带原因),沿用 browse-progress 配色。 */
 .dock-upload { padding: 6px 4px 2px; }
 .dock-upload-label { display: block; color: #9fb6d0; font-size: 12px; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
@@ -318,13 +328,6 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .input-send:active { background: #3a66e0; }
 .input-send:disabled { background: #3a3c42; color: #6b7280; } /* 空框:禁用态(灰) */
 .input-send svg { width: 20px; height: 20px; display: block; }
-/* 常用语入口:浮在麦克风左边(空框才出现,打字即隐)、贴最后一行;点开常用/最近面板。 */
-.input-cmd { flex: none; width: 34px; height: 34px;
-  display: inline-flex; align-items: center; justify-content: center;
-  border: none; border-radius: 6px; background: transparent; color: #8a93a0; padding: 0;
-  touch-action: manipulation; -webkit-user-select: none; user-select: none; }
-.input-cmd svg { width: 20px; height: 20px; display: block; }
-.input-cmd:active { color: #4a7cff; }
 /* 录音态:整条输入框变绿 + 明显的呼吸发光(替代单独的"聆听中"提示)。粗绿边 + 一明一暗的绿光晕。 */
 .input-wrap.recording { background: rgba(7,193,96,.14); border: 2px solid #07c160; animation: rec-breathe 1.3s ease-in-out infinite; }
 .input-wrap.recording .input-text { color: #eafff3; }

@@ -146,6 +146,8 @@ export default {
   'dock.send': '发送',
   'dock.send.hint': '点发送 · 长按填入',
   'dock.phrases': '常用语',
+  'dock.attach': '添加附件',
+  'dock.history': '历史记录',
   'dock.input.placeholder': '说点什么…',
   'dock.command.placeholder': '输入命令 · 回车执行',
   'dock.mode.command': '命令',

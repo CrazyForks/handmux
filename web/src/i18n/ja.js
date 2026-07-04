@@ -130,6 +130,8 @@ export default {
   'dock.send': '送信',
   'dock.send.hint': 'タップで送信 · 長押しで挿入',
   'dock.phrases': 'よく使うフレーズ',
+  'dock.attach': '添付',
+  'dock.history': '履歴',
   'dock.input.placeholder': 'メッセージを入力…',
   'dock.command.placeholder': 'コマンドを入力 · Enterで実行',
   'dock.mode.command': '実行',

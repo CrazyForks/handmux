@@ -3,7 +3,8 @@ import { sendText, uploadFile, UnauthorizedError } from '../api.js';
 import KeyBar from './KeyBar.jsx';
 import FavDrawer from './FavDrawer.jsx';
 import MicButton from './MicButton.jsx';
-import { ArrowUpIcon, PlusIcon, CommandIcon } from './icons.jsx';
+import { loadFavs } from '../favStore.js';
+import { ArrowUpIcon } from './icons.jsx';
 import { usePushToTalk } from '../voice/usePushToTalk.js';
 import { useAsrAvailable } from '../voice/useAsrAvailable.js';
 import { useScreenWakeLock } from '../hooks/useScreenWakeLock.js';
@@ -18,12 +19,20 @@ import { MODIFIERS, modActive, consumeMods, withMods } from '../keybarKeys.js';
 //     into the pane (the terminal is the display, there is no visible box).
 //   • CHAT page — the composer (＋ upload, textarea, ▤/常用, mic, send ↑ — tap = type+Enter, long-press =
 //     填入). The mode defaults from whether a coding agent is live in the pane, and sticks per-pane.
+// Quick-bar labels that are terminal KEYS, not text: tapping them fires onKey (e.g. ESC → interrupt)
+// instead of typing the letters + Enter. Keyed by the item's label so a user can add/remove them freely.
+const KEY_FAVS = { ESC: 'Escape', Esc: 'Escape' };
+
 function BottomDock({
   pane, onAuthFail, onKey, onText, cwd = null, agent = null,
   recent = [], onSent,
 }, fwdRef) {
   const [value, setValue] = useState('');
   const [panelOpen, setPanelOpen] = useState(false);
+  // The chat page's horizontal quick-command bar reads the agent 常用 list; re-load it whenever the
+  // FavDrawer closes so add/delete there flow straight into the bar (single source of truth: favStore).
+  const [favs, setFavs] = useState(() => loadFavs('agent'));
+  useEffect(() => { if (!panelOpen) setFavs(loadFavs('agent')); }, [panelOpen]);
   const [modeOverride, setModeOverride] = useState({}); // pane → 'command' | 'agent'
   const mode = modeOverride[pane] || (agent ? 'agent' : 'command');
   const setMode = (next) => setModeOverride((m) => ({ ...m, [pane]: next }));
@@ -82,6 +91,9 @@ function BottomDock({
     if (!pager) return;
     let d = null;
     const onStart = (e) => {
+      // A drag that begins on the horizontally-scrolling quick-command strip belongs to that strip's
+      // native overflow scroll — don't hijack it as a page swipe (they're both horizontal).
+      if (e.target?.closest?.('.quick-scroll')) { d = null; return; }
       d = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, decided: false, horiz: false } : null;
     };
     const onMove = (e) => {
@@ -279,6 +291,13 @@ function BottomDock({
   };
   const fillFav = (text) => pick(text);
 
+  // Quick-bar / drawer tap = send immediately. A KEY_FAVS label fires the terminal key (ESC → interrupt);
+  // everything else is typed + Enter via sendFav.
+  const runFav = (text) => {
+    if (KEY_FAVS[text]) { onKey(KEY_FAVS[text]); return; }
+    sendFav(text);
+  };
+
   // Let the topbar idea panel drop a picked idea into the box (fill, never send) — same path as pick.
   useImperativeHandle(fwdRef, () => ({ fill: pick }), []);
 
@@ -422,16 +441,27 @@ function BottomDock({
                   )}
                 </div>
               )}
-              {/* flex 行:＋(左)· textarea(中,占满)· ▤/麦克风/发送(右),全是 flex 兄弟、不重叠文字框,
-                  所以选词/移光标碰不到按键。录音时整条变绿 + 呼吸;▤常用语仅空框时出现在麦克风左边(打字即隐)。 */}
+              {/* 快捷栏(药丸上方):左侧两个固定文字项(添加附件·历史记录,纯文字、样式独立)+ 右侧一排可横滑
+                  的自定义 vibe 命令(点即发送;ESC 发按键、其余打字+回车)。固定项与命令 chip 样式刻意区分。 */}
+              <div className="quick-bar">
+                <div className="quick-fixed">
+                  <button type="button" className="quick-fix" aria-label={t('dock.attach')}
+                    disabled={!!upload && !upload.error} onClick={() => uploadRef.current?.click()}>{t('dock.attach')}</button>
+                  <button type="button" className="quick-fix" aria-label={t('dock.history')}
+                    onClick={() => setPanelOpen((o) => !o)}>{t('dock.history')}</button>
+                </div>
+                <div className="quick-scroll">
+                  {favs.map((f) => (
+                    <button key={f.text} type="button" className="quick-cmd" onClick={() => runFav(f.text)}>{f.text}</button>
+                  ))}
+                </div>
+              </div>
+              {/* 离屏(非 display:none)以便程序化 .click() 在 iOS Safari 可靠唤起原生选择器,见 .browse-file-input。 */}
+              <input ref={uploadRef} className="browse-file-input" type="file" multiple
+                onChange={(e) => { uploadFiles(e.target.files); e.target.value = ''; }} />
+              {/* flex 行:textarea(占满)· 麦克风 · 发送,全是 flex 兄弟、不重叠文字框,所以选词/移光标碰不到
+                  按键。录音时整条变绿 + 呼吸。＋上传与▤常用已上移到快捷栏。 */}
               <div className={`input-wrap${recording ? ' recording' : ''}`}>
-                <button type="button" className="input-upload" aria-label={t('dock.upload.aria')} title={t('dock.upload.title')}
-                  disabled={!!upload && !upload.error} onClick={() => uploadRef.current?.click()}>
-                  <PlusIcon />
-                </button>
-                {/* 离屏(非 display:none)以便程序化 .click() 在 iOS Safari 可靠唤起原生选择器,见 .browse-file-input。 */}
-                <input ref={uploadRef} className="browse-file-input" type="file" multiple
-                  onChange={(e) => { uploadFiles(e.target.files); e.target.value = ''; }} />
                 <textarea
                   ref={ref}
                   className="input-text"
@@ -452,10 +482,6 @@ function BottomDock({
                   autoCorrect="off"
                   spellCheck={false}
                 />
-                {!value && (
-                  <button type="button" className="input-cmd" aria-label={t('dock.phrases')} title={t('dock.phrases')}
-                    onClick={() => setPanelOpen((o) => !o)}><CommandIcon /></button>
-                )}
                 {micAvailable && <MicButton active={recording} disabled={voice.state === 'requesting'} onToggle={toggleMic} />}
                 {/* 发送 ↑ 常驻,空框禁用:点 = 发送组合文本,长按 = 填入。 */}
                 <button type="button" className="input-send" aria-label={t('dock.send')} title={t('dock.send.hint')}
@@ -469,7 +495,7 @@ function BottomDock({
         </div>
       </div>
       <FavDrawer open={panelOpen} mode={mode} recent={recent}
-        onSend={(text) => { setPanelOpen(false); sendFav(text); }}
+        onSend={(text) => { setPanelOpen(false); runFav(text); }}
         onFill={(text) => { setPanelOpen(false); fillFav(text); }}
         onClose={() => setPanelOpen(false)} />
     </div>

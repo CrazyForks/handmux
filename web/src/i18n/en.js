@@ -147,6 +147,8 @@ export default {
   'dock.send': 'Send',
   'dock.send.hint': 'Tap to send · hold to insert',
   'dock.phrases': 'Phrases',
+  'dock.attach': 'Attach',
+  'dock.history': 'History',
   'dock.input.placeholder': 'Say something…',
   'dock.command.placeholder': 'Type a command · Enter runs it',
   'dock.mode.command': 'Cmd',

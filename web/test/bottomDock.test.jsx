@@ -75,14 +75,33 @@ describe('BottomDock', () => {
     vi.useRealTimers();
   });
 
-  it('发送 ↑ 常驻但空框禁用,有字时启用;▤ 仅空框显示', () => {
+  it('发送 ↑ 常驻但空框禁用,有字时启用', () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
     expect(container.querySelector('.input-send')).not.toBe(null);     // 常驻:空框也在
     expect(container.querySelector('.input-send').disabled).toBe(true); // …但禁用
-    expect(container.querySelector('.input-cmd')).not.toBe(null);      // 空框显示 ▤
     typeInto(container.querySelector('.input-text'), 'ls');
     expect(container.querySelector('.input-send').disabled).toBe(false); // 有字 → 启用
-    expect(container.querySelector('.input-cmd')).toBe(null);          // 有字 → ▤ 隐藏
+  });
+
+  it('快捷栏:两个固定文字项(添加附件·历史记录,无图标)+ 一排自定义命令 chip', () => {
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    const fixed = [...container.querySelectorAll('.quick-fix')];
+    expect(fixed).toHaveLength(2);                                   // 添加附件 + 历史记录
+    expect(fixed.every((b) => b.querySelector('svg') === null)).toBe(true); // 固定项无图标
+    expect(container.querySelectorAll('.quick-cmd').length).toBeGreaterThan(0); // 命令 chip 存在
+    expect([...container.querySelectorAll('.quick-cmd')].some((b) => b.textContent === '/compact')).toBe(true);
+  });
+
+  it('快捷栏命令 chip 点即发送(打字+回车);ESC 发 Escape 键而非文字', async () => {
+    const onKey = vi.fn();
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey, onText: vi.fn() });
+    const chip = (txt) => [...container.querySelectorAll('.quick-cmd')].find((n) => n.textContent === txt);
+    fire(chip('/compact'), 'click');
+    await act(async () => {});
+    expect(sendText).toHaveBeenCalledWith('%1', '/compact', true);   // 命令:打字+回车
+    fire(chip('ESC'), 'click');
+    expect(onKey).toHaveBeenCalledWith('Escape');                    // ESC:发按键
+    expect(sendText).not.toHaveBeenCalledWith('%1', 'ESC', true);    // 不是当文字发
   });
 
   it('录音中点发送:先停语音、发当前文字,后续定稿不再回写', async () => {
@@ -104,18 +123,19 @@ describe('BottomDock', () => {
     expect(container.querySelector('.input-text').value).toBe('');
   });
 
-  it('▤ toggles the 常用 drawer', () => {
+  it('历史记录 toggles the 常用 drawer', () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn(), recent: ['ls'], favorites: [] });
+    const history = [...container.querySelectorAll('.quick-fix')][1];
     expect(container.querySelector('.cmd-panel')).toBe(null);
-    fire(container.querySelector('.input-cmd'), 'click');
+    fire(history, 'click');
     expect(container.querySelector('.cmd-panel')).not.toBe(null);
-    fire(container.querySelector('.input-cmd'), 'click');
+    fire(history, 'click');
     expect(container.querySelector('.cmd-panel')).toBe(null);
   });
 
   it('tapping a reply chip in the 常用 drawer sends it (tap = send)', async () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-    fire(container.querySelector('.input-cmd'), 'click'); // ▤ opens the drawer (chat/agent page)
+    fire([...container.querySelectorAll('.quick-fix')][1], 'click'); // 历史记录 opens the drawer
     const ok = [...container.querySelectorAll('.fav-chip')].find((n) => n.textContent === 'ok');
     fire(ok, 'click');
     await act(async () => {});
@@ -124,7 +144,7 @@ describe('BottomDock', () => {
 
   it('double-tapping a drawer command fills the box WITHOUT sending (long-press = fill)', () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-    fire(container.querySelector('.input-cmd'), 'click');
+    fire([...container.querySelectorAll('.quick-fix')][1], 'click');
     const compact = [...container.querySelectorAll('.cmd-text')].find((n) => n.textContent === '/compact');
     act(() => compact.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
     expect(container.querySelector('.input-text').value).toBe('/compact');
