@@ -338,6 +338,13 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .input-send:active { background: #3a66e0; }
 .input-send:disabled { background: #3a3c42; color: #6b7280; } /* 空框:禁用态(灰) */
 .input-send svg { width: 20px; height: 20px; display: block; }
+/* 历史:麦克风左侧的图标按钮。空框时后面跟「历史」文字(药丸展开);一打字文字消失、只剩图标。 */
+.input-history { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 34px;
+  border: none; border-radius: 8px; background: transparent; color: #8a93a0; padding: 0 6px;
+  font: inherit; font-size: 12.5px; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+.input-history svg { width: 20px; height: 20px; display: block; }
+.input-history:active { color: #4a7cff; }
+.input-history-label { line-height: 1; white-space: nowrap; }
 /* 录音态:整条输入框变绿 + 明显的呼吸发光(替代单独的"聆听中"提示)。粗绿边 + 一明一暗的绿光晕。 */
 .input-wrap.recording { background: rgba(7,193,96,.14); border: 2px solid #07c160; animation: rec-breathe 1.3s ease-in-out infinite; }
 .input-wrap.recording .input-text { color: #eafff3; }
@@ -362,6 +369,8 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
   display: flex; flex-direction: column;
   background: #232427; border-radius: 12px 12px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,.5);
 }
+/* History drawer keeps a floor so a short/empty send-log still opens as a real panel, not a sliver. */
+.cmd-panel.history { min-height: 40vh; }
 .cmd-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #33353a; }
 .cmd-title { font-size: 15px; font-weight: 600; margin-right: auto; display: flex; align-items: center; gap: 7px; }
 .idea-head-count { font-size: 11px; font-weight: 600; color: #a8c4e0; background: #3d5068; border-radius: 6px; padding: 1px 6px; }
@@ -381,9 +390,14 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .cmd-star svg { width: 16px; height: 16px; display: block; }
 .cmd-star.on { color: #ffd27a; }
 .cmd-star.on svg { fill: currentColor; }
+.cmd-copy { flex: none; background: none; border: none; color: #8a93a0; padding: 6px 8px; touch-action: manipulation; display: inline-flex; align-items: center; }
+.cmd-copy svg { width: 15px; height: 15px; display: block; }
+.cmd-copy:active { color: #9db8ff; }
 .cmd-del { flex: none; background: none; border: none; color: #888; padding: 6px 8px; touch-action: manipulation; display: inline-flex; align-items: center; }
 .cmd-del svg { width: 14px; height: 14px; display: block; }
 .cmd-empty { padding: 20px 14px; color: #888; font-size: 13px; text-align: center; }
+/* History scope hint — a quiet line at the top of the send-log ("current window only"). */
+.cmd-hint { padding: 2px 14px 8px; color: #7f8794; font-size: 11px; }
 
 /* FavDrawer: reply chips + custom-entry adder, reusing the .cmd-* bottom-sheet chrome. */
 .fav-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }

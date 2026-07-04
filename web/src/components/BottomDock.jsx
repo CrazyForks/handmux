@@ -457,9 +457,6 @@ function BottomDock({
                   <button type="button" className="quick-fix" aria-label={t('dock.attach')}
                     disabled={!!upload && !upload.error} onClick={() => uploadRef.current?.click()}>
                     <UploadIcon /><span>{t('dock.attach')}</span></button>
-                  <button type="button" className="quick-fix" aria-label={t('dock.history')}
-                    onClick={() => setPanelOpen((o) => !o)}>
-                    <ClockIcon /><span>{t('dock.history')}</span></button>
                 </div>
                 <div className="quick-scroll">
                   {favs.map((f) => (
@@ -494,6 +491,11 @@ function BottomDock({
                   autoCorrect="off"
                   spellCheck={false}
                 />
+                {/* 历史:麦克风左侧。空框时显示图标+「历史」文字;一打字就收起文字、只留图标(省地方)。 */}
+                <button type="button" className="input-history" aria-label={t('dock.history')} title={t('dock.history')}
+                  onClick={() => setPanelOpen((o) => !o)}>
+                  <ClockIcon />{!value && <span className="input-history-label">{t('dock.history')}</span>}
+                </button>
                 {micAvailable && <MicButton active={recording} disabled={voice.state === 'requesting'} onToggle={toggleMic} />}
                 {/* 发送 ↑ 常驻,空框禁用:点 = 发送组合文本,长按 = 填入。 */}
                 <button type="button" className="input-send" aria-label={t('dock.send')} title={t('dock.send.hint')}

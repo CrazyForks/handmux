@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react';
 import { loadFavs, addFav, removeFav } from '../favStore.js';
-import { XIcon } from './icons.jsx';
+import { XIcon, CopyIcon } from './icons.jsx';
 import { t } from '../i18n';
+
+const copyText = (text) => { try { navigator.clipboard?.writeText(text); } catch { /* clipboard blocked */ } };
 
 // Bottom drawer. Two shapes:
 //  • default — the 常用 editor for the current mode (reply chips + command rows + add/delete).
@@ -31,12 +33,13 @@ export default function FavDrawer({ open, mode, recent = [], onSend, onFill, onC
   return (
     <>
       <div className="cmd-backdrop" onClick={onClose} />
-      <div className="cmd-panel" role="dialog" aria-label={t('fav.title')}>
+      <div className={`cmd-panel${historyOnly ? ' history' : ''}`} role="dialog" aria-label={t('fav.title')}>
         <div className="cmd-head">
           <span className="cmd-title">{historyOnly ? t('dock.history') : t('fav.title')}</span>
           <button className="cmd-close" onClick={onClose} aria-label={t('common.close')}><XIcon /></button>
         </div>
         <div className="cmd-list">
+          {historyOnly && <div className="cmd-hint">{t('history.scope')}</div>}
           {replies.length > 0 && (
             <div className="fav-chips">
               {replies.map((f) => (
@@ -54,6 +57,7 @@ export default function FavDrawer({ open, mode, recent = [], onSend, onFill, onC
           {recent.map((cmd) => (
             <div key={`r:${cmd}`} className="cmd-row">
               <span className="cmd-text" onClick={() => onSend(cmd)} onDoubleClick={() => onFill(cmd)}>{cmd}</span>
+              <button className="cmd-copy" onClick={() => copyText(cmd)} aria-label={t('common.copy')}><CopyIcon /></button>
               {onDelete && (
                 <button className="cmd-del" onClick={() => onDelete(cmd)} aria-label={t('common.delete')}><XIcon /></button>
               )}

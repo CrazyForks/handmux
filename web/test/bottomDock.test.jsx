@@ -83,13 +83,23 @@ describe('BottomDock', () => {
     expect(container.querySelector('.input-send').disabled).toBe(false); // 有字 → 启用
   });
 
-  it('快捷栏:两个固定功能项(上传·历史,带图标+文字)+ 一排自定义命令 chip', () => {
+  it('快捷栏:固定的上传(带图标)+ 一排自定义命令 chip;历史在药丸里', () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
     const fixed = [...container.querySelectorAll('.quick-fix')];
-    expect(fixed).toHaveLength(2);                                   // 上传 + 历史
-    expect(fixed.every((b) => b.querySelector('svg') !== null)).toBe(true); // 固定项各带一个小图标
+    expect(fixed).toHaveLength(1);                                   // 只剩 上传(历史移回药丸)
+    expect(fixed[0].querySelector('svg')).not.toBeNull();           // 上传带图标
+    expect(container.querySelector('.input-history')).not.toBeNull(); // 历史在药丸里(麦克风左侧)
     expect(container.querySelectorAll('.quick-cmd').length).toBeGreaterThan(0); // 命令 chip 存在
     expect([...container.querySelectorAll('.quick-cmd')].some((b) => b.textContent === '/compact')).toBe(true);
+  });
+
+  it('历史按钮:空框显示图标+文字,打字后收起文字只留图标', () => {
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    expect(container.querySelector('.input-history svg')).not.toBeNull();        // 图标常在
+    expect(container.querySelector('.input-history-label')).not.toBeNull();      // 空框:带文字
+    typeInto(container.querySelector('.input-text'), 'ls');
+    expect(container.querySelector('.input-history svg')).not.toBeNull();        // 仍有图标
+    expect(container.querySelector('.input-history-label')).toBeNull();          // 打字后:文字收起
   });
 
   it('快捷栏命令 chip 点即发送(打字+回车);ESC 发 Escape 键而非文字', async () => {
@@ -128,7 +138,7 @@ describe('BottomDock', () => {
 
   it('历史 opens a HISTORY-only drawer (real send log, no 常用 favs)', () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn(), recent: ['git status'] });
-    const history = [...container.querySelectorAll('.quick-fix')][1];
+    const history = container.querySelector('.input-history');
     expect(container.querySelector('.cmd-panel')).toBe(null);
     fire(history, 'click');
     expect(container.querySelector('.cmd-panel')).not.toBe(null);
@@ -141,7 +151,7 @@ describe('BottomDock', () => {
 
   it('tapping a history row re-sends it (tap = send)', async () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn(), recent: ['ls -la'] });
-    fire([...container.querySelectorAll('.quick-fix')][1], 'click'); // 历史 opens the drawer
+    fire(container.querySelector('.input-history'), 'click'); // 历史 opens the drawer
     const row = [...container.querySelectorAll('.cmd-text')].find((n) => n.textContent === 'ls -la');
     fire(row, 'click');
     await act(async () => {});
@@ -150,7 +160,7 @@ describe('BottomDock', () => {
 
   it('double-tapping a history row fills the box WITHOUT sending (long-press = fill)', () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn(), recent: ['/compact'] });
-    fire([...container.querySelectorAll('.quick-fix')][1], 'click');
+    fire(container.querySelector('.input-history'), 'click');
     const row = [...container.querySelectorAll('.cmd-text')].find((n) => n.textContent === '/compact');
     act(() => row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
     expect(container.querySelector('.input-text').value).toBe('/compact');
@@ -160,9 +170,36 @@ describe('BottomDock', () => {
   it('deleting a history row calls onRemoveRecent', () => {
     const onRemoveRecent = vi.fn();
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn(), recent: ['npm test'], onRemoveRecent });
-    fire([...container.querySelectorAll('.quick-fix')][1], 'click');
+    fire(container.querySelector('.input-history'), 'click');
     fire(container.querySelector('.cmd-row .cmd-del'), 'click');
     expect(onRemoveRecent).toHaveBeenCalledWith('npm test');
+  });
+
+  it('history row has a copy button to the LEFT of delete that copies the command', () => {
+    const writeText = vi.fn();
+    const orig = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    try {
+      render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn(), recent: ['npm run build'], onRemoveRecent: vi.fn() });
+      fire(container.querySelector('.input-history'), 'click');
+      const kids = [...container.querySelector('.cmd-row').children];
+      const copyI = kids.findIndex((n) => n.classList.contains('cmd-copy'));
+      const delI = kids.findIndex((n) => n.classList.contains('cmd-del'));
+      expect(copyI).toBeGreaterThan(-1);
+      expect(delI).toBeGreaterThan(copyI); // 复制在删除左侧
+      fire(container.querySelector('.cmd-row .cmd-copy'), 'click');
+      expect(writeText).toHaveBeenCalledWith('npm run build');
+    } finally {
+      if (orig) Object.defineProperty(navigator, 'clipboard', orig);
+      else delete navigator.clipboard;
+    }
+  });
+
+  it('history drawer shows the "current window only" scope hint + has a min-height floor', () => {
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn(), recent: [] });
+    fire(container.querySelector('.input-history'), 'click');
+    expect(container.querySelector('.cmd-hint')).not.toBeNull();          // 提示:仅当前窗口
+    expect(container.querySelector('.cmd-panel').classList.contains('history')).toBe(true); // min-height 类
   });
 
   it('点麦克风开始/再点停止(点按切换)', async () => {
