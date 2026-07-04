@@ -318,12 +318,14 @@ export function RenewIcon() {
   );
 }
 
-// ⌨ Keyboard (Lucide keyboard) — the command-mode toggle that pops / dismisses the system keyboard.
-export function KeyboardIcon() {
+// ⌨ Keyboard toggle with a direction chevron: an up chevron when the keyboard is down (tap to raise it)
+// and a down chevron when it's up (tap to dismiss it).
+export function KeyboardIcon({ down = false }) {
   return (
     <svg {...base}>
-      <rect x="2" y="4" width="20" height="16" rx="2" />
-      <path d="M6 8h.001M10 8h.001M14 8h.001M18 8h.001M8 12h.001M12 12h.001M16 12h.001M7 16h10" />
+      <rect x="3" y="9" width="18" height="11" rx="2" />
+      <path d="M7 13h.01M11 13h.01M15 13h.01M8 16.5h8" />
+      {down ? <path d="M9 4.5l3 3 3-3" /> : <path d="M9 6.5l3-3 3 3" />}
     </svg>
   );
 }

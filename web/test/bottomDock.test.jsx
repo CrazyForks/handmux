@@ -257,19 +257,20 @@ describe('BottomDock', () => {
 
     const dot = (m) => container.querySelector(`.dock-dot[data-page="${m}"]`);
     const cap = () => container.querySelector('.cmd-capture');
-    // jsdom has no TouchEvent — set touches on a plain Event so React's onTouchStart/End still fire.
+    const activePage = (m) => container.querySelector(`.dock-page.${m}`)?.classList.contains('on');
+    // jsdom has no TouchEvent — set touches on plain Events so the native pager listeners still fire.
     const swipe = (dx) => act(() => {
       const pager = container.querySelector('.dock-pager');
-      const s = new Event('touchstart', { bubbles: true }); s.touches = [{ clientX: 200, clientY: 100 }];
-      pager.dispatchEvent(s);
-      const e = new Event('touchend', { bubbles: true }); e.changedTouches = [{ clientX: 200 + dx, clientY: 100 }];
-      pager.dispatchEvent(e);
+      const ev = (type, x, prop) => { const e = new Event(type, { bubbles: true }); e[prop] = [{ clientX: x, clientY: 100 }]; return e; };
+      pager.dispatchEvent(ev('touchstart', 200, 'touches'));
+      pager.dispatchEvent(ev('touchmove', 200 + dx, 'touches'));
+      pager.dispatchEvent(ev('touchend', 200 + dx, 'changedTouches'));
     });
 
     it('defaults to the command page for a plain shell pane (no agent)', () => {
       render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
       expect(dot('command').classList.contains('on')).toBe(true);
-      expect(container.querySelector('.dock-page.command')).not.toBeNull();
+      expect(activePage('command')).toBe(true);
       expect(cap()).not.toBeNull();                                 // hidden capture present
       expect(container.querySelector('.keybar-grid')).not.toBeNull(); // command keyboard present
     });
@@ -277,18 +278,18 @@ describe('BottomDock', () => {
     it('defaults to the chat page when a coding agent is live in the pane', () => {
       render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
       expect(dot('agent').classList.contains('on')).toBe(true);
-      expect(container.querySelector('.dock-page.chat')).not.toBeNull();
-      expect(container.querySelector('.keybar-grid')).toBeNull();   // no keyboard on the chat page
+      expect(activePage('chat')).toBe(true);
+      expect(activePage('command')).toBe(false); // both pages mounted (carousel), only chat is active
     });
 
-    it('swiping the pager switches pages (left → chat, right → command)', () => {
+    it('swiping the pager past the threshold snaps to the other page', () => {
       render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() }); // command by default
-      swipe(-80); // clear leftward swipe → chat
+      swipe(-80); // drag left past the threshold → chat
       expect(dot('agent').classList.contains('on')).toBe(true);
-      expect(container.querySelector('.dock-page.chat')).not.toBeNull();
-      swipe(80); // rightward swipe → command
+      expect(activePage('chat')).toBe(true);
+      swipe(80); // drag right → command
       expect(dot('command').classList.contains('on')).toBe(true);
-      expect(container.querySelector('.keybar-grid')).not.toBeNull();
+      expect(activePage('command')).toBe(true);
     });
 
     it('the ⌨ key toggles focus on the hidden capture (pops / dismisses the keyboard)', () => {

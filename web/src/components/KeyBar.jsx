@@ -29,7 +29,7 @@ export default function KeyBar({ onKey, onText, mods, setMods, onOpenFav, onTogg
       return (
         <button key="kbd" type="button" className={`keybar-key keybar-kbd${keyboardUp ? ' on' : ''}`}
           data-key="kbd" aria-pressed={!!keyboardUp} aria-label="键盘"
-          onClick={onToggleKeyboard}><KeyboardIcon /></button>
+          onClick={onToggleKeyboard}><KeyboardIcon down={keyboardUp} /></button>
       );
     }
     if (id === 'fav') {

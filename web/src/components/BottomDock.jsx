@@ -32,11 +32,76 @@ function BottomDock({
   // Whether the system keyboard is up (the capture input is focused) — lights the ⌨ toggle. Kept in
   // sync by the capture's onFocus/onBlur, so tapping the terminal (which blurs it) also drops the flag.
   const [keyboardUp, setKeyboardUp] = useState(false);
-  // Entering CHAT mode restores the composer's grown height for any preserved multi-line text (the
-  // textarea remounts on a page switch, so its imperative height would otherwise reset to one row).
+  // Entering CHAT mode restores the composer's grown height for any preserved multi-line text.
   useEffect(() => {
     if (mode === 'agent') requestAnimationFrame(() => autoGrow(ref.current));
   }, [mode]);
+
+  // ── Swipe carousel ──────────────────────────────────────────────────────────────────────────
+  // The dock is a two-page track (command | chat) that follows the finger and snaps with an ease
+  // animation on release — both pages stay mounted so you see them slide. pageIndex 0 = command, 1 = chat.
+  const pagerRef = useRef(null);
+  const trackRef = useRef(null);
+  const pageIndex = mode === 'command' ? 0 : 1;
+  const pageIndexRef = useRef(pageIndex);
+  pageIndexRef.current = pageIndex;
+  const setModeRef = useRef(setMode); // latest setMode (closes over the current pane)
+  setModeRef.current = setMode;
+  const firstSnapRef = useRef(true);
+  const applyX = (dx, animate) => {
+    const track = trackRef.current, pager = pagerRef.current;
+    if (!track || !pager) return;
+    const w = pager.clientWidth;
+    track.style.transition = animate ? 'transform .28s cubic-bezier(.22,.61,.36,1)' : 'none';
+    track.style.transform = `translate3d(${-pageIndexRef.current * w + dx}px, 0, 0)`;
+  };
+  // Snap to the current page whenever it changes (animated after the first render).
+  useEffect(() => { applyX(0, !firstSnapRef.current); firstSnapRef.current = false; }, [pageIndex]);
+  // Native (non-passive) touch handlers so a horizontal drag can preventDefault the page's own scroll.
+  useEffect(() => {
+    const pager = pagerRef.current;
+    if (!pager) return;
+    let d = null;
+    const onStart = (e) => {
+      d = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, decided: false, horiz: false } : null;
+    };
+    const onMove = (e) => {
+      if (!d || e.touches.length !== 1) return;
+      const dx = e.touches[0].clientX - d.x, dy = e.touches[0].clientY - d.y;
+      if (!d.decided) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        d.decided = true;
+        d.horiz = Math.abs(dx) > Math.abs(dy);
+      }
+      if (!d.horiz) return; // a vertical drag → leave it to native scroll/selection
+      e.preventDefault();
+      d.dx = dx;
+      const w = pager.clientWidth || 1;
+      let vx = dx; // follow the finger, but resist dragging past the ends (only two pages)
+      if (pageIndexRef.current === 0) vx = Math.min(0, Math.max(-w, vx));
+      else vx = Math.max(0, Math.min(w, vx));
+      applyX(vx, false);
+    };
+    const onEnd = () => {
+      if (!d || !d.horiz) { d = null; return; }
+      const cur = pageIndexRef.current, dx = d.dx;
+      d = null;
+      if (cur === 0 && dx < -50) setModeRef.current('agent');        // dragged left off command → chat
+      else if (cur === 1 && dx > 50) setModeRef.current('command');  // dragged right off chat → command
+      else applyX(0, true);                                          // not far enough → snap back
+    };
+    pager.addEventListener('touchstart', onStart, { passive: true });
+    pager.addEventListener('touchmove', onMove, { passive: false });
+    pager.addEventListener('touchend', onEnd, { passive: true });
+    pager.addEventListener('touchcancel', onEnd, { passive: true });
+    return () => {
+      pager.removeEventListener('touchstart', onStart);
+      pager.removeEventListener('touchmove', onMove);
+      pager.removeEventListener('touchend', onEnd);
+      pager.removeEventListener('touchcancel', onEnd);
+    };
+  }, []);
+
   // Hardware Back closes the command panel instead of exiting the app.
   useBackButton(panelOpen, () => setPanelOpen(false));
   const [upload, setUpload] = useState(null); // { label, pct, error } during/after an upload, else null
@@ -174,21 +239,6 @@ function BottomDock({
     if (document.activeElement === el) el.blur(); else el.focus();
   };
 
-  // Swipe the whole pager left/right to switch pages (command ↔ chat). Only a clear horizontal swipe
-  // acts, so taps and typing pass through; no preventDefault, so the composer/keys still work normally.
-  const swipeRef = useRef(null);
-  const onPagerTouchStart = (e) => {
-    swipeRef.current = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
-  };
-  const onPagerTouchEnd = (e) => {
-    const s = swipeRef.current; swipeRef.current = null;
-    if (!s) return;
-    const p = e.changedTouches[0];
-    const dx = p.clientX - s.x, dy = p.clientY - s.y;
-    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return; // not a clear horizontal swipe
-    setMode(dx < 0 ? 'agent' : 'command'); // swipe left → chat (page 2); swipe right → command (page 1)
-  };
-
   // Pick a command from the panel: fill the box (never send), close the panel, refocus so the user
   // can edit before submitting.
   const pick = (cmd) => {
@@ -309,9 +359,9 @@ function BottomDock({
           <i className={`dock-dot${mode === 'command' ? ' on' : ''}`} data-page="command" />
           <i className={`dock-dot${mode === 'agent' ? ' on' : ''}`} data-page="agent" />
         </div>
-        <div className="dock-pager" onTouchStart={onPagerTouchStart} onTouchEnd={onPagerTouchEnd}>
-          {mode === 'command' ? (
-            <div className="dock-page command">
+        <div className="dock-pager" ref={pagerRef}>
+          <div className="dock-track" ref={trackRef}>
+            <div className={`dock-page command${mode === 'command' ? ' on' : ''}`}>
               {/* Hidden capture: the ⌨ key focuses it to pop the system keyboard; each keystroke then
                   streams straight into the pane and the field wipes to empty (the terminal is the
                   display). onFocus/onBlur track whether the keyboard is up. */}
@@ -335,8 +385,7 @@ function BottomDock({
               <KeyBar onKey={onKey} onText={onText} mods={mods} setMods={setMods}
                 onOpenFav={() => setPanelOpen((o) => !o)} onToggleKeyboard={toggleKeyboard} keyboardUp={keyboardUp} />
             </div>
-          ) : (
-            <div className="dock-page chat">
+            <div className={`dock-page chat${mode === 'agent' ? ' on' : ''}`}>
               {upload && (
                 <div className={`dock-upload${upload.error ? ' error' : ''}`}>
                   <span className="dock-upload-label">
@@ -392,7 +441,7 @@ function BottomDock({
                 </button>
               </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
       <FavDrawer open={panelOpen} mode={mode} recent={recent}
