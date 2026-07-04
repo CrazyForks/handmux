@@ -30,9 +30,9 @@ with your thumb.
   native app to sideload. Just a link your phone opens in any browser.
 - **🧶 Your real session, in your pocket.** Not a fresh shell and not a screenshot — the *exact* tmux
   panes from your computer, agent still running. Desk → phone → desk, same session the whole way.
-- **🤖 Made for vibe coding with agents.** Deepest with Claude Code: a push the instant it needs you,
-  an inbox of which pane is *working / waiting on you / done*, and plan & permission approvals you tap
-  through. Codex, aider, any shell/TUI work too.
+- **🤖 Made for vibe coding with agents.** Claude Code and Codex are first-class: a push the instant
+  one needs you, an inbox of which pane is *working / waiting on you / done*, per-agent usage bars, and
+  plan & permission approvals you tap through. aider and any other shell/TUI work too.
 
 ## Get started in 2 minutes
 
@@ -135,9 +135,10 @@ handmux restart
 handmux status                        show state + current access URL
 handmux logs [--follow] [--lines N]   tail the supervisor log
 handmux config                        show the effective config + where each value came from
-handmux hooks install|uninstall       enable/disable Claude Code notifications (inbox)
+handmux hooks install|uninstall       enable/disable agent notifications (Claude Code / Codex inbox)
 handmux service install [start-flags] start at login (launchd / systemd --user)
 handmux service uninstall             remove the autostart entry
+handmux update                        upgrade to the latest published version
 handmux --version                     print the version
 ```
 
@@ -145,13 +146,14 @@ handmux --version                     print the version
 LAN-only, auto-generates a token, prints a QR), and `handmux setup` is the one place to configure
 persistently. Re-run `setup` to change anything. That's it; everything below is detail.
 
-### Claude Code notifications (inbox)
+### Agent notifications (inbox)
 
-The agent inbox and "pinged when it needs you" push are driven by Claude Code lifecycle hooks. They're
-**opt-in** — `handmux hooks install` copies a tiny notify script into `~/.claude/hooks/` and registers six
-hook events in `~/.claude/settings.json` (idempotent; leaves your own hooks alone). `handmux setup` offers
-this too, and you can turn it on from the phone the first time you open the inbox. `handmux hooks uninstall`
-removes it. If you don't use Claude Code, this is skipped — nothing touches `~/.claude`.
+The agent inbox and "pinged when it needs you" push are driven by agent lifecycle hooks — Claude Code and
+Codex are both wired. They're **opt-in** — `handmux hooks install` copies a tiny notify script into
+`~/.claude/hooks/`, registers six hook events in `~/.claude/settings.json`, and appends a marked hooks
+region to `~/.codex/config.toml` if you use Codex (idempotent; leaves your own hooks alone). `handmux setup`
+offers this too, and you can turn it on from the phone the first time you open the inbox. `handmux hooks
+uninstall` removes it all. Agents you don't use are skipped — it never creates `~/.claude` or `~/.codex`.
 
 ### start flags
 
