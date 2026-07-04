@@ -384,6 +384,28 @@ describe('BottomDock', () => {
       expect(container.querySelector('.dock-track').style.transform).toBe(''); // no inline drag transform
     });
 
+    it('a drag that STARTS on a key never pages (hold-repeat ▲ cannot park the track half-way)', () => {
+      render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() }); // command
+      const up = container.querySelector('[data-key="up"]');
+      act(() => {
+        const ev = (type, x, prop) => { const e = new Event(type, { bubbles: true }); e[prop] = [{ clientX: x, clientY: 100 }]; return e; };
+        up.dispatchEvent(ev('touchstart', 200, 'touches'));
+        up.dispatchEvent(ev('touchmove', 100, 'touches'));      // 100px left — well past the gate, but on a key
+        up.dispatchEvent(ev('touchend', 100, 'changedTouches'));
+      });
+      expect(activePage('command')).toBe(true);                            // stayed put, no switch
+      expect(container.querySelector('.dock-track').style.transform).toBe(''); // never parked mid-swipe
+    });
+
+    it('tapping the page-dots switches mode (reliable, swipe-free)', () => {
+      render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() }); // command
+      expect(activePage('command')).toBe(true);
+      fire(container.querySelector('.dock-dots'), 'click');
+      expect(activePage('chat')).toBe(true);                               // → chat
+      fire(container.querySelector('.dock-dots'), 'click');
+      expect(activePage('command')).toBe(true);                            // → back
+    });
+
     // A right-drag that STARTS on the quick-command strip: it carries over into a page swipe to command
     // only when the strip is at its left edge (can't scroll further right); otherwise the strip scrolls.
     const stripDrag = (dx, scrollLeft) => act(() => {
@@ -421,10 +443,8 @@ describe('BottomDock', () => {
     it('the 展开/收起键盘 toggle (command quick-bar) pops / dismisses the keyboard', () => {
       render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
       const kbd = container.querySelector('.dock-page.command .quick-fix'); // the keyboard toggle
-      expect(kbd.classList.contains('on')).toBe(false);
       fire(kbd, 'click');
       expect(document.activeElement).toBe(cap());        // focused → keyboard up
-      expect(kbd.classList.contains('on')).toBe(true);
       fire(kbd, 'click');
       expect(document.activeElement).not.toBe(cap());    // blurred → keyboard down
     });

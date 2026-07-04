@@ -12,11 +12,13 @@ import { useBackButton } from '../hooks/useBackButton.js';
 import { t } from '../i18n';
 import { MODIFIERS, modActive, consumeMods, withMods } from '../keybarKeys.js';
 
-// The bottom dock is a two-page pager (swipe the whole area left/right to switch; two dots above show
-// which page is current):
-//   • COMMAND page — a fixed 3-row keyboard (KeyBar, inverted-T arrows) whose ⌨ key pops / dismisses the
-//     system keyboard; a hidden capture <input> receives the keystrokes and streams each one straight
-//     into the pane (the terminal is the display, there is no visible box).
+// The bottom dock is a two-page pager (swipe the non-key chrome to switch, or TAP the page-dots above;
+// two dots show which page is current):
+//   • COMMAND page — a fixed 2-row keyboard (KeyBar, inverted-T arrows) plus a quick-bar above it whose
+//     展开/收起键盘 text button pops / dismisses the system keyboard and whose right side is the user's own
+//     saved-command strip; a hidden capture <input> receives the keystrokes and streams each one straight
+//     into the pane (the terminal is the display, there is no visible box). Touches that start on a key
+//     never page (so hold-repeating ▲/◀ can't get mistaken for a swipe).
 //   • CHAT page — the composer (＋ upload, textarea, ▤/常用, mic, send ↑ — tap = type+Enter, long-press =
 //     填入). The mode defaults from whether a coding agent is live in the pane, and sticks per-pane.
 // Quick-bar labels that are terminal KEYS, not text: tapping them fires onKey (e.g. ESC → interrupt)
@@ -130,8 +132,13 @@ function BottomDock({
       // normally the strip's own native scroll, but at its LEFT edge a further right-drag should carry
       // over into a page swipe to command mode (decided in onMove once we know the direction).
       const strip = e.target?.closest?.('.quick-scroll') || null;
+      // A press that begins ON A KEY is a key press, never a page swipe — hold-and-repeat on ▲/◀ (esp.
+      // with the system keyboard up, where the visual viewport shifts under the finger) used to drift
+      // past the swipe gate and park the track half-way between pages. Keys handle their own gesture;
+      // the page swap lives on the non-key dock chrome + the tappable page-dots.
+      const onKeyEl = !!e.target?.closest?.('.keybar-key');
       d = e.touches.length === 1
-        ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, decided: false, horiz: false, strip }
+        ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, decided: false, horiz: false, strip, onKeyEl }
         : null;
     };
     const onMove = (e) => {
@@ -144,7 +151,7 @@ function BottomDock({
         // track. (A key press stays under the 16px gate; a deliberate swipe blows past it.)
         if (Math.abs(dx) < 16 && Math.abs(dy) < 16) return;
         d.decided = true;
-        d.horiz = Math.abs(dx) > Math.abs(dy) * 1.4;
+        d.horiz = !d.onKeyEl && Math.abs(dx) > Math.abs(dy) * 1.4; // a touch that began on a key never pages
         // Drag started on the strip: only steal it as a page swipe when the strip can't scroll further
         // in that direction toward another page — i.e. it's at its LEFT edge and you're dragging RIGHT
         // (which reveals the command page). Otherwise hand the whole gesture to the strip's native scroll.
@@ -342,11 +349,17 @@ function BottomDock({
   };
   const fillFav = (text) => pick(text);
 
-  // Quick-bar / drawer tap = send immediately. A KEY_FAVS label fires the terminal key (ESC → interrupt);
-  // everything else is typed + Enter via sendFav.
+  // Chat quick-bar / drawer tap = send immediately. A KEY_FAVS label fires the terminal key (ESC →
+  // interrupt); everything else is typed + Enter via sendFav.
   const runFav = (text) => {
     if (KEY_FAVS[text]) { onKey(KEY_FAVS[text]); return; }
     sendFav(text);
+  };
+  // COMMAND quick-bar tap: just TYPE the text into the terminal — no Enter (the shell is the display, like
+  // every other command-mode keystroke). A KEY_FAVS label (ESC/Tab) still fires the key.
+  const runCmdFav = (text) => {
+    if (KEY_FAVS[text]) { onKey(KEY_FAVS[text]); return; }
+    onText(text);
   };
 
   // Let the topbar idea panel drop a picked idea into the box (fill, never send) — same path as pick.
@@ -449,12 +462,16 @@ function BottomDock({
     <div className="bottom-dock">
       <div className="dock-left">
         {/* Two-dot page indicator (command · chat); the filled dot marks the current page. A tiny label
-            sits at the top-left, absolutely positioned so it adds no height (stays in the dots' row). */}
-        <div className="dock-dots">
+            sits at the top-left, absolutely positioned so it adds no height (stays in the dots' row).
+            It's also the reliable mode switch: TAP it to flip command ⇄ chat (swiping still works, but the
+            key-dense command page has little room to start one — a tap always does it). It sits OUTSIDE
+            the pager, so this tap never collides with the swipe handlers. */}
+        <button type="button" className="dock-dots" aria-label={t('dock.mode.toggle')}
+          onClick={() => setMode(mode === 'command' ? 'agent' : 'command')}>
           <span className="dock-mode-label">{mode === 'command' ? t('dock.mode.command') : t('dock.mode.chat')}</span>
           <i className={`dock-dot${mode === 'command' ? ' on' : ''}`} data-page="command" aria-hidden="true" />
           <i className={`dock-dot${mode === 'agent' ? ' on' : ''}`} data-page="agent" aria-hidden="true" />
-        </div>
+        </button>
         <div className="dock-pager" ref={pagerRef}>
           <div className={`dock-track${pageIndex === 1 ? ' at-chat' : ''}`} ref={trackRef}>
             <div className={`dock-page command${mode === 'command' ? ' on' : ''}`}>
@@ -482,7 +499,7 @@ function BottomDock({
                   文字随状态变);右=一排可横滑的、你自己的命令(命令模式独立一份),点=输入终端+回车,末尾 ＋ 增删。 */}
               <div className="quick-bar">
                 <div className="quick-fixed">
-                  <button type="button" className={`quick-fix${keyboardUp ? ' on' : ''}`}
+                  <button type="button" className="quick-fix"
                     aria-pressed={keyboardUp} aria-label={keyboardUp ? t('dock.kbdHide') : t('dock.kbdShow')}
                     onPointerDown={keepFocus} onClick={toggleKeyboard}>
                     <KeyboardIcon down={keyboardUp} /><span>{keyboardUp ? t('dock.kbdHide') : t('dock.kbdShow')}</span></button>
@@ -490,7 +507,7 @@ function BottomDock({
                 <div className="quick-scroll">
                   {cmdFavs.map((f) => (
                     <button key={f.text} type="button" className={`quick-cmd qc-${chipTint(f.text)}`}
-                      onClick={() => runFav(f.text)}>{f.text}</button>
+                      onPointerDown={keepFocus} onClick={() => runCmdFav(f.text)}>{f.text}</button>
                   ))}
                   <button type="button" className="quick-cmd quick-cmd-add" aria-label={t('fav.add')}
                     onClick={() => setCmdEditOpen(true)}>＋</button>

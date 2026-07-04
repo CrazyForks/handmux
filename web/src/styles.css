@@ -247,7 +247,12 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .bottom-dock { display: flex; gap: 8px; padding: 8px; background: #2a2b2e; align-items: stretch; }
 .dock-left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 /* Two-dot page indicator above the pager (command · chat); the filled dot marks the current page. */
-.dock-dots { position: relative; display: flex; justify-content: center; align-items: center; gap: 8px; padding: 1px 0 2px; }
+/* Also the tap-to-switch control (a <button>): reset the native chrome, keep it full-width so the whole
+   indicator row is an easy tap target. */
+.dock-dots { position: relative; display: flex; justify-content: center; align-items: center; gap: 8px;
+  padding: 3px 0 4px; width: 100%; border: none; background: transparent; -webkit-tap-highlight-color: transparent; }
+.dock-dots:active .dock-dot { background: #5a5e66; }
+.dock-dots:active .dock-dot.on { background: #6a93ff; }
 .dock-dot { width: 6px; height: 6px; border-radius: 50%; background: #4a4d54; }
 .dock-dot.on { background: #4a7cff; }
 /* Mode label at the top-left. Absolute so it takes no vertical space — the row stays the dots' height. */
@@ -318,9 +323,6 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .quick-fix svg { width: 15px; height: 15px; display: block; color: #aeb6c2; }
 .quick-fix:active { background: #454a54; }
 .quick-fix:disabled { opacity: .4; }
-/* Command page: the 展开/收起键盘 toggle lights blue while the system keyboard is up. */
-.quick-fix.on { background: #3a6bff; border-color: #3a6bff; color: #fff; }
-.quick-fix.on svg { color: #fff; }
 /* 可横滑的自定义命令区:溢出横向滚动、隐藏滚动条;chip 单行不换、不压缩。 */
 .quick-scroll { flex: 1; min-width: 0; display: flex; align-items: stretch; gap: 5px; overflow-x: auto;
   scrollbar-width: none; -webkit-overflow-scrolling: touch; }
