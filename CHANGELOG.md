@@ -7,7 +7,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ### Added
 - **Update notice on the phone: know when the installed CLI is behind npm.** A new token-gated
   `GET /api/version` returns `{ current, latest, updateAvailable }` — `current` is this server's installed
-  version, `latest` comes from the same once-a-day npm cache the CLI keeps (`~/.handmux/update-check.json`),
+  version, `latest` comes from the same hourly npm cache the CLI keeps (`~/.handmux/update-check.json`),
   refreshed asynchronously (never blocking the request) when stale. The web app checks it **once per launch**
   (not polled): if a newer release exists, the settings gear lights its dot and Settings shows a
   「有新版本 vX 可用 · 在电脑上运行 `handmux update`」card (the upgrade is computer-side, so it's a notice,

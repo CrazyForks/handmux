@@ -14,7 +14,7 @@ import { pocketHome } from './state.js';
 import { t } from './i18n/index.js';
 
 export const PKG_NAME = 'handmux';
-export const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // refresh the cached "latest" at most once a day
+export const CHECK_INTERVAL_MS = 60 * 60 * 1000; // refresh the cached "latest" at most once an hour
 
 export function updateCachePath(home) { return path.join(pocketHome(home), 'update-check.json'); }
 

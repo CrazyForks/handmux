@@ -483,7 +483,7 @@ export function createApiRouter({
   // Update hint for the phone: is the globally-installed CLI behind the latest npm release? `current` is
   // this server's version; `latest` comes from the same cache the CLI maintains (~/.handmux/update-check.json).
   // We never block on the network here — if the cache is stale we kick a best-effort async refresh (throttled
-  // to once a day, like the CLI) and return the currently-known value. The upgrade itself is a computer-side
+  // to once an hour, like the CLI) and return the currently-known value. The upgrade itself is a computer-side
   // `handmux update`; the phone only shows the notice.
   r.get('/version', (req, res) => {
     const cache = readCache(home);
