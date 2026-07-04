@@ -137,7 +137,6 @@ export default {
   'history.scope': '현재 창의 기록만',
   'dock.input.placeholder': '메시지를 입력하세요…',
   'dock.command.placeholder': '명령 입력 · Enter로 실행',
-  'dock.mode.command': '명령',
   'dock.mode.agent': '대화',
   'dock.mode.toggle': '입력 모드 전환',
   'dock.mode.command': '명령 모드',

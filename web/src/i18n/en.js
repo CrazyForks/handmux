@@ -156,7 +156,6 @@ export default {
   'history.scope': 'This window only',
   'dock.input.placeholder': 'Say something…',
   'dock.command.placeholder': 'Type a command · Enter runs it',
-  'dock.mode.command': 'Cmd',
   'dock.mode.agent': 'Chat',
   'dock.mode.toggle': 'Switch input mode',
   'dock.mode.command': 'Command',

@@ -83,6 +83,9 @@ function BottomDock({
   const setModeRef = useRef(setMode); // latest setMode (closes over the current pane)
   setModeRef.current = setMode;
   const draggingRef = useRef(false); // a finger drag owns the transform right now
+  // True while a repeat key (arrow / ⌫) is being pressed or auto-repeating — the pager reads it to refuse
+  // starting a page swipe out from under a held key. Set/cleared by the KeyBar (see Key in KeyBar.jsx).
+  const keyHeldRef = useRef(false);
   const trackW = () => pagerRef.current?.clientWidth || 0;
   // The track's RESTING position is owned by React/CSS: the `.dock-track` gets an `at-chat` class for
   // page 1, which a CSS rule maps to translateX(-50%) with a transition (page 0 = no class = 0). Because
@@ -132,17 +135,17 @@ function BottomDock({
       // normally the strip's own native scroll, but at its LEFT edge a further right-drag should carry
       // over into a page swipe to command mode (decided in onMove once we know the direction).
       const strip = e.target?.closest?.('.quick-scroll') || null;
-      // A press that begins ON A KEY is a key press, never a page swipe — hold-and-repeat on ▲/◀ (esp.
-      // with the system keyboard up, where the visual viewport shifts under the finger) used to drift
-      // past the swipe gate and park the track half-way between pages. Keys handle their own gesture;
-      // the page swap lives on the non-key dock chrome + the tappable page-dots.
-      const onKeyEl = !!e.target?.closest?.('.keybar-key');
       d = e.touches.length === 1
-        ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, decided: false, horiz: false, strip, onKeyEl }
+        ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, decided: false, horiz: false, strip }
         : null;
     };
     const onMove = (e) => {
       if (!d || e.touches.length !== 1) return;
+      // A held / auto-repeating keybar key (▲◀▼▶ ⌫) OWNS the touch — never let its finger-drift, esp. with
+      // the system keyboard up, get mistaken for a page swipe (which used to park the track between pages).
+      // The key releases this the instant IT decides the gesture is a swipe (moved past its own 8px gate),
+      // so a deliberate swipe that happens to start on a key still pages. Only blocks BEFORE we commit.
+      if (keyHeldRef.current && !d.horiz) return;
       const dx = e.touches[0].clientX - d.x, dy = e.touches[0].clientY - d.y;
       if (!d.decided) {
         // Need real travel before deciding, and only lock to a swipe when the drag is CLEARLY horizontal
@@ -151,7 +154,7 @@ function BottomDock({
         // track. (A key press stays under the 16px gate; a deliberate swipe blows past it.)
         if (Math.abs(dx) < 16 && Math.abs(dy) < 16) return;
         d.decided = true;
-        d.horiz = !d.onKeyEl && Math.abs(dx) > Math.abs(dy) * 1.4; // a touch that began on a key never pages
+        d.horiz = Math.abs(dx) > Math.abs(dy) * 1.4;
         // Drag started on the strip: only steal it as a page swipe when the strip can't scroll further
         // in that direction toward another page — i.e. it's at its LEFT edge and you're dragging RIGHT
         // (which reveals the command page). Otherwise hand the whole gesture to the strip's native scroll.
@@ -506,14 +509,14 @@ function BottomDock({
                 </div>
                 <div className="quick-scroll">
                   {cmdFavs.map((f) => (
-                    <button key={f.text} type="button" className={`quick-cmd qc-${chipTint(f.text)}`}
+                    <button key={f.text} type="button" className="quick-cmd quick-cmd-plain"
                       onPointerDown={keepFocus} onClick={() => runCmdFav(f.text)}>{f.text}</button>
                   ))}
                   <button type="button" className="quick-cmd quick-cmd-add" aria-label={t('fav.add')}
                     onClick={() => setCmdEditOpen(true)}>＋</button>
                 </div>
               </div>
-              <KeyBar onKey={onKey} onText={onText} mods={mods} setMods={setMods} />
+              <KeyBar onKey={onKey} onText={onText} mods={mods} setMods={setMods} keyHeldRef={keyHeldRef} />
             </div>
             <div className={`dock-page chat${mode === 'agent' ? ' on' : ''}`}>
               {upload && (

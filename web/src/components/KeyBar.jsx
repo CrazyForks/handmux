@@ -15,7 +15,7 @@ const keepFocus = (e) => { if (e.cancelable) e.preventDefault(); };
 // The ⌨ keyboard-toggle and the user's saved commands live in the quick-bar ABOVE this grid (BottomDock).
 // Named keys go out via onKey (→ /keys), literals via onText (→ /send). `mods` is controlled (lifted to
 // BottomDock so the hidden capture input can share it).
-export default function KeyBar({ onKey, onText, mods, setMods }) {
+export default function KeyBar({ onKey, onText, mods, setMods, keyHeldRef }) {
   const modsRef = useRef(mods);
   modsRef.current = mods;
 
@@ -30,7 +30,7 @@ export default function KeyBar({ onKey, onText, mods, setMods }) {
 
   const cell = (id) => {
     if (MODIFIERS.includes(id)) return <ModKey key={id} id={id} state={mods[id]} setMods={setMods} />;
-    return <Key key={id} id={id} dispatch={dispatch} />;
+    return <Key key={id} id={id} dispatch={dispatch} keyHeldRef={keyHeldRef} />;
   };
 
   // A 7-column grid: flattening the rows keeps every column aligned, so ▲ sits directly above ▼ (the
@@ -39,23 +39,42 @@ export default function KeyBar({ onKey, onText, mods, setMods }) {
 }
 
 // Sticky modifier key. A single CLICK toggles it off ↔ armed — a swipe never fires a click, so dragging
-// across the key can't arm it. A DOUBLE-CLICK locks it on. Armed and locked both light up.
+// across the key can't arm it. A DOUBLE-CLICK (two taps on THIS key) locks it on. Armed and locked both
+// light up.
+//
+// We detect the double-tap ourselves instead of using native onDoubleClick: on touch the browser coalesces
+// two quick taps on *different* keys into one dblclick (dispatched to their common ancestor / whichever key
+// the second tap landed on), which latched the second key by accident. A per-key timestamp only counts two
+// taps on the SAME key as a lock — tapping key A then key B fast just arms each once.
+const DBL_MS = 300;
 function ModKey({ id, state, setMods }) {
-  const toggle = () => setMods((m) => ({ ...m, [id]: modActive(m[id]) ? MOD_OFF : MOD_ARMED }));
-  const lock = () => setMods((m) => ({ ...m, [id]: MOD_LOCKED }));
+  const lastTapRef = useRef(-Infinity);                            // -Infinity so the very first tap is never a "double"
+  const onTap = (e) => {
+    const now = e.timeStamp || 0;
+    if (now - lastTapRef.current < DBL_MS) {
+      lastTapRef.current = -Infinity;                              // consume — a 3rd fast tap isn't a lock
+      setMods((m) => ({ ...m, [id]: MOD_LOCKED }));
+      return;
+    }
+    lastTapRef.current = now;
+    setMods((m) => ({ ...m, [id]: modActive(m[id]) ? MOD_OFF : MOD_ARMED }));
+  };
   const cls = state === MOD_LOCKED ? ' locked' : modActive(state) ? ' armed' : '';
   return (
     <button type="button" className={`keybar-key keybar-mod${cls}`} data-key={id} data-state={state}
       aria-pressed={modActive(state)} aria-label={KEY_LABELS[id]}
-      onPointerDown={keepFocus} onClick={toggle} onDoubleClick={lock}>{KEY_LABELS[id]}</button>
+      onPointerDown={keepFocus} onClick={onTap}>{KEY_LABELS[id]}</button>
   );
 }
 
-function Key({ id, dispatch }) {
+function Key({ id, dispatch, keyHeldRef }) {
   const repRef = useRef(null);
   const dispatchRef = useRef(dispatch);
   dispatchRef.current = dispatch; // repeater must always call the latest dispatch (pane id changes)
   const gRef = useRef(null);      // in-flight gesture: { x, y, guard, held, moved }
+  // Mark this touch as "owned by a held key" so the pager won't swipe out from under it (BottomDock reads
+  // keyHeldRef). Released the moment we detect a swipe, so a deliberate swipe starting here still pages.
+  const claim = (v) => { if (keyHeldRef) keyHeldRef.current = v; };
   const label = KEY_LABELS[id];
   if (!REPEAT_KEYS.has(id)) {
     // Fires on CLICK (release), never on touch-down — a left/right page swipe that starts on the key
@@ -74,14 +93,16 @@ function Key({ id, dispatch }) {
     const g = { x: e.clientX, y: e.clientY, held: false, moved: false, guard: null };
     g.guard = setTimeout(() => { g.held = true; g.guard = null; repRef.current.start(); }, 140);
     gRef.current = g;
+    claim(true); // this touch is a key press until proven a swipe
   };
   const move = (e) => {
     const g = gRef.current;
     if (!g || g.held) return; // once repeating we've committed to a press; a later drift doesn't matter
-    if (Math.abs(e.clientX - g.x) > 8 || Math.abs(e.clientY - g.y) > 8) { g.moved = true; clearGuard(); }
+    if (Math.abs(e.clientX - g.x) > 8 || Math.abs(e.clientY - g.y) > 8) { g.moved = true; clearGuard(); claim(false); } // it's a swipe → hand it to the pager
   };
   const up = () => {
     const g = gRef.current;
+    claim(false);
     if (!g) return;
     clearGuard();
     if (g.held) repRef.current.stop();          // was repeating → stop
@@ -89,6 +110,7 @@ function Key({ id, dispatch }) {
     gRef.current = null;
   };
   const cancel = () => {
+    claim(false);
     clearGuard();
     if (gRef.current?.held) repRef.current.stop();
     gRef.current = null; // swipe / leave / cancel → no press

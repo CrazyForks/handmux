@@ -155,7 +155,6 @@ export default {
   'history.scope': '仅当前窗口的记录',
   'dock.input.placeholder': '说点什么…',
   'dock.command.placeholder': '输入命令 · 回车执行',
-  'dock.mode.command': '命令',
   'dock.mode.agent': '对话',
   'dock.mode.toggle': '切换输入模式',
   'dock.mode.command': '命令模式',

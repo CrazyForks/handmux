@@ -137,7 +137,6 @@ export default {
   'history.scope': '僅目前視窗的記錄',
   'dock.input.placeholder': '說點什麼…',
   'dock.command.placeholder': '輸入指令 · Enter 執行',
-  'dock.mode.command': '指令',
   'dock.mode.agent': '對話',
   'dock.mode.toggle': '切換輸入模式',
   'dock.mode.command': '命令模式',

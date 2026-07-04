@@ -17,6 +17,13 @@ const render = (props) => act(() => root.render(
   <Harness onKey={vi.fn()} onText={vi.fn()} {...props} />));
 const btn = (id) => container.querySelector(`[data-key="${id}"]`);
 const fire = (node, type, EventCtor = MouseEvent) => act(() => node.dispatchEvent(new EventCtor(type, { bubbles: true })));
+// A click with an explicit timeStamp — the modifier double-tap-to-lock detection reads e.timeStamp, so
+// tests must control it (MouseEvent's constructor ignores a timeStamp option).
+const clickAt = (node, ts) => act(() => {
+  const e = new MouseEvent('click', { bubbles: true });
+  Object.defineProperty(e, 'timeStamp', { value: ts });
+  node.dispatchEvent(e);
+});
 
 describe('KeyBar command grid', () => {
   it('renders the 2×7 grid (Esc/Tab, ~ / @, ⌫, modifiers, inverted-T arrows, Enter)', () => {
@@ -55,14 +62,26 @@ describe('KeyBar command grid', () => {
     expect(onKey).toHaveBeenCalledWith('S-Up');
   });
 
-  it('single-click arms/clears the modifier; double-click locks it', () => {
+  it('single-click arms/clears the modifier; two fast taps on the same key lock it', () => {
     render();
-    fire(btn('ctrl'), 'click');
+    clickAt(btn('ctrl'), 100);            // arm
     expect(btn('ctrl').classList.contains('armed')).toBe(true);
-    fire(btn('ctrl'), 'click'); // single click again → clears
+    clickAt(btn('ctrl'), 1000);           // >300ms later → a fresh single click → clears
     expect(btn('ctrl').classList.contains('armed')).toBe(false);
-    fire(btn('ctrl'), 'dblclick'); // double-click → locked (fixed on)
+    clickAt(btn('ctrl'), 2000);           // arm again
+    clickAt(btn('ctrl'), 2150);           // within 300ms → locked (fixed on)
     expect(btn('ctrl').classList.contains('locked')).toBe(true);
+  });
+
+  // Regression: two quick taps on DIFFERENT keys must NOT lock the second. Mobile browsers coalesce fast
+  // taps on adjacent keys into a dblclick dispatched to the second key; per-key timestamps ignore that.
+  it('quick taps on two different modifiers just arm each — the second is not locked', () => {
+    render();
+    clickAt(btn('ctrl'), 100);            // tap key A
+    clickAt(btn('shift'), 150);           // tap key B 50ms later
+    expect(btn('ctrl').classList.contains('armed')).toBe(true);
+    expect(btn('shift').classList.contains('armed')).toBe(true);
+    expect(btn('shift').classList.contains('locked')).toBe(false);
   });
 
   it('holding an arrow repeats after the swipe-guard, releasing stops', () => {

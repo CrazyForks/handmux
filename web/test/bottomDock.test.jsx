@@ -384,15 +384,18 @@ describe('BottomDock', () => {
       expect(container.querySelector('.dock-track').style.transform).toBe(''); // no inline drag transform
     });
 
-    it('a drag that STARTS on a key never pages (hold-repeat ▲ cannot park the track half-way)', () => {
+    it('a held repeat key (keyHeldRef engaged) blocks the pager from paging out from under it', () => {
       render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() }); // command
       const up = container.querySelector('[data-key="up"]');
+      // Press-and-hold ▲ (pointerdown) → KeyBar sets keyHeldRef → the pager must ignore a drag on this touch.
+      act(() => up.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 100 })));
       act(() => {
         const ev = (type, x, prop) => { const e = new Event(type, { bubbles: true }); e[prop] = [{ clientX: x, clientY: 100 }]; return e; };
         up.dispatchEvent(ev('touchstart', 200, 'touches'));
-        up.dispatchEvent(ev('touchmove', 100, 'touches'));      // 100px left — well past the gate, but on a key
+        up.dispatchEvent(ev('touchmove', 100, 'touches'));      // 100px left — would page, but a key owns it
         up.dispatchEvent(ev('touchend', 100, 'changedTouches'));
       });
+      act(() => up.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }))); // release the held key
       expect(activePage('command')).toBe(true);                            // stayed put, no switch
       expect(container.querySelector('.dock-track').style.transform).toBe(''); // never parked mid-swipe
     });
