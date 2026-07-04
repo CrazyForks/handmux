@@ -23,8 +23,8 @@ import { MODIFIERS, modActive, consumeMods, withMods } from '../keybarKeys.js';
 // instead of typing the letters + Enter. Keyed by the item's label so a user can add/remove them freely.
 const KEY_FAVS = { ESC: 'Escape', Esc: 'Escape', Tab: 'Tab' };
 
-// Quick-command chips are tinted by CATEGORY (three colours, not a per-label rainbow): a KEY (ESC/Tab) =
-// red, a slash-command (/compact …) = one colour, everything else (ok/继续/1/2/3 …) = another.
+// Quick-command chips are tinted by CATEGORY (three styles, not a per-label rainbow): a KEY (ESC/Tab) =
+// grey, a slash-command (/compact …) = blue, everything else (ok/go on/1/2/3 …) = green.
 // → .qc-esc / .qc-cmd / .qc-reply.
 const chipTint = (text) => {
   if (KEY_FAVS[text]) return 'esc';
@@ -100,10 +100,13 @@ function BottomDock({
     if (!pager) return;
     let d = null;
     const onStart = (e) => {
-      // A drag that begins on the horizontally-scrolling quick-command strip belongs to that strip's
-      // native overflow scroll — don't hijack it as a page swipe (they're both horizontal).
-      if (e.target?.closest?.('.quick-scroll')) { d = null; return; }
-      d = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, decided: false, horiz: false } : null;
+      // Remember if the drag began on the horizontally-scrolling quick-command strip: that gesture is
+      // normally the strip's own native scroll, but at its LEFT edge a further right-drag should carry
+      // over into a page swipe to command mode (decided in onMove once we know the direction).
+      const strip = e.target?.closest?.('.quick-scroll') || null;
+      d = e.touches.length === 1
+        ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, decided: false, horiz: false, strip }
+        : null;
     };
     const onMove = (e) => {
       if (!d || e.touches.length !== 1) return;
@@ -112,8 +115,15 @@ function BottomDock({
         if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
         d.decided = true;
         d.horiz = Math.abs(dx) > Math.abs(dy);
+        // Drag started on the strip: only steal it as a page swipe when the strip can't scroll further
+        // in that direction toward another page — i.e. it's at its LEFT edge and you're dragging RIGHT
+        // (which reveals the command page). Otherwise hand the whole gesture to the strip's native scroll.
+        if (d.horiz && d.strip) {
+          const atLeft = d.strip.scrollLeft <= 0;
+          if (!(dx > 0 && atLeft && pageIndexRef.current === 1)) d.horiz = false;
+        }
       }
-      if (!d.horiz) return; // a vertical drag → leave it to native scroll/selection
+      if (!d.horiz) return; // a vertical drag (or a strip-scroll we handed off) → leave it to native
       e.preventDefault();
       d.dx = dx;
       const w = trackW() || 1;

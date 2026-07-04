@@ -4,15 +4,15 @@
 // (see KEY_FAVS in BottomDock) rather than typed. Persisted to localStorage, keyed by mode, so command
 // mode and agent mode keep separate customizable lists. The version in the key re-seeds the vibe preset
 // below over any older default (one-time; a customised list is rebuilt from it).
-const KEY = (mode) => `hm_favs4_${mode}`;
+const KEY = (mode) => `hm_favs5_${mode}`;
 
 export const DEFAULT_FAVS = {
   command: [],
   agent: [
     { kind: 'reply', text: 'ESC' },  // interrupt — dispatched as the Escape key, not typed
-    { kind: 'reply', text: 'Tab' },  // dispatched as the Tab key (same red as ESC)
+    { kind: 'reply', text: 'Tab' },  // dispatched as the Tab key (grey, like ESC — they're keys)
     { kind: 'reply', text: 'ok' },
-    { kind: 'reply', text: '继续' },
+    { kind: 'reply', text: 'go on' },
     { kind: 'reply', text: '1' },
     { kind: 'reply', text: '2' },
     { kind: 'reply', text: '3' },

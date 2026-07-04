@@ -324,8 +324,8 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
   font: inherit; font-size: 12.5px; padding: 5px 11px; line-height: 1;
   touch-action: manipulation; -webkit-user-select: none; user-select: none; }
 .quick-cmd:active { background: rgba(var(--rgb), .26); border-color: rgb(var(--rgb)); }
-.qc-esc { --rgb: 208,126,126; }   /* 柔和红:打断(不刺眼) */
-.qc-reply { --rgb: 95,208,138; }  /* 绿:ok/继续/1/2/3 */
+.qc-esc { --rgb: 150,157,167; }   /* 灰:按键(ESC/Tab)——和命令区分,不刺眼 */
+.qc-reply { --rgb: 95,208,138; }  /* 绿:ok/go on/1/2/3 */
 .qc-cmd { --rgb: 110,168,255; }   /* 蓝:斜杠命令 */
 /* 上传进度条:浮在输入行上方一条(失败时变红、文案自带原因),沿用 browse-progress 配色。 */
 .dock-upload { padding: 6px 4px 2px; }

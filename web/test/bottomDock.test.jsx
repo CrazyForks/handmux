@@ -362,6 +362,30 @@ describe('BottomDock', () => {
       expect(activePage('command')).toBe(true);
     });
 
+    // A right-drag that STARTS on the quick-command strip: it carries over into a page swipe to command
+    // only when the strip is at its left edge (can't scroll further right); otherwise the strip scrolls.
+    const stripDrag = (dx, scrollLeft) => act(() => {
+      const strip = container.querySelector('.quick-scroll');
+      Object.defineProperty(strip, 'scrollLeft', { value: scrollLeft, configurable: true, writable: true });
+      const ev = (type, x, prop) => { const e = new Event(type, { bubbles: true }); e[prop] = [{ clientX: x, clientY: 100 }]; return e; };
+      strip.dispatchEvent(ev('touchstart', 200, 'touches'));
+      strip.dispatchEvent(ev('touchmove', 200 + dx, 'touches'));
+      strip.dispatchEvent(ev('touchend', 200 + dx, 'changedTouches'));
+    });
+
+    it('at the strip left edge, a right-drag on it carries over to the command page', () => {
+      render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() }); // chat
+      expect(activePage('chat')).toBe(true);
+      stripDrag(80, 0); // right-drag, strip at left edge → page swipe to command
+      expect(activePage('command')).toBe(true);
+    });
+
+    it('when the strip can still scroll (not at left edge), a drag on it does NOT switch pages', () => {
+      render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() }); // chat
+      stripDrag(80, 40); // scrollLeft>0 → native strip scroll, not a page swipe
+      expect(activePage('chat')).toBe(true); // stayed on chat
+    });
+
     it('the ⌨ key toggles focus on the hidden capture (pops / dismisses the keyboard)', () => {
       render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
       const kbd = container.querySelector('[data-key="kbd"]');
