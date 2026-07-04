@@ -5,8 +5,8 @@ import {
 } from '../src/keybarKeys.js';
 
 describe('keybarKeys layout', () => {
-  it('the fixed row holds the four most-used keys (Esc/Tab + Ctrl/Shift modifiers)', () => {
-    expect(FIXED_KEYS).toEqual(['esc', 'tab', 'ctrl', 'shift']);
+  it('the fixed row holds the most-used keys (Esc/Tab + Ctrl/Shift modifiers + ⌫)', () => {
+    expect(FIXED_KEYS).toEqual(['esc', 'tab', 'ctrl', 'shift', 'del']);
   });
 
   it('ctrl/shift/alt are the live modifiers', () => {
@@ -31,8 +31,8 @@ describe('keybarKeys layout', () => {
     for (const id of FIXED_KEYS) expect(typeof KEY_LABELS[id]).toBe('string');
   });
 
-  it('only arrows auto-repeat', () => {
-    expect([...REPEAT_KEYS].sort()).toEqual(['down', 'left', 'right', 'up']);
+  it('arrows and ⌫ auto-repeat', () => {
+    expect([...REPEAT_KEYS].sort()).toEqual(['del', 'down', 'left', 'right', 'up']);
   });
 });
 
@@ -41,6 +41,7 @@ describe('keyAction', () => {
     expect(keyAction('esc')).toEqual({ kind: 'key', name: 'Escape' });
     expect(keyAction('tab')).toEqual({ kind: 'key', name: 'Tab' });
     expect(keyAction('up')).toEqual({ kind: 'key', name: 'Up' });
+    expect(keyAction('del')).toEqual({ kind: 'key', name: 'BSpace' });
     expect(keyAction('pipe')).toEqual({ kind: 'text', ch: '|' });
     expect(keyAction('bslash')).toEqual({ kind: 'text', ch: '\\' });
     expect(keyAction('n1')).toEqual({ kind: 'text', ch: '1' });

@@ -286,9 +286,12 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .input-wrap { position: relative; flex: 1; min-width: 0; display: flex; align-items: flex-end; gap: 2px;
   padding: 4px; border: 1px solid #444; border-radius: 6px; background: #1a1b1e; }
 .input-wrap:focus-within { border-color: #07c160; box-shadow: 0 0 0 1px rgba(7,193,96,.45); }
-/* Command mode recolours the whole bar (blue accent) so the mode is unmissable at a glance. */
-.input-wrap.command { border-color: #3a6bff; background: #16171c; }
-.input-wrap.command:focus-within { border-color: #4a7cff; box-shadow: 0 0 0 1px rgba(74,124,255,.5); }
+/* Command mode shows NO box — the terminal is the display. Collapse the row's chrome and hide the
+   capture <input> (kept in the DOM + focusable so tapping the terminal pops the system keyboard). */
+.dock-input-row.command { padding: 0; }
+.input-wrap.command { padding: 0; border: 0; background: transparent; min-height: 0; }
+.cmd-capture { position: absolute; left: 0; bottom: 0; width: 2px; height: 2px; padding: 0; margin: 0;
+  border: 0; opacity: 0; background: transparent; color: transparent; }
 /* ＋上传:嵌输入框最左、贴最后一行(多行跟到底部);点=弹原生多选,传到会话 .upload。 */
 .input-upload { flex: none; width: 34px; height: 34px;
   display: inline-flex; align-items: center; justify-content: center;

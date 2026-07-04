@@ -32,10 +32,11 @@ function BottomDock({
     setModeOverride((m) => ({ ...m, [pane]: mode === 'command' ? 'agent' : 'command' }));
   // Live modifier state, lifted here so the KeyBar and the command-mode capture input can share it.
   const [mods, setMods] = useState({ ctrl: 'off', shift: 'off', alt: 'off' });
-  // Entering command mode: focus the capture field so the caret sits there ready (and the soft keyboard
-  // opens where the platform allows — iOS still needs a tap on the field, which then works normally).
+  // Command mode does NOT auto-focus — the keyboard pops only when you tap the terminal (enterCommandMode).
+  // Entering AGENT mode restores the composer's grown height for any preserved multi-line text: the
+  // textarea remounts on a mode switch, so its imperative height would otherwise reset to a single row.
   useEffect(() => {
-    if (mode === 'command') cmdRef.current?.focus();
+    if (mode === 'agent') requestAnimationFrame(() => autoGrow(ref.current));
   }, [mode]);
   // Hardware Back closes the command panel instead of exiting the app.
   useBackButton(panelOpen, () => setPanelOpen(false));
@@ -305,18 +306,18 @@ function BottomDock({
             )}
           </div>
         )}
-        <div className="dock-input-row">
+        <div className={`dock-input-row ${mode}`}>
           {/* flex 行:＋(左)· textarea(中,占满)· ▤/麦克风/发送(右),全是 flex 兄弟、不重叠文字框,
               所以选词/移光标碰不到按键。录音时整条变绿 + 呼吸;▤常用语仅空框时出现在麦克风左边(打字即隐)。 */}
           <div className={`input-wrap ${mode}${recording ? ' recording' : ''}`}>
             {mode === 'command' ? (
-              // Command mode: a single-line capture that STREAMS every keystroke straight into the pane
-              // (onCommandInput → onText → send-keys) and wipes itself back to empty — your text lands in
-              // the terminal like a real shell, not staged in the box. Uncontrolled so `el.value = ''`
-              // clears cleanly. No compose-only affordances (upload/phrases/mic/send) — those are agent mode.
+              // Command mode shows NO visible box — the terminal is the display. This capture <input> is
+              // visually hidden (see .cmd-capture) but stays focusable: tapping the terminal focuses it
+              // (enterCommandMode) to pop the system keyboard, then each keystroke streams straight into
+              // the pane (onCommandInput → onText → send-keys) and the field wipes back to empty.
               <input
                 ref={cmdRef}
-                className="input-text"
+                className="input-text cmd-capture"
                 type="text"
                 onInput={onCommandInput}
                 onKeyDown={onInputKeyDown}

@@ -2,10 +2,11 @@
 // renders two rows: a FIXED row (never scrolls) and a per-mode SCROLL row. keyAction() decides how a
 // key is sent — a named tmux key via /keys, or a literal character via /send (enter:false).
 
-// Fixed row, right side: the four most-used keys. Esc/Tab are direct keys; Ctrl/Shift are live
-// modifiers (see below). (The mode-switch segmented control and the 常用 button render on this row's
+// Fixed row, right side: the most-used keys. Esc/Tab/⌫ are direct keys; Ctrl/Shift are live modifiers
+// (see below). ⌫ (del → BSpace) is here because command mode shows no box — you delete in the shell
+// straight from the keybar. (The mode-switch segmented control and the 常用 button render on this row's
 // LEFT — they live in the view, not this table.)
-export const FIXED_KEYS = ['esc', 'tab', 'ctrl', 'shift'];
+export const FIXED_KEYS = ['esc', 'tab', 'ctrl', 'shift', 'del'];
 
 // Live modifiers rendered as sticky keys. Alt sits on the scroll row; ctrl/shift on the fixed row.
 export const MODIFIERS = ['ctrl', 'shift', 'alt'];
@@ -19,7 +20,7 @@ export const SCROLL_KEYS = {
 };
 
 export const KEY_LABELS = {
-  esc: 'Esc', tab: 'Tab', ctrl: 'Ctrl', shift: '⇧', alt: 'Alt',
+  esc: 'Esc', tab: 'Tab', ctrl: 'Ctrl', shift: 'Shift', alt: 'Alt', del: '⌫',
   up: '▲', down: '▼', left: '◀', right: '▶',
   n1: '1', n2: '2', n3: '3', slash: '/', at: '@', bang: '!',
   pipe: '|', bslash: '\\', tilde: '~', dash: '-', under: '_',
@@ -27,11 +28,11 @@ export const KEY_LABELS = {
   ctrlo: 'Ctrl+O', ctrll: 'Ctrl+L',
 };
 
-// Only the arrows auto-repeat while held.
-export const REPEAT_KEYS = new Set(['up', 'down', 'left', 'right']);
+// Arrows and ⌫ auto-repeat while held (hold ⌫ to delete a run of characters).
+export const REPEAT_KEYS = new Set(['up', 'down', 'left', 'right', 'del']);
 
 const NAMED = {
-  esc: 'Escape', tab: 'Tab',
+  esc: 'Escape', tab: 'Tab', del: 'BSpace',
   up: 'Up', down: 'Down', left: 'Left', right: 'Right',
   ctrlo: 'C-o', ctrll: 'C-l',
 };

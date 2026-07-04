@@ -23,7 +23,7 @@ describe('KeyBar two rows', () => {
     render();
     expect(container.querySelector('.keybar-seg')).not.toBeNull();
     expect(container.querySelector('.keybar-fav')).not.toBeNull();
-    for (const id of ['esc', 'tab', 'ctrl', 'shift']) expect(btn(id)).not.toBeNull();
+    for (const id of ['esc', 'tab', 'ctrl', 'shift', 'del']) expect(btn(id)).not.toBeNull();
   });
 
   it('agent mode scroll row shows menu/slash keys; command mode shows shell symbols', () => {
