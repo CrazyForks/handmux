@@ -46,14 +46,17 @@ function combinedHooksStatus(home) {
 // one here. tmux send-keys key names are themselves a closed set, so this stays a strict allowlist
 // (never a passthrough): a key either names an approved token or matches the modifier shape, or it's
 // rejected. The old fixed C-c/C-d/C-z/C-l/C-r/C-o/C-e all still match `C-[a-z0-9]`.
-const NAMED_KEYS = new Set([
-  'Up', 'Down', 'Left', 'Right', 'Space', 'Enter', 'Escape', 'Tab', 'BTab', 'BSpace',
-  'Home', 'End', 'PageUp', 'PageDown',
-]);
-const MOD_KEY = /^[CM]-[a-z0-9]$/; // Ctrl-/Alt- + one letter or digit — C-r, C-a, M-b, …
-const SHIFT_KEY = /^S-(Up|Down|Left|Right)$/; // Shift + arrow (Shift+Tab is the named key BTab)
+const NAMED = 'Up|Down|Left|Right|Space|Enter|Escape|Tab|BTab|BSpace|Home|End|PageUp|PageDown';
+// A named tmux key with any (optional) modifier prefixes, in the canonical C- M- S- order buildChord emits.
+// Covers the plain keys (Up, Tab, …) AND modifier combos on them — C-Up, M-Up, S-Left, C-Tab, C-S-Up, … —
+// so the 按键 editor can bind e.g. Ctrl+Arrow or Ctrl+Tab, not just Ctrl + a letter.
+const NAMED_KEY = new RegExp(`^(?:C-)?(?:M-)?(?:S-)?(?:${NAMED})$`);
+// Ctrl and/or Alt + one letter or digit — C-r, C-a, M-b, C-M-k. Must carry a modifier (never a bare char;
+// Shift+letter folds to the uppercase character, so no S- here).
+const CHAR_KEY = /^(?:C-)?(?:M-)?[a-z0-9]$/;
 export function isAllowedKey(k) {
-  return typeof k === 'string' && (NAMED_KEYS.has(k) || MOD_KEY.test(k) || SHIFT_KEY.test(k));
+  if (typeof k !== 'string') return false;
+  return NAMED_KEY.test(k) || (CHAR_KEY.test(k) && k.includes('-'));
 }
 
 // Pause between typing the text and pressing Enter on a /send. A TUI like Claude Code needs a

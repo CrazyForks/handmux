@@ -22,9 +22,16 @@ describe('isAllowedKey', () => {
     }
   });
 
+  it('accepts modifier combos on named keys (Ctrl/Alt/Shift + arrows, Tab, …)', () => {
+    for (const k of ['C-Up', 'M-Up', 'C-Tab', 'M-Tab', 'C-S-Up', 'C-M-Left',
+      'C-Space', 'M-Enter', 'C-Home', 'C-End']) {
+      expect(isAllowedKey(k)).toBe(true);
+    }
+  });
+
   it('rejects anything outside the vocabulary or modifier shape', () => {
     for (const k of ['', 'rm -rf', 'C-', 'C-rf', 'C-C', 'X-a', 'C-;', 'Enter;ls',
-      'Nope', undefined, null, 42, ['C-c']]) {
+      'Nope', 'a', '5', 'X-Up', 'Ctrl-Up', undefined, null, 42, ['C-c']]) {
       expect(isAllowedKey(k)).toBe(false);
     }
   });

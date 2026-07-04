@@ -1020,6 +1020,7 @@ export default function App() {
             onSent={onCommandSent}
             onToggleFav={toggleFavorite}
             onRemoveRecent={removeRecentCmd}
+            inset={inset}
           />
         </>
       ) : booting ? (

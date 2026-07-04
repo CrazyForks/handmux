@@ -419,9 +419,20 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .cmd-editor .cmd-list { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 0; }
 .cmd-editor .cmd-esection { flex: 1 1 0; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
   display: flex; flex-direction: column; }
-.cmd-editor .cmd-esection .cmd-section { position: sticky; top: 0; z-index: 1; background: #232427; }
+.cmd-editor .cmd-esection .cmd-section { position: sticky; top: 0; z-index: 1; background: #1c1c1e; }
 /* Empty section ("还没有") centres in the half it's given, instead of hugging the top under the title. */
-.cmd-editor .cmd-empty { flex: 1; display: flex; align-items: center; justify-content: center; }
+.cmd-editor .cmd-empty { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+/* iOS grouped-list look for the saved commands, matching the add card: darker sheet, roomy rows with hairline
+   separators, and a larger, more legible type size than the old dense 13px. */
+.cmd-panel.cmd-editor { background: #1c1c1e; }
+.cmd-editor .cmd-section { padding: 12px 16px 6px; }
+.cmd-editor .cmd-section-name { font-size: 13px; letter-spacing: .4px; }
+.cmd-editor .cmd-row { padding: 0 10px 0 16px; }
+.cmd-editor .cmd-row:not(:last-child) { box-shadow: inset 0 -0.5px 0 rgba(84,84,88,.34); }
+.cmd-editor .cmd-text { font-size: 16px; padding: 13px 0; color: #f2f2f7; }
+.cmd-editor .cmd-enter { font-size: 14px; }
+.cmd-editor .cmd-move svg { width: 18px; height: 18px; }
+.cmd-editor .cmd-del svg { width: 16px; height: 16px; }
 .cmd-section { display: flex; align-items: baseline; gap: 8px; padding: 9px 14px 5px; }
 .cmd-section.recent { margin-top: 6px; border-top: 1px solid #2c2e33; padding-top: 12px; }
 .cmd-section-name { font-size: 12px; font-weight: 700; letter-spacing: 1px; }
@@ -529,10 +540,11 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .cmd-dd-btn.open { box-shadow: 0 0 0 2px #0a84ff; }
 .cmd-dd-btn svg { width: 17px; height: 17px; color: rgba(235,235,245,.5); transition: transform .18s; }
 .cmd-dd-btn.open svg { transform: rotate(180deg); }
+.cmd-dd-ph { color: rgba(235,235,245,.3); }
 .cmd-dd-scrim { position: fixed; inset: 0; z-index: 24; }
 .cmd-dd-menu { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 25;
-  background: #2c2c2e; border-radius: 12px; padding: 5px; overflow: hidden;
-  box-shadow: 0 14px 36px rgba(0,0,0,.6), 0 0 0 .5px rgba(0,0,0,.4); }
+  background: #2c2c2e; border-radius: 12px; padding: 5px; max-height: 216px; overflow-y: auto;
+  -webkit-overflow-scrolling: touch; box-shadow: 0 14px 36px rgba(0,0,0,.6), 0 0 0 .5px rgba(0,0,0,.4); }
 .cmd-dd-opt { display: flex; align-items: center; justify-content: space-between; width: 100%; border: none;
   background: transparent; color: #f2f2f7; font: inherit; font-size: 16px; text-align: left; padding: 11px 12px;
   border-radius: 8px; touch-action: manipulation; }

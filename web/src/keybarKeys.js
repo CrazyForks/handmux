@@ -85,8 +85,9 @@ export function withMods(action, mods) {
 // ── Chord builder (for saving a KEY fav, e.g. Ctrl+C) ───────────────────────────────────────────
 // The command-editor's 按键 tab lets you save a key combo: pick modifiers (plain on/off booleans here,
 // not the arm/lock states) + a base key, and this composes the tmux key NAME (sent via onKey → /keys)
-// plus a pretty LABEL (⌃C) for the chip. Returns null when there's nothing sendable (empty, or a bare
-// character with no modifier — that's just typing, not a key).
+// plus a pretty LABEL (Ctrl+C) for the chip. Modifiers are spelled out in full (Ctrl/Shift/Alt), joined
+// with '+', never as ⌃⇧⌥ symbols. Returns null when there's nothing sendable (empty, or a bare character
+// with no modifier — that's just typing, not a key).
 const CHORD_NAMED = {                    // typed word → tmux key name
   up: 'Up', down: 'Down', left: 'Left', right: 'Right',
   enter: 'Enter', ret: 'Enter', return: 'Enter', cr: 'Enter',
@@ -100,20 +101,25 @@ export function buildChord(mods, base) {
   const ctrl = !!mods.ctrl, shift = !!mods.shift, alt = !!mods.alt;
   const raw = (base || '').trim();
   if (!raw) return null;
-  const sym = (ctrl ? '⌃' : '') + (alt ? '⌥' : '') + (shift ? '⇧' : '');
+  // Full modifier names, in Ctrl→Shift→Alt order, joined with '+' onto the base: e.g. Ctrl+Shift+Tab.
+  const names = [];
+  if (ctrl) names.push('Ctrl');
+  if (shift) names.push('Shift');
+  if (alt) names.push('Alt');
+  const label = (baseDisplay) => [...names, baseDisplay].join('+');
   const named = CHORD_NAMED[raw.toLowerCase()];
   if (named) {
     // Shift+Tab is tmux's dedicated BTab; otherwise stack C-/M-/S- prefixes onto the named key.
     const name = (named === 'Tab' && shift && !ctrl && !alt)
       ? 'BTab'
       : (ctrl ? 'C-' : '') + (alt ? 'M-' : '') + (shift ? 'S-' : '') + named;
-    return { name, label: sym + (NAMED_DISPLAY[named] || named) };
+    return { name, label: label(NAMED_DISPLAY[named] || named) };
   }
   if (raw.length !== 1) return null;          // an unknown multi-char base isn't a key
   if (!ctrl && !alt && !shift) return null;   // a bare character is just typing, not a key
   if (ctrl || alt) {                          // Ctrl/Alt + char → C-x / M-x (shift folds away for letters)
     return { name: (ctrl ? 'C-' : '') + (alt ? 'M-' : '') + raw.toLowerCase(),
-      label: (ctrl ? '⌃' : '') + (alt ? '⌥' : '') + raw.toUpperCase() };
+      label: label(raw.toUpperCase()) };
   }
-  return { name: raw.toUpperCase(), label: '⇧' + raw.toUpperCase() }; // Shift + char → the uppercase char
+  return { name: raw.toUpperCase(), label: label(raw.toUpperCase()) }; // Shift + char → the uppercase char
 }

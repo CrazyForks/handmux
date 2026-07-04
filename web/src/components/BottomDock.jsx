@@ -55,7 +55,7 @@ const chipTint = (text) => {
 
 function BottomDock({
   pane, onAuthFail, onKey, onText, cwd = null, agent = null, windowId = null,
-  recent = [], onSent, onRemoveRecent,
+  recent = [], onSent, onRemoveRecent, inset = 0,
 }, fwdRef) {
   const [value, setValue] = useState('');
   const [panelOpen, setPanelOpen] = useState(false);
@@ -658,7 +658,7 @@ function BottomDock({
       {/* Command-mode saved-command editor (opened by the ⚙ in the command quick-bar): two list sections
           (global + this window) over one add row whose 命令/按键 tab picks what you add. Mounted only while
           open so it seeds fresh each time. Never touches the agent list. */}
-      {cmdEditOpen && <CmdFavEditor windowId={windowId} onClose={() => setCmdEditOpen(false)} />}
+      {cmdEditOpen && <CmdFavEditor windowId={windowId} inset={inset} onClose={() => setCmdEditOpen(false)} />}
     </div>
   );
 }

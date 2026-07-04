@@ -8,15 +8,29 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 - **Command mode: saved commands split into GLOBAL + THIS-WINDOW lists.** The command page's quick-bar
   now shows your global commands (grey, first) followed by the current tmux window's own commands (green),
   keyed by the stable window id. The trailing ＋ became a ⚙ that opens a taller editor with two sections,
-  each reorderable with ▲▼. One add row does everything: a big 命令/按键 tab picks what you're adding, a
-  left switch picks which list it lands in.
+  each reorderable with ▲▼. Adding lives in its own centred iOS-style card, opened by a ＋ in the editor
+  header, so the panel itself is just a clean list; the card stacks its controls vertically (命令/按键 tab ·
+  a 全局/窗口 segmented switch for which list · the field · an iOS toggle for 带回车) and rides above the
+  soft keyboard instead of being pushed off-screen. **Tap any saved row to re-open the card pre-filled and
+  edit it in place** (a key fav's chord is decoded back into its 粘滞键 + base key).
   - **命令**: type it; a 「带回车」toggle stores whether a tap types-and-runs it (shown with a trailing ⏎)
     or just types it into the shell.
-  - **按键**: build a key combo (e.g. Ctrl+C) from ⌃⇧⌥ toggles + a base key (a letter, or a named key like
-    `Up`/`Tab`); saved as a chip (⌃C) that fires the real terminal key on tap.
+  - **按键**: build a key combo (e.g. Ctrl+C) from a 粘滞键 dropdown (None / Ctrl / Shift / Alt / Ctrl+Shift
+    / Ctrl+Alt, default None) + a base key (a letter, or a named key like `Up`/`Tab`); saved as a chip (⌃C)
+    that fires the real terminal key on tap.
   The old flat command list carries over unchanged as the global one.
 
 ### Fixed
+- **Saved key combos with a modifier + a named key (Ctrl+Arrow, Ctrl+Tab, …) were silently dropped** — the
+  `/keys` allowlist only accepted a modifier on a single letter/digit (`C-r`) or a bare named key (`Up`,
+  `Tab`), so `C-Up`/`M-Up`/`C-Tab`/`C-S-Up` failed server-side validation and nothing reached tmux. The
+  allowlist now permits any Ctrl/Alt/Shift prefix combo (canonical `C- M- S-` order) on a named key, so the
+  按键 editor can bind Ctrl+Arrow, Alt+Arrow, Ctrl+Tab, Ctrl+Space, Alt+Enter, etc. (Plain arrows/Tab
+  already worked — type the name, e.g. `Up` / `Tab`, as the base key.)
+- **Swiping between key/chat mode leaked the other page** — the neighbouring page (e.g. chat's green
+  chips) showed through at rest and the height mismatch read as a gap mid-swipe. The dock track is a
+  composited layer (`will-change` + `translate3d`), and iOS Safari lets a composited child escape a plain
+  `overflow: hidden` clip; adding `contain: paint` to `.dock-pager` forces it to clip the track.
 - **History (send log) kept vanishing moments after a send** — the window-level history was keyed by the
   tmux window NAME, which tmux auto-renames to the running command; the moment the name changed the read
   key drifted and `getRecent` returned nothing, so the list "cleared itself." Now keyed by the stable

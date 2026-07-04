@@ -5,16 +5,16 @@ import {
 } from '../src/keybarKeys.js';
 
 describe('buildChord (save a key combo from the 按键 tab)', () => {
-  it('Ctrl/Alt + letter → C-x / M-x with a ⌃/⌥ label (shift folds away for letters)', () => {
-    expect(buildChord({ ctrl: true }, 'c')).toEqual({ name: 'C-c', label: '⌃C' });
-    expect(buildChord({ ctrl: true }, 'C')).toEqual({ name: 'C-c', label: '⌃C' });
-    expect(buildChord({ alt: true }, 'x')).toEqual({ name: 'M-x', label: '⌥X' });
-    expect(buildChord({ ctrl: true, alt: true }, 'k')).toEqual({ name: 'C-M-k', label: '⌃⌥K' });
+  it('Ctrl/Alt + letter → C-x / M-x with a full-name label (shift folds away for letters)', () => {
+    expect(buildChord({ ctrl: true }, 'c')).toEqual({ name: 'C-c', label: 'Ctrl+C' });
+    expect(buildChord({ ctrl: true }, 'C')).toEqual({ name: 'C-c', label: 'Ctrl+C' });
+    expect(buildChord({ alt: true }, 'x')).toEqual({ name: 'M-x', label: 'Alt+X' });
+    expect(buildChord({ ctrl: true, alt: true }, 'k')).toEqual({ name: 'C-M-k', label: 'Ctrl+Alt+K' });
   });
   it('named base keys stack modifiers; Shift+Tab is the dedicated BTab', () => {
-    expect(buildChord({ shift: true }, 'Tab')).toEqual({ name: 'BTab', label: '⇧Tab' });
-    expect(buildChord({ ctrl: true }, 'up')).toEqual({ name: 'C-Up', label: '⌃Up' });
-    expect(buildChord({ shift: true }, 'left')).toEqual({ name: 'S-Left', label: '⇧Left' });
+    expect(buildChord({ shift: true }, 'Tab')).toEqual({ name: 'BTab', label: 'Shift+Tab' });
+    expect(buildChord({ ctrl: true }, 'up')).toEqual({ name: 'C-Up', label: 'Ctrl+Up' });
+    expect(buildChord({ shift: true }, 'left')).toEqual({ name: 'S-Left', label: 'Shift+Left' });
     expect(buildChord({}, 'enter')).toEqual({ name: 'Enter', label: 'Enter' });
     expect(buildChord({}, 'esc')).toEqual({ name: 'Escape', label: 'Esc' });
   });

@@ -57,6 +57,21 @@ export function removeFav(mode, text) {
   return saveFavs(mode, loadFavs(mode).filter((f) => f.text !== text));
 }
 
+// Replace the item currently stored as `oldText` with `item`, KEEPING its position (used by the editor's
+// re-open-to-edit flow). No-op if oldText is gone; rejected if the new text would collide with a DIFFERENT
+// existing item (dedupe by text, same rule as addFav).
+export function updateFav(mode, oldText, item) {
+  const items = loadFavs(mode);
+  const i = items.findIndex((f) => f.text === oldText);
+  if (i < 0) return items;
+  if (items.some((f, k) => k !== i && f.text === item.text)) return items;
+  const next = items.slice();
+  next[i] = item.kind === 'key'
+    ? { kind: 'key', text: item.text, label: item.label }
+    : { kind: item.kind, text: item.text, enter: !!item.enter };
+  return saveFavs(mode, next);
+}
+
 // Reorder one item by swapping it with its neighbour. dir < 0 = up, dir > 0 = down. No-op at the ends.
 export function moveFav(mode, text, dir) {
   const items = loadFavs(mode);

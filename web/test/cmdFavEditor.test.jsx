@@ -20,9 +20,19 @@ const setInput = (input, value) => act(() => {
   setter.call(input, value);
   input.dispatchEvent(new Event('input', { bubbles: true }));
 });
-const addInput = () => container.querySelector('.cmd-add .fav-add-input');
-const addBtn = () => container.querySelector('.cmd-add .fav-add-btn');
-const tab = (name) => [...container.querySelectorAll('.cmd-tab')].find((n) => n.textContent === name);
+// Add / edit all happen in a centred card; open it via the header ＋ (add) or by tapping a row (edit).
+const openAdd = () => click(container.querySelector('.cmd-add-open'));
+const card = () => container.querySelector('.cmd-addcard');
+const addInput = () => card().querySelector('.cmd-add-input');
+const saveBtn = () => card().querySelector('.cmd-submit');
+const seg = (name) => [...card().querySelectorAll('.cmd-seg-btn')].find((n) => n.textContent === name);
+const modeTab = (name) => [...card().querySelectorAll('.cmd-modetab')].find((n) => n.textContent === name);
+// In 按键 mode there are two dropdowns: [0] = sticky key, [1] = base key. Pick option `label` from the i-th.
+const dd = (i) => card().querySelectorAll('.cmd-dd')[i];
+const pickFromDD = (i, label) => {
+  click(dd(i).querySelector('.cmd-dd-btn'));
+  click([...dd(i).querySelectorAll('.cmd-dd-opt')].find((n) => n.textContent === label));
+};
 
 describe('CmdFavEditor', () => {
   it('renders a global section always and a window section only when a windowId is given', () => {
@@ -32,32 +42,63 @@ describe('CmdFavEditor', () => {
     expect(container.querySelectorAll('.cmd-esection')).toHaveLength(2);
   });
 
-  it('adds a command; the 带回车 toggle stores enter and shows a ⏎', () => {
+  it('adds a command; the 带回车 switch stores enter and shows a ⏎', () => {
     render();
+    openAdd();
     setInput(addInput(), 'npm test');
-    click(container.querySelector('.cmd-enter-opt input')); // tick 带回车
-    click(addBtn());
+    click(card().querySelector('.cmd-switch input')); // flip 带回车
+    click(saveBtn());
     expect(loadFavs(CMD_GLOBAL)).toEqual([{ kind: 'cmd', text: 'npm test', enter: true }]);
     expect(container.querySelector('.cmd-esection .cmd-enter')).not.toBeNull();
   });
 
-  it('the left switch sends the add to the window list instead of the global one', () => {
+  it('the 全局/窗口 segmented switch sends the add to the window list', () => {
     render();
-    click(container.querySelector('.cmd-scope-sw')); // global → window
+    openAdd();
+    click(seg('当前窗口')); // scope global → window
     setInput(addInput(), 'make');
-    click(addBtn());
+    click(saveBtn());
     expect(loadFavs(cmdScope('@3')).map((f) => f.text)).toEqual(['make']);
     expect(loadFavs(CMD_GLOBAL)).toEqual([]);
   });
 
-  it('the 按键 tab builds a key fav (Ctrl+C) — no ⏎, shows the ⌃C label', () => {
+  it('the 按键 tab picks a sticky key + base key to build a fav (Ctrl+C) — no ⏎, shows the Ctrl+C label', () => {
     render();
-    click(tab('按键'));
-    click(container.querySelector('.cmd-mod[aria-label="ctrl"]')); // arm Ctrl
-    setInput(addInput(), 'c');
-    click(addBtn());
-    expect(loadFavs(CMD_GLOBAL)).toEqual([{ kind: 'key', text: 'C-c', label: '⌃C' }]);
-    expect([...container.querySelectorAll('.cmd-fav-text')].some((n) => n.textContent === '⌃C')).toBe(true);
+    openAdd();
+    click(modeTab('按键')); // mode → key
+    pickFromDD(0, 'Ctrl');  // sticky-key dropdown → Ctrl
+    pickFromDD(1, 'C');     // base-key dropdown → C
+    click(saveBtn());
+    expect(loadFavs(CMD_GLOBAL)).toEqual([{ kind: 'key', text: 'C-c', label: 'Ctrl+C' }]);
+    expect([...container.querySelectorAll('.cmd-fav-text')].some((n) => n.textContent.includes('Ctrl+C'))).toBe(true);
+  });
+
+  it('the base-key picker can bind a named key (Ctrl + ↑) without typing', () => {
+    render();
+    openAdd();
+    click(modeTab('按键'));
+    pickFromDD(0, 'Ctrl');   // sticky → Ctrl
+    pickFromDD(1, '↑ Up');   // base → the Up arrow, selected not typed
+    click(saveBtn());
+    expect(loadFavs(CMD_GLOBAL)).toEqual([{ kind: 'key', text: 'C-Up', label: 'Ctrl+Up' }]);
+  });
+
+  it('tapping a command row re-opens the card to edit it in place', () => {
+    saveFavs(CMD_GLOBAL, [{ kind: 'cmd', text: 'old', enter: false }]);
+    render();
+    click(container.querySelector('.cmd-esection .cmd-fav-text')); // tap row → edit
+    setInput(addInput(), 'new cmd');
+    click(saveBtn());
+    expect(loadFavs(CMD_GLOBAL)).toEqual([{ kind: 'cmd', text: 'new cmd', enter: false }]);
+  });
+
+  it('editing a key fav seeds the sticky-key + base back from the chord', () => {
+    saveFavs(CMD_GLOBAL, [{ kind: 'key', text: 'C-c', label: 'Ctrl+C' }]);
+    render();
+    click(container.querySelector('.cmd-esection .cmd-fav-text')); // tap row → edit (Ctrl + 'c' pre-filled)
+    pickFromDD(1, 'D');                                            // re-pick just the base key
+    click(saveBtn());
+    expect(loadFavs(CMD_GLOBAL)).toEqual([{ kind: 'key', text: 'C-d', label: 'Ctrl+D' }]);
   });
 
   it('▲▼ reorder the list; the top item cannot move up', () => {
