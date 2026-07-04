@@ -21,10 +21,10 @@ import { MODIFIERS, modActive, consumeMods, withMods } from '../keybarKeys.js';
 //     填入). The mode defaults from whether a coding agent is live in the pane, and sticks per-pane.
 // Quick-bar labels that are terminal KEYS, not text: tapping them fires onKey (e.g. ESC → interrupt)
 // instead of typing the letters + Enter. Keyed by the item's label so a user can add/remove them freely.
-const KEY_FAVS = { ESC: 'Escape', Esc: 'Escape' };
+const KEY_FAVS = { ESC: 'Escape', Esc: 'Escape', Tab: 'Tab' };
 
-// Quick-command chips are tinted by CATEGORY (three colours, not a per-label rainbow): ESC = red (it
-// interrupts), a slash-command (/compact …) = one colour, everything else (ok/继续/1/2/3 …) = another.
+// Quick-command chips are tinted by CATEGORY (three colours, not a per-label rainbow): a KEY (ESC/Tab) =
+// red, a slash-command (/compact …) = one colour, everything else (ok/继续/1/2/3 …) = another.
 // → .qc-esc / .qc-cmd / .qc-reply.
 const chipTint = (text) => {
   if (KEY_FAVS[text]) return 'esc';

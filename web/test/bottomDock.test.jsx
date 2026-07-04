@@ -102,6 +102,9 @@ describe('BottomDock', () => {
     fire(chip('ESC'), 'click');
     expect(onKey).toHaveBeenCalledWith('Escape');                    // ESC:发按键
     expect(sendText).not.toHaveBeenCalledWith('%1', 'ESC', true);    // 不是当文字发
+    fire(chip('Tab'), 'click');
+    expect(onKey).toHaveBeenCalledWith('Tab');                       // Tab:也发按键(和 ESC 同色类)
+    expect(sendText).not.toHaveBeenCalledWith('%1', 'Tab', true);
   });
 
   it('录音中点发送:先停语音、发当前文字,后续定稿不再回写', async () => {
