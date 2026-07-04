@@ -58,18 +58,22 @@ describe('KeyBar command grid', () => {
   it('armed Shift turns Tab into BTab and ▲ into S-Up, then resets', () => {
     const onKey = vi.fn();
     render({ onKey });
-    fire(btn('shift'), 'pointerdown'); // arm
+    fire(btn('shift'), 'click'); // arm
     fire(btn('tab'), 'click');
     expect(onKey).toHaveBeenCalledWith('BTab');
-    fire(btn('shift'), 'pointerdown'); // arm again (the first one was consumed)
+    fire(btn('shift'), 'click'); // arm again (the first one was consumed)
     fire(btn('up'), 'pointerdown'); fire(btn('up'), 'pointerup'); // ▲ is a repeat key
     expect(onKey).toHaveBeenCalledWith('S-Up');
   });
 
-  it('a Ctrl tap arms it (lights up)', () => {
+  it('single-click arms/clears the modifier; double-click locks it', () => {
     render();
-    fire(btn('ctrl'), 'pointerdown');
+    fire(btn('ctrl'), 'click');
     expect(btn('ctrl').classList.contains('armed')).toBe(true);
+    fire(btn('ctrl'), 'click'); // single click again → clears
+    expect(btn('ctrl').classList.contains('armed')).toBe(false);
+    fire(btn('ctrl'), 'dblclick'); // double-click → locked (fixed on)
+    expect(btn('ctrl').classList.contains('locked')).toBe(true);
   });
 
   it('holding an arrow repeats, releasing stops', () => {

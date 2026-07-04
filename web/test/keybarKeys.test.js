@@ -10,17 +10,16 @@ describe('command grid layout', () => {
     for (const row of COMMAND_ROWS) expect(row).toHaveLength(7);
   });
 
-  it('pins the corners: ⌨ top-left, ⌫ top-right, 常用 bottom-left, enter bottom-right', () => {
+  it('pins the corners: ⌨ top-left, ⌫ top-right, 常用 bottom-left; Enter at the middle-row right edge', () => {
     expect(COMMAND_ROWS[0][0]).toBe('kbd');
     expect(COMMAND_ROWS[0][6]).toBe('del');
     expect(COMMAND_ROWS[2][0]).toBe('fav');
-    expect(COMMAND_ROWS[2][6]).toBe('enter');
+    expect(COMMAND_ROWS[1][6]).toBe('enter');
   });
 
-  it('places the arrows as an inverted-T (Esc ▲ Tab / ◀ ▼ ▶)', () => {
-    // Row 0 cols 1..3 = Esc ▲ Tab ; Row 1 cols 1..3 = ◀ ▼ ▶ (▲ directly above ▼).
-    expect(COMMAND_ROWS[0].slice(1, 4)).toEqual(['esc', 'up', 'tab']);
-    expect(COMMAND_ROWS[1].slice(1, 4)).toEqual(['left', 'down', 'right']);
+  it('places the arrows as an inverted-T at the bottom-right (▲ over ◀ ▼ ▶)', () => {
+    expect(COMMAND_ROWS[1][5]).toBe('up');                         // ▲ above ▼
+    expect(COMMAND_ROWS[2].slice(4)).toEqual(['left', 'down', 'right']); // ◀ ▼ ▶ on the bottom row
   });
 
   it('ctrl/shift/alt are the live modifiers; kbd/fav are controls', () => {

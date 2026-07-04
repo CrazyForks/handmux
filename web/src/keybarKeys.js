@@ -2,14 +2,14 @@
 // a fixed 3-row grid (no horizontal scroll); agent/chat mode has no keybar at all. keyAction() decides
 // how a key is sent — a named tmux key via /keys, or a literal character via /send (enter:false).
 
-// The command keyboard: a fixed 3×7 grid, never scrolls. The arrows form the classic inverted-T in the
-// centre (Esc ▲ Tab / ◀ ▼ ▶). Corners: ⌨ keyboard-toggle (top-left), ⌫ (top-right), 常用 (bottom-left),
-// enter (bottom-right). 'kbd' and 'fav' are CONTROL ids handled by the view (KeyBar), not dispatched via
-// keyAction. ctrl/shift/alt are live modifiers.
+// The command keyboard: a fixed 3×7 grid, never scrolls. The arrows form the classic inverted-T at the
+// BOTTOM-RIGHT (▲ over ◀ ▼ ▶). Corners: ⌨ keyboard-toggle (top-left), ⌫ (top-right), 常用 (bottom-left);
+// Enter sits at the right edge of the middle row. 'kbd' and 'fav' are CONTROL ids handled by the view
+// (KeyBar), not dispatched via keyAction. ctrl/shift/alt are live modifiers.
 export const COMMAND_ROWS = [
-  ['kbd', 'esc', 'up', 'tab', 'ctrl', 'shift', 'del'],
-  ['pipe', 'left', 'down', 'right', 'alt', 'slash', 'tilde'],
-  ['fav', 'dash', 'under', 'bslash', 'gt', 'lt', 'enter'],
+  ['kbd', 'esc', 'tab', 'pipe', 'slash', 'tilde', 'del'],
+  ['ctrl', 'shift', 'alt', 'dash', 'under', 'up', 'enter'],
+  ['fav', 'bslash', 'gt', 'lt', 'left', 'down', 'right'],
 ];
 
 // Control ids: rendered as special buttons by the view, never dispatched as keys.
@@ -21,7 +21,7 @@ export const MODIFIERS = ['ctrl', 'shift', 'alt'];
 export const KEY_LABELS = {
   kbd: '⌨', esc: 'Esc', up: '▲', tab: 'Tab', ctrl: 'Ctrl', shift: 'Shift', del: '⌫',
   pipe: '|', left: '◀', down: '▼', right: '▶', alt: 'Alt', slash: '/', tilde: '~',
-  fav: '常用', dash: '-', under: '_', bslash: '\\', gt: '>', lt: '<', enter: 'enter',
+  fav: '常用', dash: '-', under: '_', bslash: '\\', gt: '>', lt: '<', enter: 'Enter',
 };
 
 // Arrows and ⌫ auto-repeat while held.

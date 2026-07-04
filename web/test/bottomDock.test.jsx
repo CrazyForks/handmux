@@ -354,7 +354,7 @@ describe('BottomDock', () => {
     it('command mode: armed Ctrl turns the next typed letter into C-<x> instead of streaming it', () => {
       const onKey = vi.fn(), onText = vi.fn();
       render({ pane: '%1', onAuthFail: vi.fn(), onKey, onText }); // command mode (no agent)
-      fire(container.querySelector('[data-key="ctrl"]'), 'pointerdown'); // arm Ctrl on the keybar
+      fire(container.querySelector('[data-key="ctrl"]'), 'click'); // arm Ctrl on the keybar (single click)
       const el = cap();
       act(() => { el.value = 'r'; el.dispatchEvent(new InputEvent('input', { bubbles: true })); }); // type 'r'
       expect(onKey).toHaveBeenCalledWith('C-r');

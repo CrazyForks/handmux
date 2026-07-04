@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import {
   COMMAND_ROWS, MODIFIERS, KEY_LABELS, REPEAT_KEYS, keyAction,
-  MOD_LOCKED, tapMod, modActive, consumeMods, withMods,
+  MOD_OFF, MOD_ARMED, MOD_LOCKED, modActive, consumeMods, withMods,
 } from '../keybarKeys.js';
 import { createRepeater } from '../repeat.js';
 import { KeyboardIcon } from './icons.jsx';
@@ -29,6 +29,7 @@ export default function KeyBar({ onKey, onText, mods, setMods, onOpenFav, onTogg
       return (
         <button key="kbd" type="button" className={`keybar-key keybar-kbd${keyboardUp ? ' on' : ''}`}
           data-key="kbd" aria-pressed={!!keyboardUp} aria-label="键盘"
+          onPointerDown={(e) => e.preventDefault()} /* keep the capture focused so a tap can dismiss it */
           onClick={onToggleKeyboard}><KeyboardIcon down={keyboardUp} /></button>
       );
     }
@@ -47,20 +48,16 @@ export default function KeyBar({ onKey, onText, mods, setMods, onOpenFav, onTogg
   return <div className="keybar-grid">{COMMAND_ROWS.flat().map(cell)}</div>;
 }
 
-// Sticky modifier key: single tap cycles off→armed→locked→off; a fast double-tap (<400ms) locks.
+// Sticky modifier key. A single CLICK toggles it off ↔ armed — a swipe never fires a click, so dragging
+// across the key can't arm it. A DOUBLE-CLICK locks it on. Armed and locked both light up.
 function ModKey({ id, state, setMods }) {
-  const lastRef = useRef(-Infinity);
-  const down = (e) => {
-    if (e.cancelable) e.preventDefault();
-    const now = e.timeStamp;
-    const lock = now - lastRef.current < 400;
-    lastRef.current = lock ? -Infinity : now;
-    setMods((m) => ({ ...m, [id]: lock ? MOD_LOCKED : tapMod(m[id]) }));
-  };
+  const toggle = () => setMods((m) => ({ ...m, [id]: modActive(m[id]) ? MOD_OFF : MOD_ARMED }));
+  const lock = () => setMods((m) => ({ ...m, [id]: MOD_LOCKED }));
   const cls = state === MOD_LOCKED ? ' locked' : modActive(state) ? ' armed' : '';
   return (
     <button type="button" className={`keybar-key keybar-mod${cls}`} data-key={id} data-state={state}
-      aria-pressed={modActive(state)} aria-label={KEY_LABELS[id]} onPointerDown={down}>{KEY_LABELS[id]}</button>
+      aria-pressed={modActive(state)} aria-label={KEY_LABELS[id]}
+      onClick={toggle} onDoubleClick={lock}>{KEY_LABELS[id]}</button>
   );
 }
 

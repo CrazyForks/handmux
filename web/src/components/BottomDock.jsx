@@ -57,6 +57,14 @@ function BottomDock({
   };
   // Snap to the current page whenever it changes (animated after the first render).
   useEffect(() => { applyX(0, !firstSnapRef.current); firstSnapRef.current = false; }, [pageIndex]);
+  // Collapse the pager to the ACTIVE page's natural height so the chat page doesn't inherit the taller
+  // command keyboard's height; the CSS height transition animates the change on a page switch. Runs every
+  // render so it re-measures as the composer grows.
+  useLayoutEffect(() => {
+    const pager = pagerRef.current;
+    const active = pager?.querySelector(mode === 'command' ? '.dock-page.command' : '.dock-page.chat');
+    if (active) pager.style.height = `${active.offsetHeight}px`;
+  });
   // Native (non-passive) touch handlers so a horizontal drag can preventDefault the page's own scroll.
   useEffect(() => {
     const pager = pagerRef.current;
