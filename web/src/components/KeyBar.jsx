@@ -6,6 +6,11 @@ import {
 import { createRepeater } from '../repeat.js';
 import { KeyboardIcon } from './icons.jsx';
 
+// In command mode the hidden capture <input> holds the system keyboard open. A <button> tap would move
+// focus to itself → the capture blurs → the keyboard collapses (so you couldn't tap Ctrl then a letter
+// on the system keyboard). preventDefault on pointer-down keeps focus on the capture; onClick still fires.
+const keepFocus = (e) => { if (e.cancelable) e.preventDefault(); };
+
 // The command keyboard: a fixed 3×7 grid (never scrolls) with the arrows as an inverted-T in the centre
 // (Esc ▲ Tab / ◀ ▼ ▶). ⌨ (top-left) toggles the system keyboard; ⌫ (top-right) and enter (bottom-right)
 // are direct keys; 常用 (bottom-left) opens the favourites; Ctrl/Shift/Alt are sticky modifiers. Named
@@ -29,14 +34,14 @@ export default function KeyBar({ onKey, onText, mods, setMods, onOpenFav, onTogg
       return (
         <button key="kbd" type="button" className={`keybar-key keybar-kbd${keyboardUp ? ' on' : ''}`}
           data-key="kbd" aria-pressed={!!keyboardUp} aria-label="键盘"
-          onPointerDown={(e) => e.preventDefault()} /* keep the capture focused so a tap can dismiss it */
+          onPointerDown={keepFocus} /* keep focus so onClick can toggle (blur→dismiss / focus→pop) */
           onClick={onToggleKeyboard}><KeyboardIcon down={keyboardUp} /></button>
       );
     }
     if (id === 'fav') {
       return (
         <button key="fav" type="button" className="keybar-key keybar-fav" data-key="fav"
-          aria-label="常用" onClick={onOpenFav}>{KEY_LABELS.fav}</button>
+          aria-label="常用" onPointerDown={keepFocus} onClick={onOpenFav}>{KEY_LABELS.fav}</button>
       );
     }
     if (MODIFIERS.includes(id)) return <ModKey key={id} id={id} state={mods[id]} setMods={setMods} />;
@@ -57,7 +62,7 @@ function ModKey({ id, state, setMods }) {
   return (
     <button type="button" className={`keybar-key keybar-mod${cls}`} data-key={id} data-state={state}
       aria-pressed={modActive(state)} aria-label={KEY_LABELS[id]}
-      onClick={toggle} onDoubleClick={lock}>{KEY_LABELS[id]}</button>
+      onPointerDown={keepFocus} onClick={toggle} onDoubleClick={lock}>{KEY_LABELS[id]}</button>
   );
 }
 
@@ -69,8 +74,10 @@ function Key({ id, dispatch }) {
   const label = KEY_LABELS[id];
   if (!REPEAT_KEYS.has(id)) {
     // Fires on CLICK (release), never on touch-down — a left/right page swipe that starts on the key
-    // moves off and cancels the click, so dragging across never triggers it.
-    return <button type="button" className="keybar-key" data-key={id} onClick={() => dispatch(id)}>{label}</button>;
+    // moves off and cancels the click, so dragging across never triggers it. keepFocus keeps the system
+    // keyboard open (tapping this key mustn't blur the capture input).
+    return <button type="button" className="keybar-key" data-key={id}
+      onPointerDown={keepFocus} onClick={() => dispatch(id)}>{label}</button>;
   }
   // Held arrow / ⌫ auto-repeats — but a page swipe can start on a key too, so we must NOT fire on
   // touch-down. A short guard disambiguates: hold still past it → the repeater kicks in (first press +
