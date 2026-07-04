@@ -62,7 +62,10 @@ function BottomDock({
   // The chat page's horizontal quick-command bar reads the agent 常用 list; re-load it whenever the
   // FavDrawer closes so add/delete there flow straight into the bar (single source of truth: favStore).
   const [favs, setFavs] = useState(() => loadFavs('agent'));
-  useEffect(() => { if (!panelOpen) setFavs(loadFavs('agent')); }, [panelOpen]);
+  // `chatEditOpen` is the chat page's ⚙ editor sheet (mirrors the command page's ⚙). Reload the agent list
+  // whenever either it or the history panel closes so add/edit/delete/reorder flow straight into the bar.
+  const [chatEditOpen, setChatEditOpen] = useState(false);
+  useEffect(() => { if (!panelOpen && !chatEditOpen) setFavs(loadFavs('agent')); }, [panelOpen, chatEditOpen]);
   // Command mode has its OWN saved commands (separate from the agent list), split into a GLOBAL list
   // (shown first, grey) and a PER-WINDOW list (shown after, green) — both in the command page's quick-bar.
   // `cmdEditOpen` is the ⚙ editor sheet; reload BOTH lists whenever it closes (or the window changes) so
@@ -407,6 +410,12 @@ function BottomDock({
     if (KEY_FAVS[text]) { onKey(KEY_FAVS[text]); return; }
     sendFav(text);
   };
+  // Chat chip tap by FAV OBJECT — a key fav (kind 'key', e.g. Escape/BSpace/C-c) fires the terminal key;
+  // a legacy KEY_FAVS label (ESC/Tab/⌫ stored as text) still fires its key; anything else is sent as text.
+  const runChatFav = (f) => {
+    if (f.kind === 'key') { onKey(f.text); return; }
+    runFav(f.text);
+  };
   // COMMAND quick-bar tap. A key fav (kind 'key', e.g. C-c) or a legacy KEY_FAVS label (ESC/Tab) fires
   // the terminal key. Otherwise: a with-Enter fav TYPES + runs it (sendFav = type + Enter, server-paced);
   // a plain fav just types into the shell (the shell is the display — you press Enter yourself).
@@ -603,9 +612,12 @@ function BottomDock({
                 </div>
                 <div className="quick-scroll">
                   {favs.map((f) => (
-                    <button key={f.text} type="button" className={`quick-cmd qc-${chipTint(f.text)}`}
-                      onClick={() => runFav(f.text)}>{f.text}</button>
+                    <button key={f.text} type="button"
+                      className={`quick-cmd qc-${f.kind === 'key' ? 'esc' : chipTint(f.text)}`}
+                      onClick={() => runChatFav(f)}>{f.kind === 'key' ? (f.label || f.text) : f.text}</button>
                   ))}
+                  <button type="button" className="quick-cmd quick-cmd-add" aria-label={t('chat.editTitle')}
+                    onClick={() => setChatEditOpen(true)}><GearIcon /></button>
                 </div>
               </div>
               {/* 离屏(非 display:none)以便程序化 .click() 在 iOS Safari 可靠唤起原生选择器,见 .browse-file-input。 */}
@@ -659,6 +671,9 @@ function BottomDock({
           (global + this window) over one add row whose 命令/按键 tab picks what you add. Mounted only while
           open so it seeds fresh each time. Never touches the agent list. */}
       {cmdEditOpen && <CmdFavEditor windowId={windowId} inset={inset} onClose={() => setCmdEditOpen(false)} />}
+      {/* Chat-mode saved-message editor (opened by the ⚙ in the chat quick-bar): one global list whose
+          消息/按键 tab picks what you add. Same card as command mode, chat variant. */}
+      {chatEditOpen && <CmdFavEditor variant="chat" inset={inset} onClose={() => setChatEditOpen(false)} />}
     </div>
   );
 }

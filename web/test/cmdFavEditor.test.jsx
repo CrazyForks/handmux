@@ -101,6 +101,34 @@ describe('CmdFavEditor', () => {
     expect(loadFavs(CMD_GLOBAL)).toEqual([{ kind: 'key', text: 'C-d', label: 'Ctrl+D' }]);
   });
 
+  it('chat variant: one global section, no scope picker; a message saves to the agent list', () => {
+    localStorage.setItem('hm_favs6_agent', JSON.stringify([])); // start empty
+    act(() => root.render(<CmdFavEditor variant="chat" onClose={vi.fn()} />));
+    expect(container.querySelectorAll('.cmd-esection')).toHaveLength(1); // single list, no per-window
+    openAdd();
+    expect(card().querySelector('.cmd-seg')).toBeNull();                 // no 全局/窗口 segmented
+    expect(card().querySelector('.cmd-toggle-row')).toBeNull();          // no 直接发送 toggle (chat always sends)
+    setInput(addInput(), '用中文回答');
+    click(saveBtn());
+    expect(loadFavs('agent')).toEqual([{ kind: 'reply', text: '用中文回答', enter: false }]);
+  });
+
+  it('chat variant: a slash message is stored as a cmd, and 按键 tab saves a bare key fav (Esc)', () => {
+    localStorage.setItem('hm_favs6_agent', JSON.stringify([]));
+    act(() => root.render(<CmdFavEditor variant="chat" onClose={vi.fn()} />));
+    openAdd();
+    setInput(addInput(), '/compact');
+    click(saveBtn());
+    openAdd();
+    click(modeTab('按键'));
+    pickFromDD(1, '⎋ Esc'); // no modifier — a named key is sendable on its own
+    click(saveBtn());
+    expect(loadFavs('agent')).toEqual([
+      { kind: 'cmd', text: '/compact', enter: false },
+      { kind: 'key', text: 'Escape', label: 'Esc' },
+    ]);
+  });
+
   it('▲▼ reorder the list; the top item cannot move up', () => {
     saveFavs(CMD_GLOBAL, [{ kind: 'cmd', text: 'one' }, { kind: 'cmd', text: 'two' }]);
     render();

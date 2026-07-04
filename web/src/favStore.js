@@ -16,9 +16,9 @@ export const cmdScope = (windowId) => (windowId ? `command@${windowId}` : CMD_GL
 export const DEFAULT_FAVS = {
   command: [],
   agent: [
-    { kind: 'reply', text: 'ESC' },  // interrupt — dispatched as the Escape key, not typed
-    { kind: 'reply', text: 'Tab' },  // dispatched as the Tab key (grey, like ESC — they're keys)
-    { kind: 'reply', text: '⌫' },   // backspace — dispatched as the BSpace key (grey, a key not text)
+    { kind: 'key', text: 'Escape', label: 'Esc' },  // interrupt — fired as the Escape key, not typed
+    { kind: 'key', text: 'Tab', label: 'Tab' },      // fired as the Tab key (grey — it's a key)
+    { kind: 'key', text: 'BSpace', label: '⌫' },     // backspace — fired as the BSpace key, not text
     { kind: 'reply', text: 'ok' },
     { kind: 'reply', text: 'go on' },
     { kind: 'reply', text: '1' },

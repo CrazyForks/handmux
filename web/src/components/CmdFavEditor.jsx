@@ -103,32 +103,34 @@ function List({ title, accent, items, onMove, onDel, onEdit }) {
 }
 
 // The add / edit card — its own overlay, mounted only while open. `edit` (a { fav, scope } or null) seeds
-// the fields; absent → a blank add form. Lives inside the .app transform that slides up by `inset` when the
-// keyboard opens, so it adds inset/2 back to re-centre in the visible area ABOVE the keyboard.
-function AddCard({ winScope, edit, inset, onAdd, onUpdate, onClose }) {
+// the fields; absent → a blank add form. `scopes` is the list of target lists (1 = no scope picker shown);
+// `cfg` carries the per-variant bits (message-tab label/placeholder + whether the 直接发送 toggle applies).
+// Lives inside the .app transform that slides up by `inset` when the keyboard opens, so it adds inset/2 back
+// to re-centre in the visible area ABOVE the keyboard.
+function AddCard({ scopes, cfg, edit, inset, onAdd, onUpdate, onClose }) {
   const seedKey = edit && edit.fav.kind === 'key' ? parseKeyFav(edit.fav) : null;
-  const [tab, setTab] = useState(edit ? (edit.fav.kind === 'key' ? 'key' : 'cmd') : 'cmd');
-  const [scope, setScope] = useState(edit && edit.scope === winScope ? 'win' : 'global');
+  const [tab, setTab] = useState(edit ? (edit.fav.kind === 'key' ? 'key' : 'msg') : 'msg');
+  const [scopeKey, setScopeKey] = useState(edit ? edit.scope : scopes[0].key);
   const [text, setText] = useState(edit ? (seedKey ? seedKey.base : edit.fav.text) : '');
   const [enter, setEnter] = useState(edit && edit.fav.kind !== 'key' ? !!edit.fav.enter : false);
   const [sticky, setSticky] = useState(seedKey ? seedKey.sticky : 'none');
   // NOT auto-focused on open: focusing pops the soft keyboard, which shoves the card up before you've even
-  // chosen 命令 vs 按键. The user taps the field when they're ready. (After an add we do refocus, below, so
-  // rapid multi-add keeps typing.)
+  // chosen 消息/命令 vs 按键. The user taps the field when they're ready. (After an add we do refocus, below,
+  // so rapid multi-add keeps typing.)
   const inputRef = useRef(null);
-  // Switching mode clears the field: a command string and a picked base key don't carry over sensibly.
+  // Switching mode clears the field: a text string and a picked base key don't carry over sensibly.
   const switchTab = (nt) => { if (nt !== tab) { setTab(nt); setText(''); } };
   const stickyDD = STICKY_OPTS.map((o) => ({ value: o.key, label: o.label ?? t('cmd.stickyNone') }));
 
   const chord = tab === 'key' ? buildChord(stickyByKey(sticky).mods, text) : null;
-  const targetScope = scope === 'win' && winScope ? winScope : CMD_GLOBAL;
+  const targetScope = scopes.some((s) => s.key === scopeKey) ? scopeKey : scopes[0].key;
   const canSave = tab === 'key' ? !!chord : !!text.trim();
 
   const submit = () => {
     if (!canSave) return;
     const fav = tab === 'key'
       ? { kind: 'key', text: chord.name, label: chord.label }
-      : { kind: 'cmd', text: text.trim(), enter };
+      : { kind: cfg.msgKind(text.trim()), text: text.trim(), enter };
     if (edit) { onUpdate(edit.scope, edit.fav.text, targetScope, fav); return; }
     onAdd(targetScope, fav);
     setText('');                                // keep the card open for rapid multi-add
@@ -145,25 +147,28 @@ function AddCard({ winScope, edit, inset, onAdd, onUpdate, onClose }) {
           <button className="cmd-close" onClick={onClose} aria-label={t('common.close')}><XIcon /></button>
         </div>
 
-        {/* command vs key — underline text tabs (the card's primary mode switch, set apart from the
+        {/* message/command vs key — underline text tabs (the card's primary mode switch, set apart from the
             pill segmented control used for scope below). */}
         <div className="cmd-modetabs" role="tablist">
-          <button type="button" role="tab" aria-selected={tab === 'cmd'}
-            className={`cmd-modetab${tab === 'cmd' ? ' on' : ''}`} onClick={() => switchTab('cmd')}>{t('cmd.tabCmd')}</button>
+          <button type="button" role="tab" aria-selected={tab === 'msg'}
+            className={`cmd-modetab${tab === 'msg' ? ' on' : ''}`} onClick={() => switchTab('msg')}>{cfg.msgLabel}</button>
           <button type="button" role="tab" aria-selected={tab === 'key'}
             className={`cmd-modetab${tab === 'key' ? ' on' : ''}`} onClick={() => switchTab('key')}>{t('cmd.tabKey')}</button>
         </div>
 
-        {/* which list */}
-        <div className="cmd-field">
-          <label className="cmd-field-label">{t('cmd.addTo')}</label>
-          <div className="cmd-seg" role="group">
-            <button type="button" aria-pressed={scope === 'global'}
-              className={`cmd-seg-btn${scope === 'global' ? ' on' : ''}`} onClick={() => setScope('global')}>{t('cmd.global')}</button>
-            <button type="button" aria-pressed={scope === 'win'} disabled={!winScope}
-              className={`cmd-seg-btn win${scope === 'win' ? ' on' : ''}`} onClick={() => setScope('win')}>{t('cmd.window')}</button>
+        {/* which list — only when there's more than one target */}
+        {scopes.length > 1 && (
+          <div className="cmd-field">
+            <label className="cmd-field-label">{t('cmd.addTo')}</label>
+            <div className="cmd-seg" role="group">
+              {scopes.map((s) => (
+                <button key={s.key} type="button" aria-pressed={targetScope === s.key}
+                  className={`cmd-seg-btn${s.accent === 'win' ? ' win' : ''}${targetScope === s.key ? ' on' : ''}`}
+                  onClick={() => setScopeKey(s.key)}>{s.title}</button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {tab === 'key' ? (
           <>
@@ -181,21 +186,23 @@ function AddCard({ winScope, edit, inset, onAdd, onUpdate, onClose }) {
         ) : (
           <>
             <div className="cmd-field">
-              <label className="cmd-field-label">{t('cmd.tabCmd')}</label>
+              <label className="cmd-field-label">{cfg.msgLabel}</label>
               <input ref={inputRef} className="cmd-add-input" value={text}
-                placeholder={t('cmd.addPlaceholder')}
+                placeholder={cfg.placeholder}
                 autoCapitalize="off" autoCorrect="off" spellCheck={false}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} />
             </div>
-            <label className="cmd-toggle-row">
-              <span>{t('cmd.withEnter')}</span>
-              <span className="cmd-switch">
-                <input type="checkbox" checked={enter} onChange={(e) => setEnter(e.target.checked)} />
-                <span className="cmd-switch-track" aria-hidden="true" />
-                <span className="cmd-switch-knob" aria-hidden="true" />
-              </span>
-            </label>
+            {cfg.hasEnter && (
+              <label className="cmd-toggle-row">
+                <span>{t('cmd.withEnter')}</span>
+                <span className="cmd-switch">
+                  <input type="checkbox" checked={enter} onChange={(e) => setEnter(e.target.checked)} />
+                  <span className="cmd-switch-track" aria-hidden="true" />
+                  <span className="cmd-switch-knob" aria-hidden="true" />
+                </span>
+              </label>
+            )}
           </>
         )}
 
@@ -206,16 +213,47 @@ function AddCard({ winScope, edit, inset, onAdd, onUpdate, onClose }) {
   );
 }
 
-export default function CmdFavEditor({ windowId, inset = 0, onClose }) {
+// Two variants share the whole editor:
+//  • 'command' (default) — command mode: GLOBAL + per-window lists; the message tab saves shell COMMANDs
+//    (kind 'cmd') and carries the 直接发送 toggle; the scope picker chooses which list.
+//  • 'chat' — agent mode: a single global list; the message tab saves a MESSAGE to the agent (kind derived
+//    from the '/' prefix, like the old FavDrawer — a slash-command is 'cmd', anything else a 'reply'); no
+//    enter toggle (chat always sends) and no scope picker.
+function editorConfig(variant, windowId) {
+  if (variant === 'chat') {
+    return {
+      title: t('chat.editTitle'),
+      scopes: [{ key: 'agent', title: t('chat.favs'), accent: 'global' }],
+      card: {
+        msgLabel: t('chat.tabMsg'),
+        placeholder: t('chat.addPlaceholder'),
+        hasEnter: false,
+        msgKind: (txt) => (txt.startsWith('/') ? 'cmd' : 'reply'),
+      },
+    };
+  }
   const winScope = windowId ? cmdScope(windowId) : null;
-  const [globalItems, setGlobalItems] = useState(() => loadFavs(CMD_GLOBAL));
-  const [winItems, setWinItems] = useState(() => (winScope ? loadFavs(winScope) : []));
+  return {
+    title: t('cmd.editTitle'),
+    scopes: [
+      { key: CMD_GLOBAL, title: t('cmd.global'), accent: 'global' },
+      ...(winScope ? [{ key: winScope, title: t('cmd.window'), accent: 'win' }] : []),
+    ],
+    card: {
+      msgLabel: t('cmd.tabCmd'),
+      placeholder: t('cmd.addPlaceholder'),
+      hasEnter: true,
+      msgKind: () => 'cmd',
+    },
+  };
+}
+
+export default function CmdFavEditor({ windowId, inset = 0, variant = 'command', onClose }) {
+  const { title, scopes, card: cardCfg } = editorConfig(variant, windowId);
+  const [items, setItems] = useState(() => Object.fromEntries(scopes.map((s) => [s.key, loadFavs(s.key)])));
   const [card, setCard] = useState(null); // null | { edit: null } (add) | { edit: { fav, scope } }
 
-  const reloadAll = () => {
-    setGlobalItems(loadFavs(CMD_GLOBAL));
-    if (winScope) setWinItems(loadFavs(winScope));
-  };
+  const reloadAll = () => setItems(Object.fromEntries(scopes.map((s) => [s.key, loadFavs(s.key)])));
   const doMove = (s, txt, dir) => { moveFav(s, txt, dir); reloadAll(); };
   const doDel = (s, txt) => { removeFav(s, txt); reloadAll(); };
   const doAdd = (s, fav) => { addFav(s, fav); reloadAll(); };
@@ -229,22 +267,21 @@ export default function CmdFavEditor({ windowId, inset = 0, onClose }) {
   return (
     <>
       <div className="cmd-backdrop" onClick={onClose} />
-      <div className="cmd-panel cmd-editor" role="dialog" aria-label={t('cmd.editTitle')}>
+      <div className="cmd-panel cmd-editor" role="dialog" aria-label={title}>
         <div className="cmd-head">
-          <span className="cmd-title">{t('cmd.editTitle')}</span>
+          <span className="cmd-title">{title}</span>
           <button className="cmd-add-open" onClick={() => setCard({ edit: null })} aria-label={t('cmd.addTitle')}><PlusIcon /></button>
           <button className="cmd-close" onClick={onClose} aria-label={t('common.close')}><XIcon /></button>
         </div>
         <div className="cmd-list">
-          <List title={t('cmd.global')} accent="global" items={globalItems}
-            onMove={(txt, d) => doMove(CMD_GLOBAL, txt, d)} onDel={(txt) => doDel(CMD_GLOBAL, txt)}
-            onEdit={(f) => setCard({ edit: { fav: f, scope: CMD_GLOBAL } })} />
-          {winScope && <List title={t('cmd.window')} accent="win" items={winItems}
-            onMove={(txt, d) => doMove(winScope, txt, d)} onDel={(txt) => doDel(winScope, txt)}
-            onEdit={(f) => setCard({ edit: { fav: f, scope: winScope } })} />}
+          {scopes.map((s) => (
+            <List key={s.key} title={s.title} accent={s.accent} items={items[s.key] || []}
+              onMove={(txt, d) => doMove(s.key, txt, d)} onDel={(txt) => doDel(s.key, txt)}
+              onEdit={(f) => setCard({ edit: { fav: f, scope: s.key } })} />
+          ))}
         </div>
       </div>
-      {card && <AddCard winScope={winScope} edit={card.edit} inset={inset}
+      {card && <AddCard scopes={scopes} cfg={cardCfg} edit={card.edit} inset={inset}
         onAdd={doAdd} onUpdate={doUpdate} onClose={() => setCard(null)} />}
     </>
   );

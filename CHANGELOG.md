@@ -19,6 +19,12 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
     / Ctrl+Alt, default None) + a base key (a letter, or a named key like `Up`/`Tab`); saved as a chip (⌃C)
     that fires the real terminal key on tap.
   The old flat command list carries over unchanged as the global one.
+- **Chat mode: the quick-bar is now user-customizable, same as command mode.** A ⚙ at the end of the chat
+  quick-bar opens the same centred iOS card editor (chat variant): a single global list, a 消息/按键 tab, and
+  tap-a-row-to-edit + ▲▼ reorder. 消息 saves a line sent to the agent (a leading `/` marks it a slash-command,
+  kind `cmd`, otherwise a `reply`); 按键 reuses the 粘滞键 + base-key pickers to bind a real terminal key
+  (ESC, Tab, Ctrl+C, …). The seeded ESC/Tab/⌫ defaults are now proper key favs so they render and edit like
+  any other. Chat has no per-window list and no 带回车 toggle (a chat tap always sends).
 
 ### Fixed
 - **Saved key combos with a modifier + a named key (Ctrl+Arrow, Ctrl+Tab, …) were silently dropped** — the
