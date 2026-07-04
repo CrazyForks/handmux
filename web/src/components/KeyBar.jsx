@@ -13,7 +13,7 @@ const keepFocus = (e) => { if (e.cancelable) e.preventDefault(); };
 // How long a repeat key (arrow / ⌫) must be held STILL before it commits to auto-repeat. Long enough
 // that brushing an arrow mid-swipe and pausing briefly doesn't fire it (which recalled shell history) —
 // a real swipe moves past the 8px gate well inside this window and cancels the repeat.
-const HOLD_MS = 300;
+const HOLD_MS = 500;
 
 // The command keyboard: a fixed 2×7 grid (never scrolls). Row 1: Esc/Tab, the ~ / @ symbols and ⌫;
 // row 2: the sticky Ctrl/Shift/Alt modifiers, then the inverted-T arrows (▲ over ◀ ▼ ▶) left of Enter.
