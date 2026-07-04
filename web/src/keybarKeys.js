@@ -1,27 +1,28 @@
 // Pure key model for the mobile COMMAND keyboard (DOM-free, unit-tested on its own). Command mode shows
-// a fixed 3-row grid (no horizontal scroll); agent/chat mode has no keybar at all. keyAction() decides
-// how a key is sent — a named tmux key via /keys, or a literal character via /send (enter:false).
+// a fixed 2-row grid (no horizontal scroll); the ⌨ toggle + the user's saved commands live in a separate
+// quick-bar above it (BottomDock). keyAction() decides how a key is sent — a named tmux key via /keys, or
+// a literal character via /send (enter:false).
 
-// The command keyboard: a fixed 3×7 grid, never scrolls. Row 1 carries ⌨, the sticky modifiers, Esc/Tab
-// and ⌫. The arrows form the classic inverted-T (▲ over ◀ ▼ ▶) in the bottom row, just LEFT of Enter,
-// which sits in the bottom-right corner. Corners: ⌨ (top-left), ⌫ (top-right), 常用 (bottom-left), Enter
-// (bottom-right). 'kbd' and 'fav' are CONTROL ids handled by the view, not dispatched via keyAction.
+// The command keyboard: a fixed 2×7 grid, never scrolls. Row 1: Esc/Tab (top-left), the two most-used
+// shell symbols ~ /, and @, with ⌫ in the top-right corner. Row 2: the sticky modifiers Ctrl/Shift/Alt,
+// then the arrows and Enter. The arrows form the classic inverted-T (▲ over ◀ ▼ ▶) just LEFT of Enter,
+// which sits in the bottom-right corner. 'kbd' is a CONTROL id (the quick-bar's keyboard toggle), handled
+// by the view, not dispatched via keyAction. All the other buried shell symbols were removed on purpose.
 export const COMMAND_ROWS = [
-  ['kbd', 'ctrl', 'shift', 'alt', 'esc', 'tab', 'del'],
-  ['pipe', 'slash', 'tilde', 'dash', 'up', 'under', 'bslash'],
-  ['fav', 'gt', 'lt', 'left', 'down', 'right', 'enter'],
+  ['esc', 'tab', 'tilde', 'slash', 'up', 'at', 'del'],
+  ['ctrl', 'shift', 'alt', 'left', 'down', 'right', 'enter'],
 ];
 
-// Control ids: rendered as special buttons by the view, never dispatched as keys.
-export const CONTROL_KEYS = ['kbd', 'fav'];
+// Control ids: rendered as special buttons by the view, never dispatched as keys. ⌨ now lives in the
+// quick-bar (a text button), not the grid.
+export const CONTROL_KEYS = ['kbd'];
 
 // Live modifiers rendered as sticky keys (tap = arm one key, double-tap = lock).
 export const MODIFIERS = ['ctrl', 'shift', 'alt'];
 
 export const KEY_LABELS = {
   kbd: '⌨', esc: 'Esc', up: '▲', tab: 'Tab', ctrl: 'Ctrl', shift: 'Shift', del: '⌫',
-  pipe: '|', left: '◀', down: '▼', right: '▶', alt: 'Alt', slash: '/', tilde: '~',
-  fav: '常用', dash: '-', under: '_', bslash: '\\', gt: '>', lt: '<', enter: 'Enter',
+  left: '◀', down: '▼', right: '▶', alt: 'Alt', slash: '/', tilde: '~', at: '@', enter: 'Enter',
 };
 
 // Arrows and ⌫ auto-repeat while held.
@@ -32,7 +33,7 @@ const NAMED = {
   up: 'Up', down: 'Down', left: 'Left', right: 'Right',
 };
 const CHARS = {
-  pipe: '|', slash: '/', tilde: '~', dash: '-', under: '_', bslash: '\\', gt: '>', lt: '<',
+  slash: '/', tilde: '~', at: '@',
 };
 
 export function keyAction(id) {

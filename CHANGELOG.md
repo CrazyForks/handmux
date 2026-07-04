@@ -30,13 +30,15 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   user-editable vibe commands (`ESC 继续 ok 1 2 3 /compact …`). Tapping a command sends it immediately —
   `ESC` fires the Escape key (interrupt), the rest type + Enter. Add/remove commands via 历史记录 (they
   persist per-mode and feed the strip). The strip scrolls without hijacking the page swipe.
-- **Keyboard: two rows + live Ctrl/Shift/Alt modifiers** — the key area is now a **fixed row** (the
-  `命令 | 对话` mode switch + a 常用 button on the left, then the four most-used keys Esc/Tab/Ctrl/Shift)
-  above a **horizontally-scrolling row** (arrow cluster + the buried shell symbols `| \ ~ - _ > < & ; *`
-  + Alt). Ctrl/Shift/Alt are sticky modifiers — tap arms for the next key (composing `C-<x>` / `BTab` /
-  `M-<x>` / `S-<arrow>`), double-tap locks — so any readline/tmux binding is reachable without a fixed
-  combo. Dropped the swipe-paging; the scroll row's symbols track the mode. ⌫ and Enter now come from
-  the system keyboard (the dedicated rail is gone). `/keys` accepts `C-`/`M-<letter|digit>` and `S-<arrow>`.
+- **Command keyboard: two key rows + a quick-bar (mirrors the chat layout)** — the command keyboard is
+  now a fixed **2×7 grid** (row 1 `Esc Tab ~ / ▲ @ ⌫`, row 2 `Ctrl Shift Alt ◀ ▼ ▶ Enter` — Esc/Tab
+  top-left, ⌫ top-right, Enter bottom-right, the inverted-T arrows just left of it) above a **quick-bar**
+  like chat's: its left is a fixed text button that **展开/收起键盘** (toggles the system keyboard, label
+  follows state), its right a horizontally-scrollable strip of your **own saved commands** — a list kept
+  **separate from** the chat one; tap = type + Enter into the shell (`ESC` fires the key), the trailing ＋
+  adds/removes entries. All the buried shell symbols (`| \ _ > < & ; *`) are gone; only `~ / @` stay.
+  Ctrl/Shift/Alt are still sticky modifiers — tap arms for the next key (composing `C-<x>` / `BTab` /
+  `M-<x>` / `S-<arrow>`), double-tap locks. `/keys` accepts `C-`/`M-<letter|digit>` and `S-<arrow>`.
 - **Multi-pane window tab is more compact** — the expanded `name │ ① cmd ▾` tab now caps the name and
   command widths (ellipsis) and tightens padding, so a long command no longer blows the tab wide. The
   full command still shows in the pane menu.

@@ -14,45 +14,34 @@ function Harness(props) {
   return <KeyBar mods={mods} setMods={setMods} {...props} />;
 }
 const render = (props) => act(() => root.render(
-  <Harness onKey={vi.fn()} onText={vi.fn()} onOpenFav={vi.fn()} onToggleKeyboard={vi.fn()} keyboardUp={false} {...props} />));
+  <Harness onKey={vi.fn()} onText={vi.fn()} {...props} />));
 const btn = (id) => container.querySelector(`[data-key="${id}"]`);
 const fire = (node, type, EventCtor = MouseEvent) => act(() => node.dispatchEvent(new EventCtor(type, { bubbles: true })));
 
 describe('KeyBar command grid', () => {
-  it('renders the full 3×7 grid (⌨/常用 controls, Esc/Tab/⌫/enter, arrows, modifiers, symbols)', () => {
+  it('renders the 2×7 grid (Esc/Tab, ~ / @, ⌫, modifiers, inverted-T arrows, Enter)', () => {
     render();
-    for (const id of ['kbd', 'fav', 'esc', 'tab', 'del', 'enter',
-      'up', 'down', 'left', 'right', 'ctrl', 'shift', 'alt', 'pipe', 'slash', 'tilde', 'dash', 'under', 'bslash', 'gt', 'lt']) {
+    for (const id of ['esc', 'tab', 'tilde', 'slash', 'at', 'del', 'enter',
+      'up', 'down', 'left', 'right', 'ctrl', 'shift', 'alt']) {
       expect(btn(id)).not.toBeNull();
     }
+    // The ⌨ toggle, 常用 opener, and the buried shell symbols are gone from the grid.
+    for (const id of ['kbd', 'fav', 'pipe', 'dash', 'under', 'bslash', 'gt', 'lt']) expect(btn(id)).toBeNull();
   });
 
   it('a named key calls onKey, a symbol calls onText, enter/⌫ map correctly', () => {
     const onKey = vi.fn(), onText = vi.fn();
     render({ onKey, onText });
     fire(btn('esc'), 'click');
-    fire(btn('pipe'), 'click');
+    fire(btn('slash'), 'click');
+    fire(btn('at'), 'click');
     fire(btn('enter'), 'click');
     fire(btn('del'), 'pointerdown'); fire(btn('del'), 'pointerup'); // ⌫ is a repeat key
     expect(onKey).toHaveBeenCalledWith('Escape');
-    expect(onText).toHaveBeenCalledWith('|');
+    expect(onText).toHaveBeenCalledWith('/');
+    expect(onText).toHaveBeenCalledWith('@');
     expect(onKey).toHaveBeenCalledWith('Enter');
     expect(onKey).toHaveBeenCalledWith('BSpace');
-  });
-
-  it('⌨ calls onToggleKeyboard and lights up when the keyboard is up', () => {
-    const onToggleKeyboard = vi.fn();
-    render({ onToggleKeyboard, keyboardUp: true });
-    expect(btn('kbd').classList.contains('on')).toBe(true);
-    fire(btn('kbd'), 'click');
-    expect(onToggleKeyboard).toHaveBeenCalled();
-  });
-
-  it('常用 calls onOpenFav', () => {
-    const onOpenFav = vi.fn();
-    render({ onOpenFav });
-    fire(btn('fav'), 'click');
-    expect(onOpenFav).toHaveBeenCalled();
   });
 
   it('armed Shift turns Tab into BTab and ▲ into S-Up, then resets', () => {

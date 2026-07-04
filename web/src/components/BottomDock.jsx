@@ -4,7 +4,7 @@ import KeyBar from './KeyBar.jsx';
 import FavDrawer from './FavDrawer.jsx';
 import MicButton from './MicButton.jsx';
 import { loadFavs } from '../favStore.js';
-import { ArrowUpIcon, UploadIcon, ClockIcon } from './icons.jsx';
+import { ArrowUpIcon, UploadIcon, ClockIcon, KeyboardIcon } from './icons.jsx';
 import { usePushToTalk } from '../voice/usePushToTalk.js';
 import { useAsrAvailable } from '../voice/useAsrAvailable.js';
 import { useScreenWakeLock } from '../hooks/useScreenWakeLock.js';
@@ -22,6 +22,11 @@ import { MODIFIERS, modActive, consumeMods, withMods } from '../keybarKeys.js';
 // Quick-bar labels that are terminal KEYS, not text: tapping them fires onKey (e.g. ESC → interrupt)
 // instead of typing the letters + Enter. Keyed by the item's label so a user can add/remove them freely.
 const KEY_FAVS = { ESC: 'Escape', Esc: 'Escape', Tab: 'Tab' };
+
+// Command mode keeps the system keyboard open via the hidden capture. A quick-bar <button> tap would
+// steal focus → the capture blurs → the keyboard collapses. preventDefault on pointer-down keeps focus
+// on the capture; onClick still fires. (Same trick the KeyBar keys use.)
+const keepFocus = (e) => { if (e.cancelable) e.preventDefault(); };
 
 // How far (px) a horizontal drag must travel before releasing commits a page switch. Higher = harder to
 // trigger a swap by accident (was 50).
@@ -46,6 +51,12 @@ function BottomDock({
   // FavDrawer closes so add/delete there flow straight into the bar (single source of truth: favStore).
   const [favs, setFavs] = useState(() => loadFavs('agent'));
   useEffect(() => { if (!panelOpen) setFavs(loadFavs('agent')); }, [panelOpen]);
+  // Command mode has its OWN saved-command list (separate from the agent one) — shown in the command
+  // page's quick-bar. `cmdEditOpen` is the little editor drawer opened by the strip's ＋; reload the
+  // list whenever it closes so add/delete flow straight into the bar.
+  const [cmdFavs, setCmdFavs] = useState(() => loadFavs('command'));
+  const [cmdEditOpen, setCmdEditOpen] = useState(false);
+  useEffect(() => { if (!cmdEditOpen) setCmdFavs(loadFavs('command')); }, [cmdEditOpen]);
   const [modeOverride, setModeOverride] = useState({}); // pane → 'command' | 'agent'
   const mode = modeOverride[pane] || (agent ? 'agent' : 'command');
   const setMode = (next) => setModeOverride((m) => ({ ...m, [pane]: next }));
@@ -467,8 +478,25 @@ function BottomDock({
                 autoComplete="off"
                 spellCheck={false}
               />
-              <KeyBar onKey={onKey} onText={onText} mods={mods} setMods={setMods}
-                onOpenFav={() => setPanelOpen((o) => !o)} onToggleKeyboard={toggleKeyboard} keyboardUp={keyboardUp} />
+              {/* 命令模式快捷栏(键盘上方,和聊天模式那条同构):左=固定的「展开/收起键盘」文字按钮(切系统键盘,
+                  文字随状态变);右=一排可横滑的、你自己的命令(命令模式独立一份),点=输入终端+回车,末尾 ＋ 增删。 */}
+              <div className="quick-bar">
+                <div className="quick-fixed">
+                  <button type="button" className={`quick-fix${keyboardUp ? ' on' : ''}`}
+                    aria-pressed={keyboardUp} aria-label={keyboardUp ? t('dock.kbdHide') : t('dock.kbdShow')}
+                    onPointerDown={keepFocus} onClick={toggleKeyboard}>
+                    <KeyboardIcon down={keyboardUp} /><span>{keyboardUp ? t('dock.kbdHide') : t('dock.kbdShow')}</span></button>
+                </div>
+                <div className="quick-scroll">
+                  {cmdFavs.map((f) => (
+                    <button key={f.text} type="button" className={`quick-cmd qc-${chipTint(f.text)}`}
+                      onClick={() => runFav(f.text)}>{f.text}</button>
+                  ))}
+                  <button type="button" className="quick-cmd quick-cmd-add" aria-label={t('fav.add')}
+                    onClick={() => setCmdEditOpen(true)}>＋</button>
+                </div>
+              </div>
+              <KeyBar onKey={onKey} onText={onText} mods={mods} setMods={setMods} />
             </div>
             <div className={`dock-page chat${mode === 'agent' ? ' on' : ''}`}>
               {upload && (
@@ -545,6 +573,13 @@ function BottomDock({
         onSend={(text) => { setPanelOpen(false); runFav(text); }}
         onFill={(text) => { setPanelOpen(false); fillFav(text); }}
         onClose={() => setPanelOpen(false)} />
+      {/* Command-mode command editor (add/delete the saved-command list behind the quick-bar ＋). Its own
+          drawer, always mode="command", so it never touches the agent list. Tap a row = run it (type +
+          Enter); double-tap = type it into the shell WITHOUT Enter (edit before running). */}
+      <FavDrawer open={cmdEditOpen} mode="command"
+        onSend={(text) => { setCmdEditOpen(false); runFav(text); }}
+        onFill={(text) => { setCmdEditOpen(false); onText(text); }}
+        onClose={() => setCmdEditOpen(false)} />
     </div>
   );
 }

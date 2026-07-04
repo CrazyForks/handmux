@@ -4,19 +4,18 @@ import {
   MOD_OFF, MOD_ARMED, MOD_LOCKED, modActive, consumeMods, withMods,
 } from '../keybarKeys.js';
 import { createRepeater } from '../repeat.js';
-import { KeyboardIcon } from './icons.jsx';
 
 // In command mode the hidden capture <input> holds the system keyboard open. A <button> tap would move
 // focus to itself → the capture blurs → the keyboard collapses (so you couldn't tap Ctrl then a letter
 // on the system keyboard). preventDefault on pointer-down keeps focus on the capture; onClick still fires.
 const keepFocus = (e) => { if (e.cancelable) e.preventDefault(); };
 
-// The command keyboard: a fixed 3×7 grid (never scrolls) with the arrows as an inverted-T in the centre
-// (Esc ▲ Tab / ◀ ▼ ▶). ⌨ (top-left) toggles the system keyboard; ⌫ (top-right) and enter (bottom-right)
-// are direct keys; 常用 (bottom-left) opens the favourites; Ctrl/Shift/Alt are sticky modifiers. Named
-// keys go out via onKey (→ /keys), literals via onText (→ /send). `mods` is controlled (lifted to
+// The command keyboard: a fixed 2×7 grid (never scrolls). Row 1: Esc/Tab, the ~ / @ symbols and ⌫;
+// row 2: the sticky Ctrl/Shift/Alt modifiers, then the inverted-T arrows (▲ over ◀ ▼ ▶) left of Enter.
+// The ⌨ keyboard-toggle and the user's saved commands live in the quick-bar ABOVE this grid (BottomDock).
+// Named keys go out via onKey (→ /keys), literals via onText (→ /send). `mods` is controlled (lifted to
 // BottomDock so the hidden capture input can share it).
-export default function KeyBar({ onKey, onText, mods, setMods, onOpenFav, onToggleKeyboard, keyboardUp }) {
+export default function KeyBar({ onKey, onText, mods, setMods }) {
   const modsRef = useRef(mods);
   modsRef.current = mods;
 
@@ -30,20 +29,6 @@ export default function KeyBar({ onKey, onText, mods, setMods, onOpenFav, onTogg
   };
 
   const cell = (id) => {
-    if (id === 'kbd') {
-      return (
-        <button key="kbd" type="button" className={`keybar-key keybar-kbd${keyboardUp ? ' on' : ''}`}
-          data-key="kbd" aria-pressed={!!keyboardUp} aria-label="键盘"
-          onPointerDown={keepFocus} /* keep focus so onClick can toggle (blur→dismiss / focus→pop) */
-          onClick={onToggleKeyboard}><KeyboardIcon down={keyboardUp} /></button>
-      );
-    }
-    if (id === 'fav') {
-      return (
-        <button key="fav" type="button" className="keybar-key keybar-fav" data-key="fav"
-          aria-label="常用" onPointerDown={keepFocus} onClick={onOpenFav}>{KEY_LABELS.fav}</button>
-      );
-    }
     if (MODIFIERS.includes(id)) return <ModKey key={id} id={id} state={mods[id]} setMods={setMods} />;
     return <Key key={id} id={id} dispatch={dispatch} />;
   };

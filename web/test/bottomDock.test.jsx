@@ -86,12 +86,13 @@ describe('BottomDock', () => {
 
   it('快捷栏:固定的上传(带图标)+ 一排自定义命令 chip;历史在药丸里', () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-    const fixed = [...container.querySelectorAll('.quick-fix')];
+    const fixed = [...container.querySelectorAll('.dock-page.chat .quick-fix')];
     expect(fixed).toHaveLength(1);                                   // 只剩 上传(历史移回药丸)
     expect(fixed[0].querySelector('svg')).not.toBeNull();           // 上传带图标
     expect(container.querySelector('.input-history')).not.toBeNull(); // 历史在药丸里(麦克风左侧)
-    expect(container.querySelectorAll('.quick-cmd').length).toBeGreaterThan(0); // 命令 chip 存在
-    expect([...container.querySelectorAll('.quick-cmd')].some((b) => b.textContent === '/compact')).toBe(true);
+    const chatChips = [...container.querySelectorAll('.dock-page.chat .quick-cmd')];
+    expect(chatChips.length).toBeGreaterThan(0); // 命令 chip 存在
+    expect(chatChips.some((b) => b.textContent === '/compact')).toBe(true);
   });
 
   it('历史按钮:空框只显示图标,打字后整个按钮隐藏', () => {
@@ -417,9 +418,9 @@ describe('BottomDock', () => {
       expect(track.classList.contains('at-chat')).toBe(true); // page-aligned to chat via the class
     });
 
-    it('the ⌨ key toggles focus on the hidden capture (pops / dismisses the keyboard)', () => {
+    it('the 展开/收起键盘 toggle (command quick-bar) pops / dismisses the keyboard', () => {
       render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-      const kbd = container.querySelector('[data-key="kbd"]');
+      const kbd = container.querySelector('.dock-page.command .quick-fix'); // the keyboard toggle
       expect(kbd.classList.contains('on')).toBe(false);
       fire(kbd, 'click');
       expect(document.activeElement).toBe(cap());        // focused → keyboard up

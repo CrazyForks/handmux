@@ -149,6 +149,8 @@ export default {
   'dock.phrases': '常用语',
   'dock.attach': '上传',
   'dock.history': '历史',
+  'dock.kbdShow': '展开键盘',
+  'dock.kbdHide': '收起键盘',
   'history.empty': '还没有发送记录',
   'history.scope': '仅当前窗口的记录',
   'dock.input.placeholder': '说点什么…',

@@ -150,6 +150,8 @@ export default {
   'dock.phrases': 'Phrases',
   'dock.attach': 'Upload',
   'dock.history': 'History',
+  'dock.kbdShow': 'Keyboard',
+  'dock.kbdHide': 'Hide keyboard',
   'history.empty': 'No history yet',
   'history.scope': 'This window only',
   'dock.input.placeholder': 'Say something…',

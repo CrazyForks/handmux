@@ -5,30 +5,36 @@ import {
 } from '../src/keybarKeys.js';
 
 describe('command grid layout', () => {
-  it('is a fixed 3×7 grid', () => {
-    expect(COMMAND_ROWS).toHaveLength(3);
+  it('is a fixed 2×7 grid', () => {
+    expect(COMMAND_ROWS).toHaveLength(2);
     for (const row of COMMAND_ROWS) expect(row).toHaveLength(7);
   });
 
-  it('pins the corners: ⌨ top-left, ⌫ top-right, 常用 bottom-left, Enter bottom-right', () => {
-    expect(COMMAND_ROWS[0][0]).toBe('kbd');
+  it('pins the corners: Esc/Tab top-left, ⌫ top-right, Enter bottom-right', () => {
+    expect(COMMAND_ROWS[0][0]).toBe('esc');
+    expect(COMMAND_ROWS[0][1]).toBe('tab');
     expect(COMMAND_ROWS[0][6]).toBe('del');
-    expect(COMMAND_ROWS[2][0]).toBe('fav');
-    expect(COMMAND_ROWS[2][6]).toBe('enter');
+    expect(COMMAND_ROWS[1][6]).toBe('enter');
   });
 
-  it('puts the sticky modifiers on the first row', () => {
-    for (const m of ['ctrl', 'shift', 'alt']) expect(COMMAND_ROWS[0]).toContain(m);
+  it('puts the sticky modifiers together on the second row', () => {
+    expect(COMMAND_ROWS[1].slice(0, 3)).toEqual(['ctrl', 'shift', 'alt']);
+  });
+
+  it('keeps only the ~ / @ symbols (the buried ones are gone)', () => {
+    const ids = COMMAND_ROWS.flat();
+    for (const s of ['tilde', 'slash', 'at']) expect(ids).toContain(s);
+    for (const gone of ['pipe', 'dash', 'under', 'bslash', 'gt', 'lt']) expect(ids).not.toContain(gone);
   });
 
   it('places the arrows as an inverted-T just left of Enter (▲ over ◀ ▼ ▶)', () => {
-    expect(COMMAND_ROWS[1][4]).toBe('up');                              // ▲ above ▼
-    expect(COMMAND_ROWS[2].slice(3, 6)).toEqual(['left', 'down', 'right']); // ◀ ▼ ▶, left of Enter
+    expect(COMMAND_ROWS[0][4]).toBe('up');                              // ▲ above ▼
+    expect(COMMAND_ROWS[1].slice(3, 6)).toEqual(['left', 'down', 'right']); // ◀ ▼ ▶, left of Enter
   });
 
-  it('ctrl/shift/alt are the live modifiers; kbd/fav are controls', () => {
+  it('ctrl/shift/alt are the live modifiers; kbd is a control (the quick-bar toggle)', () => {
     expect(MODIFIERS).toEqual(['ctrl', 'shift', 'alt']);
-    expect(CONTROL_KEYS).toEqual(['kbd', 'fav']);
+    expect(CONTROL_KEYS).toEqual(['kbd']);
   });
 
   it('every grid id is labelled', () => {
@@ -47,13 +53,14 @@ describe('keyAction', () => {
     expect(keyAction('up')).toEqual({ kind: 'key', name: 'Up' });
     expect(keyAction('enter')).toEqual({ kind: 'key', name: 'Enter' });
     expect(keyAction('del')).toEqual({ kind: 'key', name: 'BSpace' });
-    expect(keyAction('pipe')).toEqual({ kind: 'text', ch: '|' });
-    expect(keyAction('bslash')).toEqual({ kind: 'text', ch: '\\' });
+    expect(keyAction('slash')).toEqual({ kind: 'text', ch: '/' });
+    expect(keyAction('tilde')).toEqual({ kind: 'text', ch: '~' });
+    expect(keyAction('at')).toEqual({ kind: 'text', ch: '@' });
   });
-  it('returns null for control ids, modifier ids, and unknowns', () => {
+  it('returns null for control ids, modifier ids, removed symbols, and unknowns', () => {
     expect(keyAction('kbd')).toBe(null);
-    expect(keyAction('fav')).toBe(null);
     expect(keyAction('ctrl')).toBe(null);
+    expect(keyAction('pipe')).toBe(null); // removed
     expect(keyAction('nope')).toBe(null);
   });
 });

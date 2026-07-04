@@ -268,9 +268,9 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .dock-track.at-chat { transform: translate3d(-50%, 0, 0); }
 .dock-track > .dock-page { flex: 0 0 50%; width: 50%; min-width: 0; }
 .dock-page.command { position: relative; } /* anchors the hidden .cmd-capture */
-/* Command keyboard: a fixed 3×7 grid, never scrolls. Equal columns keep the arrows aligned as an
-   inverted-T (▲ directly above ▼). ⌨ toggles the system keyboard; ⌫/enter are direct keys; 常用 opens
-   favourites; Ctrl/Shift/Alt are sticky modifiers. */
+/* Command keyboard: a fixed 2×7 grid, never scrolls. Equal columns keep the arrows aligned as an
+   inverted-T (▲ directly above ▼) left of Enter; ⌫/enter are direct keys; Ctrl/Shift/Alt are sticky
+   modifiers. The ⌨ keyboard-toggle + the saved-command strip live in the .quick-bar above this grid. */
 .keybar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; min-width: 0; }
 .keybar-key {
   min-width: 0; min-height: 40px; padding: 0 2px;
@@ -284,9 +284,6 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 /* Live modifier keys light up while armed (one-shot) or locked (sticky). */
 .keybar-mod.armed { background: #4a7cff; color: #fff; }
 .keybar-mod.locked { background: #3a6bff; color: #fff; box-shadow: inset 0 -3px 0 0 #ffd24a; }
-/* ⌨ keyboard toggle (top-left): lit blue while the system keyboard is up. */
-.keybar-kbd.on { background: #3a6bff; color: #fff; }
-.keybar-fav { font-size: 13px; } /* 常用 (bottom-left) */
 /* Input row: ▤ (command panel) + the auto-growing command field. stretch makes ▤ grow to match the
    textarea's height as it gets taller. (填入 is a long-press on 发送 — see BottomDock.)
    ▤ width matches the Esc/◀ keybar column above it so the input row's left edge lines up. */
@@ -321,6 +318,9 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .quick-fix svg { width: 15px; height: 15px; display: block; color: #aeb6c2; }
 .quick-fix:active { background: #454a54; }
 .quick-fix:disabled { opacity: .4; }
+/* Command page: the 展开/收起键盘 toggle lights blue while the system keyboard is up. */
+.quick-fix.on { background: #3a6bff; border-color: #3a6bff; color: #fff; }
+.quick-fix.on svg { color: #fff; }
 /* 可横滑的自定义命令区:溢出横向滚动、隐藏滚动条;chip 单行不换、不压缩。 */
 .quick-scroll { flex: 1; min-width: 0; display: flex; align-items: stretch; gap: 5px; overflow-x: auto;
   scrollbar-width: none; -webkit-overflow-scrolling: touch; }
@@ -333,6 +333,9 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
   font: inherit; font-size: 12.5px; padding: 5px 11px; line-height: 1;
   touch-action: manipulation; -webkit-user-select: none; user-select: none; }
 .quick-cmd:active { background: rgba(var(--rgb), .26); border-color: rgb(var(--rgb)); }
+/* Trailing ＋ on the command strip: opens the command-list editor. Neutral (dashed) so it reads as
+   "add", not a runnable command. */
+.quick-cmd-add { --rgb: 150,157,167; border-style: dashed; font-size: 15px; padding: 5px 12px; }
 .qc-esc { --rgb: 150,157,167; }   /* 灰:按键(ESC/Tab)——和命令区分,不刺眼 */
 .qc-reply { --rgb: 95,208,138; }  /* 绿:ok/go on/1/2/3 */
 .qc-cmd { --rgb: 110,168,255; }   /* 蓝:斜杠命令 */
