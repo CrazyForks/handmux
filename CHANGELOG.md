@@ -27,6 +27,10 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   any other. Chat has no per-window list and no 带回车 toggle (a chat tap always sends).
 
 ### Changed
+- **Sheet/modal close buttons unified to one iOS style.** Every panel's close control (`.settings-close`
+  across the modals, `.cmd-close` across the bottom sheets) is now the same subtle filled-grey circle with a
+  centred X — regardless of whether it renders the `✕` glyph or the `<XIcon/>` SVG — instead of a bare grey
+  glyph at mixed sizes. Sheet titles aligned to 16px. CSS-only.
 - **Segmented controls unified to one iOS style.** The settings preview-type switch (`.preview-seg`) and the
   file home-tab switch (`.file-seg`, 最近/新增) now use the same faint-track + raised-pill look as the saved-
   command editor's `.cmd-seg`, instead of three different bordered/boxed treatments. CSS-only, markup
