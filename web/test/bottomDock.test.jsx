@@ -411,9 +411,14 @@ describe('BottomDock', () => {
 
     // A right-drag that STARTS on the quick-command strip: it carries over into a page swipe to command
     // only when the strip is at its left edge (can't scroll further right); otherwise the strip scrolls.
-    const stripDrag = (dx, scrollLeft) => act(() => {
-      const strip = container.querySelector('.quick-scroll');
+    const stripDrag = (dx, scrollLeft, metrics = {}) => act(() => {
+      // The active page's strip is the one under the finger. jsdom reports 0 for every scroll metric, so we
+      // mock the ones the carry-over reads. metrics lets a test set scrollWidth/clientWidth (right-edge cases).
+      const pageSel = container.querySelector('.dock-page.chat.on') ? '.dock-page.chat' : '.dock-page.command';
+      const strip = container.querySelector(`${pageSel} .quick-scroll`);
       Object.defineProperty(strip, 'scrollLeft', { value: scrollLeft, configurable: true, writable: true });
+      Object.defineProperty(strip, 'scrollWidth', { value: metrics.scrollWidth ?? 0, configurable: true });
+      Object.defineProperty(strip, 'clientWidth', { value: metrics.clientWidth ?? 0, configurable: true });
       const ev = (type, x, prop) => { const e = new Event(type, { bubbles: true }); e[prop] = [{ clientX: x, clientY: 100 }]; return e; };
       strip.dispatchEvent(ev('touchstart', 200, 'touches'));
       strip.dispatchEvent(ev('touchmove', 200 + dx, 'touches'));
@@ -431,6 +436,20 @@ describe('BottomDock', () => {
       render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() }); // chat
       stripDrag(80, 40); // scrollLeft>0 → native strip scroll, not a page swipe
       expect(activePage('chat')).toBe(true); // stayed on chat
+    });
+
+    // Mirror case on the command page: at the strip's RIGHT edge, a further LEFT-drag carries over to chat.
+    it('at the command strip right edge, a left-drag on it carries over to the chat page', () => {
+      render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() }); // command by default
+      expect(activePage('command')).toBe(true);
+      stripDrag(-100, 60, { scrollWidth: 100, clientWidth: 40 }); // scrollLeft(60) >= 100-40-1 → at right edge
+      expect(activePage('chat')).toBe(true);
+    });
+
+    it('when the command strip can still scroll (not at right edge), a left-drag does NOT switch pages', () => {
+      render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() }); // command by default
+      stripDrag(-80, 10, { scrollWidth: 100, clientWidth: 40 }); // scrollLeft(10) < 59 → native strip scroll
+      expect(activePage('command')).toBe(true); // stayed on command
     });
 
     it('self-heals a transform left stuck between pages (a missed touchend) on the next render', () => {

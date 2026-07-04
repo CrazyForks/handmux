@@ -67,10 +67,6 @@ function BottomDock({
   // Whether the system keyboard is up (the capture input is focused) — lights the ⌨ toggle. Kept in
   // sync by the capture's onFocus/onBlur, so tapping the terminal (which blurs it) also drops the flag.
   const [keyboardUp, setKeyboardUp] = useState(false);
-  // Entering CHAT mode restores the composer's grown height for any preserved multi-line text.
-  useEffect(() => {
-    if (mode === 'agent') requestAnimationFrame(() => autoGrow(ref.current));
-  }, [mode]);
 
   // ── Swipe carousel ──────────────────────────────────────────────────────────────────────────
   // The dock is a two-page track (command | chat) that follows the finger and snaps with an ease
@@ -114,16 +110,28 @@ function BottomDock({
   // grows with its text and can be taller OR shorter than the keyboard. Set it INSTANTLY — the CSS height
   // transition is gone (styles.css): the terminal above is a poll-and-repaint surface, so animating the
   // dock height would resize+repaint it every frame for 280ms → the flicker and the transient blank gap.
-  // One instant resize per change = one clean repaint. autoGrow first so multi-line text is fully measured
-  // (never clipped at the top). No React renders fire during a finger drag, so the height holds steady
-  // through the whole swipe — the terminal doesn't move until the page actually commits.
-  useLayoutEffect(() => {
+  // One instant resize per change = one clean repaint. No React renders fire during a finger drag, so the
+  // height holds steady through the whole swipe — the terminal doesn't move until the page actually commits.
+  const syncPagerHeight = () => {
     const pager = pagerRef.current;
     if (!pager) return;
-    if (mode === 'agent') autoGrow(ref.current);
     const active = pager.querySelector(mode === 'command' ? '.dock-page.command' : '.dock-page.chat');
     if (active) pager.style.height = `${active.offsetHeight}px`;
+  };
+  useLayoutEffect(() => {
+    if (mode === 'agent') autoGrow(ref.current); // measure multi-line text before sizing (never clipped)
+    syncPagerHeight();
   });
+  // Entering CHAT restores the composer's grown height for preserved multi-line text — then RE-syncs the
+  // pager. The sync above runs BEFORE that async grow settles, so without this the dock (and the terminal
+  // sized to fit above it) can be left at a stale height until the next render: the "swiped to chat and the
+  // terminal lost its bottom rows, fixed by nudging the composer" bug. The terminal only re-fits when its
+  // container GREW (Terminal.jsx), so a too-tall stale dock never self-corrected.
+  useEffect(() => {
+    if (mode !== 'agent') return undefined;
+    const raf = requestAnimationFrame(() => { autoGrow(ref.current); syncPagerHeight(); });
+    return () => cancelAnimationFrame(raf);
+  }, [mode]);
   // Native (non-passive) touch handlers so a horizontal drag can preventDefault the page's own scroll.
   useEffect(() => {
     const pager = pagerRef.current;
@@ -132,8 +140,9 @@ function BottomDock({
     const onStart = (e) => {
       releaseTrack(); // drop any inline transform a previous (interrupted) gesture may have left behind
       // Remember if the drag began on the horizontally-scrolling quick-command strip: that gesture is
-      // normally the strip's own native scroll, but at its LEFT edge a further right-drag should carry
-      // over into a page swipe to command mode (decided in onMove once we know the direction).
+      // normally the strip's own native scroll, but at an EDGE a further drag in the same direction should
+      // carry over into a page swipe (decided in onMove once we know the direction). Both pages have a
+      // strip: chat's carries LEFT-edge→right-drag to command; command's carries RIGHT-edge→left-drag to chat.
       const strip = e.target?.closest?.('.quick-scroll') || null;
       d = e.touches.length === 1
         ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, decided: false, horiz: false, strip }
@@ -156,11 +165,17 @@ function BottomDock({
         d.decided = true;
         d.horiz = Math.abs(dx) > Math.abs(dy) * 1.4;
         // Drag started on the strip: only steal it as a page swipe when the strip can't scroll further
-        // in that direction toward another page — i.e. it's at its LEFT edge and you're dragging RIGHT
-        // (which reveals the command page). Otherwise hand the whole gesture to the strip's native scroll.
+        // in that direction, so a further drag "falls off" toward the neighbouring page. Two symmetric cases:
+        //   • chat page (1), strip at LEFT edge, dragging RIGHT → reveal the command page (dx > 0)
+        //   • command page (0), strip at RIGHT edge, dragging LEFT → reveal the chat page (dx < 0)
+        // Otherwise hand the whole gesture to the strip's native scroll.
         if (d.horiz && d.strip) {
-          const atLeft = d.strip.scrollLeft <= 0;
-          if (!(dx > 0 && atLeft && pageIndexRef.current === 1)) d.horiz = false;
+          const s = d.strip, pg = pageIndexRef.current;
+          const atLeft = s.scrollLeft <= 0;
+          const atRight = s.scrollLeft >= s.scrollWidth - s.clientWidth - 1;
+          const toCommand = dx > 0 && atLeft && pg === 1;
+          const toChat = dx < 0 && atRight && pg === 0;
+          if (!(toCommand || toChat)) d.horiz = false;
         }
       }
       if (!d.horiz) return; // a vertical drag (or a strip-scroll we handed off) → leave it to native
