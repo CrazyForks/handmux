@@ -132,6 +132,7 @@ export default {
   'dock.phrases': '자주 쓰는 문구',
   'dock.attach': '첨부',
   'dock.history': '기록',
+  'history.empty': '기록이 아직 없습니다',
   'dock.input.placeholder': '메시지를 입력하세요…',
   'dock.command.placeholder': '명령 입력 · Enter로 실행',
   'dock.mode.command': '명령',

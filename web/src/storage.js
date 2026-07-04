@@ -155,21 +155,34 @@ const ORPHAN_KILL_KEY = 'tw_orphan_kill';
 export const getOrphanKill = () => localStorage.getItem(ORPHAN_KILL_KEY) !== '0';
 export const setOrphanKill = (on) => localStorage.setItem(ORPHAN_KILL_KEY, on ? '1' : '0');
 
-// Recent commands per session NAME (names are stable across tmux restarts — see the binding model).
-// pushRecent dedupes to the front and caps the list so it stays a short, useful tail.
-export const getRecent = (name) => readMap(RECENT_KEY)[name] ?? [];
-export function pushRecent(name, cmd) {
-  const c = cmd.trim();
-  const cur = getRecent(name);
-  if (!c) return cur; // a bare Enter / blank send isn't a command worth recording
-  const next = [c, ...cur.filter((x) => x !== c)].slice(0, RECENT_CAP);
-  writeMapEntry(RECENT_KEY, name, next);
-  return next;
+// Recent (sent) commands scoped per session NAME + WINDOW — the composer history is window-level, so each
+// tmux window keeps its own send log (names/window ids are stable across tmux restarts). Stored nested
+// { [session]: { [window]: [...] } } like ideas. pushRecent dedupes to the front and caps the list.
+export function getRecent(session, window) {
+  if (!session || !window) return [];
+  return readMap(RECENT_KEY)[session]?.[window] ?? [];
 }
-export function removeRecent(name, cmd) {
-  const next = getRecent(name).filter((x) => x !== cmd);
-  writeMapEntry(RECENT_KEY, name, next);
-  return next;
+// Overwrite one window's list (add/delete funnel through here); an empty list drops the window key (and
+// an emptied session key) so storage doesn't accrete husks — same shape as setIdeas.
+function setRecent(session, window, list) {
+  const all = readMap(RECENT_KEY);
+  const wins = all[session] || {};
+  if (list && list.length) wins[window] = list;
+  else delete wins[window];
+  if (Object.keys(wins).length) all[session] = wins;
+  else delete all[session];
+  localStorage.setItem(RECENT_KEY, JSON.stringify(all));
+  return list ?? [];
+}
+export function pushRecent(session, window, cmd) {
+  const c = (cmd || '').trim();
+  const cur = getRecent(session, window);
+  if (!c || !session || !window) return cur; // a bare Enter / blank send isn't worth recording
+  return setRecent(session, window, [c, ...cur.filter((x) => x !== c)].slice(0, RECENT_CAP));
+}
+export function removeRecent(session, window, cmd) {
+  if (!session || !window) return getRecent(session, window);
+  return setRecent(session, window, getRecent(session, window).filter((x) => x !== cmd));
 }
 
 const RECENT_DOCS_KEY = 'tw_recent_docs'; // [{ path, name, type, ts }] — recently opened docs, global

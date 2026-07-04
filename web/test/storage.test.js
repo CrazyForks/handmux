@@ -123,11 +123,11 @@ describe('storage', () => {
   it('renames a bound session in place, carrying its recent history (position preserved)', () => {
     addBoundSession('main');
     addBoundSession('server');
-    pushRecent('main', 'npm test');
+    pushRecent('main', '@0', 'npm test');
     expect(renameBoundSession('main', 'prod')).toEqual(['prod', 'server']); // position kept
     expect(getBoundSessions()).toEqual(['prod', 'server']);
-    expect(getRecent('prod')).toEqual(['npm test']); // recent followed the rename
-    expect(getRecent('main')).toEqual([]);            // old name cleared
+    expect(getRecent('prod', '@0')).toEqual(['npm test']); // recent (window-scoped) followed the rename
+    expect(getRecent('main', '@0')).toEqual([]);            // old name cleared
   });
 
   // Regression: a LEGACY flat-array value under a per-window map key (tw_git_repos was once a global
@@ -148,7 +148,7 @@ describe('storage', () => {
     addBoundSession('main');
     expect(renameBoundSession('nope', 'prod')).toEqual(['main']);
     expect(renameBoundSession('main', 'prod')).toEqual(['prod']); // no recent to copy → fine
-    expect(getRecent('prod')).toEqual([]);
+    expect(getRecent('prod', '@0')).toEqual([]);
   });
 
   it('adds, trims, dedupes, and removes favorites', () => {
@@ -162,31 +162,34 @@ describe('storage', () => {
     expect(getFavorites()).toEqual(['git status', 'ls']);
   });
 
-  it('records recent commands per session: dedupe-to-front, blank-skip, trim', () => {
-    expect(getRecent('main')).toEqual([]);
-    expect(pushRecent('main', 'a')).toEqual(['a']);
-    expect(pushRecent('main', 'b')).toEqual(['b', 'a']);
-    expect(pushRecent('main', 'a')).toEqual(['a', 'b']);        // re-send → front, no dup
-    expect(pushRecent('main', '   ')).toEqual(['a', 'b']);       // blank not recorded
-    expect(pushRecent('main', '  c ')).toEqual(['c', 'a', 'b']); // trimmed
+  it('records recent commands per session+window: dedupe-to-front, blank-skip, trim', () => {
+    expect(getRecent('main', '@0')).toEqual([]);
+    expect(pushRecent('main', '@0', 'a')).toEqual(['a']);
+    expect(pushRecent('main', '@0', 'b')).toEqual(['b', 'a']);
+    expect(pushRecent('main', '@0', 'a')).toEqual(['a', 'b']);        // re-send → front, no dup
+    expect(pushRecent('main', '@0', '   ')).toEqual(['a', 'b']);       // blank not recorded
+    expect(pushRecent('main', '@0', '  c ')).toEqual(['c', 'a', 'b']); // trimmed
   });
 
-  it('caps recent at 30 per session, dropping the oldest', () => {
-    for (let i = 0; i < 35; i += 1) pushRecent('main', `cmd${i}`);
-    const list = getRecent('main');
+  it('caps recent at 30 per window, dropping the oldest', () => {
+    for (let i = 0; i < 35; i += 1) pushRecent('main', '@0', `cmd${i}`);
+    const list = getRecent('main', '@0');
     expect(list.length).toBe(30);
     expect(list[0]).toBe('cmd34');  // newest first
     expect(list[29]).toBe('cmd5');  // cmd0..cmd4 dropped
   });
 
-  it('isolates recent by session name and removes a single entry', () => {
-    pushRecent('main', 'x');
-    pushRecent('server', 'y');
-    expect(getRecent('main')).toEqual(['x']);
-    expect(getRecent('server')).toEqual(['y']);
-    expect(removeRecent('main', 'x')).toEqual([]);
-    expect(getRecent('main')).toEqual([]);
-    expect(getRecent('server')).toEqual(['y']); // untouched
+  it('isolates recent by session AND window, and removes a single entry', () => {
+    pushRecent('main', '@0', 'x');
+    pushRecent('main', '@1', 'z');   // same session, different window → separate history
+    pushRecent('server', '@0', 'y');
+    expect(getRecent('main', '@0')).toEqual(['x']);
+    expect(getRecent('main', '@1')).toEqual(['z']);
+    expect(getRecent('server', '@0')).toEqual(['y']);
+    expect(removeRecent('main', '@0', 'x')).toEqual([]);
+    expect(getRecent('main', '@0')).toEqual([]);
+    expect(getRecent('main', '@1')).toEqual(['z']); // sibling window untouched
+    expect(getRecent('server', '@0')).toEqual(['y']); // other session untouched
   });
 });
 

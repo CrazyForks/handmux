@@ -4,7 +4,7 @@ import KeyBar from './KeyBar.jsx';
 import FavDrawer from './FavDrawer.jsx';
 import MicButton from './MicButton.jsx';
 import { loadFavs } from '../favStore.js';
-import { ArrowUpIcon } from './icons.jsx';
+import { ArrowUpIcon, UploadIcon, ClockIcon } from './icons.jsx';
 import { usePushToTalk } from '../voice/usePushToTalk.js';
 import { useAsrAvailable } from '../voice/useAsrAvailable.js';
 import { useScreenWakeLock } from '../hooks/useScreenWakeLock.js';
@@ -34,7 +34,7 @@ const chipTint = (text) => {
 
 function BottomDock({
   pane, onAuthFail, onKey, onText, cwd = null, agent = null,
-  recent = [], onSent,
+  recent = [], onSent, onRemoveRecent,
 }, fwdRef) {
   const [value, setValue] = useState('');
   const [panelOpen, setPanelOpen] = useState(false);
@@ -455,9 +455,11 @@ function BottomDock({
               <div className="quick-bar">
                 <div className="quick-fixed">
                   <button type="button" className="quick-fix" aria-label={t('dock.attach')}
-                    disabled={!!upload && !upload.error} onClick={() => uploadRef.current?.click()}>{t('dock.attach')}</button>
+                    disabled={!!upload && !upload.error} onClick={() => uploadRef.current?.click()}>
+                    <UploadIcon /><span>{t('dock.attach')}</span></button>
                   <button type="button" className="quick-fix" aria-label={t('dock.history')}
-                    onClick={() => setPanelOpen((o) => !o)}>{t('dock.history')}</button>
+                    onClick={() => setPanelOpen((o) => !o)}>
+                    <ClockIcon /><span>{t('dock.history')}</span></button>
                 </div>
                 <div className="quick-scroll">
                   {favs.map((f) => (
@@ -504,7 +506,7 @@ function BottomDock({
           </div>
         </div>
       </div>
-      <FavDrawer open={panelOpen} mode={mode} recent={recent}
+      <FavDrawer open={panelOpen} mode={mode} recent={recent} historyOnly onDelete={onRemoveRecent}
         onSend={(text) => { setPanelOpen(false); runFav(text); }}
         onFill={(text) => { setPanelOpen(false); fillFav(text); }}
         onClose={() => setPanelOpen(false)} />

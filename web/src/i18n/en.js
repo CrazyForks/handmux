@@ -149,6 +149,7 @@ export default {
   'dock.phrases': 'Phrases',
   'dock.attach': 'Upload',
   'dock.history': 'History',
+  'history.empty': 'No history yet',
   'dock.input.placeholder': 'Say something…',
   'dock.command.placeholder': 'Type a command · Enter runs it',
   'dock.mode.command': 'Cmd',

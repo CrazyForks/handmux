@@ -132,6 +132,7 @@ export default {
   'dock.phrases': 'よく使うフレーズ',
   'dock.attach': '添付',
   'dock.history': '履歴',
+  'history.empty': '履歴はまだありません',
   'dock.input.placeholder': 'メッセージを入力…',
   'dock.command.placeholder': 'コマンドを入力 · Enterで実行',
   'dock.mode.command': '実行',

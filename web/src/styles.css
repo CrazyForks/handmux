@@ -297,27 +297,30 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
   border: 0; opacity: 0; background: transparent; color: transparent; }
 /* 快捷栏:药丸上方一行。左侧两个固定项(添加附件·历史记录)+ 右侧可横滑的自定义命令 chip。
    两组样式刻意区分:固定项=实心填充小方块(纯文字、稍亮)、命令=描边圆药丸(灰字)。 */
-.quick-bar { display: flex; align-items: center; gap: 6px; padding: 0 2px 5px; }
-.quick-fixed { flex: none; display: flex; gap: 5px; padding-right: 6px;
+.quick-bar { display: flex; align-items: stretch; gap: 6px; padding: 0 2px 6px; }
+.quick-fixed { flex: none; display: flex; gap: 6px; padding-right: 7px;
   border-right: 1px solid #33363d; } /* 竖分隔线,进一步分开固定区与命令区 */
-/* 固定项:纯文字、深灰实心底(和右侧彩色命令区明确区分),紧凑。 */
-.quick-fix { flex: none; border: none; border-radius: 8px; background: #24262b; color: #cbd0d8;
-  font: inherit; font-size: 12px; font-weight: 600; padding: 4px 9px; line-height: 1.25;
+/* 固定项 = 功能键(上传/历史):图标+文字,填充的浅灰实心底 + 细边,比彩色命令区更"实"、更显眼,一眼是按钮。 */
+.quick-fix { flex: none; display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid #4a4f59; border-radius: 9px; background: #383c44; color: #eaedf2;
+  font: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 11px; line-height: 1;
   touch-action: manipulation; -webkit-user-select: none; user-select: none; }
-.quick-fix:active { background: #30333a; }
+.quick-fix svg { width: 15px; height: 15px; display: block; color: #aeb6c2; }
+.quick-fix:active { background: #454a54; }
 .quick-fix:disabled { opacity: .4; }
 /* 可横滑的自定义命令区:溢出横向滚动、隐藏滚动条;chip 单行不换、不压缩。 */
-.quick-scroll { flex: 1; min-width: 0; display: flex; gap: 5px; overflow-x: auto;
+.quick-scroll { flex: 1; min-width: 0; display: flex; align-items: stretch; gap: 5px; overflow-x: auto;
   scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .quick-scroll::-webkit-scrollbar { display: none; }
-/* 命令 chip:紧凑(小字小内边)+ 按类别上色(仅三色):ESC 红、斜杠命令一色、其余(ok/继续/1/2/3)一色。
-   文字/描边用该色、底填淡影,按下加深。色相由 .qc-esc/.qc-cmd/.qc-reply 给。rgba(var(--rgb),a) 全面兼容。 */
-.quick-cmd { flex: none; white-space: nowrap; border: 1px solid; border-radius: 12px;
+/* 命令 chip:按类别上色(仅三色):ESC(柔和红)、斜杠命令蓝、其余(ok/继续/1/2/3)绿。文字/描边用该色、
+   底填淡影,按下加深。竖内边距给足(好按),色相由 .qc-esc/.qc-cmd/.qc-reply 给。rgba(var(--rgb),a) 全面兼容。 */
+.quick-cmd { flex: none; display: inline-flex; align-items: center; white-space: nowrap;
+  border: 1px solid; border-radius: 12px;
   color: rgb(var(--rgb)); border-color: rgba(var(--rgb), .5); background: rgba(var(--rgb), .13);
-  font: inherit; font-size: 12px; padding: 3px 9px; line-height: 1.25;
+  font: inherit; font-size: 12.5px; padding: 5px 11px; line-height: 1;
   touch-action: manipulation; -webkit-user-select: none; user-select: none; }
 .quick-cmd:active { background: rgba(var(--rgb), .26); border-color: rgb(var(--rgb)); }
-.qc-esc { --rgb: 255,107,107; }   /* 红:打断 */
+.qc-esc { --rgb: 208,126,126; }   /* 柔和红:打断(不刺眼) */
 .qc-reply { --rgb: 95,208,138; }  /* 绿:ok/继续/1/2/3 */
 .qc-cmd { --rgb: 110,168,255; }   /* 蓝:斜杠命令 */
 /* 上传进度条:浮在输入行上方一条(失败时变红、文案自带原因),沿用 browse-progress 配色。 */

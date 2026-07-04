@@ -3,9 +3,11 @@ import { loadFavs, addFav, removeFav } from '../favStore.js';
 import { XIcon } from './icons.jsx';
 import { t } from '../i18n';
 
-// Bottom drawer of 常用 items for the current mode. Reply items (agent mode) render as chips; command
-// items render as rows. Tap = send (onSend), double-tap = fill (onFill). Users add/delete their own.
-export default function FavDrawer({ open, mode, recent = [], onSend, onFill, onClose }) {
+// Bottom drawer. Two shapes:
+//  • default — the 常用 editor for the current mode (reply chips + command rows + add/delete).
+//  • historyOnly — REAL history: just the list of things sent through the composer (recent), tap to
+//    re-send / double-tap to fill. No 常用 (those live in the chat page's quick-command strip now).
+export default function FavDrawer({ open, mode, recent = [], onSend, onFill, onClose, onDelete, historyOnly = false }) {
   const [items, setItems] = useState(() => loadFavs(mode));
   // Uncontrolled adder: read the field via a ref so the value survives a raw programmatic set (React's
   // controlled value-tracker would otherwise swallow synthetic input events).
@@ -15,8 +17,8 @@ export default function FavDrawer({ open, mode, recent = [], onSend, onFill, onC
   if (seenMode !== mode) { setSeenMode(mode); setItems(loadFavs(mode)); }
   if (!open) return null;
 
-  const replies = items.filter((f) => f.kind === 'reply');
-  const cmds = items.filter((f) => f.kind === 'cmd');
+  const replies = historyOnly ? [] : items.filter((f) => f.kind === 'reply');
+  const cmds = historyOnly ? [] : items.filter((f) => f.kind === 'cmd');
   const add = () => {
     const text = (inputRef.current?.value || '').trim();
     if (!text) return;
@@ -31,7 +33,7 @@ export default function FavDrawer({ open, mode, recent = [], onSend, onFill, onC
       <div className="cmd-backdrop" onClick={onClose} />
       <div className="cmd-panel" role="dialog" aria-label={t('fav.title')}>
         <div className="cmd-head">
-          <span className="cmd-title">{t('fav.title')}</span>
+          <span className="cmd-title">{historyOnly ? t('dock.history') : t('fav.title')}</span>
           <button className="cmd-close" onClick={onClose} aria-label={t('common.close')}><XIcon /></button>
         </div>
         <div className="cmd-list">
@@ -52,13 +54,19 @@ export default function FavDrawer({ open, mode, recent = [], onSend, onFill, onC
           {recent.map((cmd) => (
             <div key={`r:${cmd}`} className="cmd-row">
               <span className="cmd-text" onClick={() => onSend(cmd)} onDoubleClick={() => onFill(cmd)}>{cmd}</span>
+              {onDelete && (
+                <button className="cmd-del" onClick={() => onDelete(cmd)} aria-label={t('common.delete')}><XIcon /></button>
+              )}
             </div>
           ))}
-          <div className="fav-add">
-            <input ref={inputRef} className="fav-add-input" placeholder={t('fav.addPlaceholder')}
-              onKeyDown={(e) => { if (e.key === 'Enter') add(); }} />
-            <button className="fav-add-btn" onClick={add}>{t('fav.add')}</button>
-          </div>
+          {historyOnly && recent.length === 0 && <div className="cmd-empty">{t('history.empty')}</div>}
+          {!historyOnly && (
+            <div className="fav-add">
+              <input ref={inputRef} className="fav-add-input" placeholder={t('fav.addPlaceholder')}
+                onKeyDown={(e) => { if (e.key === 'Enter') add(); }} />
+              <button className="fav-add-btn" onClick={add}>{t('fav.add')}</button>
+            </div>
+          )}
         </div>
       </div>
     </>

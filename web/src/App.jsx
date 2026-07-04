@@ -509,11 +509,13 @@ export default function App() {
     });
   }, []);
 
-  // Reload the current session's recent commands whenever the open session changes (recent is keyed
-  // by session NAME, which is stable across tmux restarts — see storage.js).
+  // Reload the recent (send) history whenever the open session OR window changes — history is
+  // window-level, keyed by session NAME + window (stable across tmux restarts — see storage.js).
+  const recentSession = current?.session?.name;
+  const recentWin = current?.window?.name || current?.window?.id;
   useEffect(() => {
-    setRecent(current?.session?.name ? getRecent(current.session.name) : []);
-  }, [current?.session?.name]);
+    setRecent(recentSession && recentWin ? getRecent(recentSession, recentWin) : []);
+  }, [recentSession, recentWin]);
 
   // Sync idea count for the badge when the active window changes.
   const ideaSession = current?.session?.name;
@@ -578,21 +580,23 @@ export default function App() {
     };
   }, [needToken, openSession, onAuthFail]);
 
-  // Record a just-sent command into the current session's recent list (deduped + capped in storage).
+  // Record a just-sent command into this WINDOW's recent history (deduped + capped in storage).
   const onCommandSent = useCallback((cmd) => {
     termRef.current?.wake?.(); // a dock send/fill landed → wake the poll loop (covers BottomDock too)
     const name = current?.session?.name;
-    if (name) setRecent(pushRecent(name, cmd));
+    const win = current?.window?.name || current?.window?.id;
+    if (name && win) setRecent(pushRecent(name, win, cmd));
   }, [current]);
 
   // ★/☆ on a panel row: toggle membership of the global favorites list.
   const toggleFavorite = useCallback((cmd) => {
     setFavorites(getFavorites().includes(cmd) ? removeFavorite(cmd) : addFavorite(cmd));
   }, []);
-  // ✕ on a recent row: drop that one entry from the current session's recent list.
+  // ✕ on a history row: drop that one entry from THIS window's recent history.
   const removeRecentCmd = useCallback((cmd) => {
     const name = current?.session?.name;
-    if (name) setRecent(removeRecent(name, cmd));
+    const win = current?.window?.name || current?.window?.id;
+    if (name && win) setRecent(removeRecent(name, win, cmd));
   }, [current]);
 
   // The current pane's cwd (from /panes), used as the default base when resolving a relative doc path.

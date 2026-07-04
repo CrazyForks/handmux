@@ -132,6 +132,7 @@ export default {
   'dock.phrases': '常用語',
   'dock.attach': '上傳',
   'dock.history': '歷史',
+  'history.empty': '還沒有發送記錄',
   'dock.input.placeholder': '說點什麼…',
   'dock.command.placeholder': '輸入指令 · Enter 執行',
   'dock.mode.command': '指令',

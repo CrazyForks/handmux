@@ -83,11 +83,11 @@ describe('BottomDock', () => {
     expect(container.querySelector('.input-send').disabled).toBe(false); // 有字 → 启用
   });
 
-  it('快捷栏:两个固定文字项(添加附件·历史记录,无图标)+ 一排自定义命令 chip', () => {
+  it('快捷栏:两个固定功能项(上传·历史,带图标+文字)+ 一排自定义命令 chip', () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
     const fixed = [...container.querySelectorAll('.quick-fix')];
-    expect(fixed).toHaveLength(2);                                   // 添加附件 + 历史记录
-    expect(fixed.every((b) => b.querySelector('svg') === null)).toBe(true); // 固定项无图标
+    expect(fixed).toHaveLength(2);                                   // 上传 + 历史
+    expect(fixed.every((b) => b.querySelector('svg') !== null)).toBe(true); // 固定项各带一个小图标
     expect(container.querySelectorAll('.quick-cmd').length).toBeGreaterThan(0); // 命令 chip 存在
     expect([...container.querySelectorAll('.quick-cmd')].some((b) => b.textContent === '/compact')).toBe(true);
   });
@@ -123,32 +123,43 @@ describe('BottomDock', () => {
     expect(container.querySelector('.input-text').value).toBe('');
   });
 
-  it('历史记录 toggles the 常用 drawer', () => {
-    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn(), recent: ['ls'], favorites: [] });
+  it('历史 opens a HISTORY-only drawer (real send log, no 常用 favs)', () => {
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn(), recent: ['git status'] });
     const history = [...container.querySelectorAll('.quick-fix')][1];
     expect(container.querySelector('.cmd-panel')).toBe(null);
     fire(history, 'click');
     expect(container.querySelector('.cmd-panel')).not.toBe(null);
+    expect(container.querySelector('.fav-chip')).toBe(null);   // no reply-chip 常用
+    expect(container.querySelector('.fav-add')).toBe(null);    // can't ADD in history
+    expect([...container.querySelectorAll('.cmd-text')].some((n) => n.textContent === 'git status')).toBe(true);
     fire(history, 'click');
     expect(container.querySelector('.cmd-panel')).toBe(null);
   });
 
-  it('tapping a reply chip in the 常用 drawer sends it (tap = send)', async () => {
-    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-    fire([...container.querySelectorAll('.quick-fix')][1], 'click'); // 历史记录 opens the drawer
-    const ok = [...container.querySelectorAll('.fav-chip')].find((n) => n.textContent === 'ok');
-    fire(ok, 'click');
+  it('tapping a history row re-sends it (tap = send)', async () => {
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn(), recent: ['ls -la'] });
+    fire([...container.querySelectorAll('.quick-fix')][1], 'click'); // 历史 opens the drawer
+    const row = [...container.querySelectorAll('.cmd-text')].find((n) => n.textContent === 'ls -la');
+    fire(row, 'click');
     await act(async () => {});
-    expect(sendText).toHaveBeenCalledWith('%1', 'ok', true);
+    expect(sendText).toHaveBeenCalledWith('%1', 'ls -la', true);
   });
 
-  it('double-tapping a drawer command fills the box WITHOUT sending (long-press = fill)', () => {
-    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+  it('double-tapping a history row fills the box WITHOUT sending (long-press = fill)', () => {
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn(), recent: ['/compact'] });
     fire([...container.querySelectorAll('.quick-fix')][1], 'click');
-    const compact = [...container.querySelectorAll('.cmd-text')].find((n) => n.textContent === '/compact');
-    act(() => compact.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
+    const row = [...container.querySelectorAll('.cmd-text')].find((n) => n.textContent === '/compact');
+    act(() => row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
     expect(container.querySelector('.input-text').value).toBe('/compact');
     expect(sendText).not.toHaveBeenCalled();
+  });
+
+  it('deleting a history row calls onRemoveRecent', () => {
+    const onRemoveRecent = vi.fn();
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn(), recent: ['npm test'], onRemoveRecent });
+    fire([...container.querySelectorAll('.quick-fix')][1], 'click');
+    fire(container.querySelector('.cmd-row .cmd-del'), 'click');
+    expect(onRemoveRecent).toHaveBeenCalledWith('npm test');
   });
 
   it('点麦克风开始/再点停止(点按切换)', async () => {

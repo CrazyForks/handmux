@@ -148,6 +148,7 @@ export default {
   'dock.phrases': '常用语',
   'dock.attach': '上传',
   'dock.history': '历史',
+  'history.empty': '还没有发送记录',
   'dock.input.placeholder': '说点什么…',
   'dock.command.placeholder': '输入命令 · 回车执行',
   'dock.mode.command': '命令',
