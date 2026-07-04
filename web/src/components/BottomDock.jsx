@@ -23,14 +23,13 @@ import { MODIFIERS, modActive, consumeMods, withMods } from '../keybarKeys.js';
 // instead of typing the letters + Enter. Keyed by the item's label so a user can add/remove them freely.
 const KEY_FAVS = { ESC: 'Escape', Esc: 'Escape' };
 
-// Every quick-command chip is tinted so the strip reads as a colourful palette (「都带颜色」). ESC is
-// forced red (it interrupts); every other label gets a stable colour from a 6-way hash of its text, so
-// user-added commands are coloured too and a given label always keeps the same hue. → .qc-esc / .qc-0..5.
+// Quick-command chips are tinted by CATEGORY (three colours, not a per-label rainbow): ESC = red (it
+// interrupts), a slash-command (/compact …) = one colour, everything else (ok/继续/1/2/3 …) = another.
+// → .qc-esc / .qc-cmd / .qc-reply.
 const chipTint = (text) => {
   if (KEY_FAVS[text]) return 'esc';
-  let h = 0;
-  for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) >>> 0;
-  return h % 6;
+  if (text.startsWith('/')) return 'cmd';
+  return 'reply';
 };
 
 function BottomDock({
