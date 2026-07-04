@@ -321,17 +321,22 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
     const onResize = () => scheduleFit();
     window.addEventListener('resize', onResize);
     window.addEventListener('orientationchange', onResize);
-    // The bottom dock's height changes (swiping between the keyboard and the composer, the composer
-    // growing to multi-line) resize THIS container without firing a window resize — a plain resize
-    // listener misses them, leaving the grid short and a blank strip until the next poll. A
-    // ResizeObserver re-fits on any container height change. fit() only resizes xterm's internal grid,
-    // not the container box, so it can't drive the observer into a loop; the clientHeight guard skips
-    // no-op passes.
+    // The bottom dock's height changes (swiping to the composer, the composer growing to multi-line)
+    // resize THIS container without firing a window resize, so a plain resize listener misses them.
+    // Re-fit ONLY when the container GREW: the grid is bottom-aligned, so a container that grew leaves a
+    // blank strip at the TOP (needs a fit to fill), while a container that SHRANK just clips a few top
+    // rows harmlessly — the bottom (the live prompt) stays put. Re-fitting on every shrink is exactly
+    // what made multi-line typing flash: fit() calls term.resize(), which reflows and repaints the whole
+    // grid. So shrinks are skipped; only a genuine top-gap triggers a fit. fit() resizes xterm's internal
+    // grid, not the container box, so it can't drive the observer into a loop.
     let lastFitH = elRef.current?.clientHeight || 0;
     const ro = typeof ResizeObserver !== 'undefined'
       ? new ResizeObserver(() => {
           const h = elRef.current?.clientHeight || 0;
-          if (h && h !== lastFitH) { lastFitH = h; scheduleFit(); }
+          if (!h) return;
+          const grew = h > lastFitH;
+          lastFitH = h;
+          if (grew) scheduleFit();
         })
       : null;
     if (ro && elRef.current) ro.observe(elRef.current);
