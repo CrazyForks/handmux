@@ -16,6 +16,12 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   `yuanyuanzijin/handmux` links redirect permanently; README badges, package metadata, the security
   policy, issue templates and the landing page now point at the new home.
 
+### Fixed
+- The bundled terminal fonts (Nerd icons / symbol fills) could stay missing for a whole session
+  when their one network fetch failed on a flaky link — a failed `@font-face` is never retried by
+  the browser. The app now supersedes a failed face with a fresh JS FontFace and retries with
+  backoff, rebuilding the terminal glyph atlas when the font finally lands.
+
 ## [0.8.0] - 2026-07-05
 
 ### Added

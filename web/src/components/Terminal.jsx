@@ -10,6 +10,7 @@ import { idleDelay } from '../cadence.js';
 import { flingStep, shouldFling } from '../momentum.js';
 import { initialConnection, nextConnection } from '../connection.js';
 import { scanDocLinks, docLinksOnLine } from '../docDecorations.js';
+import { ensureBundledFonts } from '../bundledFonts.js';
 
 const LIVE_MARGIN = 20; // capture this many rows beyond the viewport so a small scroll-up has slack
                         // before triggering a deeper history pull (replaces the old fixed 100-line tail)
@@ -217,19 +218,15 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
     // aren't loaded yet, so the icons bake in as blank — switching panes (which remounts this
     // component, hence the renderer) is what made them appear. Reproduce that: once BOTH bundled
     // fonts are loaded, remount the WebGL renderer so its atlas is rebuilt with them.
-    if (document.fonts?.load) {
-      const px = fontRef.current ?? 14;
-      Promise.all([
-        document.fonts.load(`${px}px "JetBrainsMono Nerd Font"`).catch(() => {}),
-        // pass an in-range char (⏵) — a unicode-range font won't download without one
-        document.fonts.load(`${px}px "TW Unifont"`, '⏵').catch(() => {}),
-      ]).then(() => {
-        if (disposed || !webgl) return; // DOM renderer (no webgl) repaints on its own
-        try { webgl.dispose(); } catch { /* ignore */ }
-        mountWebgl();
-        term.refresh(0, term.rows - 1);
-      });
-    }
+    // ensureBundledFonts also RETRIES a failed font fetch (a failed @font-face never retries by
+    // itself — the "symbols missing until restart" bug), so this may resolve late; the rebuild
+    // then still happens and the icons pop in instead of staying blank for the session.
+    ensureBundledFonts(fontRef.current ?? 14).then(() => {
+      if (disposed || !webgl) return; // DOM renderer (no webgl) repaints on its own
+      try { webgl.dispose(); } catch { /* ignore */ }
+      mountWebgl();
+      term.refresh(0, term.rows - 1);
+    });
 
     const buf = () => term.buffer.active;
     // History-mode banner text. Shown ONLY while browsing outside the live zone (scrolled up far
