@@ -372,19 +372,16 @@ function BottomDock({
   // Grow to fit content; CSS max-height caps it at 3 lines, after which it scrolls. +2 accounts
   // for the border under box-sizing: border-box.
   // Also drives the `multi` layout: past one line the textarea takes the full row and the mic/send
-  // wrap to their own bottom row (styles.css .input-wrap.multi). Entering is easy (it wrapped);
-  // exiting must be measured at the NARROW single-line width (full width minus the inline buttons),
-  // otherwise text that fits full-width but not beside the buttons flip-flops between the two layouts.
+  // wrap to their own bottom row (styles.css .input-wrap.multi). Deliberately a RATCHET — enter on
+  // wrap, exit only when the box is emptied (send/clear). Any "does it fit back on one line" width
+  // probe re-measures at a different width than the one it will render at, and the two layouts can
+  // disagree forever → infinite render loop (the black-screen crash). Empty is width-independent.
   const ONE_LINE = 40; // px: 22px line + 14px padding, with slack
   const autoGrow = (el) => {
     if (!el) return;
     el.style.height = 'auto';
     if (el.scrollHeight > ONE_LINE) setMulti(true);
-    else if (multi) {
-      el.style.width = `${el.clientWidth - 84}px`; // ≈ mic + send + gaps
-      if (el.scrollHeight <= ONE_LINE) setMulti(false);
-      el.style.width = '';
-    }
+    else if (!el.value) setMulti(false);
     el.style.height = `${el.scrollHeight + 2}px`;
   };
 
