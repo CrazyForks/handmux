@@ -8,10 +8,10 @@
   "homepage": "https://handmux.com",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yuanyuanzijin/handmux.git"
+    "url": "git+https://github.com/handmux/handmux.git"
   },
   "bugs": {
-    "url": "https://github.com/yuanyuanzijin/handmux/issues"
+    "url": "https://github.com/handmux/handmux/issues"
   },
   "keywords": ["tmux", "mobile", "terminal", "claude-code", "remote", "pwa"],
   "engines": {

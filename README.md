@@ -2,7 +2,7 @@
 
 **[handmux.com](https://handmux.com)** · *[中文文档 → README.zh-CN.md](README.zh-CN.md)*
 
-[![npm](https://img.shields.io/npm/v/handmux?color=cb3837&logo=npm)](https://www.npmjs.com/package/handmux) [![CI](https://github.com/yuanyuanzijin/handmux/actions/workflows/test.yml/badge.svg)](https://github.com/yuanyuanzijin/handmux/actions/workflows/test.yml) [![license: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE) [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![npm](https://img.shields.io/npm/v/handmux?color=cb3837&logo=npm)](https://www.npmjs.com/package/handmux) [![CI](https://github.com/handmux/handmux/actions/workflows/test.yml/badge.svg)](https://github.com/handmux/handmux/actions/workflows/test.yml) [![license: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE) [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 
 > **Drive your agent, ditch the desk.** *Keep your creativity in hand* — one command on your
 > computer, scan a QR, and your live terminal (agent and all) goes wherever you do.

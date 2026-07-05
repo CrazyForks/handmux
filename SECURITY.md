@@ -8,7 +8,7 @@ security matters. Thanks for helping keep it safe.
 **Please report security issues privately. Do not open a public issue or PR.**
 
 Use GitHub's private vulnerability reporting:
-[**Report a vulnerability**](https://github.com/yuanyuanzijin/handmux/security/advisories/new).
+[**Report a vulnerability**](https://github.com/handmux/handmux/security/advisories/new).
 
 Include a description, reproduction steps, and the impact. We'll acknowledge within a few days and keep
 you posted on a fix. Please give us reasonable time to release a fix before any public disclosure.
