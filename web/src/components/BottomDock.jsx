@@ -387,6 +387,11 @@ function BottomDock({
   // SAFELY: the 24px slack in BTN_ZONE means an error wraps a touch early (reserves the strip), never
   // lets text sit under the buttons. No loop: crowd depends only on (width, text) — the padding it
   // toggles changes height, never width.
+  //
+  // crowd is the SAME ratchet as multi: once the strip appears it stays until the box empties. The
+  // strip (40px, button-height) is taller than a text line (22px), so releasing it per-line would make
+  // the box SHRINK right after every wrap ("reached the buttons" is tall, "wrapped past them" is
+  // short) — a jarring grow-then-shrink blip at each line boundary. Sticky = height only ever grows.
   const ONE_LINE = 40; // px: 22px line + 14px padding, with slack
   const BTN_ZONE = 102; // px from the right edge the buttons claim: mic 34 + gap 4 + send 34 + inset 6 + 24 slack
   const mirrorRef = useRef(null);
@@ -402,9 +407,13 @@ function BottomDock({
   const autoGrow = (el) => {
     if (!el) return;
     el.style.height = 'auto';
-    if (el.scrollHeight > ONE_LINE) setMulti(true);
-    else if (!el.value) setMulti(false);
-    setCrowd(el.offsetWidth - lastLineEndX(el) < BTN_ZONE); // CSS only applies it under .multi
+    // Empty check FIRST: with the crowd padding on, even an empty box measures taller than ONE_LINE,
+    // so an "is it multi-line"-first ordering would re-assert multi forever and never release.
+    if (!el.value) { setMulti(false); setCrowd(false); }
+    else {
+      if (el.scrollHeight > ONE_LINE) setMulti(true);
+      if (!crowd && el.offsetWidth - lastLineEndX(el) < BTN_ZONE) setCrowd(true);
+    }
     el.style.height = `${el.scrollHeight + 2}px`;
   };
 
