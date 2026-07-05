@@ -343,7 +343,9 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
    页面事件、也不 blur,结束时按【原生命中测试】判断落点可否编辑——命中悬浮按钮(非可编辑)就
    直接藏输入法。按钮退出命中测试后,落点永远穿透到 textarea → 键盘不藏。点按由 .input-wrap 的
    capture 手柄手动命中矩形代发(BottomDock ghostDown/Up,手势语义原样保留)。 */
-.input-wrap.multi > .input-mic, .input-wrap.multi > .input-send { position: absolute; bottom: 4px; margin: 0;
+/* bottom: 7px 与单行态严格同高:单行按钮 = flex-end 贴内容盒底(padding 5)+ margin 2 = 距内沿 7px;
+   绝对定位的 bottom 却从 padding 盒算——写 4px 时差 3px,单⇄多行切换按钮会肉眼可见地下坠。 */
+.input-wrap.multi > .input-mic, .input-wrap.multi > .input-send { position: absolute; bottom: 7px; margin: 0;
   pointer-events: none; }
 .input-wrap.multi > .input-send { right: 6px; }
 .input-wrap.multi > .input-mic { right: 44px; }
