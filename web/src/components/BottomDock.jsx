@@ -95,7 +95,8 @@ function BottomDock({
   recent = [], onSent, onRemoveRecent, inset = 0,
 }, fwdRef) {
   const [value, setValue] = useState('');
-  const [multi, setMulti] = useState(false); // composer grew past one line → full-width text, mic/send move up to the quick-bar
+  const [multi, setMulti] = useState(false); // composer grew past one line → full-width text, mic/send overlay bottom-right
+  const [crowd, setCrowd] = useState(false); // last text line would run under the overlaid buttons → reserve a bottom strip
   const [panelOpen, setPanelOpen] = useState(false);
   // The chat page's horizontal quick-command bar reads the agent 常用 list; re-load it whenever the
   // FavDrawer closes so add/delete there flow straight into the bar (single source of truth: favStore).
@@ -372,44 +373,52 @@ function BottomDock({
   // Grow to fit content; CSS max-height caps it at 3 lines, after which it scrolls. +2 accounts
   // for the border under box-sizing: border-box.
   // Also drives the `multi` layout: past one line the textarea takes the full width and the mic/send
-  // wrap onto their own right-aligned bottom row INSIDE the pill (styles.css .input-wrap.multi).
+  // become an overlay in the box's bottom-right corner (styles.css .input-wrap.multi).
   //
-  // Why a real (in-flow) row instead of overlaying the buttons in the box's corner: buttons painted
-  // over the textarea re-created the pre-0ffa95d bug — Android's caret/selection touches land on the
-  // button instead of the text and the keyboard collapses. That bug was HUD-diagnosed on a real
-  // device, and the only fix that worked was STRUCTURAL (nothing interactive overlapping the text);
-  // event-level guards (preventDefault, movement gates) demonstrably didn't. "In the pill + never
-  // over the text + row only when the last line is crowded" can't all hold at once — the on-demand
-  // variants all overlay — so multi always carries the button row, like other chat apps.
-  //
-  // A textarea can't report its own soft-wrap points, so `multi` is measured on a hidden mirror <div>
-  // that replicates the textarea's font/padding/wrapping at any width we ask (the standard
-  // caret-position technique; verified pixel-identical against a real textarea in Chrome): would the
-  // text fit ONE line at the SINGLE-LINE width (pill minus the inline buttons)? Enter and exit are the
-  // same predicate measured at the same fixed width — the pill's, which no layout choice feeds back
-  // into — so the buttons return inline the moment the text fits beside them again, and the two
-  // layouts can never disagree into a render loop (measuring at the textarea's CURRENT width is what
-  // caused the black-screen crash).
+  // A textarea can't report its own soft-wrap points, so both decisions are measured on a hidden
+  // mirror <div> that replicates the textarea's font/padding/wrapping at any width we ask (the
+  // standard caret-position technique; verified pixel-identical against a real textarea in Chrome):
+  //   • `multi`  — would the text fit ONE line at the SINGLE-LINE width (pill minus the inline
+  //     buttons)? Enter and exit are the same predicate measured at the same fixed width — the pill's,
+  //     which no layout choice feeds back into — so the buttons return inline the moment the text fits
+  //     beside them again, and the two layouts can never disagree into a render loop (measuring at the
+  //     textarea's CURRENT width is what caused the black-screen crash).
+  //   • `crowd` — does the LAST line (marker <span>'s offsetLeft at full width) run into the button
+  //     corner? Then the textarea reserves a bottom strip via padding. The strip is EXACTLY one line:
+  //     29px = line 22 + normal bottom padding 7, so "n lines + strip" ≡ "n+1 lines" in height —
+  //     reaching the buttons jumps straight to the post-wrap height, the wrap itself doesn't move the
+  //     box, and the strip releases blip-free once the short new line clears the zone. The buttons keep
+  //     their 34px size — their top edge may graze the previous line's descenders (user-approved).
+  // The zone slack is deliberately TIGHT (8px ≈ caret + breathing room): the mirror is pixel-exact
+  // (verified against a real textarea at multiple widths, CJK + fullwidth punctuation), and a fat
+  // slack made the text yield to the buttons a full character early — visibly "wrapping when it
+  // clearly still fits".
   const ONE_LINE = 40; // px: 22px line + 14px padding, with slack
   const mirrorRef = useRef(null);
-  // Text height at an arbitrary rendered width (the mirror's padding matches the textarea's, so
-  // `width` means "textarea offsetWidth").
+  // Text metrics at an arbitrary rendered width (the mirror's padding matches the textarea's, so
+  // `width` means "textarea offsetWidth"): total height + where the last line ends.
   const measureAt = (text, width) => {
     const m = mirrorRef.current;
     if (!m) return null;
     m.style.width = `${width}px`;
     m.textContent = text;
-    return { h: m.offsetHeight };
+    const marker = document.createElement('span');
+    m.appendChild(marker);
+    return { h: m.offsetHeight, endX: marker.offsetLeft };
   };
   const autoGrow = (el) => {
     if (!el) return;
     el.style.height = 'auto';
-    // The inline-button width that's ACTUALLY rendered: a keyless install has no mic, so its text
-    // runs up to the send button, not a phantom mic earlier.
+    // Inline the zone/button widths that are ACTUALLY rendered: a keyless install has no mic, so its
+    // text runs up to the send button, not a phantom mic earlier.
     const inline = micAvailable ? 76 : 38; // single-line row: gap 4 + mic 34 (+ gap 4 + send 34)
+    const zone = micAvailable ? 86 : 48;   // overlay corner: mic 34 + gap 4 + send 34 + inset 6 + 8 slack
     const inner = el.parentElement.clientWidth - 11; // pill content width (clientWidth minus 5+6 padding)
     const narrow = el.value ? measureAt(el.value, inner - inline) : null;
-    setMulti(narrow ? narrow.h > ONE_LINE : false); // no mirror/empty → single-line layout
+    const isMulti = narrow ? narrow.h > ONE_LINE : false; // no mirror/empty → single-line layout
+    setMulti(isMulti);
+    const full = isMulti ? measureAt(el.value, inner) : null;
+    setCrowd(!!full && inner - full.endX < zone);
     el.style.height = `${el.scrollHeight + 2}px`;
   };
 
@@ -757,7 +766,7 @@ function BottomDock({
                 onChange={(e) => { uploadFiles(e.target.files); e.target.value = ''; }} />
               {/* flex 行:textarea(占满)· 麦克风 · 发送,全是 flex 兄弟、不重叠文字框,所以选词/移光标碰不到
                   按键。录音时整条变绿 + 呼吸。＋上传与▤常用已上移到快捷栏。 */}
-              <div className={`input-wrap${recording ? ' recording' : ''}${multi ? ' multi' : ''}`}>
+              <div className={`input-wrap${recording ? ' recording' : ''}${multi ? ' multi' : ''}${crowd ? ' crowd' : ''}`}>
                 <textarea
                   ref={ref}
                   className="input-text"
@@ -778,15 +787,13 @@ function BottomDock({
                   autoCorrect="off"
                   spellCheck={false}
                 />
-                {/* 换行测量镜像(隐藏):同字体同内边距同换行规则,量文字在任意宽度下的行数,见 measureAt。 */}
+                {/* 末行位置测量镜像(隐藏):同宽同字体同换行,marker 的 offsetLeft = 文字末端 x,见 lastLineEndX。 */}
                 <div ref={mirrorRef} className="input-mirror" aria-hidden="true" />
                 {/* 历史:麦克风左侧,只在空框时出现(仅一个图标);一打字就整个隐藏,给文字腾地方。 */}
                 {!value && (
                   <button type="button" className="input-history" aria-label={t('dock.history')} title={t('dock.history')}
                     onClick={() => setPanelOpen((o) => !o)}><ClockIcon /></button>
                 )}
-                {/* 单行态:麦克风/发送在文字右侧;多行态(.multi 置 flex-wrap)它们折到药丸内的底部
-                    一行、右对齐——始终是流式 flex 兄弟,任何状态都不与文字重叠(重叠=收键盘,见上)。 */}
                 {micAvailable && <MicButton active={recording} disabled={voice.state === 'requesting'} onToggle={toggleMic} />}
                 {/* 发送 ↑ 常驻,空框禁用:点 = 发送组合文本,长按 = 填入。 */}
                 <button type="button" className="input-send" aria-label={t('dock.send')} title={t('dock.send.hint')}

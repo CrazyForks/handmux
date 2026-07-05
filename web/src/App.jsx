@@ -37,6 +37,7 @@ import Settings from './components/Settings.jsx';
 import UsagePage from './components/UsagePage.jsx';
 import Inbox from './components/Inbox.jsx';
 import OrphanTakeoverSheet from './components/OrphanTakeoverSheet.jsx';
+import EventHud from './components/EventHud.jsx';
 import { useClaudeHooks } from './useClaudeHooks.js';
 import BindSession from './components/BindSession.jsx';
 import NewWindowModal from './components/NewWindowModal.jsx';
@@ -1057,6 +1058,9 @@ export default function App() {
       ) : (
         <div className="loading">{t('app.selectSessionHint')}</div>
       )}
+      {/* 临时真机调试:URL 带 #hud 时挂载屏上事件 HUD(0ffa95d 同款手法),用于抓「多行拖光标
+          碰到悬浮按钮收键盘」的真实事件序列。问题定位后移除。 */}
+      {window.location.hash.includes('hud') && <EventHud />}
     </div>
   );
 }
