@@ -5,6 +5,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Changed
+- Chat composer: once the text grows past one line, the textarea takes the full pill width and the
+  mic/send buttons drop to their own bottom row (right-aligned) instead of reserving a right-hand
+  column on every line; the pill also gained a little vertical breathing room above and below.
 - The landing site moved to its own repo, `handmux/handmux.github.io` (still served at handmux.com);
   the code repo's `gh-pages` branch is retired once the domain cutover completes.
 - The public repository moved to its own organization: `github.com/handmux/handmux`. Old

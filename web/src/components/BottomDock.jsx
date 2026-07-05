@@ -95,6 +95,7 @@ function BottomDock({
   recent = [], onSent, onRemoveRecent, inset = 0,
 }, fwdRef) {
   const [value, setValue] = useState('');
+  const [multi, setMulti] = useState(false); // composer grew past one line → full-width text, buttons on their own bottom row
   const [panelOpen, setPanelOpen] = useState(false);
   // The chat page's horizontal quick-command bar reads the agent 常用 list; re-load it whenever the
   // FavDrawer closes so add/delete there flow straight into the bar (single source of truth: favStore).
@@ -370,9 +371,20 @@ function BottomDock({
 
   // Grow to fit content; CSS max-height caps it at 3 lines, after which it scrolls. +2 accounts
   // for the border under box-sizing: border-box.
+  // Also drives the `multi` layout: past one line the textarea takes the full row and the mic/send
+  // wrap to their own bottom row (styles.css .input-wrap.multi). Entering is easy (it wrapped);
+  // exiting must be measured at the NARROW single-line width (full width minus the inline buttons),
+  // otherwise text that fits full-width but not beside the buttons flip-flops between the two layouts.
+  const ONE_LINE = 40; // px: 22px line + 14px padding, with slack
   const autoGrow = (el) => {
     if (!el) return;
     el.style.height = 'auto';
+    if (el.scrollHeight > ONE_LINE) setMulti(true);
+    else if (multi) {
+      el.style.width = `${el.clientWidth - 84}px`; // ≈ mic + send + gaps
+      if (el.scrollHeight <= ONE_LINE) setMulti(false);
+      el.style.width = '';
+    }
     el.style.height = `${el.scrollHeight + 2}px`;
   };
 
@@ -706,7 +718,7 @@ function BottomDock({
                 onChange={(e) => { uploadFiles(e.target.files); e.target.value = ''; }} />
               {/* flex 行:textarea(占满)· 麦克风 · 发送,全是 flex 兄弟、不重叠文字框,所以选词/移光标碰不到
                   按键。录音时整条变绿 + 呼吸。＋上传与▤常用已上移到快捷栏。 */}
-              <div className={`input-wrap${recording ? ' recording' : ''}`}>
+              <div className={`input-wrap${recording ? ' recording' : ''}${multi ? ' multi' : ''}`}>
                 <textarea
                   ref={ref}
                   className="input-text"
