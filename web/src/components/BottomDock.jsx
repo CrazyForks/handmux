@@ -387,8 +387,8 @@ function BottomDock({
   //     corner? Then the textarea reserves a bottom strip via padding. The strip is EXACTLY one line:
   //     29px = line 22 + normal bottom padding 7, so "n lines + strip" ≡ "n+1 lines" in height —
   //     reaching the buttons jumps straight to the post-wrap height, the wrap itself doesn't move the
-  //     box, and the strip releases blip-free once the short new line clears the zone. The overlay
-  //     buttons shrink to 30px in multi so they fit inside that one-line strip (styles.css).
+  //     box, and the strip releases blip-free once the short new line clears the zone. The buttons keep
+  //     their 34px size — their top edge may graze the previous line's descenders (user-approved).
   // The zone slack is deliberately TIGHT (8px ≈ caret + breathing room): the mirror is pixel-exact
   // (verified against a real textarea at multiple widths, CJK + fullwidth punctuation), and a fat
   // slack made the text yield to the buttons a full character early — visibly "wrapping when it
@@ -412,7 +412,7 @@ function BottomDock({
     // Inline the zone/button widths that are ACTUALLY rendered: a keyless install has no mic, so its
     // text runs up to the send button, not a phantom mic earlier.
     const inline = micAvailable ? 76 : 38; // single-line row: gap 4 + mic 34 (+ gap 4 + send 34)
-    const zone = micAvailable ? 78 : 44;   // overlay corner: mic 30 + gap 4 + send 30 + inset 6 + 8 slack
+    const zone = micAvailable ? 86 : 48;   // overlay corner: mic 34 + gap 4 + send 34 + inset 6 + 8 slack
     const inner = el.parentElement.clientWidth - 11; // pill content width (clientWidth minus 5+6 padding)
     const narrow = el.value ? measureAt(el.value, inner - inline) : null;
     const isMulti = narrow ? narrow.h > ONE_LINE : false; // no mirror/empty → single-line layout
