@@ -384,7 +384,7 @@ function BottomDock({
   // value plus a marker <span>, and the marker's offsetLeft is where the text ends. Only then does the
   // textarea reserve a bottom strip (padding-bottom) — so the box hugs the text, and the extra row
   // appears when the text actually reaches the buttons, not one row early. Mis-measurement degrades
-  // SAFELY: the 24px slack in BTN_ZONE means an error wraps a touch early (reserves the strip), never
+  // SAFELY: the 24px slack in the button zone means an error wraps a touch early (reserves the strip), never
   // lets text sit under the buttons. No loop: crowd depends only on (width, text) — the padding it
   // toggles changes height, never width.
   //
@@ -396,7 +396,6 @@ function BottomDock({
   // buttons shrink to 30px in multi so they fit inside that one-line strip without touching the text
   // above (styles.css).
   const ONE_LINE = 40; // px: 22px line + 14px padding, with slack
-  const BTN_ZONE = 94; // px from the right edge the buttons claim: mic 30 + gap 4 + send 30 + inset 6 + 24 slack
   const mirrorRef = useRef(null);
   const lastLineEndX = (el) => {
     const m = mirrorRef.current;
@@ -415,7 +414,10 @@ function BottomDock({
     if (!el.value) { setMulti(false); setCrowd(false); }
     else {
       if (el.scrollHeight > ONE_LINE) setMulti(true);
-      setCrowd(el.offsetWidth - lastLineEndX(el) < BTN_ZONE);
+      // The zone is what's ACTUALLY rendered: send 30 + inset 6 + 24 slack, plus mic 30 + gap 4 only
+      // on devices that show it (micAvailable) — a keyless install wraps at the send button, not a
+      // phantom mic earlier.
+      setCrowd(el.offsetWidth - lastLineEndX(el) < (micAvailable ? 94 : 60));
     }
     el.style.height = `${el.scrollHeight + 2}px`;
   };
