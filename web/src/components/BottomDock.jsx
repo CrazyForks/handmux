@@ -388,12 +388,15 @@ function BottomDock({
   // lets text sit under the buttons. No loop: crowd depends only on (width, text) — the padding it
   // toggles changes height, never width.
   //
-  // crowd is the SAME ratchet as multi: once the strip appears it stays until the box empties. The
-  // strip (40px, button-height) is taller than a text line (22px), so releasing it per-line would make
-  // the box SHRINK right after every wrap ("reached the buttons" is tall, "wrapped past them" is
-  // short) — a jarring grow-then-shrink blip at each line boundary. Sticky = height only ever grows.
+  // The strip is EXACTLY one line tall: crowd padding-bottom (29px) = line (22) + normal bottom
+  // padding (7), so "n lines + strip" and "n+1 lines" are the same box height. Reaching the buttons
+  // therefore jumps straight to the height the coming wrap will need, and the wrap itself doesn't move
+  // the box at all — the strip can be released the moment the (now short) last line clears the zone
+  // with zero visual blip. This equality is what lets crowd stay live (not a ratchet); the overlay
+  // buttons shrink to 30px in multi so they fit inside that one-line strip without touching the text
+  // above (styles.css).
   const ONE_LINE = 40; // px: 22px line + 14px padding, with slack
-  const BTN_ZONE = 102; // px from the right edge the buttons claim: mic 34 + gap 4 + send 34 + inset 6 + 24 slack
+  const BTN_ZONE = 94; // px from the right edge the buttons claim: mic 30 + gap 4 + send 30 + inset 6 + 24 slack
   const mirrorRef = useRef(null);
   const lastLineEndX = (el) => {
     const m = mirrorRef.current;
@@ -412,7 +415,7 @@ function BottomDock({
     if (!el.value) { setMulti(false); setCrowd(false); }
     else {
       if (el.scrollHeight > ONE_LINE) setMulti(true);
-      if (!crowd && el.offsetWidth - lastLineEndX(el) < BTN_ZONE) setCrowd(true);
+      setCrowd(el.offsetWidth - lastLineEndX(el) < BTN_ZONE);
     }
     el.style.height = `${el.scrollHeight + 2}px`;
   };
