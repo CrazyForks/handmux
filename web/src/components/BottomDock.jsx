@@ -627,11 +627,17 @@ function BottomDock({
   //   tap        → send() (type + Enter)
   //   long-press → fill() (type WITHOUT Enter) — armed only when there's text to fill
   // Pointer events only (no onClick), matching the keybar/⌫ pattern.
+  // Movement gate (10px, same as HoldButton/MicButton): in multi the button hovers OVER the text, so a
+  // caret-handle drag can start on it — pointer capture routes the eventual up back here even after the
+  // finger left, and firing send() on that up meant "drag the caret near the corner" = message sent +
+  // keyboard gone. A moved pointer is a drag, not a tap: cancel both tap and long-press.
   const sendTimer = useRef(null);
   const sendLongRef = useRef(false);
+  const sendPtRef = useRef({ x: 0, y: 0, moved: false });
   const sendDown = (e) => {
     if (e.cancelable) e.preventDefault();
     sendLongRef.current = false;
+    sendPtRef.current = { x: e.clientX, y: e.clientY, moved: false };
     if (!value) return; // empty box → no long-press; releasing just sends a bare Enter
     sendTimer.current = setTimeout(() => {
       sendLongRef.current = true;
@@ -639,10 +645,18 @@ function BottomDock({
       fill();
     }, 450);
   };
+  const sendMove = (e) => {
+    const p = sendPtRef.current;
+    if (p.moved || Math.hypot(e.clientX - p.x, e.clientY - p.y) <= 10) return;
+    p.moved = true;
+    clearTimeout(sendTimer.current); // a drag disarms the long-press too
+    sendTimer.current = null;
+  };
   const sendUp = () => {
     clearTimeout(sendTimer.current);
     sendTimer.current = null;
     if (sendLongRef.current) { sendLongRef.current = false; return; } // long-press already filled
+    if (sendPtRef.current.moved) return; // drag, not a tap
     send();
   };
   const sendCancel = () => {
@@ -784,7 +798,7 @@ function BottomDock({
                 {/* 发送 ↑ 常驻,空框禁用:点 = 发送组合文本,长按 = 填入。 */}
                 <button type="button" className="input-send" aria-label={t('dock.send')} title={t('dock.send.hint')}
                   disabled={!value}
-                  onPointerDown={sendDown} onPointerUp={sendUp} onPointerCancel={sendCancel} onPointerLeave={sendCancel}>
+                  onPointerDown={sendDown} onPointerMove={sendMove} onPointerUp={sendUp} onPointerCancel={sendCancel} onPointerLeave={sendCancel}>
                   <ArrowUpIcon />
                 </button>
               </div>
