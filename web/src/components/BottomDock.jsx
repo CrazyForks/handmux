@@ -95,7 +95,8 @@ function BottomDock({
   recent = [], onSent, onRemoveRecent, inset = 0,
 }, fwdRef) {
   const [value, setValue] = useState('');
-  const [multi, setMulti] = useState(false); // composer grew past one line → full-width text, buttons on their own bottom row
+  const [multi, setMulti] = useState(false); // composer grew past one line → full-width text, mic/send overlay bottom-right
+  const [crowd, setCrowd] = useState(false); // last text line would run under the overlaid buttons → reserve a bottom strip
   const [panelOpen, setPanelOpen] = useState(false);
   // The chat page's horizontal quick-command bar reads the agent 常用 list; re-load it whenever the
   // FavDrawer closes so add/delete there flow straight into the bar (single source of truth: favStore).
@@ -371,17 +372,39 @@ function BottomDock({
 
   // Grow to fit content; CSS max-height caps it at 3 lines, after which it scrolls. +2 accounts
   // for the border under box-sizing: border-box.
-  // Also drives the `multi` layout: past one line the textarea takes the full row and the mic/send
-  // wrap to their own bottom row (styles.css .input-wrap.multi). Deliberately a RATCHET — enter on
-  // wrap, exit only when the box is emptied (send/clear). Any "does it fit back on one line" width
-  // probe re-measures at a different width than the one it will render at, and the two layouts can
-  // disagree forever → infinite render loop (the black-screen crash). Empty is width-independent.
+  // Also drives the `multi` layout: past one line the textarea takes the full width and the mic/send
+  // become an overlay in the box's bottom-right corner (styles.css .input-wrap.multi). Deliberately a
+  // RATCHET — enter on wrap, exit only when the box is emptied (send/clear). Any "does it fit back on
+  // one line" width probe re-measures at a different width than the one it will render at, and the two
+  // layouts can disagree forever → infinite render loop (the black-screen crash). Empty is width-independent.
+  //
+  // `crowd`: whether the LAST text line would run under the overlaid buttons. A textarea can't report
+  // its own soft-wrap points, so this is measured on a hidden mirror <div> that replicates the
+  // textarea's width/font/padding/wrapping (the standard caret-position technique): the mirror gets the
+  // value plus a marker <span>, and the marker's offsetLeft is where the text ends. Only then does the
+  // textarea reserve a bottom strip (padding-bottom) — so the box hugs the text, and the extra row
+  // appears when the text actually reaches the buttons, not one row early. Mis-measurement degrades
+  // SAFELY: the 24px slack in BTN_ZONE means an error wraps a touch early (reserves the strip), never
+  // lets text sit under the buttons. No loop: crowd depends only on (width, text) — the padding it
+  // toggles changes height, never width.
   const ONE_LINE = 40; // px: 22px line + 14px padding, with slack
+  const BTN_ZONE = 102; // px from the right edge the buttons claim: mic 34 + gap 4 + send 34 + inset 6 + 24 slack
+  const mirrorRef = useRef(null);
+  const lastLineEndX = (el) => {
+    const m = mirrorRef.current;
+    if (!m) return Infinity; // no mirror → treat as crowded (falls back to the reserved-strip layout)
+    m.style.width = `${el.offsetWidth}px`;
+    m.textContent = el.value;
+    const marker = document.createElement('span');
+    m.appendChild(marker);
+    return marker.offsetLeft;
+  };
   const autoGrow = (el) => {
     if (!el) return;
     el.style.height = 'auto';
     if (el.scrollHeight > ONE_LINE) setMulti(true);
     else if (!el.value) setMulti(false);
+    setCrowd(el.offsetWidth - lastLineEndX(el) < BTN_ZONE); // CSS only applies it under .multi
     el.style.height = `${el.scrollHeight + 2}px`;
   };
 
@@ -715,7 +738,7 @@ function BottomDock({
                 onChange={(e) => { uploadFiles(e.target.files); e.target.value = ''; }} />
               {/* flex 行:textarea(占满)· 麦克风 · 发送,全是 flex 兄弟、不重叠文字框,所以选词/移光标碰不到
                   按键。录音时整条变绿 + 呼吸。＋上传与▤常用已上移到快捷栏。 */}
-              <div className={`input-wrap${recording ? ' recording' : ''}${multi ? ' multi' : ''}`}>
+              <div className={`input-wrap${recording ? ' recording' : ''}${multi ? ' multi' : ''}${crowd ? ' crowd' : ''}`}>
                 <textarea
                   ref={ref}
                   className="input-text"
@@ -736,6 +759,8 @@ function BottomDock({
                   autoCorrect="off"
                   spellCheck={false}
                 />
+                {/* 末行位置测量镜像(隐藏):同宽同字体同换行,marker 的 offsetLeft = 文字末端 x,见 lastLineEndX。 */}
+                <div ref={mirrorRef} className="input-mirror" aria-hidden="true" />
                 {/* 历史:麦克风左侧,只在空框时出现(仅一个图标);一打字就整个隐藏,给文字腾地方。 */}
                 {!value && (
                   <button type="button" className="input-history" aria-label={t('dock.history')} title={t('dock.history')}

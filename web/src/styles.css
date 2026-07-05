@@ -333,10 +333,18 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
    offsetHeight 就漏掉它)。与 .bottom-dock 自身 8px 叠加。 */
 .dock-page.chat { padding-bottom: 6px; }
 .input-wrap:focus-within { border-color: var(--green); box-shadow: 0 0 0 1px rgba(var(--green-rgb),.4), 0 2px 12px rgba(0,0,0,.4); }
-/* 多行(BottomDock 置 .multi):textarea 独占整行(flex-basis:100% 强制换行),麦克风/发送折到底部
-   自成一行、右对齐——文字不再被右侧按钮列挤窄。何时进/出 multi 由 JS 量高度定(见 autoGrow)。 */
-.input-wrap.multi { flex-wrap: wrap; justify-content: flex-end; }
-.input-wrap.multi > .input-text { flex: 1 0 100%; }
+/* 多行(BottomDock 置 .multi):麦克风/发送脱离文档流、悬在框内右下角 → textarea 独占整行。
+   末行文字快挤到按钮时 JS 再置 .crowd → textarea 用 padding-bottom 空出一条按钮带;末行还短时
+   盒子紧贴文字、按钮悬在末行右侧的空白上——不会提前空出一整行(见 autoGrow/lastLineEndX)。 */
+.input-wrap.multi > .input-mic, .input-wrap.multi > .input-send { position: absolute; bottom: 5px; }
+.input-wrap.multi > .input-send { right: 6px; }
+.input-wrap.multi > .input-mic { right: 44px; }
+.input-wrap.multi.crowd > .input-text { padding-bottom: 44px; }
+/* 末行测量镜像:必须与 .input-text 的宽/字体/内边距/换行规则完全一致,否则量出的换行点不对。 */
+.input-mirror { position: absolute; left: -9999px; top: 0; visibility: hidden; pointer-events: none;
+  box-sizing: border-box; padding: 7px 6px 7px 11px; border: none;
+  font-family: inherit; font-size: 16px; line-height: 22px;
+  white-space: pre-wrap; overflow-wrap: break-word; }
 /* The 34px buttons flex-end (pin to bottom for multi-line), but a single-line textarea is ~4px taller
    than a button, so pinned-to-bottom reads ~2px low. Lift them 2px → centred on one line, still hugging
    the bottom when the box grows. */
