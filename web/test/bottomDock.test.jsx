@@ -165,7 +165,7 @@ describe('BottomDock', () => {
 
   it('录音中点发送:先停语音、发当前文字,后续定稿不再回写', async () => {
     await render({ pane: '%1', agent: 'claude', onSent: () => {} });
-    act(() => container.querySelector('.input-mic').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    tap(container.querySelector('.input-mic'));
     voice.state = 'recording'; voice.partial = '帮我看日志';
     await render({ pane: '%1', agent: 'claude', onSent: () => {} });
     voice.stop.mockClear();
@@ -250,17 +250,17 @@ describe('BottomDock', () => {
 
   it('点麦克风开始/再点停止(点按切换)', async () => {
     await render({ pane: '%1', agent: 'claude', onSent: () => {} });
-    act(() => container.querySelector('.input-mic').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    tap(container.querySelector('.input-mic'));
     expect(voice.start).toHaveBeenCalledTimes(1);
     voice.state = 'recording';
     await render({ pane: '%1', agent: 'claude', onSent: () => {} });
-    act(() => container.querySelector('.input-mic').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    tap(container.querySelector('.input-mic'));
     expect(voice.stop).toHaveBeenCalledTimes(1);
   });
 
   it('录音中 partial 实时写进文本框,光标在末尾', async () => {
     await render({ pane: '%1', agent: 'claude', onSent: () => {} });
-    act(() => container.querySelector('.input-mic').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    tap(container.querySelector('.input-mic'));
     voice.state = 'recording'; voice.partial = '帮我';
     await render({ pane: '%1', agent: 'claude', onSent: () => {} });
     expect(container.querySelector('.input-text').value).toBe('帮我');
@@ -274,7 +274,7 @@ describe('BottomDock', () => {
     const ta = container.querySelector('.input-text');
     typeInto(ta, 'AB');
     act(() => { ta.selectionStart = ta.selectionEnd = 1; });
-    act(() => container.querySelector('.input-mic').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    tap(container.querySelector('.input-mic'));
     voice.state = 'recording'; voice.partial = 'X';
     await render({ pane: '%1', agent: 'claude', onSent: () => {} });
     expect(container.querySelector('.input-text').value).toBe('AXB');
@@ -282,7 +282,7 @@ describe('BottomDock', () => {
 
   it('录音中文本框不设 readOnly(否则 iOS 点击不弹键盘、卡死)', async () => {
     await render({ pane: '%1', agent: 'claude', onSent: () => {} });
-    act(() => container.querySelector('.input-mic').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    tap(container.querySelector('.input-mic'));
     voice.state = 'recording'; voice.partial = '你好';
     await render({ pane: '%1', agent: 'claude', onSent: () => {} });
     // 必须可编辑:iOS 对 readOnly 的 textarea 点击不给焦点/不弹键盘,而停语音是异步的 → 那一下点击作废。
@@ -291,7 +291,7 @@ describe('BottomDock', () => {
 
   it('录音中点输入框:停语音 + 接管编辑,尾随定稿被抑制不覆盖', async () => {
     await render({ pane: '%1', agent: 'claude', onSent: () => {} });
-    act(() => container.querySelector('.input-mic').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    tap(container.querySelector('.input-mic'));
     voice.state = 'recording'; voice.partial = '在听';
     await render({ pane: '%1', agent: 'claude', onSent: () => {} });
     expect(container.querySelector('.input-text').value).toBe('在听');
@@ -335,7 +335,7 @@ describe('BottomDock', () => {
   it('录音时 input-wrap 带 recording 类(整框变绿),停录后撤掉', async () => {
     await render({ pane: '%1', agent: 'claude', onSent: () => {} });
     expect(container.querySelector('.input-wrap').classList.contains('recording')).toBe(false);
-    act(() => container.querySelector('.input-mic').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    tap(container.querySelector('.input-mic'));
     voice.state = 'recording'; voice.partial = '在听';
     await render({ pane: '%1', agent: 'claude', onSent: () => {} });
     expect(container.querySelector('.input-wrap').classList.contains('recording')).toBe(true);
@@ -346,7 +346,7 @@ describe('BottomDock', () => {
 
   it('定稿后 onText 把整段留在框里', async () => {
     await render({ pane: '%1', agent: 'claude', onSent: () => {} });
-    act(() => container.querySelector('.input-mic').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    tap(container.querySelector('.input-mic'));
     voice.state = 'recording'; voice.partial = '你好世界';
     await render({ pane: '%1', agent: 'claude', onSent: () => {} });
     act(() => { voice.onText('你好世界'); });

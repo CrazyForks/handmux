@@ -17,11 +17,22 @@ describe('MicButton', () => {
     await render({ active: true });
     expect(container.querySelector('.input-mic').classList.contains('on')).toBe(true);
   });
-  it('点击调用 onToggle', async () => {
+  // 点按 = pointerdown + 原地 pointerup(无 onClick:多行时按钮悬在文字上,拖光标经过不能触发)。
+  it('点按调用 onToggle', async () => {
     const onToggle = vi.fn();
     await render({ active: false, onToggle });
-    act(() => container.querySelector('.input-mic').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    const fire = (type, x = 0) => act(() => container.querySelector('.input-mic')
+      .dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: 0 })));
+    fire('pointerdown'); fire('pointerup');
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+  it('按下后拖走再松手(拖光标经过)不触发 onToggle', async () => {
+    const onToggle = vi.fn();
+    await render({ active: false, onToggle });
+    const fire = (type, x = 0) => act(() => container.querySelector('.input-mic')
+      .dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: 0 })));
+    fire('pointerdown'); fire('pointermove', 40); fire('pointerup');
+    expect(onToggle).not.toHaveBeenCalled();
   });
   it('disabled 时按钮禁用', async () => {
     await render({ active: false, disabled: true });
