@@ -47,5 +47,13 @@
   "devDependencies": {
     "supertest": "^7.0.0",
     "vitest": "^2.0.0"
-  }
+  },
+  "whatsNew": [
+    {"version":"0.9.1","date":"2026-07-06","zh":"「添加到主屏」引导","en":"\"Add to Home Screen\" coach"},
+    {"version":"0.9.0","date":"2026-07-05","zh":"聊天输入框多行重做","en":"Multi-line chat composer redone"},
+    {"version":"0.8.0","date":"2026-07-05","zh":"快捷栏可自定义 · 上传体验重做","en":"Customizable quick-bars · upload redone"},
+    {"version":"0.7.0","date":"2026-07-03","zh":"新增「用量」页","en":"New \"Usage\" page"},
+    {"version":"0.6.0","date":"2026-07-02","zh":"新增 Codex 支持","en":"Codex support added"},
+    {"version":"0.5.0","date":"2026-06-28","zh":"首个公开版 · 多语言界面","en":"First public release · multi-language UI"}
+  ]
 }

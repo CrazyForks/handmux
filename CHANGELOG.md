@@ -4,6 +4,21 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Changed
+- **The in-app changelog is now keyed by release version, not date.** Each entry carries a `version`
+  (`0.9.1`) shown as "v0.9.1 · 2026-07-06", plus a one-line `highlight`; the pre-1.0 internal builds are
+  merged into a single dateless "Early builds" entry. `LATEST_RELEASE` / the unread-dot id now use the
+  version. (Existing users see the gear dot light once as the stored "seen" id switches format.)
+
+### Added
+- **The phone shows *what's new* before you upgrade, not just the version number.** The release now
+  mirrors the changelog's concise per-version highlights into `server/package.json` `whatsNew` (via a
+  new `server/scripts/gen-whatsnew.mjs`, run by `release.sh`). The existing hourly update check fetches
+  it in the same `npm view handmux@latest version whatsNew --json` call — so it rides the user's own npm
+  (China-mirror-friendly), no GitHub reach. `GET /api/version` returns `whatsNew` trimmed to the versions
+  strictly newer than the installed one, and Settings lists them under the "vX available" card so a user
+  knows what the trip to the computer buys before running `handmux update`.
+
 ## [0.9.1] - 2026-07-06
 
 ### Added

@@ -515,7 +515,13 @@ export function createApiRouter({
     const cache = readCache(home);
     if (shouldRefresh(cache)) refreshLatestAsync(home);
     const latest = cache?.latest ?? null;
-    res.json({ current: PKG_VERSION, latest, updateAvailable: !!(latest && PKG_VERSION && isNewer(latest, PKG_VERSION)) });
+    const updateAvailable = !!(latest && PKG_VERSION && isNewer(latest, PKG_VERSION));
+    // `whatsNew` is the concise per-version highlights the newer package carries (via npm). Trim to the
+    // versions the user would actually GAIN by upgrading (strictly newer than what's installed here).
+    const whatsNew = (updateAvailable && Array.isArray(cache?.whatsNew))
+      ? cache.whatsNew.filter((e) => e && e.version && isNewer(e.version, PKG_VERSION))
+      : [];
+    res.json({ current: PKG_VERSION, latest, updateAvailable, whatsNew });
   });
 
   // One-tap enable from the phone: install the hooks for every present agent (Claude Code, Codex) on the

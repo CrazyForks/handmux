@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import Changelog from '../src/components/Changelog.jsx';
-import { CHANGELOG, LATEST_RELEASE } from '../src/changelog.js';
+import { CHANGELOG, LATEST_RELEASE, entryId } from '../src/changelog.js';
 import { getChangelogSeen, setChangelogSeen } from '../src/storage.js';
 
 let container; let root;
@@ -10,12 +10,20 @@ beforeEach(() => { localStorage.clear(); container = document.createElement('div
 afterEach(() => { act(() => root.unmount()); container.remove(); });
 
 describe('changelog data', () => {
-  it('LATEST_RELEASE is the newest entry id', () => {
-    expect(LATEST_RELEASE).toBe(CHANGELOG[0].v);
+  it('LATEST_RELEASE is the newest entry id (its version)', () => {
+    expect(LATEST_RELEASE).toBe(entryId(CHANGELOG[0]));
+    expect(LATEST_RELEASE).toBe(CHANGELOG[0].version);
   });
-  it('has at most one entry per date (one paragraph per day)', () => {
-    const dates = CHANGELOG.map((r) => r.date);
-    expect(new Set(dates).size).toBe(dates.length);
+  it('every entry id (version or date) is unique', () => {
+    const ids = CHANGELOG.map(entryId);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+  it('every public (versioned) entry carries a bilingual highlight for the update prompt', () => {
+    for (const r of CHANGELOG.filter((e) => e.version)) {
+      expect(r.version).toMatch(/^\d+\.\d+\.\d+$/);
+      expect(r.highlight?.zh?.length).toBeGreaterThan(0);
+      expect(r.highlight?.en?.length).toBeGreaterThan(0);
+    }
   });
   it('seen getter/setter round-trips', () => {
     expect(getChangelogSeen()).toBeNull();

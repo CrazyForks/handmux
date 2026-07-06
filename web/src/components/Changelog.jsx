@@ -17,9 +17,15 @@ export default function Changelog({ open, onClose }) {
           {CHANGELOG.map((rel) => {
             // items is { zh, en }; fall back across locales so a partly-translated entry still shows.
             const items = rel.items[getLangCode()] || rel.items.en || rel.items.zh || [];
+            // Header: "v0.9.1 · 2026-07-06" for public releases; the localized label ("早期内测") for
+            // the merged internal builds, which carry no version.
+            const label = rel.version ? `v${rel.version}` : (rel.label?.[getLangCode()] || rel.label?.en);
             return (
-              <div key={rel.v} className="rel">
-                <div className="rel-date">{rel.date}</div>
+              <div key={rel.version || rel.date} className="rel">
+                <div className="rel-date">
+                  {label && <span className="rel-ver">{label}</span>}
+                  <span className="rel-day">{rel.date}</span>
+                </div>
                 <ul className="rel-items">
                   {items.map((it, i) => <li key={i}>{it}</li>)}
                 </ul>

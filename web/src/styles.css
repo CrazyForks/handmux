@@ -117,7 +117,10 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .settings-update { margin-top: 10px; padding: 8px 10px; border-radius: 8px;
   background: rgba(var(--blue-rgb), .12); border: .5px solid rgba(var(--blue-rgb), .35); }
 .settings-update-title { font-size: 14px; color: var(--blue); font-weight: 600; }
-.settings-update-how { font-size: 12px; color: #9aa0a8; line-height: 1.5; margin-top: 3px; }
+.settings-update-new { list-style: none; margin: 6px 0 0; padding: 0; }
+.settings-update-new li { font-size: 12.5px; color: #d6d9de; line-height: 1.5; margin: 2px 0; }
+.settings-update-new-ver { color: #9db8ff; font-weight: 700; font-variant-numeric: tabular-nums; margin-right: 6px; }
+.settings-update-how { font-size: 12px; color: #9aa0a8; line-height: 1.5; margin-top: 6px; }
 .settings-update-how code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
   color: #e6e8ec; background: rgba(120,120,128,.22); padding: 1px 5px; border-radius: 5px; }
 /* "dynamic preview not enabled" explainer: dimmer + left rule so it reads as an aside, not an action. */
@@ -700,7 +703,9 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .changelog-list { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 6px 16px 16px; }
 .rel { padding: 12px 0; border-bottom: 1px solid #2c2e33; }
 .rel:last-child { border-bottom: none; }
-.rel-date { font-size: 12px; font-weight: 700; letter-spacing: .5px; color: #9db8ff; margin-bottom: 6px; }
+.rel-date { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.rel-ver { font-size: 13px; font-weight: 700; letter-spacing: .3px; color: #9db8ff; font-variant-numeric: tabular-nums; }
+.rel-day { font-size: 11px; font-weight: 600; letter-spacing: .5px; color: #6b6f77; font-variant-numeric: tabular-nums; }
 .rel-items { margin: 0; padding-left: 18px; }
 .rel-items li { font-size: 13px; line-height: 1.5; color: #e6e6e6; margin: 3px 0; }
 /* Unread dot — on the settings gear (topbar) and the changelog row label. */

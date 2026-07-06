@@ -49,40 +49,59 @@ export function shouldRefresh(cache, now = Date.now(), interval = CHECK_INTERVAL
   return !cache || typeof cache.checkedAt !== 'number' || (now - cache.checkedAt) > interval;
 }
 
-// Query the latest published version via the user's own npm (honours their registry/mirror). Hard timeout;
-// any non-zero exit, empty/garbled output, or thrown error → null. Never throws.
-export function fetchLatestVersion({ timeoutMs = 4000, run = spawnSync } = {}) {
+// ONE npm call fetches both the latest version AND its concise `whatsNew` highlights (the published
+// package.json field release.sh mirrors from the changelog), so the phone can show "what's new" BEFORE
+// upgrading — sourced through the user's own npm, so it stays China-mirror-friendly. `@latest` + `--json`
+// makes npm return an object keyed by field: {"version":"0.9.1","whatsNew":[{version,date,zh,en},…]}.
+export const VIEW_ARGS = ['view', `${PKG_NAME}@latest`, 'version', 'whatsNew', '--json'];
+
+// Parse that JSON into { latest, whatsNew }. `latest` is null unless it's a real version; `whatsNew` is
+// null unless it's an array (old published versions predate the field). Never throws.
+export function parseView(stdout) {
   try {
-    const r = run('npm', ['view', PKG_NAME, 'version'], { timeout: timeoutMs, encoding: 'utf8' });
-    if (!r || r.status !== 0 || !r.stdout) return null;
-    const v = String(r.stdout).trim();
-    return parts(v) ? v : null;
-  } catch { return null; }
+    const o = JSON.parse(String(stdout));
+    const v = String(o.version || '').trim();
+    return { latest: parts(v) ? v : null, whatsNew: Array.isArray(o.whatsNew) ? o.whatsNew : null };
+  } catch { return { latest: null, whatsNew: null }; }
+}
+
+// Query the latest version + highlights via the user's own npm (honours their registry/mirror). Hard
+// timeout; any non-zero exit, empty/garbled output, or thrown error → { latest:null, whatsNew:null }.
+export function fetchLatest({ timeoutMs = 4000, run = spawnSync } = {}) {
+  try {
+    const r = run('npm', VIEW_ARGS, { timeout: timeoutMs, encoding: 'utf8' });
+    if (!r || r.status !== 0 || !r.stdout) return { latest: null, whatsNew: null };
+    return parseView(r.stdout);
+  } catch { return { latest: null, whatsNew: null }; }
+}
+
+// Merge a fetch result over the prior cache: on a failed field keep the previously-known value, so a flaky
+// network never blanks out a good `latest`/`whatsNew`. Always stamps `checkedAt`.
+function mergedCache(home, now, { latest, whatsNew }) {
+  const prev = readCache(home);
+  return { checkedAt: now, latest: latest ?? prev?.latest ?? null, whatsNew: whatsNew ?? prev?.whatsNew ?? null };
 }
 
 // Non-blocking refresh for the long-running server: query npm asynchronously (never stalls the event loop
-// the way the CLI's spawnSync path would) and persist the same {checkedAt, latest} cache the CLI reads. The
-// /api/version route calls this when the cache is stale, so the phone opening the app keeps `latest` current
-// without the user re-running the CLI. Best-effort: npm missing/offline/blocked leaves the prior latest.
+// the way the CLI's spawnSync path would) and persist the same cache the CLI reads. The /api/version route
+// calls this when the cache is stale, so the phone opening the app keeps `latest`/`whatsNew` current without
+// the user re-running the CLI. Best-effort: npm missing/offline/blocked leaves the prior values.
 export function refreshLatestAsync(home, { now = Date.now(), spawnFn = spawn, timeoutMs = 4000 } = {}) {
   try {
-    const child = spawnFn('npm', ['view', PKG_NAME, 'version'], { timeout: timeoutMs });
+    const child = spawnFn('npm', VIEW_ARGS, { timeout: timeoutMs });
     let out = '';
     child.stdout?.on('data', (d) => { out += d; });
     child.on('close', (code) => {
-      const v = String(out).trim();
-      const latest = (code === 0 && parts(v)) ? v : (readCache(home)?.latest ?? null);
-      writeCache(home, { checkedAt: now, latest });
+      writeCache(home, mergedCache(home, now, code === 0 ? parseView(out) : { latest: null, whatsNew: null }));
     });
     child.on('error', () => { /* npm missing/offline — leave the cache untouched */ });
   } catch { /* best effort */ }
 }
 
 // The hidden `__update-check` worker (runs detached, prints nothing): refresh the cache. On a failed fetch
-// keep the previously-known latest but still stamp checkedAt, so a flaky network doesn't re-spawn every run.
+// keep the previously-known values but still stamp checkedAt, so a flaky network doesn't re-spawn every run.
 export function runUpdateCheck(home, { now = Date.now(), ...opts } = {}) {
-  const latest = fetchLatestVersion(opts) || (readCache(home)?.latest ?? null);
-  writeCache(home, { checkedAt: now, latest });
+  writeCache(home, mergedCache(home, now, fetchLatest(opts)));
 }
 
 // Fire-and-forget notifier for a foreground command. Prints an upgrade line straight from the cache (no

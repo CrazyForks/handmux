@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import {
-  compareVersions, isNewer, shouldRefresh, fetchLatestVersion,
+  compareVersions, isNewer, shouldRefresh, fetchLatest, parseView, VIEW_ARGS,
   readCache, writeCache, updateCachePath, runUpdateCheck, notifyUpdate,
   refreshLatestAsync, CHECK_INTERVAL_MS,
 } from '../src/cli/updateCheck.js';
@@ -19,7 +19,10 @@ function fakeChild(out, code) {
   return child;
 }
 
-const okRun = (out) => () => ({ status: 0, stdout: out });
+// npm view now returns JSON ({version, whatsNew}); helpers build that stdout for the sync/async paths.
+const viewJson = (obj) => JSON.stringify(obj);
+const okRun = (obj) => () => ({ status: 0, stdout: viewJson(obj) });
+const WN = [{ version: '2.0.0', date: '2026-07-10', zh: '新功能', en: 'New thing' }];
 
 describe('compareVersions / isNewer', () => {
   it('orders by major.minor.patch', () => {
@@ -56,20 +59,32 @@ describe('shouldRefresh', () => {
   });
 });
 
-describe('fetchLatestVersion', () => {
-  it('returns a trimmed version on success', () => {
-    expect(fetchLatestVersion({ run: okRun('1.4.2\n') })).toBe('1.4.2');
+describe('parseView', () => {
+  it('extracts a real version + whatsNew array', () => {
+    expect(parseView(viewJson({ version: '1.4.2', whatsNew: WN }))).toEqual({ latest: '1.4.2', whatsNew: WN });
   });
-  it('returns null on non-zero exit, empty output, garbage, or throw', () => {
-    expect(fetchLatestVersion({ run: () => ({ status: 1, stdout: '' }) })).toBeNull();
-    expect(fetchLatestVersion({ run: () => ({ status: 0, stdout: '' }) })).toBeNull();
-    expect(fetchLatestVersion({ run: () => ({ status: 0, stdout: 'not-a-version' }) })).toBeNull();
-    expect(fetchLatestVersion({ run: () => { throw new Error('ENOENT'); } })).toBeNull();
+  it('whatsNew is null when absent or not an array; latest null when not a version', () => {
+    expect(parseView(viewJson({ version: '1.4.2' }))).toEqual({ latest: '1.4.2', whatsNew: null });
+    expect(parseView(viewJson({ version: 'nope', whatsNew: WN }))).toEqual({ latest: null, whatsNew: WN });
+    expect(parseView('not json')).toEqual({ latest: null, whatsNew: null });
   });
-  it('passes a timeout to the runner', () => {
-    const run = vi.fn(() => ({ status: 0, stdout: '1.0.0' }));
-    fetchLatestVersion({ run, timeoutMs: 1234 });
-    expect(run).toHaveBeenCalledWith('npm', ['view', 'handmux', 'version'], expect.objectContaining({ timeout: 1234 }));
+});
+
+describe('fetchLatest', () => {
+  it('returns { latest, whatsNew } on success', () => {
+    expect(fetchLatest({ run: okRun({ version: '1.4.2', whatsNew: WN }) })).toEqual({ latest: '1.4.2', whatsNew: WN });
+  });
+  it('returns nulls on non-zero exit, empty output, garbage, or throw', () => {
+    expect(fetchLatest({ run: () => ({ status: 1, stdout: '' }) })).toEqual({ latest: null, whatsNew: null });
+    expect(fetchLatest({ run: () => ({ status: 0, stdout: '' }) })).toEqual({ latest: null, whatsNew: null });
+    expect(fetchLatest({ run: () => ({ status: 0, stdout: 'not-a-version' }) })).toEqual({ latest: null, whatsNew: null });
+    expect(fetchLatest({ run: () => { throw new Error('ENOENT'); } })).toEqual({ latest: null, whatsNew: null });
+  });
+  it('queries version + whatsNew via npm@latest --json with the given timeout', () => {
+    const run = vi.fn(() => ({ status: 0, stdout: viewJson({ version: '1.0.0' }) }));
+    fetchLatest({ run, timeoutMs: 1234 });
+    expect(run).toHaveBeenCalledWith('npm', VIEW_ARGS, expect.objectContaining({ timeout: 1234 }));
+    expect(VIEW_ARGS).toEqual(['view', 'handmux@latest', 'version', 'whatsNew', '--json']);
   });
 });
 
@@ -77,24 +92,24 @@ describe('cache round-trip', () => {
   it('reads back what it writes; missing/garbage → null', () => {
     const home = tmpHome('upd-');
     expect(readCache(home)).toBeNull();
-    writeCache(home, { checkedAt: 5, latest: '9.9.9' });
-    expect(readCache(home)).toEqual({ checkedAt: 5, latest: '9.9.9' });
+    writeCache(home, { checkedAt: 5, latest: '9.9.9', whatsNew: WN });
+    expect(readCache(home)).toEqual({ checkedAt: 5, latest: '9.9.9', whatsNew: WN });
     fs.writeFileSync(updateCachePath(home), 'not json');
     expect(readCache(home)).toBeNull();
   });
 });
 
 describe('runUpdateCheck', () => {
-  it('stamps the fetched latest', () => {
+  it('stamps the fetched latest + whatsNew', () => {
     const home = tmpHome('upd-');
-    runUpdateCheck(home, { now: 42, run: okRun('2.0.0') });
-    expect(readCache(home)).toEqual({ checkedAt: 42, latest: '2.0.0' });
+    runUpdateCheck(home, { now: 42, run: okRun({ version: '2.0.0', whatsNew: WN }) });
+    expect(readCache(home)).toEqual({ checkedAt: 42, latest: '2.0.0', whatsNew: WN });
   });
-  it('keeps the previously-known latest when the fetch fails', () => {
+  it('keeps the previously-known latest AND whatsNew when the fetch fails', () => {
     const home = tmpHome('upd-');
-    writeCache(home, { checkedAt: 1, latest: '1.5.0' });
+    writeCache(home, { checkedAt: 1, latest: '1.5.0', whatsNew: WN });
     runUpdateCheck(home, { now: 99, run: () => ({ status: 1, stdout: '' }) });
-    expect(readCache(home)).toEqual({ checkedAt: 99, latest: '1.5.0' });
+    expect(readCache(home)).toEqual({ checkedAt: 99, latest: '1.5.0', whatsNew: WN });
   });
 });
 
@@ -133,21 +148,21 @@ describe('notifyUpdate', () => {
 });
 
 describe('refreshLatestAsync (server, non-blocking)', () => {
-  it('writes the fetched latest + timestamp on success', async () => {
+  it('writes the fetched latest + whatsNew + timestamp on success', async () => {
     const home = tmpHome('upd-');
-    const spawnFn = vi.fn(() => fakeChild('1.2.4\n', 0));
+    const spawnFn = vi.fn(() => fakeChild(viewJson({ version: '1.2.4', whatsNew: WN }), 0));
     refreshLatestAsync(home, { now: 5000, spawnFn });
     await new Promise((r) => setTimeout(r, 0));
-    expect(spawnFn).toHaveBeenCalledWith('npm', ['view', 'handmux', 'version'], expect.objectContaining({ timeout: 4000 }));
-    expect(readCache(home)).toEqual({ checkedAt: 5000, latest: '1.2.4' });
+    expect(spawnFn).toHaveBeenCalledWith('npm', VIEW_ARGS, expect.objectContaining({ timeout: 4000 }));
+    expect(readCache(home)).toEqual({ checkedAt: 5000, latest: '1.2.4', whatsNew: WN });
   });
 
-  it('keeps the previously-known latest when the query fails', async () => {
+  it('keeps the previously-known latest + whatsNew when the query fails', async () => {
     const home = tmpHome('upd-');
-    writeCache(home, { checkedAt: 0, latest: '1.0.0' });
+    writeCache(home, { checkedAt: 0, latest: '1.0.0', whatsNew: WN });
     refreshLatestAsync(home, { now: 9000, spawnFn: () => fakeChild('', 1) });
     await new Promise((r) => setTimeout(r, 0));
-    expect(readCache(home)).toEqual({ checkedAt: 9000, latest: '1.0.0' });
+    expect(readCache(home)).toEqual({ checkedAt: 9000, latest: '1.0.0', whatsNew: WN });
   });
 
   it('never throws when npm is missing (spawn error)', async () => {

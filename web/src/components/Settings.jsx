@@ -135,10 +135,23 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
               {t('settings.view_changelog')}{changelogUnread && <span className="settings-dot" aria-label={t('settings.has_update')} />}
             </button>
           </div>
-          {/* The upgrade is a computer-side `handmux update`; the phone can only show the notice, so no button. */}
+          {/* The upgrade is a computer-side `handmux update`; the phone can only show the notice, so no button.
+              `whatsNew` (concise per-version highlights the newer package carries) tells the user what the trip
+              to the computer buys them — pulled in by the update check, so it may lag a bit. zh dicts (incl.
+              zh-TW) map to the highlight's `zh`; everything else falls back to `en`. */}
           {updateInfo?.updateAvailable && (
             <div className="settings-update">
               <div className="settings-update-title">{t('settings.update_available', { v: updateInfo.latest })}</div>
+              {updateInfo.whatsNew?.length > 0 && (
+                <ul className="settings-update-new">
+                  {updateInfo.whatsNew.map((w) => (
+                    <li key={w.version}>
+                      <span className="settings-update-new-ver">v{w.version}</span>
+                      {(getLangCode().startsWith('zh') ? w.zh : w.en) || w.en}
+                    </li>
+                  ))}
+                </ul>
+              )}
               <div className="settings-update-how">{t('settings.update_how')} <code>handmux update</code></div>
             </div>
           )}

@@ -762,5 +762,16 @@ describe('GET /version (update hint)', () => {
     writeCache(home, { checkedAt: Date.now(), latest: '0.0.1' });
     const res = await auth(request(appWithHome(home)).get('/api/version')).expect(200);
     expect(res.body.updateAvailable).toBe(false);
+    expect(res.body.whatsNew).toEqual([]);
+  });
+  it('returns whatsNew trimmed to versions strictly newer than the installed one', async () => {
+    const home = tmpHome('ver-');
+    const wn = [
+      { version: '999.0.0', date: '2099-01-01', zh: '新', en: 'New' },
+      { version: '0.0.1', date: '2020-01-01', zh: '旧', en: 'Old' }, // older than installed → dropped
+    ];
+    writeCache(home, { checkedAt: Date.now(), latest: '999.0.0', whatsNew: wn });
+    const res = await auth(request(appWithHome(home)).get('/api/version')).expect(200);
+    expect(res.body.whatsNew).toEqual([wn[0]]);
   });
 });
