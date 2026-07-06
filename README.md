@@ -16,7 +16,7 @@ handmux is more than a terminal on your phone. It puts the *same* live **tmux** 
   <em>Real phone browser, real panes — say what you need and Claude Code writes it, then tap a filename to preview (left); a push pings you when needed, and you review the git repo &amp; each agent's usage (right).</em>
 </p>
 
-**[📖 Docs](https://handmux.com/docs.html)** · **[📝 Changelog](CHANGELOG.md)** · **[📦 npm](https://www.npmjs.com/package/handmux)**
+**[📖 Docs](https://handmux.com/docs)** · **[📝 Changelog](CHANGELOG.md)** · **[📦 npm](https://www.npmjs.com/package/handmux)**
 
 ## Quick start · about a minute
 
@@ -35,7 +35,7 @@ Want to reach it from **anywhere**? Add one flag for a free public HTTPS link:
 handmux start --tunnel cloudflare   # instant public URL (cloudflared auto-installed)
 ```
 
-> Tunnel types, self-hosting, Windows/WSL2, and the full command & flag reference → see the **[docs](https://handmux.com/docs.html)**.
+> Tunnel types, self-hosting, Windows/WSL2, and the full command & flag reference → see the **[docs](https://handmux.com/docs)**.
 
 ## Why handmux
 
@@ -64,14 +64,14 @@ LAN-only by default, nothing exposed. To reach it from outside, just ask: **does
 - **Yes** (cloud box / public IP / forwarded port) — no tunnel needed, connect directly; fastest and most private.
 - **No** — open a tunnel: `cloudflare` (zero-config, up in seconds, but its public nodes can be slow or unreliable in some regions) · `cloudflare-named` (your own domain, steadier) · `ssh` self-hosted (through your own server — the pick where Cloudflare is unreliable, e.g. mainland China).
 
-> Tunnel config, server-side reverse proxy, autostart, voice/push credentials, and port previews → see the **[docs](https://handmux.com/docs.html)**.
+> Tunnel config, server-side reverse proxy, autostart, voice/push credentials, and port previews → see the **[docs](https://handmux.com/docs)**.
 
 ## Requirements
 
-Your computer needs **Node ≥ 18** and **tmux ≥ 3.0**; the phone just needs a browser. On **Windows**, run it inside **WSL2** (a real Linux kernel + real tmux) — see the [docs](https://handmux.com/docs.html#windows).
+Your computer needs **Node ≥ 18** and **tmux ≥ 3.0**; the phone just needs a browser. On **Windows**, run it inside **WSL2** (a real Linux kernel + real tmux) — see the [docs](https://handmux.com/docs#windows).
 
 ## More
 
-**[📖 Docs](https://handmux.com/docs.html)** · **[📝 Changelog](CHANGELOG.md)** · **[🔒 Security](SECURITY.md)** · License **AGPL-3.0**
+**[📖 Docs](https://handmux.com/docs)** · **[📝 Changelog](CHANGELOG.md)** · **[🔒 Security](SECURITY.md)** · License **AGPL-3.0**
 
 Found a security issue? Please report it privately (see [SECURITY.md](SECURITY.md)), not via a public issue.
