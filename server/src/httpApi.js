@@ -256,9 +256,14 @@ export function createApiRouter({
   // the route only maps its {error,status} to an HTTP status.
   r.get('/file', async (req, res, next) => {
     try {
-      const out = await docs.readDoc(typeof req.query.path === 'string' ? req.query.path : '');
+      // Conditional read: `?mtime=<ms>` (the client's last-known mtime) lets the server answer
+      // `{ notModified: true }` without re-reading/re-sending an unchanged doc.
+      const m = Number(req.query.mtime);
+      const knownMtime = Number.isFinite(m) ? m : null;
+      const out = await docs.readDoc(typeof req.query.path === 'string' ? req.query.path : '', knownMtime);
       if (out.error) return res.status(out.status).json({ error: out.error });
-      res.json({ name: out.name, type: out.type, content: out.content });
+      if (out.notModified) return res.json({ name: out.name, type: out.type, mtimeMs: out.mtimeMs, notModified: true });
+      res.json({ name: out.name, type: out.type, content: out.content, mtimeMs: out.mtimeMs });
     } catch (e) { next(e); }
   });
 

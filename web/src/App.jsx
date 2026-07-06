@@ -634,7 +634,7 @@ export default function App() {
       return;
     }
     const res = await fetchDoc(abs); // throws on non-2xx (404/400/…)
-    docTabs.openDoc(abs, { type: res.type, name: res.name, content: res.content });
+    docTabs.openDoc(abs, { type: res.type, name: res.name, content: res.content, mtime: res.mtimeMs });
     pushRecentDoc({ path: abs, name: res.name, type: res.type, ts: Date.now() });
     setFileManagerOpen(true);
   };
@@ -649,14 +649,19 @@ export default function App() {
 
   // Refetch a doc tab's content IN PLACE so it's never stale — whenever a doc becomes visible again:
   // switching to its tab, or re-opening the sheet. (Re-tapping a file goes through openAbsDoc, which
-  // refetches too.) Uses refreshDoc, not openDoc, so an async result landing after the user has
-  // switched away doesn't steal focus back. Home/image tabs are skipped (an image reuses its object
-  // URL). Best-effort: a since-deleted/moved/unreadable file keeps its last-good content.
+  // refetches too.) A CONDITIONAL GET (passes the tab's last-known mtime): if the file is unchanged the
+  // server answers { notModified } and we do nothing — no content transfer, no re-render (so scroll and
+  // read-aloud aren't disturbed when nothing changed). Uses refreshDoc, not openDoc, so an async result
+  // landing after the user has switched away doesn't steal focus back. Home/image tabs are skipped (an
+  // image reuses its object URL). Best-effort: a since-deleted/moved/unreadable file keeps last-good.
   const refreshDocTab = (key) => {
     const tab = docTabs.tabs.find((t) => t.key === key);
     if (!tab || tab.type === 'home' || tab.type === 'image') return;
-    fetchDoc(key)
-      .then((res) => docTabs.refreshDoc(key, { type: res.type, name: res.name, content: res.content }))
+    fetchDoc(key, tab.mtime ?? null)
+      .then((res) => {
+        if (res.notModified) return; // unchanged on disk → leave the tab (and its scroll/TTS) alone
+        docTabs.refreshDoc(key, { type: res.type, name: res.name, content: res.content, mtime: res.mtimeMs });
+      })
       .catch(() => { /* keep the last-good content */ });
   };
 

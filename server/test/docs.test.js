@@ -62,6 +62,35 @@ describe('readDoc', () => {
   it('413s a file just over 2MB', async () => {
     expect((await docs.readDoc(join(home, 'big.md'))).status).toBe(413);
   });
+  it('returns mtimeMs alongside the content', async () => {
+    const out = await docs.readDoc(join(home, 'a.md'));
+    expect(typeof out.mtimeMs).toBe('number');
+  });
+  it('conditional read: matching knownMtime → notModified, no content', async () => {
+    const first = await docs.readDoc(join(home, 'a.md'));
+    const again = await docs.readDoc(join(home, 'a.md'), first.mtimeMs);
+    expect(again).toMatchObject({ name: 'a.md', type: 'markdown', notModified: true, mtimeMs: first.mtimeMs });
+    expect(again.content).toBeUndefined();
+  });
+  it('conditional read: a changed file (newer mtime) → full content again', async () => {
+    // Own throwaway home so mutating/creating files can't pollute the shared `home` (the listDir test
+    // asserts its exact root listing).
+    const h = await fs.mkdtemp(join(tmpdir(), 'twmut-'));
+    try {
+      const d = createDocs({ home: h });
+      const p = join(h, 'mut.md');
+      await fs.writeFile(p, '# v1');
+      const first = await d.readDoc(p);
+      await fs.writeFile(p, '# v2');
+      await fs.utimes(p, new Date(), new Date(first.mtimeMs + 1000)); // set mtime deterministically newer
+      const out = await d.readDoc(p, first.mtimeMs);
+      expect(out.notModified).toBeUndefined();
+      expect(out.content).toBe('# v2');
+      expect(out.mtimeMs).not.toBe(first.mtimeMs);
+    } finally {
+      await fs.rm(h, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('listDir', () => {

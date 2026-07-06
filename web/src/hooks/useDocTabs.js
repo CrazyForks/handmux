@@ -5,11 +5,13 @@ export const HOME_TAB = { key: 'home', type: 'home', name: t('doc.home') };
 
 // Merge fresh metadata into a tab. `meta.content === undefined` (e.g. an image re-activate, which
 // deliberately reuses its object URL) keeps the existing content; a provided content replaces it.
+// `mtime` (the file's mtimeMs, used for the next conditional refetch) is likewise kept when omitted.
 const mergeMeta = (tab, meta) => ({
   ...tab,
   type: meta.type ?? tab.type,
   name: meta.name ?? tab.name,
   content: meta.content !== undefined ? meta.content : tab.content,
+  mtime: meta.mtime !== undefined ? meta.mtime : tab.mtime,
 });
 
 // Pure: open a doc by absolute path. If a tab with that key already exists, activate it AND refresh
@@ -19,7 +21,7 @@ export function openDocState(state, path, meta) {
   if (state.tabs.some((t) => t.key === path)) {
     return { tabs: state.tabs.map((t) => (t.key === path ? mergeMeta(t, meta) : t)), active: path };
   }
-  const tab = { key: path, type: meta.type, name: meta.name, content: meta.content, path };
+  const tab = { key: path, type: meta.type, name: meta.name, content: meta.content, mtime: meta.mtime, path };
   return { tabs: [...state.tabs, tab], active: path };
 }
 

@@ -427,11 +427,19 @@ describe('docs routes', () => {
     return app;
   }
 
-  it('GET /file returns the doc on success', async () => {
-    const docs = { readDoc: vi.fn(async () => ({ name: 'a.md', type: 'markdown', content: '# x' })), listDir: vi.fn() };
+  it('GET /file returns the doc + mtimeMs on success (no mtime param → knownMtime null)', async () => {
+    const docs = { readDoc: vi.fn(async () => ({ name: 'a.md', type: 'markdown', content: '# x', mtimeMs: 42 })), listDir: vi.fn() };
     const res = await auth(request(appWithDocs(docs)).get('/api/file?path=/home/u/a.md')).expect(200);
-    expect(res.body).toEqual({ name: 'a.md', type: 'markdown', content: '# x' });
-    expect(docs.readDoc).toHaveBeenCalledWith('/home/u/a.md');
+    expect(res.body).toEqual({ name: 'a.md', type: 'markdown', content: '# x', mtimeMs: 42 });
+    expect(docs.readDoc).toHaveBeenCalledWith('/home/u/a.md', null);
+  });
+
+  it('GET /file?mtime= passes the known mtime and returns notModified without content', async () => {
+    const docs = { readDoc: vi.fn(async () => ({ name: 'a.md', type: 'markdown', mtimeMs: 99, notModified: true })), listDir: vi.fn() };
+    const res = await auth(request(appWithDocs(docs)).get('/api/file?path=/home/u/a.md&mtime=99')).expect(200);
+    expect(res.body).toEqual({ name: 'a.md', type: 'markdown', mtimeMs: 99, notModified: true });
+    expect(res.body.content).toBeUndefined();
+    expect(docs.readDoc).toHaveBeenCalledWith('/home/u/a.md', 99);
   });
 
   it('GET /file maps the error status from the docs layer', async () => {

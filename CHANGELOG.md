@@ -11,7 +11,10 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   Now every way of returning to a doc refetches it: re-tapping the file, **switching to its tab**, and
   re-opening the file sheet from the topbar. Tab switches stay instant (activate first, refresh in the
   background) and a refetch that lands after you've switched away updates the tab in place without
-  stealing focus back. Images still reuse their object URL.
+  stealing focus back. Images still reuse their object URL. The refresh is a **conditional GET**
+  (`/api/file?mtime=`): the server compares the file's mtime and answers `{ notModified }` without
+  re-reading or re-sending an unchanged doc — so when nothing changed there's no transfer and no
+  re-render (your scroll position and read-aloud are left untouched).
 
 ### Changed
 - **The in-app changelog is now keyed by release version, not date.** Each entry carries a `version`

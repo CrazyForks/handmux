@@ -47,7 +47,11 @@ export function createDocs({ home, extraRoots = [], maxDownloadBytes = MAX_TRANS
     return best;
   };
 
-  async function readDoc(rawPath) {
+  // `knownMtime` (ms) makes this a conditional read: if the file's mtime is unchanged the body is
+  // skipped and `{ notModified: true }` comes back (no readFile), so re-visiting an unchanged doc on
+  // the phone neither transfers content nor forces a re-render. `mtimeMs` is always returned so the
+  // client can store it for the next check.
+  async function readDoc(rawPath, knownMtime = null) {
     if (typeof rawPath !== 'string' || rawPath[0] !== '/') return { error: 'not absolute', status: 400 };
     const type = docTypeFor(rawPath);
     if (!type) return { error: 'bad extension', status: 400 };
@@ -60,8 +64,10 @@ export function createDocs({ home, extraRoots = [], maxDownloadBytes = MAX_TRANS
     catch { return { error: 'not accessible', status: 404 }; }
     if (!st.isFile()) return { error: 'not a file', status: 400 };
     if (st.size > MAX_READ_BYTES) return { error: 'too large', status: 413 };
+    const mtimeMs = st.mtimeMs;
+    if (knownMtime != null && mtimeMs === knownMtime) return { name: basename(real), type, mtimeMs, notModified: true };
     const content = await fs.readFile(real, 'utf8');
-    return { name: basename(real), type, content };
+    return { name: basename(real), type, content, mtimeMs };
   }
 
   async function listDir(rawPath) {

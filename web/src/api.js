@@ -69,8 +69,10 @@ export const swapWindows = (a, b) =>
 export const createDir = (dir, name) =>
   req('/api/dir', { method: 'POST', body: JSON.stringify({ dir, name }) });
 
-export const fetchDoc = (path) =>
-  req(`/api/file?path=${encodeURIComponent(path)}`, { timeoutMs: 8000 });
+// `sinceMtime` (ms) makes it a conditional GET: an unchanged file comes back as { notModified: true }
+// (no content) so revisiting a doc doesn't refetch/re-render when nothing changed. Omit for a full read.
+export const fetchDoc = (path, sinceMtime = null) =>
+  req(`/api/file?path=${encodeURIComponent(path)}${sinceMtime != null ? `&mtime=${encodeURIComponent(sinceMtime)}` : ''}`, { timeoutMs: 8000 });
 export const fetchDir = (path) =>
   req(`/api/dir${path ? `?path=${encodeURIComponent(path)}` : ''}`, { timeoutMs: 8000 });
 // A pane's current working directory (absolute) — used to land the file browser on the session's dir.

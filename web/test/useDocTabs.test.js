@@ -41,6 +41,12 @@ describe('refreshDocState', () => {
     const r = refreshDocState(s, '/h/p.png', { type: 'image', name: 'p.png' });
     expect(r.tabs.find((t) => t.key === '/h/p.png').content).toBe('blob:x');
   });
+  it('carries mtime on open and updates it on refresh (drives the conditional refetch)', () => {
+    const s = openDocState(init, '/h/a.md', { type: 'markdown', name: 'a.md', content: 'a', mtime: 100 });
+    expect(s.tabs.find((t) => t.key === '/h/a.md').mtime).toBe(100);
+    const r = refreshDocState(s, '/h/a.md', { type: 'markdown', name: 'a.md', content: 'a2', mtime: 200 });
+    expect(r.tabs.find((t) => t.key === '/h/a.md').mtime).toBe(200);
+  });
 });
 
 describe('closeTabState', () => {
