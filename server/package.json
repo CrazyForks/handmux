@@ -1,6 +1,6 @@
 {
   "name": "handmux",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "description": "A mobile vibe-coding cockpit — built on tmux: drive your live session, Claude Code / Codex — anything a terminal can run — from your phone.",
   "type": "module",
   "license": "AGPL-3.0-only",
@@ -49,6 +49,7 @@
     "vitest": "^2.0.0"
   },
   "whatsNew": [
+    {"version":"0.10.0","date":"2026-07-06","zh":"升级前预览新功能 · 电脑 handmux open 接管","en":"Preview an update before installing · handmux open"},
     {"version":"0.9.1","date":"2026-07-06","zh":"「添加到主屏」引导","en":"\"Add to Home Screen\" coach"},
     {"version":"0.9.0","date":"2026-07-05","zh":"聊天输入框多行重做","en":"Multi-line chat composer redone"},
     {"version":"0.8.0","date":"2026-07-05","zh":"快捷栏可自定义 · 上传体验重做","en":"Customizable quick-bars · upload redone"},

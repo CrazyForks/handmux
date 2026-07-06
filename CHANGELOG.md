@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-07-06
+
 ### Added
 - **`handmux open <session>` — one-command attach on the computer.** Attaches the named tmux session,
   creating it if missing; inside tmux it refuses with a hint (don't nest tmux in tmux). Deliberately
