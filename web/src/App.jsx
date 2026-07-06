@@ -647,6 +647,19 @@ export default function App() {
     docTabs.closeTab(key);
   };
 
+  // Re-opening the file sheet from the topbar onto an already-loaded doc tab refetches it, so "switch
+  // away and come back" shows the latest bytes on disk — the same freshness re-tapping a file gives
+  // (openDocState replaces the tab's content). Home/image tabs are left as-is (an image tab reuses its
+  // object URL). Best-effort: a since-deleted/moved/unreadable file keeps its last-good content.
+  const reopenFiles = () => {
+    setFileManagerOpen(true);
+    const tab = docTabs.tabs.find((t) => t.key === docTabs.active);
+    if (!tab || tab.type === 'home' || tab.type === 'image') return;
+    fetchDoc(tab.key)
+      .then((res) => docTabs.openDoc(tab.key, { type: res.type, name: res.name, content: res.content }))
+      .catch(() => { /* keep the last-good content */ });
+  };
+
   // req() throws Error("/api/... -> 404"); map the trailing status to a readable reason.
   const friendlyDocError = (err) => {
     const m = /-> (\d+)/.exec(err?.message || '');
@@ -839,7 +852,7 @@ export default function App() {
           onEnableHooks={enableHooks}
         />
         <button className="topbar-icon" onClick={() => setUsageOpen(true)} aria-label={t('usage.title')} title={t('usage.title')}><GaugeIcon /></button>
-        <button className="topbar-icon" onClick={() => setFileManagerOpen(true)} aria-label={t('app.files')} title={t('app.files')}><FolderIcon /></button>
+        <button className="topbar-icon" onClick={reopenFiles} aria-label={t('app.files')} title={t('app.files')}><FolderIcon /></button>
         <button className="topbar-icon" onClick={() => setGitOpen(true)} aria-label="Git" title="Git"><GitIcon /></button>
         <button className="topbar-icon" onClick={openSettings} aria-label={t('app.settings')} title={t('app.settings')}>
           <GearIcon />

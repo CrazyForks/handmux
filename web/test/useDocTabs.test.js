@@ -9,11 +9,18 @@ describe('openDocState', () => {
     expect(s.tabs.map((t) => t.key)).toEqual(['home', '/h/a.md']);
     expect(s.active).toBe('/h/a.md');
   });
-  it('dedupes: opening an already-open path only activates it', () => {
+  it('dedupes AND refreshes: re-opening an open path activates it and replaces its content', () => {
     const s1 = openDocState(init, '/h/a.md', { type: 'markdown', name: 'a.md', content: '# a' });
     const s2 = openDocState({ ...s1, active: 'home' }, '/h/a.md', { type: 'markdown', name: 'a.md', content: 'changed' });
     expect(s2.tabs.length).toBe(2);          // no duplicate tab
-    expect(s2.active).toBe('/h/a.md');        // just re-activated
+    expect(s2.active).toBe('/h/a.md');        // re-activated
+    // the caller refetched — the tab must show the FRESH content, never the stale '# a'.
+    expect(s2.tabs.find((t) => t.key === '/h/a.md').content).toBe('changed');
+  });
+  it('preserves existing content when re-opened WITHOUT content (image re-activate reuses its object URL)', () => {
+    const s1 = openDocState(init, '/h/pic.png', { type: 'image', name: 'pic.png', content: 'blob:x' });
+    const s2 = openDocState(s1, '/h/pic.png', { type: 'image', name: 'pic.png' }); // no content passed
+    expect(s2.tabs.find((t) => t.key === '/h/pic.png').content).toBe('blob:x');
   });
 });
 

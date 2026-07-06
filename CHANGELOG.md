@@ -4,6 +4,13 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Fixed
+- **Re-opening a document now shows the latest content, not a stale cached copy.** A doc tab cached the
+  bytes it was first opened with; re-opening the same path only re-activated the tab and *discarded* the
+  freshly-refetched content (`openDocState` dedupe), so an updated file kept showing the old version.
+  Re-opening now replaces the tab's content (images still reuse their object URL), and re-opening the
+  file sheet from the topbar refetches the active doc — so "switch away and come back" is current too.
+
 ### Changed
 - **The in-app changelog is now keyed by release version, not date.** Each entry carries a `version`
   (`0.9.1`) shown as "v0.9.1 · 2026-07-06", plus a one-line `highlight`; the pre-1.0 internal builds are

@@ -3,10 +3,18 @@ import { t } from '../i18n';
 
 export const HOME_TAB = { key: 'home', type: 'home', name: t('doc.home') };
 
-// Pure: open a doc by absolute path. If a tab with that key exists, just activate it (dedupe);
-// otherwise append a doc tab carrying its rendered content + metadata.
+// Pure: open a doc by absolute path. If a tab with that key already exists, activate it AND refresh
+// its content from `meta` — the caller (openAbsDoc) refetches on every open, so a re-opened doc must
+// show the latest bytes, never the stale copy the tab was carrying. `meta.content === undefined`
+// (an image re-activate, which deliberately reuses its object URL) keeps the existing content.
+// Otherwise append a new doc tab carrying its content + metadata.
 export function openDocState(state, path, meta) {
-  if (state.tabs.some((t) => t.key === path)) return { ...state, active: path };
+  if (state.tabs.some((t) => t.key === path)) {
+    const tabs = state.tabs.map((t) => (t.key === path
+      ? { ...t, type: meta.type ?? t.type, name: meta.name ?? t.name, content: meta.content !== undefined ? meta.content : t.content }
+      : t));
+    return { tabs, active: path };
+  }
   const tab = { key: path, type: meta.type, name: meta.name, content: meta.content, path };
   return { tabs: [...state.tabs, tab], active: path };
 }
