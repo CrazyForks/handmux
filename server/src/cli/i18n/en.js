@@ -21,6 +21,7 @@ export default {
   'tmux.explain2': '  panes from your phone, so you need tmux on this machine first.',
   'tmux.install': '  Install it:  {hint}',
   'tmux.thenStart': '  Then run `handmux start` again.',
+  'open.usage': 'usage: handmux open <session>   attach the tmux session (creates it if missing)',
   'tmux.tooOld': '⚠ tmux {raw} is below the tested minimum {min}; terminal rendering may be off',
 
   // start — already running
@@ -149,6 +150,7 @@ export default {
   'help.body': `handmux — drive your tmux from your phone
 
   handmux start            run it (defaults to LAN-only; no config needed)
+  handmux open <session>   attach a tmux session, creating it if missing — incl. ones made on the phone
   handmux setup            configure tunnel / name / notifications (writes config; re-run to change)
   handmux stop | restart | status
   handmux logs [--follow] [--lines N]

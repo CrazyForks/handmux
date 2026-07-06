@@ -20,6 +20,7 @@ export default {
   'tmux.explain2': '  所以这台机器上必须先装好 tmux。',
   'tmux.install': '  安装:  {hint}',
   'tmux.thenStart': '  然后再运行 `handmux start`。',
+  'open.usage': '用法: handmux open <会话名>   接入该 tmux 会话(不存在则新建)',
   'tmux.tooOld': '⚠ tmux {raw} 低于测试过的最低版本 {min};终端渲染可能有偏差',
 
   // start —— 已在运行
@@ -148,6 +149,7 @@ export default {
   'help.body': `handmux —— 从手机驱动你的 tmux
 
   handmux start            直接运行(默认仅局域网;无需配置)
+  handmux open <会话名>     接入 tmux 会话,不存在则新建——手机上建的也能一键接管
   handmux setup            配置隧道 / 名称 / 通知(写入配置;重跑即可修改)
   handmux stop | restart | status
   handmux logs [--follow] [--lines N]
