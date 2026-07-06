@@ -295,6 +295,12 @@ export function createApiRouter({
     try {
       const out = await docs.statForDownload(typeof req.query.path === 'string' ? req.query.path : '');
       if (out.error) return res.status(out.status).json({ error: out.error });
+      // Conditional download for the inline image viewer: `?mtime=<ms>` (the client's last-known mtime)
+      // → 304 when unchanged, so a large image isn't re-streamed just to re-view it. `X-Mtime` on the
+      // 200 lets the client store the current mtime for the next check. Plain downloads pass no mtime.
+      const m = Number(req.query.mtime);
+      if (Number.isFinite(m) && m === out.mtimeMs) return res.status(304).end();
+      res.setHeader('X-Mtime', String(out.mtimeMs));
       res.download(out.real, out.name, (err) => { if (err && !res.headersSent) next(err); });
     } catch (e) { next(e); }
   });

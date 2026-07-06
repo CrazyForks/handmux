@@ -120,7 +120,7 @@ export function createDocs({ home, extraRoots = [], maxDownloadBytes = MAX_TRANS
     catch { return { error: 'not accessible', status: 404 }; }
     if (!st.isFile()) return { error: 'not a file', status: 400 };
     if (st.size > maxDownloadBytes) return { error: 'too large', status: 413 };
-    return { real, name: basename(real), size: st.size };
+    return { real, name: basename(real), size: st.size, mtimeMs: st.mtimeMs };
   }
 
   // Resolve a path for UPLOAD TARGET: a directory under one of the allowed roots, not inside any

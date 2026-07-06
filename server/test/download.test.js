@@ -43,4 +43,16 @@ describe('GET /api/download', () => {
   it('413s a file over the cap', async () => {
     await auth(request(app).get(`/api/download?path=${encodeURIComponent(join(home, 'sub', 'big.bin'))}`)).expect(413);
   });
+  it('sets X-Mtime on the streamed bytes (drives the image viewer\'s conditional refresh)', async () => {
+    const res = await auth(request(app).get(`/api/download?path=${encodeURIComponent(join(home, 'sub', 'data.bin'))}`)).expect(200);
+    expect(Number(res.headers['x-mtime'])).toBeGreaterThan(0);
+  });
+  it('conditional: matching ?mtime → 304 (no re-stream); a stale mtime streams the bytes again', async () => {
+    const p = encodeURIComponent(join(home, 'sub', 'data.bin'));
+    const first = await auth(request(app).get(`/api/download?path=${p}`)).expect(200);
+    const m = first.headers['x-mtime'];
+    await auth(request(app).get(`/api/download?path=${p}&mtime=${m}`)).expect(304);
+    const changed = await auth(request(app).get(`/api/download?path=${p}&mtime=1`)).expect(200);
+    expect(changed.body.toString()).toBe('hello-bytes');
+  });
 });

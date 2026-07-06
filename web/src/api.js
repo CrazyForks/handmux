@@ -163,21 +163,28 @@ export function downloadFile(path, onProgress) {
 // Bearer header (an <img src> can't send Authorization, and we won't leak the token into a URL); the
 // blob is re-tagged from the extension when the server's type is generic, then turned into an
 // object-URL the caller assigns to <img> (and must revokeObjectURL when done).
-export function fetchImageUrl(path) {
+//
+// Resolves { url, mtimeMs } (mtimeMs from the X-Mtime header, for the next conditional check). Passing
+// `sinceMtime` makes it a conditional GET: an unchanged image comes back 304 → resolves { notModified:
+// true } with no new blob, so re-viewing an unchanged image neither re-downloads nor reloads the <img>.
+export function fetchImageUrl(path, sinceMtime = null) {
   return new Promise((resolve, reject) => {
     const token = getToken();
     const xhr = new XMLHttpRequest();
-    xhr.open('GET', `/api/download?path=${encodeURIComponent(path)}`);
+    const q = sinceMtime != null ? `&mtime=${encodeURIComponent(sinceMtime)}` : '';
+    xhr.open('GET', `/api/download?path=${encodeURIComponent(path)}${q}`);
     xhr.setRequestHeader('Authorization', `Bearer ${token ?? ''}`);
     xhr.responseType = 'blob';
     xhr.onerror = () => reject(new Error(t('api.loadFailed')));
     xhr.onload = () => {
+      if (xhr.status === 304) return resolve({ notModified: true });
       if (xhr.status === 401) return reject(new UnauthorizedError());
       if (xhr.status < 200 || xhr.status >= 300) return reject(new Error(`image -> ${xhr.status}`));
       let blob = xhr.response;
       const mime = mimeFromName(path.split('/').pop() || '');
       if (mime && blob && blob.type !== mime) blob = blob.slice(0, blob.size, mime);
-      resolve(URL.createObjectURL(blob));
+      const m = Number(xhr.getResponseHeader('X-Mtime'));
+      resolve({ url: URL.createObjectURL(blob), mtimeMs: Number.isFinite(m) ? m : null });
     };
     xhr.send();
   });

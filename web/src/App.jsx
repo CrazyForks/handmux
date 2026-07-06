@@ -626,9 +626,11 @@ export default function App() {
     // DocView revokes it on unmount. Re-tapping an already-open image just re-activates (no refetch).
     if (isImageName(abs)) {
       const name = abs.split('/').pop() || abs;
-      if (docTabs.tabs.some((t) => t.key === abs)) { docTabs.openDoc(abs, { type: 'image', name }); setFileManagerOpen(true); return; }
-      const url = await fetchImageUrl(abs); // throws on 404/401 → caller's recovery (toast / base prompt)
-      docTabs.openDoc(abs, { type: 'image', name, content: url });
+      // Re-tapping an already-open image re-activates it and refreshes (conditional — re-downloads only
+      // if the file changed on disk); a first open fetches the bytes and records the mtime for later.
+      if (docTabs.tabs.some((t) => t.key === abs)) { docTabs.activate(abs); refreshDocTab(abs); setFileManagerOpen(true); return; }
+      const { url, mtimeMs } = await fetchImageUrl(abs); // throws on 404/401 → caller's recovery (toast / base prompt)
+      docTabs.openDoc(abs, { type: 'image', name, content: url, mtime: mtimeMs });
       pushRecentDoc({ path: abs, name, type: 'image', ts: Date.now() });
       setFileManagerOpen(true);
       return;
@@ -651,12 +653,24 @@ export default function App() {
   // switching to its tab, or re-opening the sheet. (Re-tapping a file goes through openAbsDoc, which
   // refetches too.) A CONDITIONAL GET (passes the tab's last-known mtime): if the file is unchanged the
   // server answers { notModified } and we do nothing — no content transfer, no re-render (so scroll and
-  // read-aloud aren't disturbed when nothing changed). Uses refreshDoc, not openDoc, so an async result
-  // landing after the user has switched away doesn't steal focus back. Home/image tabs are skipped (an
-  // image reuses its object URL). Best-effort: a since-deleted/moved/unreadable file keeps last-good.
+  // read-aloud aren't disturbed when nothing changed). Images work the same way over /download (304 when
+  // unchanged); a changed image swaps in a fresh object URL and revokes the old blob. Uses refreshDoc,
+  // not openDoc, so an async result landing after the user has switched away doesn't steal focus back.
+  // Best-effort: a since-deleted/moved/unreadable file keeps its last-good content.
   const refreshDocTab = (key) => {
     const tab = docTabs.tabs.find((t) => t.key === key);
-    if (!tab || tab.type === 'home' || tab.type === 'image') return;
+    if (!tab || tab.type === 'home') return;
+    if (tab.type === 'image') {
+      fetchImageUrl(key, tab.mtime ?? null)
+        .then((res) => {
+          if (res.notModified) return; // unchanged → keep the same object URL (no re-download, no flash)
+          const old = tab.content;
+          docTabs.refreshDoc(key, { content: res.url, mtime: res.mtimeMs });
+          if (old) URL.revokeObjectURL(old); // free the superseded blob (the <img> is already re-pointed)
+        })
+        .catch(() => { /* keep the last-good image */ });
+      return;
+    }
     fetchDoc(key, tab.mtime ?? null)
       .then((res) => {
         if (res.notModified) return; // unchanged on disk → leave the tab (and its scroll/TTS) alone

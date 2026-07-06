@@ -221,20 +221,36 @@ describe('previews api', () => {
 });
 
 describe('fetchImageUrl', () => {
-  it('GETs /api/download as a blob (Bearer) and resolves an object URL', async () => {
+  it('GETs /api/download as a blob (Bearer) and resolves { url, mtimeMs } from X-Mtime', async () => {
     let inst;
     vi.stubGlobal('localStorage', { getItem: () => 'tok' });
     vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:img'), revokeObjectURL: vi.fn() });
     vi.stubGlobal('XMLHttpRequest', vi.fn(function XHR() {
       inst = this;
       this.open = vi.fn(); this.setRequestHeader = vi.fn();
+      this.getResponseHeader = vi.fn((h) => (h === 'X-Mtime' ? '1717' : null));
       this.send = vi.fn(() => { this.status = 200; this.response = new Blob(['x'], { type: 'image/png' }); this.onload(); });
     }));
-    const url = await fetchImageUrl('/home/u/pics/a.png');
-    expect(url).toBe('blob:img');
+    const res = await fetchImageUrl('/home/u/pics/a.png');
+    expect(res).toEqual({ url: 'blob:img', mtimeMs: 1717 });
     expect(inst.open).toHaveBeenCalledWith('GET', '/api/download?path=%2Fhome%2Fu%2Fpics%2Fa.png');
     expect(inst.setRequestHeader).toHaveBeenCalledWith('Authorization', 'Bearer tok');
     expect(inst.responseType).toBe('blob');
+  });
+  it('conditional: passes &mtime= and resolves { notModified } on 304 (no object URL created)', async () => {
+    let inst;
+    const createObjectURL = vi.fn(() => 'blob:should-not-be-used');
+    vi.stubGlobal('localStorage', { getItem: () => 'tok' });
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL: vi.fn() });
+    vi.stubGlobal('XMLHttpRequest', vi.fn(function XHR() {
+      inst = this;
+      this.open = vi.fn(); this.setRequestHeader = vi.fn(); this.getResponseHeader = vi.fn();
+      this.send = vi.fn(() => { this.status = 304; this.onload(); });
+    }));
+    const res = await fetchImageUrl('/home/u/pics/a.png', 1717);
+    expect(res).toEqual({ notModified: true });
+    expect(inst.open).toHaveBeenCalledWith('GET', '/api/download?path=%2Fhome%2Fu%2Fpics%2Fa.png&mtime=1717');
+    expect(createObjectURL).not.toHaveBeenCalled();
   });
   it('rejects with UnauthorizedError on 401', async () => {
     vi.stubGlobal('localStorage', { getItem: () => '' });
