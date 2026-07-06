@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { HOME_TAB, openDocState, closeTabState } from '../src/hooks/useDocTabs.js';
+import { HOME_TAB, openDocState, refreshDocState, closeTabState } from '../src/hooks/useDocTabs.js';
 
 const init = { tabs: [HOME_TAB], active: 'home' };
 
@@ -21,6 +21,25 @@ describe('openDocState', () => {
     const s1 = openDocState(init, '/h/pic.png', { type: 'image', name: 'pic.png', content: 'blob:x' });
     const s2 = openDocState(s1, '/h/pic.png', { type: 'image', name: 'pic.png' }); // no content passed
     expect(s2.tabs.find((t) => t.key === '/h/pic.png').content).toBe('blob:x');
+  });
+});
+
+describe('refreshDocState', () => {
+  it('replaces a tab content in place WITHOUT changing which tab is active (no focus steal)', () => {
+    let s = openDocState(init, '/h/a.md', { type: 'markdown', name: 'a.md', content: 'a' });
+    s = openDocState(s, '/h/b.md', { type: 'markdown', name: 'b.md', content: 'b' }); // active b
+    // a background refetch of a lands after the user switched to b — must not pull active back to a.
+    const r = refreshDocState(s, '/h/a.md', { type: 'markdown', name: 'a.md', content: 'a-fresh' });
+    expect(r.active).toBe('/h/b.md');
+    expect(r.tabs.find((t) => t.key === '/h/a.md').content).toBe('a-fresh');
+  });
+  it('is a no-op when the tab was closed mid-fetch', () => {
+    expect(refreshDocState(init, '/gone.md', { content: 'x' })).toBe(init);
+  });
+  it('preserves content when meta.content is undefined (image reuse)', () => {
+    const s = openDocState(init, '/h/p.png', { type: 'image', name: 'p.png', content: 'blob:x' });
+    const r = refreshDocState(s, '/h/p.png', { type: 'image', name: 'p.png' });
+    expect(r.tabs.find((t) => t.key === '/h/p.png').content).toBe('blob:x');
   });
 });
 

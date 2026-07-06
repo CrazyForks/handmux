@@ -5,11 +5,13 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Fixed
-- **Re-opening a document now shows the latest content, not a stale cached copy.** A doc tab cached the
-  bytes it was first opened with; re-opening the same path only re-activated the tab and *discarded* the
+- **A document always shows the latest content now — no stale cached copy.** A doc tab cached the bytes
+  it was first opened with; re-opening the same path only re-activated the tab and *discarded* the
   freshly-refetched content (`openDocState` dedupe), so an updated file kept showing the old version.
-  Re-opening now replaces the tab's content (images still reuse their object URL), and re-opening the
-  file sheet from the topbar refetches the active doc — so "switch away and come back" is current too.
+  Now every way of returning to a doc refetches it: re-tapping the file, **switching to its tab**, and
+  re-opening the file sheet from the topbar. Tab switches stay instant (activate first, refresh in the
+  background) and a refetch that lands after you've switched away updates the tab in place without
+  stealing focus back. Images still reuse their object URL.
 
 ### Changed
 - **The in-app changelog is now keyed by release version, not date.** Each entry carries a `version`

@@ -647,18 +647,24 @@ export default function App() {
     docTabs.closeTab(key);
   };
 
-  // Re-opening the file sheet from the topbar onto an already-loaded doc tab refetches it, so "switch
-  // away and come back" shows the latest bytes on disk — the same freshness re-tapping a file gives
-  // (openDocState replaces the tab's content). Home/image tabs are left as-is (an image tab reuses its
-  // object URL). Best-effort: a since-deleted/moved/unreadable file keeps its last-good content.
-  const reopenFiles = () => {
-    setFileManagerOpen(true);
-    const tab = docTabs.tabs.find((t) => t.key === docTabs.active);
+  // Refetch a doc tab's content IN PLACE so it's never stale — whenever a doc becomes visible again:
+  // switching to its tab, or re-opening the sheet. (Re-tapping a file goes through openAbsDoc, which
+  // refetches too.) Uses refreshDoc, not openDoc, so an async result landing after the user has
+  // switched away doesn't steal focus back. Home/image tabs are skipped (an image reuses its object
+  // URL). Best-effort: a since-deleted/moved/unreadable file keeps its last-good content.
+  const refreshDocTab = (key) => {
+    const tab = docTabs.tabs.find((t) => t.key === key);
     if (!tab || tab.type === 'home' || tab.type === 'image') return;
-    fetchDoc(tab.key)
-      .then((res) => docTabs.openDoc(tab.key, { type: res.type, name: res.name, content: res.content }))
+    fetchDoc(key)
+      .then((res) => docTabs.refreshDoc(key, { type: res.type, name: res.name, content: res.content }))
       .catch(() => { /* keep the last-good content */ });
   };
+
+  // Switching to a doc tab is instant (activate), then its content refreshes in the background.
+  const activateDocTab = (key) => { docTabs.activate(key); refreshDocTab(key); };
+
+  // Topbar file button: reveal the sheet and refresh whatever doc it lands on ("switch away & back").
+  const reopenFiles = () => { setFileManagerOpen(true); refreshDocTab(docTabs.active); };
 
   // req() throws Error("/api/... -> 404"); map the trailing status to a readable reason.
   const friendlyDocError = (err) => {
@@ -968,7 +974,7 @@ export default function App() {
         windowId={current?.window?.id}
         tabs={docTabs.tabs}
         active={docTabs.active}
-        onActivate={docTabs.activate}
+        onActivate={activateDocTab}
         onCloseTab={closeDocTab}
         onMinimize={() => setFileManagerOpen(false)}
         onOpenDoc={onOpenDoc}
