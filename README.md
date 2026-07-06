@@ -62,7 +62,7 @@ handmux start --tunnel cloudflare   # instant public URL (cloudflared auto-insta
 LAN-only by default, nothing exposed. To reach it from outside, just ask: **does your machine already have a public address?**
 
 - **Yes** (cloud box / public IP / forwarded port) — no tunnel needed, connect directly; fastest and most private.
-- **No** — open a tunnel: `cloudflare` (zero-config, up in seconds, but its public nodes can be blocked or unreliable in some regions) · `cloudflare-named` (your own domain, steadier) · `ssh` self-hosted (through your own server — the pick where Cloudflare is unreliable, e.g. mainland China).
+- **No** — open a tunnel: `cloudflare` (zero-config, up in seconds, but its public nodes can be slow or unreliable in some regions) · `cloudflare-named` (your own domain, steadier) · `ssh` self-hosted (through your own server — the pick where Cloudflare is unreliable, e.g. mainland China).
 
 > Tunnel config, server-side reverse proxy, autostart, voice/push credentials, and port previews → see the **[docs](https://handmux.com/docs.html)**.
 
