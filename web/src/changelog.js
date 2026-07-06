@@ -11,6 +11,21 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.10.0',
+    date: '2026-07-06',
+    highlight: { zh: '升级前预览新功能 · 电脑 handmux open 接管', en: 'Preview an update before installing · handmux open' },
+    items: {
+      zh: [
+        '更新提示现在会提前告诉你新版有什么:检测到有新版本时,设置里会逐版列出这次升级带来的新功能(一句话说明),让你在电脑上跑 `handmux update` 之前就知道值不值得。',
+        '电脑上新增 `handmux open <会话名>`:把你在手机上建的会话直接在电脑终端接回来(没有就新建),不用再记 `tmux new -A -s`。绑定/新建会话的弹窗里也加了这句提示。',
+      ],
+      en: [
+        'The update notice now tells you what a new version brings before you install it: when an update is detected, Settings lists each newer version\'s highlight in one line, so you know whether it\'s worth running `handmux update` on your computer.',
+        'New `handmux open <session>` on the computer: reclaim a session you created from your phone straight into your computer\'s terminal (created if missing) — no need to remember `tmux new -A -s`. The bind/create dialog now hints at it too.',
+      ],
+    },
+  },
+  {
     version: '0.9.1',
     date: '2026-07-06',
     highlight: { zh: '「添加到主屏」引导', en: '"Add to Home Screen" coach' },
