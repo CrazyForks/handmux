@@ -22,6 +22,7 @@ export default {
   'tmux.install': '  Install it:  {hint}',
   'tmux.thenStart': '  Then run `handmux start` again.',
   'open.usage': 'usage: handmux open <session>   attach the tmux session (creates it if missing)',
+  'open.insideTmux': "you're already inside tmux — switch sessions with tmux itself (e.g. `tmux switch-client -t <session>`), don't nest.",
   'tmux.tooOld': '⚠ tmux {raw} is below the tested minimum {min}; terminal rendering may be off',
 
   // start — already running

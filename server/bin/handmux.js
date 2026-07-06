@@ -472,21 +472,16 @@ async function maybeQr(url, st) {
 
 // `open` is deliberately DECOUPLED from the server lifecycle: it never starts/stops anything. It's the
 // desk-side quick attach — `handmux open foo` attaches session foo (creating it if missing), including
-// sessions that were created from the phone. Inside tmux it jumps the current client instead of nesting.
+// sessions that were created from the phone. Inside tmux it refuses (don't nest tmux in tmux).
 function openCmd() {
   const name = process.argv[3];
   if (!name || name.startsWith('-')) { console.error(t('open.usage')); process.exit(2); }
+  if (process.env.TMUX) { console.error(t('open.insideTmux')); process.exit(1); }
   const tmux = checkTmux();
   if (!tmux.present) {
     console.error(t('tmux.notFound'));
     console.error(t('tmux.install', { hint: tmuxInstallHint() }));
     process.exit(1);
-  }
-  if (process.env.TMUX) {
-    if (spawnSync('tmux', ['has-session', '-t', `=${name}`]).status !== 0)
-      spawnSync('tmux', ['new-session', '-d', '-s', name]);
-    const r = spawnSync('tmux', ['switch-client', '-t', `=${name}`], { stdio: 'inherit' });
-    process.exit(r.status ?? 0);
   }
   const r = spawnSync('tmux', ['new-session', '-A', '-s', name], { stdio: 'inherit' });
   process.exit(r.status ?? 0);

@@ -21,6 +21,7 @@ export default {
   'tmux.install': '  安装:  {hint}',
   'tmux.thenStart': '  然后再运行 `handmux start`。',
   'open.usage': '用法: handmux open <会话名>   接入该 tmux 会话(不存在则新建)',
+  'open.insideTmux': '你已经在 tmux 里了——切换会话请用 tmux 自己的方式(如 `tmux switch-client -t <会话名>`),不要嵌套。',
   'tmux.tooOld': '⚠ tmux {raw} 低于测试过的最低版本 {min};终端渲染可能有偏差',
 
   // start —— 已在运行
