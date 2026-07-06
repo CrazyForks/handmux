@@ -4,9 +4,9 @@
 
 [![npm](https://img.shields.io/npm/v/handmux?color=cb3837&logo=npm)](https://www.npmjs.com/package/handmux) [![CI](https://github.com/handmux/handmux/actions/workflows/test.yml/badge.svg)](https://github.com/handmux/handmux/actions/workflows/test.yml) [![license: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE) [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 
-> **One phone, a full vibe-coding workstation.** One command on your computer, scan a QR — and your live tmux session, Claude Code, git, previews and docs are all in your hand.
+> **One phone, a whole mobile vibe-coding cockpit.** Built on tmux — one command on your computer, scan a QR, and your live session, Claude Code, Codex, git, previews and docs are all in your hand, creativity ready wherever you are.
 
-handmux is more than a terminal on your phone. It puts the *same* live **tmux** session running on your computer into your phone's browser (real panes, not a read-only mirror), then builds a whole **mobile dev cockpit** around it: **Claude Code / Codex** push you the moment a pane needs a decision — approve with your thumb; browse a full-screen colored **git** diff; **preview** a running site in one tap; hear a **doc** read aloud line by line; move files both ways. Nothing to install on the phone — open a link and you're in; "Add to Home Screen" and it runs full-screen as a **PWA**, basically a native app. Curl up on the couch or squeeze onto the train — the process keeps running, you just change screens.
+handmux is more than a terminal on your phone. It puts the *same* live **tmux** session running on your computer into your phone's browser (real panes, not a read-only mirror), then builds a whole **mobile vibe-coding cockpit** around it: **Claude Code / Codex** push you the moment a pane needs a decision — approve with your thumb, or fire off a new instruction by voice; browse a full-screen colored **git** diff; **preview** a running site in one tap; hear a **doc** read aloud line by line; move files both ways. Nothing to install on the phone — open a link and you're in; "Add to Home Screen" and it runs full-screen as a **PWA**, basically a native app. Curl up on the couch or squeeze onto the train — the vibe coding never stops, your creativity stays in hand.
 
 <p align="center">
   <img src="assets/handmux-run.gif" alt="handmux: say what you need, Claude Code writes it, then tap the filename to preview the result" width="280">
@@ -39,10 +39,10 @@ handmux start --tunnel cloudflare   # instant public URL (cloudflared auto-insta
 
 ## Why handmux
 
-- **🧰 More than a terminal — a mobile vibe-coding workstation in your pocket.** Full-screen colored git diffs, one-tap preview of a running site, docs read aloud line by line, files moved both ways — a whole cockpit, no hopping between apps.
+- **🧰 More than a terminal — a whole mobile vibe-coding cockpit in your pocket.** Full-screen colored git diffs, one-tap preview of a running site, docs read aloud line by line, files moved both ways — a whole dev kit in hand, no hopping between apps.
 - **🚀 One minute from zero to coding on your phone.** One `handmux start`, one scan, done — no sign-up, no App Store, no app to sideload; just a link. "Add to Home Screen" and it's a full-screen **PWA**, as smooth as a native app.
 - **🧶 Walk away, keep working.** Your phone drives the *one* live tmux pane on your desk (not a new shell, not a screenshot). Close the laptop and keep watching from your thumb — exact same state.
-- **🔔 When it needs you, your phone rings.** Claude Code / Codex push the moment they need a decision; add it to your home screen and they come through as system notifications. An inbox tags each pane working / needs-you / done, and you approve permissions and plans with a tap — stop babysitting the screen.
+- **🔔 When it needs you, your phone rings.** Claude Code / Codex push the moment they need a decision; add it to your home screen and they come through as system notifications. An inbox tags each pane working / needs-you / done — many projects at a glance — and you approve permissions and plans with a tap, so you stop babysitting the screen.
 - **🔒 Your code goes through no middleman.** Free and fully open-source; we run no server in the middle — your data travels straight between your computer and your phone, so it stays secure.
 
 ## Features

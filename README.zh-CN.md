@@ -4,9 +4,9 @@
 
 [![npm](https://img.shields.io/npm/v/handmux?color=cb3837&logo=npm)](https://www.npmjs.com/package/handmux) [![CI](https://github.com/handmux/handmux/actions/workflows/test.yml/badge.svg)](https://github.com/handmux/handmux/actions/workflows/test.yml) [![license: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE) [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 
-> **一部手机,一个完整的 vibe coding 工作站。** 电脑上一行命令、手机扫码——你正跑着的 tmux 会话、Claude Code、git、预览、文档,全都到手里了。
+> **一部手机,一整套移动 Vibe Coding 驾驶舱。** 基于 tmux——电脑上一行命令、手机扫码,你正跑着的会话、Claude Code、Codex、git、预览、文档全到手里,创造力随时随地都在你手上。
 
-handmux 不只是把终端搬上手机。它把你电脑上**正跑着的 tmux 会话**原样搬进手机浏览器(同一个真实 pane,不是只读镜像),再围着它搭起一整套**移动开发驾驶舱**:**Claude Code / Codex** 要你拍板时推到手机、拇指一点就批;**git** 全屏看彩色 diff;一键**预览**正跑着的网站;**文档**逐句朗读;文件随手双向传。手机端**零安装**——点开链接就进去,"添加到主屏"即成全屏 **PWA**,和原生 App 基本无异。窝在沙发、挤在地铁,进程照跑,你只是换了块屏。
+handmux 不只是把终端搬上手机。它把你电脑上**正跑着的 tmux 会话**原样搬进手机浏览器(同一个真实 pane,不是只读镜像),再围着它搭起一整套**移动 Vibe Coding 驾驶舱**:**Claude Code / Codex** 要你拍板时推到手机、拇指一点就批,动动嘴就发新指令;**git** 全屏看彩色 diff;一键**预览**正跑着的网站;**文档**逐句朗读;文件随手双向传。手机端**零安装**——点开链接就进去,"添加到主屏"即成全屏 **PWA**,和原生 App 基本无异。窝在沙发、挤在地铁,Vibe Coding 不停,创造力随时在你手里。
 
 <p align="center">
   <img src="assets/handmux-run.gif" alt="handmux:说出需求,Claude Code 写好,点文件名即可预览结果" width="280">
@@ -39,10 +39,10 @@ handmux start --tunnel cloudflare   # 即时公网地址(自动装 cloudflared)
 
 ## 为什么是 handmux
 
-- **🧰 不只是终端——一个装进口袋的移动 vibe coding 工作站。** git 全屏看彩色 diff、一键预览正跑着的网站、文档逐句朗读、文件随手双向传——一整套开发驾驶舱,不用在几个 App 间来回切。
+- **🧰 不只是终端——一整套装进口袋的移动 Vibe Coding 驾驶舱。** git 全屏看彩色 diff、一键预览正跑着的网站、文档逐句朗读、文件随手双向传——一整套开发能力,此刻全套在手,不用在几个 App 间来回切。
 - **🚀 一分钟从零到手机上敲代码。** 一条 `handmux start`、扫个码,完事——不注册、不上应用商店、不装 App,一个链接就进去。"添加到主屏"后即为全屏 **PWA**,和原生 App 一样顺手。
 - **🧶 人走,活不停。** 手机连的是你工位上**那一个**正跑着的 tmux pane(不是新 shell、不是截图)。合上电脑,拇指接着盯,状态一点不差。
-- **🔔 需要你时,手机会响。** Claude Code / Codex 一到要你拍板就推送;添加到主屏后直接走系统通知。收件箱标「进行中 / 等你 / 已完成」,拇指一点批授权批计划,别再守着屏幕等它。
+- **🔔 需要你时,手机会响。** Claude Code / Codex 一到要你拍板就推送;添加到主屏后直接走系统通知。收件箱标「进行中 / 需要你 / 已完成」,多项目并行状态一览无余,拇指一点批授权批计划,别再守着屏幕等它。
 - **🔒 你的代码,不经过任何中转。** 免费、完全开源;我们没有中转服务器,数据只在你的电脑和手机之间直接走,确保安全。
 
 ## 功能一览
