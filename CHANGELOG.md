@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-07-06
+
 ### Added
 - **"Add to Home Screen" coach.** On first open in a browser tab (never once installed, and
   remembered as dismissed), a light, dismissible strip at the top of the screen nudges you to install

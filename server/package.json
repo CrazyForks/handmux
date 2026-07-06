@@ -1,6 +1,6 @@
 {
   "name": "handmux",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "A mobile vibe-coding cockpit — built on tmux: drive your live session, Claude Code & Codex from your phone.",
   "type": "module",
   "license": "AGPL-3.0-only",
