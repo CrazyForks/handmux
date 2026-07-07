@@ -156,7 +156,7 @@ export default {
   'setup.actExit': '退出(丢弃改动)',
   'setup.exited': '已取消 —— 未保存任何改动',
   'setup.tunnelNone': '直连',
-  'setup.hintNone': '仅同一 Wi-Fi —— 最简单,什么都不用配',
+  'setup.hintNone': '不经隧道,直连本机 —— 同一 Wi-Fi 或本机有公网 IP 均可;最简单',
   'setup.hintCf': '在外面也能访问、免注册(临时地址;国内可能不稳)',
   'setup.hintCfNamed': '你自己的域名,稳定 HTTPS(最省心)',
   'setup.hintSsh': '你已经有一台服务器可以中转',
@@ -172,7 +172,7 @@ export default {
   'setup.valContact': '请填 mailto:you@example.com 或 https://你的站点(要真实域名 —— 苹果会拒收假域名)',
   'setup.sumTemp': '临时',
   'setup.sumFixed': '固定',
-  'setup.sumLan': '局域网',
+  'setup.sumNoRelay': '无中转',
   // 连接迷你中枢(各隧道字段行)
   'setup.connTunnel': '隧道',
   'setup.connMode': '模式',

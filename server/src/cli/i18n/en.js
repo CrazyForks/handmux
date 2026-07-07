@@ -157,7 +157,7 @@ export default {
   'setup.actExit': 'Exit — discard changes',
   'setup.exited': 'setup cancelled — no changes saved',
   'setup.tunnelNone': 'Direct',
-  'setup.hintNone': 'same Wi-Fi only — simplest, nothing to set up',
+  'setup.hintNone': 'no tunnel — reach this machine directly (same Wi-Fi, or its own public IP); simplest',
   'setup.hintCf': 'reach it from anywhere, no signup (temporary URL; can be flaky in China)',
   'setup.hintCfNamed': 'your domain, stable HTTPS (most hands-off)',
   'setup.hintSsh': 'you already have a server to route through',
@@ -173,7 +173,7 @@ export default {
   'setup.valContact': 'use mailto:you@example.com or https://your.site (a real domain — Apple rejects fake ones)',
   'setup.sumTemp': 'temporary',
   'setup.sumFixed': 'fixed',
-  'setup.sumLan': 'LAN',
+  'setup.sumNoRelay': 'no relay',
   // connection mini-hub (per-tunnel field rows)
   'setup.connTunnel': 'Tunnel',
   'setup.connMode': 'Mode',

@@ -119,7 +119,7 @@ export function summarizeConnection(a) {
     case 'ssh': return `ssh · ${a.sshHost || '?'}`;
     case 'natapp':
     case 'cpolar': return `${a.tunnel} · ${a.publicUrl ? `${t('setup.sumFixed')} ${bare(a.publicUrl)}` : t('setup.sumTemp')}`;
-    default: return `${t('setup.tunnelNone')} · ${t('setup.sumLan')}`;
+    default: return `${t('setup.tunnelNone')} · ${t('setup.sumNoRelay')}`;
   }
 }
 
