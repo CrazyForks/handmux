@@ -134,6 +134,16 @@ export function validateHost(v) {
   const s = String(v || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
   return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(s) ? undefined : t('setup.valHost');
 }
+// VAPID subject: Apple (APNs) rejects a fake/.local domain with BadJwtToken, so require a real-looking
+// mailto:you@host.tld or an https:// URL and reject the known-bad .local. Keeps push from silently
+// failing on iOS. (Can't fully validate "real" client-side — this just catches the obvious footguns.)
+export function validateContact(v) {
+  const s = String(v || '').trim();
+  const wellFormed = /^mailto:[^@\s]+@[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(s)
+    || /^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)+/i.test(s);
+  if (!wellFormed || /\.local(?:[:/]|$)/i.test(s)) return t('setup.valContact');
+  return undefined;
+}
 
 function readExisting(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; }
@@ -417,7 +427,8 @@ async function editPush(a) {
     try { on = await ask(confirm({ message: withBack(t('setup.pushSetup')), initialValue: false, ...yesno() })); }
     catch (e) { if (e === CANCELLED) return undefined; throw e; }
     if (!on) return undefined;
-    const subject = await ask(text({ message: t('setup.pushContact'), initialValue: 'mailto:admin@example.com' }));
+    note(t('setup.pushAbout'));
+    const subject = await ask(text({ message: t('setup.pushContact'), initialValue: 'mailto:admin@example.com', validate: validateContact }));
     const { publicKey, privateKey } = webpush.generateVAPIDKeys();
     note(t('setup.pushGenerated'));
     vapid = { public: publicKey, private: privateKey, subject };
@@ -429,7 +440,7 @@ async function editPush(a) {
         message: withBack(t('setup.secPush')),
         options: [
           { value: 'contact', label: t('setup.pushContactLabel'), hint: vapid.subject || '' },
-          { value: 'regen', label: t('setup.pushRegen') },
+          { value: 'regen', label: t('setup.pushRegen'), hint: t('setup.pushRegenHint') },
           { value: 'off', label: t('setup.pushOff') },
         ],
         initialValue: 'contact',
@@ -437,11 +448,14 @@ async function editPush(a) {
     } catch (e) { if (e === CANCELLED) return vapid; throw e; }   // back to the main hub, keeping edits
     if (pick === 'off') return undefined;
     try {
-      if (pick === 'contact') vapid = { ...vapid, subject: await ask(text({ message: t('setup.pushContact'), initialValue: vapid.subject || '' })) };
+      if (pick === 'contact') vapid = { ...vapid, subject: await ask(text({ message: t('setup.pushContact'), initialValue: vapid.subject || '', validate: validateContact })) };
       else if (pick === 'regen') {
-        const k = webpush.generateVAPIDKeys();
-        vapid = { ...vapid, public: k.publicKey, private: k.privateKey };
-        note(t('setup.pushRegenerated'));
+        const ok = await ask(confirm({ message: t('setup.pushRegenConfirm'), initialValue: false, ...yesno() }));
+        if (ok) {
+          const k = webpush.generateVAPIDKeys();
+          vapid = { ...vapid, public: k.publicKey, private: k.privateKey };
+          note(t('setup.pushRegenerated'));
+        }
       }
     } catch (e) { if (e !== CANCELLED) throw e; }                 // Esc in a sub-edit → back to the mini-hub
   }

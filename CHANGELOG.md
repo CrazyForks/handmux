@@ -5,6 +5,12 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Changed
+- **`handmux setup` push section now explains itself.** Turning notifications on shows a one-line note that
+  handmux generates a private signing key locally (`~/.handmux/config.json`, never leaves the machine) and
+  that the "contact" is only an address the push service can reach you at. The contact field is validated
+  (must be a real `mailto:`/`https://`, `.local` rejected — Apple's APNs silently drops fake ones), and
+  **Regenerate keys** now carries a "resets every phone subscription" hint and a confirm gate spelling out
+  that every already-subscribed phone must re-subscribe (only needed if the private key leaked).
 - **Tiered `handmux` help.** The bare `handmux` / `handmux help` screen is now short — the six verbs, the
   mental model, and a "New here? run `handmux setup`" nudge — with the full flag wall moved behind
   `handmux help flags`. That flag reference now doubles as the **headless config guide**: every flag lists

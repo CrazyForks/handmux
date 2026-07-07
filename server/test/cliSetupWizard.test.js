@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   cfConfigYaml, parseTunnelCreate, findTunnelId, configFromAnswers, mergeConfig,
-  answersFromConfig, summarizeConnection, validatePort, validateHost, validateNonEmpty,
+  answersFromConfig, summarizeConnection, validatePort, validateHost, validateNonEmpty, validateContact,
 } from '../src/cli/setupWizard.js';
 
 describe('cfConfigYaml', () => {
@@ -130,5 +130,14 @@ describe('validators', () => {
     expect(v('')).toBeTruthy();
     expect(v('  ')).toBeTruthy();
     expect(v('tok')).toBeUndefined();
+  });
+  it('validateContact accepts real mailto:/https:, rejects fake/.local', () => {
+    expect(validateContact('mailto:admin@example.com')).toBeUndefined();
+    expect(validateContact('https://handmux.example.com')).toBeUndefined();
+    expect(validateContact('mailto:me@box.local')).toBeTruthy();      // .local — APNs rejects it
+    expect(validateContact('mailto:admin')).toBeTruthy();             // no domain
+    expect(validateContact('admin@example.com')).toBeTruthy();        // missing mailto:
+    expect(validateContact('http://insecure.example.com')).toBeTruthy(); // https only
+    expect(validateContact('')).toBeTruthy();
   });
 });
