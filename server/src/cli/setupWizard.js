@@ -151,13 +151,18 @@ export async function runSetup({ home = homedir(), target = configPath(home), lo
   setLocale(a.lang);
 
   intro('handmux setup');
-  let cursor = 'connection';   // hub selection starts on the first row, and returns to the row you just edited
+  // First run lands the cursor on "Save & start" — the essential step (connection) is done in onboarding and
+  // everything else is optional, so a newcomer sees they can just finish. A re-run starts on the first row so
+  // you jump straight to what you came to change.
+  let cursor = isNew ? 'start' : 'connection';
   try {
     if (isNew) {
-      // First-run onboarding walks language + connection once; Esc here just drops to the hub (with safe
-      // defaults) rather than quitting, so "Esc goes back" holds everywhere — only the hub itself exits.
+      // First-run onboarding: pick language, orient the newcomer, then ask the ONE thing they must decide —
+      // how the phone reaches this machine — going straight to that picker (not the field mini-hub). Esc here
+      // drops to the hub with safe defaults, so "Esc goes back" holds everywhere.
       try {
         a.lang = await editLanguage(a);
+        note(t('setup.welcome'));
         a = await editConnection(a, { home, log });
       } catch (e) { if (e !== CANCELLED) throw e; }
     }
@@ -246,28 +251,32 @@ function tunnelOptions() {
   ];
 }
 
-// Rows shown in the Connection mini-hub: the tunnel type first, then the current tunnel's fields with their
-// values (secrets masked), so you see the whole connection at a glance and edit any single row.
-function connectionRows(a) {
+// Which tunnels have config fields to edit a level deeper (none/cloudflare-quick have nothing to configure).
+const hasConnFields = (tunnel) => ['cloudflare-named', 'ssh', 'natapp', 'cpolar'].includes(tunnel);
+
+// The editable field rows for the CURRENT tunnel — the type/mode is chosen a level up (the picker), so this
+// lists ONLY that tunnel's config, values shown and secrets masked. Empty for none / cloudflare-quick.
+function connectionFieldRows(a) {
   const none = t('setup.connNone');
-  const rows = [{ value: 'tunnel', label: t('setup.connTunnel'), hint: cfFamily(a.tunnel) }];
-  if (cfFamily(a.tunnel) === 'cloudflare') {
-    rows.push({ value: 'cfMode', label: t('setup.connMode'), hint: a.tunnel === 'cloudflare-named' ? t('setup.cfNamed') : t('setup.cfTemp') });
-    if (a.tunnel === 'cloudflare-named') {
-      rows.push({ value: 'cfHostname', label: t('setup.connHostname'), hint: a.cfHostname || none });
-      rows.push({ value: 'cfTunnelName', label: t('setup.connTunnelName'), hint: a.cfTunnelName || 'handmux' });
-    }
-  } else if (a.tunnel === 'ssh') {
-    rows.push({ value: 'sshHost', label: t('setup.connSshHost'), hint: a.sshHost || none });
-    rows.push({ value: 'remotePort', label: t('setup.connRemotePort'), hint: String(a.remotePort || a.port) });
-    rows.push({ value: 'publicUrl', label: t('setup.connPublicUrl'), hint: a.publicUrl || t('setup.connAuto') });
-    rows.push({ value: 'sshJump', label: t('setup.connJump'), hint: a.sshJump || none });
-  } else if (a.tunnel === 'natapp' || a.tunnel === 'cpolar') {
-    rows.push({ value: 'authtoken', label: 'authtoken', hint: a.authtoken ? maskSecret(a.authtoken) : none });
-    rows.push({ value: 'domain', label: t('setup.connDomain'), hint: a.publicUrl ? bareHost(a.publicUrl) : t('setup.domainTemp') });
+  if (a.tunnel === 'cloudflare-named') return [
+    { value: 'cfHostname', label: t('setup.connHostname'), hint: a.cfHostname || none },
+    { value: 'cfTunnelName', label: t('setup.connTunnelName'), hint: a.cfTunnelName || 'handmux' },
+  ];
+  if (a.tunnel === 'ssh') return [
+    { value: 'sshHost', label: t('setup.connSshHost'), hint: a.sshHost || none },
+    { value: 'remotePort', label: t('setup.connRemotePort'), hint: String(a.remotePort || a.port) },
+    { value: 'publicUrl', label: t('setup.connPublicUrl'), hint: a.publicUrl || t('setup.connAuto') },
+    { value: 'sshJump', label: t('setup.connJump'), hint: a.sshJump || none },
+  ];
+  if (a.tunnel === 'natapp' || a.tunnel === 'cpolar') {
+    const rows = [
+      { value: 'authtoken', label: 'authtoken', hint: a.authtoken ? maskSecret(a.authtoken) : none },
+      { value: 'domain', label: t('setup.connDomain'), hint: a.publicUrl ? bareHost(a.publicUrl) : t('setup.domainTemp') },
+    ];
     if (a.tunnel === 'cpolar') rows.push({ value: 'cpolarRegion', label: t('setup.connRegion'), hint: a.cpolarRegion || t('setup.default') });
+    return rows;
   }
-  return rows;
+  return [];
 }
 
 // cloudflare mode: temporary quick tunnel (no login) vs a named tunnel on your own domain (needs login).
@@ -292,8 +301,9 @@ async function editCfMode(a) {
   return n;
 }
 
-// Choose the tunnel type; on a real change, clear the old fields and collect the new type's REQUIRED fields
-// (so the mini-hub never shows a half-set required tunnel). Returns the new answers, or null if unchanged.
+// Level 1 — choose the tunnel type (and, for cloudflare, temporary vs named). On a real change, clear the old
+// fields and collect the new type's REQUIRED field(s) so a half-set tunnel never reaches the field hub.
+// Returns the answers (unchanged if you re-pick the same type — you still drop into its field hub).
 async function pickTunnel(a) {
   const start = cfFamily(a.tunnel);
   const picked = await ask(select({ message: withBack(t('setup.tunnelQ')), options: tunnelOptions(), initialValue: start === 'none' ? 'cloudflare' : start }));
@@ -301,7 +311,7 @@ async function pickTunnel(a) {
   for (const k of TUNNEL_KEYS) delete base[k];
   // Staying in the cloudflare family keeps its fields as defaults; arriving from another tunnel starts clean.
   if (picked === 'cloudflare') return editCfMode(cfFamily(a.tunnel) === 'cloudflare' ? a : base);
-  if (picked === start) return null;   // unchanged non-cloudflare
+  if (picked === start) return a;   // unchanged type → keep fields, go straight to the field hub
   base.tunnel = picked;
   if (picked === 'ssh') {
     base.sshHost = await ask(text({ message: t('setup.askSshHost'), defaultValue: '', validate: validateNonEmpty('ssh host') }));
@@ -317,7 +327,6 @@ async function editConnField(a, field) {
   const n = { ...a };
   const setOpt = (k, v) => { if (v) n[k] = v; else delete n[k]; };
   switch (field) {
-    case 'cfMode': return editCfMode(a);
     case 'cfHostname': n.cfHostname = await ask(text({ message: t('setup.askHostname'), defaultValue: a.cfHostname || '', validate: validateHost })); break;
     case 'cfTunnelName': n.cfTunnelName = (await ask(text({ message: t('setup.askTunnelName'), defaultValue: a.cfTunnelName || 'handmux' }))) || 'handmux'; break;
     case 'sshHost': n.sshHost = await ask(text({ message: t('setup.askSshHost'), defaultValue: a.sshHost || '', validate: validateNonEmpty('ssh host') })); break;
@@ -348,28 +357,40 @@ async function provisionConnection(a, { home, log }) {
   else if (a.tunnel === 'natapp' || a.tunnel === 'cpolar') await provisionNgrokClient({ tunnel: a.tunnel, home, authtoken: a.authtoken, log });
 }
 
-// Connection is its OWN mini-hub: every field of the current tunnel is a row showing its value; edit any in
-// place, or switch the tunnel type from the Tunnel row. Provisioning runs once on the way out (only if
-// something changed). Esc → back to the main hub; Esc in a sub-edit → back to this mini-hub.
-async function editConnection(a, ctx) {
+// Level 2 — the field hub for the chosen tunnel: each config field is a row showing its value (secrets
+// masked); edit any in place. Esc leaves the field hub. Returns the updated answers.
+async function editTunnelFields(a) {
   let next = { ...a };
-  let dirty = false;
-  let cur = 'tunnel';
+  let cur;
   for (;;) {
     let pick;
     try {
-      pick = await ask(select({ message: withBack(t('setup.secConnection')), options: connectionRows(next), initialValue: cur }));
+      pick = await ask(select({ message: withBack(summarizeConnection(next)), options: connectionFieldRows(next), initialValue: cur }));
     } catch (e) {
       if (e !== CANCELLED) throw e;
-      if (dirty) await provisionConnection(next, ctx);
       return next;
     }
     cur = pick;
-    try {
-      if (pick === 'tunnel') { const c = await pickTunnel(next); if (c) { next = c; dirty = true; } }
-      else { next = await editConnField(next, pick); dirty = true; }
-    } catch (e) { if (e !== CANCELLED) throw e; }   // Esc in a sub-edit → back to the Connection mini-hub
+    try { next = await editConnField(next, pick); }
+    catch (e) { if (e !== CANCELLED) throw e; }   // Esc in a sub-edit → back to the field hub
   }
+}
+
+// Connection is TWO levels: FIRST pick the tunnel type (and, for cloudflare, temporary vs named) — level 1;
+// THEN that tunnel's config fields appear inside it — level 2. Provisioning (browser login / key setup /
+// client download) runs once on the way out, only if something changed. Esc at either level → main hub.
+async function editConnection(a, ctx) {
+  const before = JSON.stringify(a);
+  let next;
+  try {
+    next = await pickTunnel(a);                          // level 1: type / mode / required fields
+  } catch (e) { if (e !== CANCELLED) throw e; return a; }
+  if (hasConnFields(next.tunnel)) {
+    try { next = await editTunnelFields(next); }         // level 2: this tunnel's fields
+    catch (e) { if (e !== CANCELLED) throw e; }
+  }
+  if (JSON.stringify(next) !== before) await provisionConnection(next, ctx);
+  return next;
 }
 
 // Push notifications need a VAPID keypair. If one already exists we offer to keep it (regenerating would
