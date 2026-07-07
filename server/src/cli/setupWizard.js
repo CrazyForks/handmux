@@ -151,12 +151,18 @@ export async function runSetup({ home = homedir(), target = configPath(home), lo
   setLocale(a.lang);
 
   intro('handmux setup');
+  let cursor = 'connection';   // hub selection starts on the first row, and returns to the row you just edited
   try {
     if (isNew) {
-      a.lang = await editLanguage(a);
-      a = await editConnection(a, { home, log });
+      // First-run onboarding walks language + connection once; Esc here just drops to the hub (with safe
+      // defaults) rather than quitting, so "Esc goes back" holds everywhere — only the hub itself exits.
+      try {
+        a.lang = await editLanguage(a);
+        a = await editConnection(a, { home, log });
+      } catch (e) { if (e !== CANCELLED) throw e; }
     }
     for (;;) {
+      // Esc / Ctrl-C AT THE HUB (or during first-run onboarding) exits setup — caught by the outer try.
       const choice = await ask(select({
         message: t('setup.hubTitle'),
         options: [
@@ -170,7 +176,7 @@ export async function runSetup({ home = homedir(), target = configPath(home), lo
           { value: 'save', label: t('setup.actSave') },
           { value: 'exit', label: t('setup.actExit') },
         ],
-        initialValue: 'start',
+        initialValue: cursor,
       }));
       if (choice === 'exit') { cancel(t('setup.exited')); return null; }
       if (choice === 'save' || choice === 'start') {
@@ -182,12 +188,18 @@ export async function runSetup({ home = homedir(), target = configPath(home), lo
         if (a.tunnel === 'cloudflare-named' || a.tunnel === 'ssh') printPreviewHelp(a.tunnel, log);
         return { cfg, start: choice === 'start' };
       }
-      if (choice === 'connection') a = await editConnection(a, { home, log });
-      else if (choice === 'name') a.name = await editName(a);
-      else if (choice === 'port') a.port = await editPort(a);
-      else if (choice === 'language') a.lang = await editLanguage(a);
-      else if (choice === 'push') a.vapid = await editPush(a);
-      else if (choice === 'voice') a.xfyun = await editVoice(a);
+      cursor = choice;   // remember the row so returning from an edit re-highlights it
+      // Esc / Ctrl-C INSIDE a section backs out to the hub, leaving that section unchanged.
+      try {
+        if (choice === 'connection') a = await editConnection(a, { home, log });
+        else if (choice === 'name') a.name = await editName(a);
+        else if (choice === 'port') a.port = await editPort(a);
+        else if (choice === 'language') a.lang = await editLanguage(a);
+        else if (choice === 'push') a.vapid = await editPush(a);
+        else if (choice === 'voice') a.xfyun = await editVoice(a);
+      } catch (e) {
+        if (e !== CANCELLED) throw e;
+      }
     }
   } catch (e) {
     if (e === CANCELLED) { cancel(t('setup.exited')); return null; }
@@ -195,9 +207,13 @@ export async function runSetup({ home = homedir(), target = configPath(home), lo
   }
 }
 
+// clack's footer only shows ↑/↓ + Enter, so append the Esc-backs-out hint to each section's entry prompt —
+// otherwise a user inside a section can't tell there's a way back to the hub.
+const withBack = (msg) => `${msg}  ${t('setup.escBack')}`;
+
 async function editLanguage(a) {
   const lang = await ask(select({
-    message: t('setup.langQ'),
+    message: withBack(t('setup.langQ')),
     options: [{ value: 'en', label: 'English' }, { value: 'zh', label: '中文' }],
     initialValue: a.lang === 'zh' ? 'zh' : 'en',
   }));
@@ -206,12 +222,12 @@ async function editLanguage(a) {
 }
 
 async function editName(a) {
-  const v = await ask(text({ message: t('setup.askName'), placeholder: a.name || t('setup.default'), defaultValue: a.name || '' }));
+  const v = await ask(text({ message: withBack(t('setup.askName')), placeholder: a.name || t('setup.default'), defaultValue: a.name || '' }));
   return (v || '').trim();
 }
 
 async function editPort(a) {
-  const v = await ask(text({ message: t('setup.askPort'), placeholder: String(a.port), defaultValue: String(a.port), validate: validatePort }));
+  const v = await ask(text({ message: withBack(t('setup.askPort')), placeholder: String(a.port), defaultValue: String(a.port), validate: validatePort }));
   return Number(v);
 }
 
@@ -219,7 +235,7 @@ async function editPort(a) {
 // keys first so a switch never advertises a stale hostname/token.
 async function editConnection(a, { home, log }) {
   const tunnel = await ask(select({
-    message: t('setup.tunnelQ'),
+    message: withBack(t('setup.tunnelQ')),
     options: [
       { value: 'none', label: 'none', hint: t('setup.hintNone') },
       { value: 'cloudflare', label: 'cloudflare', hint: t('setup.hintCf') },
@@ -276,8 +292,8 @@ async function editConnection(a, { home, log }) {
 const yesno = () => ({ active: t('setup.yes'), inactive: t('setup.no') });
 
 async function editPush(a) {
-  if (a.vapid) return (await ask(confirm({ message: t('setup.pushKeep'), initialValue: true, ...yesno() }))) ? a.vapid : undefined;
-  if (!await ask(confirm({ message: t('setup.pushSetup'), initialValue: false, ...yesno() }))) return undefined;
+  if (a.vapid) return (await ask(confirm({ message: withBack(t('setup.pushKeep')), initialValue: true, ...yesno() }))) ? a.vapid : undefined;
+  if (!await ask(confirm({ message: withBack(t('setup.pushSetup')), initialValue: false, ...yesno() }))) return undefined;
   const subject = await ask(text({ message: t('setup.pushContact'), defaultValue: 'mailto:admin@example.com' }));
   const { publicKey, privateKey } = webpush.generateVAPIDKeys();
   note(t('setup.pushGenerated'));
@@ -286,8 +302,8 @@ async function editPush(a) {
 
 // Voice input (iFlytek/xfyun) — three credentials from their console; the two secrets are masked.
 async function editVoice(a) {
-  if (a.xfyun) return (await ask(confirm({ message: t('setup.voiceKeep'), initialValue: true, ...yesno() }))) ? a.xfyun : undefined;
-  if (!await ask(confirm({ message: t('setup.voiceSetup'), initialValue: false, ...yesno() }))) return undefined;
+  if (a.xfyun) return (await ask(confirm({ message: withBack(t('setup.voiceKeep')), initialValue: true, ...yesno() }))) ? a.xfyun : undefined;
+  if (!await ask(confirm({ message: withBack(t('setup.voiceSetup')), initialValue: false, ...yesno() }))) return undefined;
   const appId = await ask(text({ message: t('setup.voiceAppId'), validate: validateNonEmpty('appId') }));
   const apiKey = await ask(password({ message: t('setup.voiceApiKey'), validate: validateNonEmpty('apiKey') }));
   const apiSecret = await ask(password({ message: t('setup.voiceApiSecret'), validate: validateNonEmpty('apiSecret') }));

@@ -148,6 +148,7 @@ export default {
   'setup.off': 'off',
   'setup.yes': 'Yes',
   'setup.no': 'No',
+  'setup.escBack': '(Esc to go back)',
   'setup.actStart': 'Save & start',
   'setup.actSave': 'Save',
   'setup.actExit': 'Exit — discard changes',

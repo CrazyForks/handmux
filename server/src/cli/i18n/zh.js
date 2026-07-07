@@ -147,6 +147,7 @@ export default {
   'setup.off': '关',
   'setup.yes': '是',
   'setup.no': '否',
+  'setup.escBack': '(Esc 返回)',
   'setup.actStart': '保存并启动',
   'setup.actSave': '保存',
   'setup.actExit': '退出(丢弃改动)',
