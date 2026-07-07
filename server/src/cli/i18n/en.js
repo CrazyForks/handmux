@@ -125,7 +125,7 @@ export default {
   'setup.askTunnelName': 'tunnel name',
   'setup.askSshHost': 'ssh host (user@host[:port])',
   'setup.askRemotePort': 'remote port on the ssh host',
-  'setup.askPublicUrl': 'public url (blank = http://host:remotePort)',
+  'setup.askPublicUrl': 'public url — http(s):// as appropriate (blank = http://host:remotePort)',
   'setup.natappGuide': 'Where to get the authtoken: register free at https://natapp.cn → create a tunnel → copy its authtoken (the free tier is enough to start).',
   'setup.cpolarGuide': 'Where to get the authtoken: register free at https://cpolar.com → open the dashboard → Verify → copy your authtoken.',
   'setup.askAuthtoken': 'authtoken',

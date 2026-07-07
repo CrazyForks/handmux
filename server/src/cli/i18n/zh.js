@@ -124,7 +124,7 @@ export default {
   'setup.askTunnelName': '隧道名称',
   'setup.askSshHost': 'ssh 主机(user@host[:port])',
   'setup.askRemotePort': 'ssh 主机上的远程端口',
-  'setup.askPublicUrl': '公网地址(留空 = http://host:remotePort)',
+  'setup.askPublicUrl': '公网地址,http(s):// 按情况填(留空 = http://host:remotePort)',
   'setup.natappGuide': '去哪拿 authtoken:到 https://natapp.cn 免费注册 → 新建一条隧道 → 复制它的 authtoken(免费额度够上手)。',
   'setup.cpolarGuide': '去哪拿 authtoken:到 https://cpolar.com 免费注册 → 打开后台 → 验证/Verify → 复制你的 authtoken。',
   'setup.askAuthtoken': 'authtoken',
