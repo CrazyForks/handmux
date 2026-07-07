@@ -185,9 +185,11 @@ export async function runSetup({ home = homedir(), target = configPath(home), lo
           { value: 'connection', label: t('setup.secConnection'), hint: summarizeConnection(a) },
           { value: 'name', label: t('setup.secName'), hint: a.name || t('setup.default') },
           { value: 'port', label: t('setup.secPort'), hint: String(a.port) },
-          { value: 'language', label: t('setup.secLanguage'), hint: a.lang === 'zh' ? '中文' : 'English' },
           { value: 'push', label: t('setup.secPush'), hint: a.vapid ? (a.vapid.subject || t('setup.on')) : t('setup.off') },
           { value: 'voice', label: t('setup.secVoice'), hint: a.xfyun ? (a.xfyun.appId || t('setup.on')) : t('setup.off') },
+          // A CLI-tool preference (language of handmux's own terminal output), not an app setting — so it
+          // sits at the bottom of the settings, just above the actions.
+          { value: 'language', label: t('setup.secLanguage'), hint: a.lang === 'zh' ? '中文' : 'English' },
           { value: 'start', label: running ? t('setup.actRestart') : t('setup.actStart') },
           { value: 'save', label: t('setup.actSave') },
           { value: 'exit', label: t('setup.actExit') },

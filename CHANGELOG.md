@@ -13,6 +13,11 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   choosing plain **Save** while running prints "run `handmux restart` to apply" instead of "run start".
 
 ### Changed
+- **Setup's language row is clearer about its scope and easy to spot.** It's relabeled **CLI language /
+  命令行语言** — bilingual so either audience recognizes it even if the CLI is currently in the other
+  language (switching re-localizes the whole hub on the spot), and scoped to handmux's own terminal output
+  rather than the phone app. Moved to the bottom of the settings, just above the actions, since it's a tool
+  preference rather than an app setting.
 - **`handmux setup` push section now explains itself.** Turning notifications on shows a one-line note that
   handmux generates a private signing key locally (`~/.handmux/config.json`, never leaves the machine) and
   that the "contact" is only an address the push service can reach you at. The contact field is validated
