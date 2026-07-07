@@ -135,7 +135,7 @@ export default {
   'setup.natappReady': '✓ natapp 客户端就绪',
   'setup.cpolarReady': '✓ cpolar 客户端就绪',
   // setup 中枢(菜单模型)
-  'setup.welcome': '我们来把你的手机连到这台电脑。不确定就选高亮的推荐项、按 Enter —— 之后重跑 setup 随时能改。',
+  'setup.welcome': '同一 Wi-Fi 下 handmux 开箱即用(选 none 即可)。要从外网访问,得先让这台机器在公网被找到——这是你自己网络的事;其余几项是内置帮你打通的通道,多用你自己的免费账号。不确定就在高亮项上按 Enter,之后随时能改。',
   'setup.hubTitle': '要改什么吗?(或直接保存并启动)',
   'setup.secConnection': '连接',
   'setup.secName': '名称',

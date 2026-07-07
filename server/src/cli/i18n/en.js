@@ -136,7 +136,7 @@ export default {
   'setup.natappReady': '✓ natapp client ready',
   'setup.cpolarReady': '✓ cpolar client ready',
   // setup hub (menu model)
-  'setup.welcome': "Let's get your phone talking to this machine. Not sure? Take the highlighted option and press Enter — you can change anything later by re-running setup.",
+  'setup.welcome': "On the same Wi-Fi, handmux just works — pick none. Reaching this machine from OUTSIDE means making it findable on the internet (that's your own network's job); the other options are built-in channels that do it for you, mostly with your own free account. Not sure? Press Enter on the highlighted option — you can change it anytime.",
   'setup.hubTitle': 'Anything to change? (or just Save & start)',
   'setup.secConnection': 'Connection',
   'setup.secName': 'Name',

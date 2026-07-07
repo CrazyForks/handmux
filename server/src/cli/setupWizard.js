@@ -305,8 +305,10 @@ async function editCfMode(a) {
 // fields and collect the new type's REQUIRED field(s) so a half-set tunnel never reaches the field hub.
 // Returns the answers (unchanged if you re-pick the same type — you still drop into its field hub).
 async function pickTunnel(a) {
+  // Default the cursor to the current tunnel; a brand-new user starts on `none` — the zero-config core that
+  // just works on the same Wi-Fi. Tunnels are opt-in help for the user's own "reach it from outside" problem.
   const start = cfFamily(a.tunnel);
-  const picked = await ask(select({ message: withBack(t('setup.tunnelQ')), options: tunnelOptions(), initialValue: start === 'none' ? 'cloudflare' : start }));
+  const picked = await ask(select({ message: withBack(t('setup.tunnelQ')), options: tunnelOptions(), initialValue: start }));
   const base = { ...a };
   for (const k of TUNNEL_KEYS) delete base[k];
   // Staying in the cloudflare family keeps its fields as defaults; arriving from another tunnel starts clean.
