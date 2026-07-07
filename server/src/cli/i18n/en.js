@@ -136,7 +136,7 @@ export default {
   'setup.natappReady': '✓ natapp client ready',
   'setup.cpolarReady': '✓ cpolar client ready',
   // setup hub (menu model)
-  'setup.welcome': "On the same Wi-Fi, handmux just works — pick none. Reaching this machine from OUTSIDE means making it findable on the internet (that's your own network's job); the other options are built-in channels that do it for you, mostly with your own free account. Not sure? Press Enter on the highlighted option — you can change it anytime.",
+  'setup.welcome': "handmux is open-source and runs no relay of its own — your phone always connects to your own computer, which keeps it private and secure; on the same Wi-Fi it's a pure direct link and works out of the box (pick none). To reach it from outside too, the options below are built-in ways to do that with your own free account. Not sure? Press Enter on the highlighted option — you can change it anytime.",
   'setup.hubTitle': 'Anything to change? (or just Save & start)',
   'setup.secConnection': 'Connection',
   'setup.secName': 'Name',
