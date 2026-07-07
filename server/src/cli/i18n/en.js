@@ -137,7 +137,7 @@ export default {
   'setup.natappReady': '✓ natapp client ready',
   'setup.cpolarReady': '✓ cpolar client ready',
   // setup hub (menu model)
-  'setup.welcome': "handmux is open-source and runs no relay of its own — your phone always connects to your own computer, which keeps it private and secure; on the same Wi-Fi it's a pure direct link and works out of the box (pick none). To reach it from outside too, the options below are built-in ways to do that with your own free account. Not sure? Press Enter on the highlighted option — you can change it anytime.",
+  'setup.welcome': "handmux is open-source and runs no relay of its own — your phone always connects to your own computer, which keeps it private and secure; on the same Wi-Fi it's a pure direct link and works out of the box (pick 'Direct'). To reach it from outside too, the options below are built-in ways to do that with your own free account. Not sure? Press Enter on the highlighted option — you can change it anytime.",
   'setup.hubTitle': 'Anything to change? (or just Save & start)',
   'setup.secConnection': 'Connection',
   'setup.secName': 'Name',
@@ -156,6 +156,7 @@ export default {
   'setup.actSave': 'Save',
   'setup.actExit': 'Exit — discard changes',
   'setup.exited': 'setup cancelled — no changes saved',
+  'setup.tunnelNone': 'Direct',
   'setup.hintNone': 'same Wi-Fi only — simplest, nothing to set up',
   'setup.hintCf': 'reach it from anywhere, no signup (temporary URL; can be flaky in China)',
   'setup.hintCfNamed': 'your domain, stable HTTPS (most hands-off)',

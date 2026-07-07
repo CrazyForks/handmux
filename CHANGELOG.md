@@ -13,6 +13,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   choosing plain **Save** while running prints "run `handmux restart` to apply" instead of "run start".
 
 ### Changed
+- **Setup's `none` tunnel now reads "Direct" (直连).** The LAN-only option was labeled with the raw flag
+  value `none`, which says nothing to a newcomer; the picker, the connection summary, and the welcome copy
+  now call it **Direct / 直连** (the `--tunnel none` flag and config value are unchanged).
 - **Setup's language row is clearer about its scope and easy to spot.** It's relabeled **CLI language /
   命令行语言** — bilingual so either audience recognizes it even if the CLI is currently in the other
   language (switching re-localizes the whole hub on the spot), and scoped to handmux's own terminal output

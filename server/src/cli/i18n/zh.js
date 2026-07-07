@@ -136,7 +136,7 @@ export default {
   'setup.natappReady': '✓ natapp 客户端就绪',
   'setup.cpolarReady': '✓ cpolar 客户端就绪',
   // setup 中枢(菜单模型)
-  'setup.welcome': 'handmux 开源、自身不设中转——手机连的始终是你自己的电脑,更私密安全;同一 Wi-Fi 下就是纯直连、开箱即用(选 none 即可)。想在外网也能连,下面几个是内置帮你打通的方式,用你自己的免费账号即可。不确定就在高亮项上按 Enter,之后随时能改。',
+  'setup.welcome': 'handmux 开源、自身不设中转——手机连的始终是你自己的电脑,更私密安全;同一 Wi-Fi 下就是纯直连、开箱即用(选「直连」即可)。想在外网也能连,下面几个是内置帮你打通的方式,用你自己的免费账号即可。不确定就在高亮项上按 Enter,之后随时能改。',
   'setup.hubTitle': '要改什么吗?(或直接保存并启动)',
   'setup.secConnection': '连接',
   'setup.secName': '名称',
@@ -155,6 +155,7 @@ export default {
   'setup.actSave': '保存',
   'setup.actExit': '退出(丢弃改动)',
   'setup.exited': '已取消 —— 未保存任何改动',
+  'setup.tunnelNone': '直连',
   'setup.hintNone': '仅同一 Wi-Fi —— 最简单,什么都不用配',
   'setup.hintCf': '在外面也能访问、免注册(临时地址;国内可能不稳)',
   'setup.hintCfNamed': '你自己的域名,稳定 HTTPS(最省心)',

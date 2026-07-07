@@ -103,7 +103,7 @@ describe('answersFromConfig', () => {
 
 describe('summarizeConnection', () => {
   it('describes each tunnel + mode for the hub hint', () => {
-    expect(summarizeConnection({ tunnel: 'none' })).toMatch(/none/);
+    expect(summarizeConnection({ tunnel: 'none' })).toMatch(/Direct|直连/);   // friendly label for `none`
     expect(summarizeConnection({ tunnel: 'cloudflare' })).toMatch(/cloudflare/);
     expect(summarizeConnection({ tunnel: 'cloudflare-named', cfHostname: 'h.x.com' })).toContain('h.x.com');
     expect(summarizeConnection({ tunnel: 'ssh', sshHost: 'me@box' })).toContain('me@box');

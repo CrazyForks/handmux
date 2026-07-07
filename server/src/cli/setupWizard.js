@@ -119,7 +119,7 @@ export function summarizeConnection(a) {
     case 'ssh': return `ssh · ${a.sshHost || '?'}`;
     case 'natapp':
     case 'cpolar': return `${a.tunnel} · ${a.publicUrl ? `${t('setup.sumFixed')} ${bare(a.publicUrl)}` : t('setup.sumTemp')}`;
-    default: return `none · ${t('setup.sumLan')}`;
+    default: return `${t('setup.tunnelNone')} · ${t('setup.sumLan')}`;
   }
 }
 
@@ -257,7 +257,7 @@ const cfFamily = (tunnel) => (tunnel === 'cloudflare-named' ? 'cloudflare' : tun
 
 function tunnelOptions() {
   return [
-    { value: 'none', label: 'none', hint: t('setup.hintNone') },
+    { value: 'none', label: t('setup.tunnelNone'), hint: t('setup.hintNone') },
     { value: 'cloudflare', label: 'cloudflare', hint: t('setup.hintCf') },
     { value: 'ssh', label: 'ssh (tunlite)', hint: t('setup.hintSsh') },
     { value: 'natapp', label: 'natapp', hint: t('setup.hintNatapp') },
