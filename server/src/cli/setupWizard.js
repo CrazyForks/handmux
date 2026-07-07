@@ -227,12 +227,13 @@ async function editLanguage(a) {
 }
 
 async function editName(a) {
-  const v = await ask(text({ message: withBack(t('setup.askName')), placeholder: a.name || t('setup.default'), defaultValue: a.name || '' }));
+  // initialValue puts the current name IN the editable field (defaultValue only fills a blank submit, unseen).
+  const v = await ask(text({ message: withBack(t('setup.askName')), placeholder: t('setup.default'), initialValue: a.name || '' }));
   return (v || '').trim();
 }
 
 async function editPort(a) {
-  const v = await ask(text({ message: withBack(t('setup.askPort')), placeholder: String(a.port), defaultValue: String(a.port), validate: validatePort }));
+  const v = await ask(text({ message: withBack(t('setup.askPort')), initialValue: String(a.port), validate: validatePort }));
   return Number(v);
 }
 
@@ -292,8 +293,8 @@ async function editCfMode(a) {
   const n = { ...a };
   if (named) {
     n.tunnel = 'cloudflare-named';
-    n.cfHostname = await ask(text({ message: t('setup.askHostname'), defaultValue: a.cfHostname || '', validate: validateHost }));
-    n.cfTunnelName = (await ask(text({ message: t('setup.askTunnelName'), defaultValue: a.cfTunnelName || 'handmux' }))) || 'handmux';
+    n.cfHostname = await ask(text({ message: t('setup.askHostname'), initialValue: a.cfHostname || '', validate: validateHost }));
+    n.cfTunnelName = (await ask(text({ message: t('setup.askTunnelName'), initialValue: a.cfTunnelName || 'handmux' }))) || 'handmux';
   } else {
     n.tunnel = 'cloudflare';
     delete n.cfHostname; delete n.cfTunnelName;
@@ -329,21 +330,23 @@ async function editConnField(a, field) {
   const n = { ...a };
   const setOpt = (k, v) => { if (v) n[k] = v; else delete n[k]; };
   switch (field) {
-    case 'cfHostname': n.cfHostname = await ask(text({ message: t('setup.askHostname'), defaultValue: a.cfHostname || '', validate: validateHost })); break;
-    case 'cfTunnelName': n.cfTunnelName = (await ask(text({ message: t('setup.askTunnelName'), defaultValue: a.cfTunnelName || 'handmux' }))) || 'handmux'; break;
-    case 'sshHost': n.sshHost = await ask(text({ message: t('setup.askSshHost'), defaultValue: a.sshHost || '', validate: validateNonEmpty('ssh host') })); break;
-    case 'remotePort': n.remotePort = Number(await ask(text({ message: t('setup.askRemotePort'), defaultValue: String(a.remotePort || a.port), validate: validatePort }))); break;
-    case 'publicUrl': setOpt('publicUrl', await ask(text({ message: t('setup.askPublicUrl'), defaultValue: a.publicUrl || '' }))); break;
-    case 'sshJump': setOpt('sshJump', await ask(text({ message: t('setup.askSshJump'), defaultValue: a.sshJump || '' }))); break;
+    // initialValue pre-fills the field with the current value so you edit in place (and can just Enter to keep
+    // it); an empty submit clears the optional ones (setOpt). Secrets use password() — never pre-filled.
+    case 'cfHostname': n.cfHostname = await ask(text({ message: t('setup.askHostname'), initialValue: a.cfHostname || '', validate: validateHost })); break;
+    case 'cfTunnelName': n.cfTunnelName = (await ask(text({ message: t('setup.askTunnelName'), initialValue: a.cfTunnelName || 'handmux' }))) || 'handmux'; break;
+    case 'sshHost': n.sshHost = await ask(text({ message: t('setup.askSshHost'), initialValue: a.sshHost || '', validate: validateNonEmpty('ssh host') })); break;
+    case 'remotePort': n.remotePort = Number(await ask(text({ message: t('setup.askRemotePort'), initialValue: String(a.remotePort || a.port), validate: validatePort }))); break;
+    case 'publicUrl': setOpt('publicUrl', await ask(text({ message: t('setup.askPublicUrl'), initialValue: a.publicUrl || '' }))); break;
+    case 'sshJump': setOpt('sshJump', await ask(text({ message: t('setup.askSshJump'), initialValue: a.sshJump || '' }))); break;
     case 'authtoken': n.authtoken = await ask(password({ message: t('setup.askAuthtoken'), validate: validateNonEmpty('authtoken') })); break;
-    case 'cpolarRegion': setOpt('cpolarRegion', await ask(text({ message: t('setup.askCpolarRegion'), defaultValue: a.cpolarRegion || '' }))); break;
+    case 'cpolarRegion': setOpt('cpolarRegion', await ask(text({ message: t('setup.askCpolarRegion'), initialValue: a.cpolarRegion || '' }))); break;
     case 'domain': {
       const fixed = await ask(select({
         message: t('setup.domainQ'),
         options: [{ value: false, label: t('setup.domainTemp'), hint: t('setup.domainTempHint') }, { value: true, label: t('setup.domainFixed') }],
         initialValue: !!a.publicUrl,
       }));
-      if (fixed) n.publicUrl = await ask(text({ message: t(a.tunnel === 'natapp' ? 'setup.askNatappDomain' : 'setup.askCpolarDomain'), defaultValue: a.publicUrl || '', validate: validateHost }));
+      if (fixed) n.publicUrl = await ask(text({ message: t(a.tunnel === 'natapp' ? 'setup.askNatappDomain' : 'setup.askCpolarDomain'), initialValue: a.publicUrl || '', validate: validateHost }));
       else delete n.publicUrl;
       break;
     }
@@ -414,7 +417,7 @@ async function editPush(a) {
     try { on = await ask(confirm({ message: withBack(t('setup.pushSetup')), initialValue: false, ...yesno() })); }
     catch (e) { if (e === CANCELLED) return undefined; throw e; }
     if (!on) return undefined;
-    const subject = await ask(text({ message: t('setup.pushContact'), defaultValue: 'mailto:admin@example.com' }));
+    const subject = await ask(text({ message: t('setup.pushContact'), initialValue: 'mailto:admin@example.com' }));
     const { publicKey, privateKey } = webpush.generateVAPIDKeys();
     note(t('setup.pushGenerated'));
     vapid = { public: publicKey, private: privateKey, subject };
@@ -434,7 +437,7 @@ async function editPush(a) {
     } catch (e) { if (e === CANCELLED) return vapid; throw e; }   // back to the main hub, keeping edits
     if (pick === 'off') return undefined;
     try {
-      if (pick === 'contact') vapid = { ...vapid, subject: await ask(text({ message: t('setup.pushContact'), defaultValue: vapid.subject || '' })) };
+      if (pick === 'contact') vapid = { ...vapid, subject: await ask(text({ message: t('setup.pushContact'), initialValue: vapid.subject || '' })) };
       else if (pick === 'regen') {
         const k = webpush.generateVAPIDKeys();
         vapid = { ...vapid, public: k.publicKey, private: k.privateKey };
@@ -474,7 +477,7 @@ async function editVoice(a) {
     } catch (e) { if (e === CANCELLED) return x; throw e; }
     if (pick === 'off') return undefined;
     try {
-      if (pick === 'appId') x = { ...x, appId: await ask(text({ message: t('setup.voiceAppId'), defaultValue: x.appId || '', validate: validateNonEmpty('appId') })) };
+      if (pick === 'appId') x = { ...x, appId: await ask(text({ message: t('setup.voiceAppId'), initialValue: x.appId || '', validate: validateNonEmpty('appId') })) };
       else if (pick === 'apiKey') x = { ...x, apiKey: await ask(password({ message: t('setup.voiceApiKey'), validate: validateNonEmpty('apiKey') })) };
       else if (pick === 'apiSecret') x = { ...x, apiSecret: await ask(password({ message: t('setup.voiceApiSecret'), validate: validateNonEmpty('apiSecret') })) };
     } catch (e) { if (e !== CANCELLED) throw e; }
