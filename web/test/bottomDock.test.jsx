@@ -137,15 +137,17 @@ describe('BottomDock', () => {
     expect(sendText).not.toHaveBeenCalledWith('%1', 'Tab', true);
   });
 
-  it('长按聊天消息 chip → 填入输入框(不发送);按键 chip 无长按', async () => {
+  it('长按聊天 chip → 打进终端输入行(不回车、不填聊天框);按键 chip 无长按', async () => {
     vi.useFakeTimers();
-    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    const onText = vi.fn();
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText });
     const chip = (txt) => [...container.querySelectorAll('.dock-page.chat .quick-cmd')].find((n) => n.textContent === txt);
     fire(chip('ok'), 'pointerdown');
-    await act(async () => { await vi.advanceTimersByTimeAsync(450); }); // 按住过阈值 → 填入
+    await act(async () => { await vi.advanceTimersByTimeAsync(450); }); // 按住过阈值 → 打进终端
     fire(chip('ok'), 'pointerup');
-    expect(container.querySelector('.input-text').value).toBe('ok');    // 落进输入框
-    expect(sendText).not.toHaveBeenCalled();                            // 没发送
+    expect(onText).toHaveBeenCalledWith('ok');                          // 打进终端(不回车),和命令模式一致
+    expect(container.querySelector('.input-text').value).toBe('');      // 不落进聊天框
+    expect(sendText).not.toHaveBeenCalled();                            // 不是 type+Enter 的发送
     vi.useRealTimers();
   });
 

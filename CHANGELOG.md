@@ -5,6 +5,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Fixed
+- **Chat mode: long-pressing a quick-command chip now types into the terminal, not the chat box.** These
+  chips are terminal commands, so a long-press (edit-before-run) now types the command into the pane's input
+  line without Enter — the same as command mode's hold — instead of staging it in the chat composer.
 - **`handmux setup` on a running instance now actually applies your changes.** The run-action used to read
   "Save & start" even when handmux was already up — and picking it just re-ran `start`, which sees the
   running instance and does nothing (only tunnel/port changes were ever detected), so an edited name / push

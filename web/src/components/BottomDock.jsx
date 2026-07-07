@@ -797,12 +797,14 @@ function BottomDock({
                     <UploadIcon /><span>{t('dock.attach')}</span></button>
                 </div>
                 <div className="quick-scroll">
-                  {/* Tap a chip to send it; HOLD a message chip to FILL it into the composer to edit before
-                      sending (a key fav has nothing to edit, so it has no hold). */}
+                  {/* Tap a chip to send it; HOLD a message chip to TYPE it into the terminal (the agent's /
+                      shell's input line, no Enter) so you can edit before running — matching command mode's
+                      hold. It goes to the pane, NOT the chat composer (these are terminal commands, not chat
+                      text). A key fav has nothing to edit, so it has no hold. */}
                   {favs.map((f) => (
                     <HoldButton key={f.text}
                       className={`quick-cmd qc-${f.kind === 'key' ? 'esc' : chipTint(f.text)}`}
-                      onTap={() => runChatFav(f)} onHold={f.kind === 'key' ? undefined : () => pick(f.text)}>
+                      onTap={() => runChatFav(f)} onHold={f.kind === 'key' ? undefined : () => onText(f.text)}>
                       {favLabel(f)}</HoldButton>
                   ))}
                   <button type="button" className="quick-cmd quick-cmd-add" aria-label={t('chat.editTitle')}
