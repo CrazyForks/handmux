@@ -9,9 +9,14 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   current value; arrow to a section to edit just that (Connection / Name / Port / Language / Push / Voice),
   then return to the hub and pick Save / Save & start / Exit. Re-configuring one thing no longer means
   Entering through every prompt. A first run (no config) auto-walks the Connection step once, then lands
-  on the hub. Enumerated choices are now arrow-key selectable with inline descriptions; **secrets
-  (authtoken, xfyun keys) are masked**; inputs validate inline (port range, domain shape); Esc/Ctrl-C
-  cancels cleanly with nothing written. Built on `@clack/prompts`, isolated behind `src/cli/prompt.js`.
+  on the hub. Composite sections (**Connection, Push, Voice**) are themselves mini-hubs that lay out every
+  current value at once (secrets masked) so you edit a single field in place instead of re-answering the
+  whole section; Esc backs out one level (section → hub), only the hub itself exits. cloudflare's quick vs
+  named is now one **cloudflare** entry with a temporary-vs-named choice inside (mirroring natapp/cpolar's
+  temporary-vs-fixed) — the `--tunnel cloudflare` / `cloudflare-named` flags are unchanged. Enumerated
+  choices are arrow-key selectable with inline descriptions; **secrets (authtoken, xfyun keys) are masked**;
+  inputs validate inline (port range, domain shape). Built on `@clack/prompts`, isolated behind
+  `src/cli/prompt.js`.
 
 ### Added
 - **Two China-usable tunnels: `--tunnel natapp` and `--tunnel cpolar`.** When Cloudflare's edge is

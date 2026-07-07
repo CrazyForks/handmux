@@ -170,8 +170,8 @@ export async function runSetup({ home = homedir(), target = configPath(home), lo
           { value: 'name', label: t('setup.secName'), hint: a.name || t('setup.default') },
           { value: 'port', label: t('setup.secPort'), hint: String(a.port) },
           { value: 'language', label: t('setup.secLanguage'), hint: a.lang === 'zh' ? '中文' : 'English' },
-          { value: 'push', label: t('setup.secPush'), hint: a.vapid ? t('setup.on') : t('setup.off') },
-          { value: 'voice', label: t('setup.secVoice'), hint: a.xfyun ? t('setup.on') : t('setup.off') },
+          { value: 'push', label: t('setup.secPush'), hint: a.vapid ? (a.vapid.subject || t('setup.on')) : t('setup.off') },
+          { value: 'voice', label: t('setup.secVoice'), hint: a.xfyun ? (a.xfyun.appId || t('setup.on')) : t('setup.off') },
           { value: 'start', label: t('setup.actStart') },
           { value: 'save', label: t('setup.actSave') },
           { value: 'exit', label: t('setup.actExit') },
@@ -231,58 +231,145 @@ async function editPort(a) {
   return Number(v);
 }
 
-// Pick the tunnel, ask ONLY its fields, and run its provisioning in place. Clears the previous tunnel's
-// keys first so a switch never advertises a stale hostname/token.
-async function editConnection(a, { home, log }) {
-  const tunnel = await ask(select({
-    message: withBack(t('setup.tunnelQ')),
-    options: [
-      { value: 'none', label: 'none', hint: t('setup.hintNone') },
-      { value: 'cloudflare', label: 'cloudflare', hint: t('setup.hintCf') },
-      { value: 'cloudflare-named', label: 'cloudflare-named', hint: t('setup.hintCfNamed') },
-      { value: 'ssh', label: 'ssh (tunlite)', hint: t('setup.hintSsh') },
-      { value: 'natapp', label: 'natapp', hint: t('setup.hintNatapp') },
-      { value: 'cpolar', label: 'cpolar', hint: t('setup.hintCpolar') },
-    ],
-    initialValue: a.tunnel || 'cloudflare',
-  }));
-  const next = { ...a, tunnel };
-  for (const k of TUNNEL_KEYS) delete next[k];
+const bareHost = (u) => String(u || '').replace(/^https?:\/\//, '');
+// cloudflare's two drivers are ONE family in the UI: 'cloudflare' (quick, no login) and 'cloudflare-named'
+// (your domain, needs a login) are picked as a mode INSIDE cloudflare, not as two separate tunnels.
+const cfFamily = (tunnel) => (tunnel === 'cloudflare-named' ? 'cloudflare' : tunnel);
 
-  if (tunnel === 'cloudflare-named') {
-    next.cfHostname = await ask(text({ message: t('setup.askHostname'), defaultValue: a.cfHostname || '', validate: validateHost }));
-    next.cfTunnelName = (await ask(text({ message: t('setup.askTunnelName'), defaultValue: a.cfTunnelName || 'handmux' }))) || 'handmux';
-    await provisionCloudflareNamed({ home, hostname: next.cfHostname, tunnelName: next.cfTunnelName, port: next.port, log });
-  } else if (tunnel === 'ssh') {
-    next.sshHost = await ask(text({ message: t('setup.askSshHost'), defaultValue: a.sshHost || '', validate: validateNonEmpty('ssh host') }));
-    next.remotePort = Number(await ask(text({ message: t('setup.askRemotePort'), defaultValue: String(a.remotePort || next.port), validate: validatePort })));
-    const pub = await ask(text({ message: t('setup.askPublicUrl'), defaultValue: a.publicUrl || '' }));
-    if (pub) next.publicUrl = pub;
-    await provisionSsh({ sshHost: next.sshHost, log });
-  } else if (tunnel === 'natapp' || tunnel === 'cpolar') {
-    note(t(tunnel === 'natapp' ? 'setup.natappGuide' : 'setup.cpolarGuide'));
-    next.authtoken = await ask(password({ message: t('setup.askAuthtoken'), validate: validateNonEmpty('authtoken') }));
-    const fixed = await ask(select({
-      message: t('setup.domainQ'),
-      options: [
-        { value: false, label: t('setup.domainTemp'), hint: t('setup.domainTempHint') },
-        { value: true, label: t('setup.domainFixed') },
-      ],
-      initialValue: !!a.publicUrl,
-    }));
-    if (fixed) {
-      next.publicUrl = await ask(text({
-        message: t(tunnel === 'natapp' ? 'setup.askNatappDomain' : 'setup.askCpolarDomain'),
-        defaultValue: a.publicUrl || '', validate: validateHost,
-      }));
+function tunnelOptions() {
+  return [
+    { value: 'none', label: 'none', hint: t('setup.hintNone') },
+    { value: 'cloudflare', label: 'cloudflare', hint: t('setup.hintCf') },
+    { value: 'ssh', label: 'ssh (tunlite)', hint: t('setup.hintSsh') },
+    { value: 'natapp', label: 'natapp', hint: t('setup.hintNatapp') },
+    { value: 'cpolar', label: 'cpolar', hint: t('setup.hintCpolar') },
+  ];
+}
+
+// Rows shown in the Connection mini-hub: the tunnel type first, then the current tunnel's fields with their
+// values (secrets masked), so you see the whole connection at a glance and edit any single row.
+function connectionRows(a) {
+  const none = t('setup.connNone');
+  const rows = [{ value: 'tunnel', label: t('setup.connTunnel'), hint: cfFamily(a.tunnel) }];
+  if (cfFamily(a.tunnel) === 'cloudflare') {
+    rows.push({ value: 'cfMode', label: t('setup.connMode'), hint: a.tunnel === 'cloudflare-named' ? t('setup.cfNamed') : t('setup.cfTemp') });
+    if (a.tunnel === 'cloudflare-named') {
+      rows.push({ value: 'cfHostname', label: t('setup.connHostname'), hint: a.cfHostname || none });
+      rows.push({ value: 'cfTunnelName', label: t('setup.connTunnelName'), hint: a.cfTunnelName || 'handmux' });
     }
-    if (tunnel === 'cpolar') {
-      const rg = await ask(text({ message: t('setup.askCpolarRegion'), defaultValue: a.cpolarRegion || '' }));
-      if (rg) next.cpolarRegion = rg;
-    }
-    await provisionNgrokClient({ tunnel, home, authtoken: next.authtoken, log });
+  } else if (a.tunnel === 'ssh') {
+    rows.push({ value: 'sshHost', label: t('setup.connSshHost'), hint: a.sshHost || none });
+    rows.push({ value: 'remotePort', label: t('setup.connRemotePort'), hint: String(a.remotePort || a.port) });
+    rows.push({ value: 'publicUrl', label: t('setup.connPublicUrl'), hint: a.publicUrl || t('setup.connAuto') });
+    rows.push({ value: 'sshJump', label: t('setup.connJump'), hint: a.sshJump || none });
+  } else if (a.tunnel === 'natapp' || a.tunnel === 'cpolar') {
+    rows.push({ value: 'authtoken', label: 'authtoken', hint: a.authtoken ? maskSecret(a.authtoken) : none });
+    rows.push({ value: 'domain', label: t('setup.connDomain'), hint: a.publicUrl ? bareHost(a.publicUrl) : t('setup.domainTemp') });
+    if (a.tunnel === 'cpolar') rows.push({ value: 'cpolarRegion', label: t('setup.connRegion'), hint: a.cpolarRegion || t('setup.default') });
   }
-  return next;
+  return rows;
+}
+
+// cloudflare mode: temporary quick tunnel (no login) vs a named tunnel on your own domain (needs login).
+async function editCfMode(a) {
+  const named = await ask(select({
+    message: t('setup.cfModeQ'),
+    options: [
+      { value: false, label: t('setup.cfTemp'), hint: t('setup.cfTempHint') },
+      { value: true, label: t('setup.cfNamed'), hint: t('setup.cfNamedHint') },
+    ],
+    initialValue: a.tunnel === 'cloudflare-named',
+  }));
+  const n = { ...a };
+  if (named) {
+    n.tunnel = 'cloudflare-named';
+    n.cfHostname = await ask(text({ message: t('setup.askHostname'), defaultValue: a.cfHostname || '', validate: validateHost }));
+    n.cfTunnelName = (await ask(text({ message: t('setup.askTunnelName'), defaultValue: a.cfTunnelName || 'handmux' }))) || 'handmux';
+  } else {
+    n.tunnel = 'cloudflare';
+    delete n.cfHostname; delete n.cfTunnelName;
+  }
+  return n;
+}
+
+// Choose the tunnel type; on a real change, clear the old fields and collect the new type's REQUIRED fields
+// (so the mini-hub never shows a half-set required tunnel). Returns the new answers, or null if unchanged.
+async function pickTunnel(a) {
+  const start = cfFamily(a.tunnel);
+  const picked = await ask(select({ message: withBack(t('setup.tunnelQ')), options: tunnelOptions(), initialValue: start === 'none' ? 'cloudflare' : start }));
+  const base = { ...a };
+  for (const k of TUNNEL_KEYS) delete base[k];
+  // Staying in the cloudflare family keeps its fields as defaults; arriving from another tunnel starts clean.
+  if (picked === 'cloudflare') return editCfMode(cfFamily(a.tunnel) === 'cloudflare' ? a : base);
+  if (picked === start) return null;   // unchanged non-cloudflare
+  base.tunnel = picked;
+  if (picked === 'ssh') {
+    base.sshHost = await ask(text({ message: t('setup.askSshHost'), defaultValue: '', validate: validateNonEmpty('ssh host') }));
+  } else if (picked === 'natapp' || picked === 'cpolar') {
+    note(t(picked === 'natapp' ? 'setup.natappGuide' : 'setup.cpolarGuide'));
+    base.authtoken = await ask(password({ message: t('setup.askAuthtoken'), validate: validateNonEmpty('authtoken') }));
+  }
+  return base;
+}
+
+// Edit one Connection field in place (from its mini-hub row).
+async function editConnField(a, field) {
+  const n = { ...a };
+  const setOpt = (k, v) => { if (v) n[k] = v; else delete n[k]; };
+  switch (field) {
+    case 'cfMode': return editCfMode(a);
+    case 'cfHostname': n.cfHostname = await ask(text({ message: t('setup.askHostname'), defaultValue: a.cfHostname || '', validate: validateHost })); break;
+    case 'cfTunnelName': n.cfTunnelName = (await ask(text({ message: t('setup.askTunnelName'), defaultValue: a.cfTunnelName || 'handmux' }))) || 'handmux'; break;
+    case 'sshHost': n.sshHost = await ask(text({ message: t('setup.askSshHost'), defaultValue: a.sshHost || '', validate: validateNonEmpty('ssh host') })); break;
+    case 'remotePort': n.remotePort = Number(await ask(text({ message: t('setup.askRemotePort'), defaultValue: String(a.remotePort || a.port), validate: validatePort }))); break;
+    case 'publicUrl': setOpt('publicUrl', await ask(text({ message: t('setup.askPublicUrl'), defaultValue: a.publicUrl || '' }))); break;
+    case 'sshJump': setOpt('sshJump', await ask(text({ message: t('setup.askSshJump'), defaultValue: a.sshJump || '' }))); break;
+    case 'authtoken': n.authtoken = await ask(password({ message: t('setup.askAuthtoken'), validate: validateNonEmpty('authtoken') })); break;
+    case 'cpolarRegion': setOpt('cpolarRegion', await ask(text({ message: t('setup.askCpolarRegion'), defaultValue: a.cpolarRegion || '' }))); break;
+    case 'domain': {
+      const fixed = await ask(select({
+        message: t('setup.domainQ'),
+        options: [{ value: false, label: t('setup.domainTemp'), hint: t('setup.domainTempHint') }, { value: true, label: t('setup.domainFixed') }],
+        initialValue: !!a.publicUrl,
+      }));
+      if (fixed) n.publicUrl = await ask(text({ message: t(a.tunnel === 'natapp' ? 'setup.askNatappDomain' : 'setup.askCpolarDomain'), defaultValue: a.publicUrl || '', validate: validateHost }));
+      else delete n.publicUrl;
+      break;
+    }
+  }
+  return n;
+}
+
+// Run the tunnel's provisioning (browser login / key setup / client download) — idempotent, so it's safe to
+// run once on the way OUT of the Connection mini-hub whenever something changed.
+async function provisionConnection(a, { home, log }) {
+  if (a.tunnel === 'cloudflare-named') await provisionCloudflareNamed({ home, hostname: a.cfHostname, tunnelName: a.cfTunnelName || 'handmux', port: a.port, log });
+  else if (a.tunnel === 'ssh') await provisionSsh({ sshHost: a.sshHost, log });
+  else if (a.tunnel === 'natapp' || a.tunnel === 'cpolar') await provisionNgrokClient({ tunnel: a.tunnel, home, authtoken: a.authtoken, log });
+}
+
+// Connection is its OWN mini-hub: every field of the current tunnel is a row showing its value; edit any in
+// place, or switch the tunnel type from the Tunnel row. Provisioning runs once on the way out (only if
+// something changed). Esc → back to the main hub; Esc in a sub-edit → back to this mini-hub.
+async function editConnection(a, ctx) {
+  let next = { ...a };
+  let dirty = false;
+  let cur = 'tunnel';
+  for (;;) {
+    let pick;
+    try {
+      pick = await ask(select({ message: withBack(t('setup.secConnection')), options: connectionRows(next), initialValue: cur }));
+    } catch (e) {
+      if (e !== CANCELLED) throw e;
+      if (dirty) await provisionConnection(next, ctx);
+      return next;
+    }
+    cur = pick;
+    try {
+      if (pick === 'tunnel') { const c = await pickTunnel(next); if (c) { next = c; dirty = true; } }
+      else { next = await editConnField(next, pick); dirty = true; }
+    } catch (e) { if (e !== CANCELLED) throw e; }   // Esc in a sub-edit → back to the Connection mini-hub
+  }
 }
 
 // Push notifications need a VAPID keypair. If one already exists we offer to keep it (regenerating would
@@ -290,24 +377,85 @@ async function editConnection(a, { home, log }) {
 // object, or undefined to leave push off.
 // Localise clack's Yes/No toggle for every confirm().
 const yesno = () => ({ active: t('setup.yes'), inactive: t('setup.no') });
+// A masked preview of an already-set secret for a sub-menu hint (last 4 shown, like `handmux config`).
+const maskSecret = (s) => (String(s || '').length <= 8 ? '••••' : `••••${String(s).slice(-4)}`);
 
+// Composite sections (push/voice) are their OWN mini-hub: when already configured, show the current values
+// and let you edit/regenerate/turn-off in place — no "keep it? [y/n]" gate, matching how every other row
+// shows its value and edits directly. Esc in the mini-hub returns to the main hub (keeping edits); Esc in a
+// sub-edit returns to the mini-hub. Push needs a VAPID keypair, so turning it ON is a genuine one-shot setup.
 async function editPush(a) {
-  if (a.vapid) return (await ask(confirm({ message: withBack(t('setup.pushKeep')), initialValue: true, ...yesno() }))) ? a.vapid : undefined;
-  if (!await ask(confirm({ message: withBack(t('setup.pushSetup')), initialValue: false, ...yesno() }))) return undefined;
-  const subject = await ask(text({ message: t('setup.pushContact'), defaultValue: 'mailto:admin@example.com' }));
-  const { publicKey, privateKey } = webpush.generateVAPIDKeys();
-  note(t('setup.pushGenerated'));
-  return { public: publicKey, private: privateKey, subject };
+  let vapid = a.vapid;
+  if (!vapid) {
+    let on;
+    try { on = await ask(confirm({ message: withBack(t('setup.pushSetup')), initialValue: false, ...yesno() })); }
+    catch (e) { if (e === CANCELLED) return undefined; throw e; }
+    if (!on) return undefined;
+    const subject = await ask(text({ message: t('setup.pushContact'), defaultValue: 'mailto:admin@example.com' }));
+    const { publicKey, privateKey } = webpush.generateVAPIDKeys();
+    note(t('setup.pushGenerated'));
+    vapid = { public: publicKey, private: privateKey, subject };
+  }
+  for (;;) {
+    let pick;
+    try {
+      pick = await ask(select({
+        message: withBack(t('setup.secPush')),
+        options: [
+          { value: 'contact', label: t('setup.pushContactLabel'), hint: vapid.subject || '' },
+          { value: 'regen', label: t('setup.pushRegen') },
+          { value: 'off', label: t('setup.pushOff') },
+        ],
+        initialValue: 'contact',
+      }));
+    } catch (e) { if (e === CANCELLED) return vapid; throw e; }   // back to the main hub, keeping edits
+    if (pick === 'off') return undefined;
+    try {
+      if (pick === 'contact') vapid = { ...vapid, subject: await ask(text({ message: t('setup.pushContact'), defaultValue: vapid.subject || '' })) };
+      else if (pick === 'regen') {
+        const k = webpush.generateVAPIDKeys();
+        vapid = { ...vapid, public: k.publicKey, private: k.privateKey };
+        note(t('setup.pushRegenerated'));
+      }
+    } catch (e) { if (e !== CANCELLED) throw e; }                 // Esc in a sub-edit → back to the mini-hub
+  }
 }
 
-// Voice input (iFlytek/xfyun) — three credentials from their console; the two secrets are masked.
+// Voice input (iFlytek/xfyun) — three credentials; appId is shown/edited in the clear, the two secrets show
+// only a masked preview and are replaced (never revealed) when edited.
 async function editVoice(a) {
-  if (a.xfyun) return (await ask(confirm({ message: withBack(t('setup.voiceKeep')), initialValue: true, ...yesno() }))) ? a.xfyun : undefined;
-  if (!await ask(confirm({ message: withBack(t('setup.voiceSetup')), initialValue: false, ...yesno() }))) return undefined;
-  const appId = await ask(text({ message: t('setup.voiceAppId'), validate: validateNonEmpty('appId') }));
-  const apiKey = await ask(password({ message: t('setup.voiceApiKey'), validate: validateNonEmpty('apiKey') }));
-  const apiSecret = await ask(password({ message: t('setup.voiceApiSecret'), validate: validateNonEmpty('apiSecret') }));
-  return { appId, apiKey, apiSecret };
+  let x = a.xfyun;
+  if (!x) {
+    let on;
+    try { on = await ask(confirm({ message: withBack(t('setup.voiceSetup')), initialValue: false, ...yesno() })); }
+    catch (e) { if (e === CANCELLED) return undefined; throw e; }
+    if (!on) return undefined;
+    const appId = await ask(text({ message: t('setup.voiceAppId'), validate: validateNonEmpty('appId') }));
+    const apiKey = await ask(password({ message: t('setup.voiceApiKey'), validate: validateNonEmpty('apiKey') }));
+    const apiSecret = await ask(password({ message: t('setup.voiceApiSecret'), validate: validateNonEmpty('apiSecret') }));
+    x = { appId, apiKey, apiSecret };
+  }
+  for (;;) {
+    let pick;
+    try {
+      pick = await ask(select({
+        message: withBack(t('setup.secVoice')),
+        options: [
+          { value: 'appId', label: 'appId', hint: x.appId || '' },
+          { value: 'apiKey', label: 'apiKey', hint: maskSecret(x.apiKey) },
+          { value: 'apiSecret', label: 'apiSecret', hint: maskSecret(x.apiSecret) },
+          { value: 'off', label: t('setup.voiceOff') },
+        ],
+        initialValue: 'appId',
+      }));
+    } catch (e) { if (e === CANCELLED) return x; throw e; }
+    if (pick === 'off') return undefined;
+    try {
+      if (pick === 'appId') x = { ...x, appId: await ask(text({ message: t('setup.voiceAppId'), defaultValue: x.appId || '', validate: validateNonEmpty('appId') })) };
+      else if (pick === 'apiKey') x = { ...x, apiKey: await ask(password({ message: t('setup.voiceApiKey'), validate: validateNonEmpty('apiKey') })) };
+      else if (pick === 'apiSecret') x = { ...x, apiSecret: await ask(password({ message: t('setup.voiceApiSecret'), validate: validateNonEmpty('apiSecret') })) };
+    } catch (e) { if (e !== CANCELLED) throw e; }
+  }
 }
 
 // login (browser) → create → route dns → write config.yml. The only human step is the browser login.
