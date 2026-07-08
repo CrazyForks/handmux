@@ -4,6 +4,14 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Fixed
+- **Full-screen apps (vim / htop / less / mouse-mode TUIs) no longer look "broken" to scroll on the phone.**
+  Those run on the terminal's alternate screen, which has no scrollback — so a vertical swipe had nothing to
+  move and instead nudged the browser page a little (the nav chrome peeking in on old iOS). The pane now
+  reports its alt-screen state (`#{alternate_on}`), and on such a pane a vertical swipe is swallowed (no more
+  stray page-scroll) and a brief hint appears: use the app's own paging / arrow keys. On the normal screen,
+  swipe-scroll through the captured scrollback is unchanged.
+
 ## [0.11.1] - 2026-07-09
 
 ### Fixed

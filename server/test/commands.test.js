@@ -83,6 +83,7 @@ describe('tmux commands (integration)', () => {
     const info = await paneInfo(pane);
     expect(info.width).toBe(80);
     expect(info.height).toBe(24);
+    expect(info.altScreen).toBe(false); // a plain shell isn't on the alternate screen
   });
 
   // Named guard for the tmux capture behaviours the terminal rendering depends on (CLAUDE.md). If a tmux

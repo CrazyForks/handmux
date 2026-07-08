@@ -91,13 +91,16 @@ export async function capturePane(paneId, linesBack) {
 // visibility — it snapshots cells only — so we read them here for the client to re-place xterm's own
 // cursor onto Claude's input cell). cursor_x/cursor_y are 0-based, relative to the visible screen;
 // cursor_flag is DECTCEM visibility (1 while Claude accepts input, 0 while it's working / in a dialog).
+// alternate_on = the pane is on the ALT screen (a full-screen app: vim/htop/less/a mouse-mode TUI). The
+// alt buffer has no scrollback, so the phone can't swipe-scroll it — the client shows a hint instead.
 export async function paneInfo(paneId) {
   const out = await runTmux(['display-message', '-p', '-t', paneId,
-    '#{pane_width}\t#{pane_height}\t#{cursor_x}\t#{cursor_y}\t#{cursor_flag}']);
-  const [width, height, cx, cy, cflag] = out.trim().split('\t');
+    '#{pane_width}\t#{pane_height}\t#{cursor_x}\t#{cursor_y}\t#{cursor_flag}\t#{alternate_on}']);
+  const [width, height, cx, cy, cflag, alt] = out.trim().split('\t');
   return {
     width: Number(width), height: Number(height),
     cursorX: Number(cx), cursorY: Number(cy), cursorVisible: cflag === '1',
+    altScreen: alt === '1',
   };
 }
 

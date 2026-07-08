@@ -417,7 +417,7 @@ export function createApiRouter({
       // all key off the same trimmed capture. See trimCapture.js.
       const raw = await commands.capturePane(req.query.pane, lines);
       const ansi = capTrailingBlankRows(raw);
-      const { width, height, cursorX, cursorY, cursorVisible } = await commands.paneInfo(req.query.pane);
+      const { width, height, cursorX, cursorY, cursorVisible, altScreen } = await commands.paneInfo(req.query.pane);
       // The cursor's row counted from the BOTTOM of the (trimmed) capture. The live screen is the
       // capture's last `height` rows, so the cursor sits `height-1-cursorY` rows above the bottom —
       // less however many trailing blank rows capTrailingBlankRows dropped (all of them below the
@@ -432,10 +432,10 @@ export function createApiRouter({
       // The cursor is folded in so a bare left/right (which moves the cursor but not the text) still
       // yields a fresh frame — otherwise the move would 204 and the cursor would never visibly track.
       const hash = createHash('sha1')
-        .update(`${width}x${height}\n${cur.col},${cursorY},${cur.vis ? 1 : 0}\n${ansi}`)
+        .update(`${width}x${height}\n${cur.col},${cursorY},${cur.vis ? 1 : 0}\n${altScreen ? 1 : 0}\n${ansi}`)
         .digest('hex').slice(0, 16);
       if (req.query.since === hash) return res.status(204).end();
-      const json = JSON.stringify({ ansi, width, height, hash, cur });
+      const json = JSON.stringify({ ansi, width, height, hash, cur, alt: altScreen });
       res.set('Content-Type', 'application/json');
       res.set('Vary', 'Accept-Encoding'); // both 200 branches vary on encoding (correct for any caching proxy)
       // Capture text is mostly SGR codes + spaces — gzip crushes it ~10x. (204s are empty, never gzipped.)

@@ -55,6 +55,12 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
   const [copyBtn, setCopyBtn] = useState(null); // {x,y} in .terminal-wrap px, or null = hidden
   const [selHint, setSelHint] = useState(false); // drag-to-select guidance; lingers a few sec after lift
   const selHintTimerRef = useRef(null);
+  // Alt-screen (a full-screen app: vim/htop/less/a mouse-mode TUI) has no scrollback, so a vertical swipe
+  // can't scroll it. altScreenRef tracks the pane's state (set each poll from the server's `alt` flag);
+  // when set, a vertical drag is swallowed (so it can't scroll the browser page) and altHint flashes.
+  const altScreenRef = useRef(false);
+  const [altHint, setAltHint] = useState(false);
+  const altHintTimerRef = useRef(null);
   const [dbg, setDbg] = useState(''); // cols×rows·font readout, flashed on ⊟/⊞ then hidden
   const [dbgVisible, setDbgVisible] = useState(false);
   const flashHideRef = useRef(null);
@@ -394,6 +400,12 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       setSelHint(false);
       term.clearSelection();
     };
+    // Flash the alt-screen hint (a full-screen app can't be swipe-scrolled); auto-fades, re-armed per swipe.
+    const flashAltHint = () => {
+      setAltHint(true);
+      clearTimeout(altHintTimerRef.current);
+      altHintTimerRef.current = setTimeout(() => setAltHint(false), 2600);
+    };
 
     // Touch handling (capture phase):
     //  - two fingers  → pinch to change the terminal font size (our render only);
@@ -521,9 +533,18 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
         lastMoveT = e.timeStamp;
         e.preventDefault();
         e.stopPropagation();
-      } else { // axis === -1 vertical: let xterm own the 1:1 drag (don't preventDefault/stopPropagation
-        // — cutting xterm off with no native scroller to take over is what killed scrolling entirely).
-        // Just sample velocity here so touchend can coast it onward.
+      } else { // axis === -1 vertical
+        if (altScreenRef.current) {
+          // Alt-screen (full-screen app): no scrollback to move. Letting it fall through only scrolls the
+          // browser page (chrome peeks in on old iOS). Swallow it and flash a hint to use the app's own keys.
+          flashAltHint();
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        // Normal screen: let xterm own the 1:1 drag (don't preventDefault/stopPropagation — cutting xterm
+        // off with no native scroller to take over is what killed scrolling entirely). Just sample the
+        // velocity here so touchend can coast it onward.
         const cy = e.touches[0].clientY;
         const ddt = e.timeStamp - lastMoveT;
         if (ddt > 0) scrollVelY = (lastMoveY - cy) / ddt; // finger up (cy↓) → scroll down (+)
@@ -600,6 +621,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
         // 204: server says the screen is identical to lastHash — keep what's drawn, transmit nothing.
         if (hist.unchanged) { setPaused(keepPosition); return; }
         lastHash = hist.hash;       // a real frame: remember its hash for the next ?since=
+        altScreenRef.current = !!hist.alt; // pane on the alternate screen? → swipe can't scroll here
         idleSince = Date.now();     // …and treat the change as activity → cadence stays/returns fast
         // Match cols to the real pane so wrapping is identical (rows are NOT pinned to the
         // pane — fit() sizes them to fill the container height instead).
@@ -734,6 +756,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       stopFling();
       if (timer) clearTimeout(timer);
       clearTimeout(selHintTimerRef.current);
+      clearTimeout(altHintTimerRef.current);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('resize', onResize);
       window.removeEventListener('orientationchange', onResize);
@@ -799,6 +822,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       {connected && scrollInfo && <div className="term-banner term-banner--hist">{scrollInfo}</div>}
       {scrollInfo && <button className="new-output" onClick={resume}>↓ 回到底部</button>}
       {selHint && <div className="sel-hint">按住拖动选择文字，松手后点「复制」</div>}
+      {altHint && !selHint && <div className="sel-hint">全屏程序 · 滑动不能滚动,请用翻页 / 方向键</div>}
       {copyBtn && (
         <button
           className="copy-bubble"
