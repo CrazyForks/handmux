@@ -26,6 +26,10 @@ export default function FileManager({ open, pane, windowId, tabs, active, onActi
   const cur = tabs.find((t) => t.key === active) || tabs[0];
   const [homeMode, setHomeMode] = useState('recent'); // 'recent' | 'browse'
   const [browsePath, setBrowsePath] = useState(null);  // browser dir to show (null → $HOME)
+  // Bumped on every (re)open so the directory listing / recents re-fetch even when nothing changed. The
+  // sheet is always mounted (portal) and FileBrowser/HomeView stay mounted while minimized, so without an
+  // explicit signal a reopen to the SAME dir would keep showing the stale listing captured on first open.
+  const [refreshKey, setRefreshKey] = useState(0);
   const isHome = cur.type === 'home';
   const seededForRef = useRef(null); // windowId we've already seeded for this open (null when closed)
 
@@ -105,6 +109,10 @@ export default function FileManager({ open, pane, windowId, tabs, active, onActi
   // the 目录 segment so the upload banner is visible the moment the sheet opens.
   useEffect(() => { if (pendingShare) setHomeMode('browse'); }, [pendingShare]);
 
+  // Every time the sheet (re)opens, force a fresh directory listing + recents — the views stay mounted
+  // while minimized, so a reopen must re-fetch even if the remembered dir is unchanged.
+  useEffect(() => { if (open) setRefreshKey((k) => k + 1); }, [open]);
+
   // Land on the remembered dir (validated) or the pane's cwd, in the 目录 segment. Re-seeds when the
   // window changes while the sheet stays open (e.g. a notification-tap navigation), so each window
   // lands on its own dir and onNavigate persists under the right windowId — not once-per-open, which
@@ -157,9 +165,9 @@ export default function FileManager({ open, pane, windowId, tabs, active, onActi
               </button>
             </div>
             {homeMode === 'recent'
-              ? <HomeView onOpenDoc={onOpenDoc} />
+              ? <HomeView onOpenDoc={onOpenDoc} refreshKey={refreshKey} />
               : <FileBrowser path={browsePath} onNavigate={onNavigate} onOpenDoc={onOpenDoc}
-                  onJumpToCwd={pane ? jumpToCwd : null}
+                  onJumpToCwd={pane ? jumpToCwd : null} refreshKey={refreshKey}
                   pendingFile={pendingShare} onPendingConsumed={onPendingConsumed} />}
           </div>
         ) : <DocView type={cur.type} name={cur.name} content={cur.content} />}

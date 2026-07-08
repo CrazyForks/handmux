@@ -52,7 +52,7 @@ const fmtSize = (n) =>
 // Two-way bound within a directory: tapping a folder rewrites the path box; typing in the box
 // refetches the named dir (debounced) and live-filters its entries by the trailing fragment. Tapping
 // a file (or Enter on a doc path) opens it via onOpenDoc — always an absolute path.
-export default function FileBrowser({ path, onNavigate, onOpenDoc, onJumpToCwd, pendingFile, onPendingConsumed, pickMode = false, allowMkdir = !pickMode, onPick }) {
+export default function FileBrowser({ path, onNavigate, onOpenDoc, onJumpToCwd, pendingFile, onPendingConsumed, pickMode = false, allowMkdir = !pickMode, onPick, refreshKey = 0 }) {
   const [input, setInput] = useState('');   // the path text box — relative to the current root
   const [dir, setDir] = useState(null);     // loaded { path, parent, entries }
   const [rootMenuOpen, setRootMenuOpen] = useState(false); // the root-prefix dropdown (~ / tmp / TMPDIR)
@@ -66,6 +66,7 @@ export default function FileBrowser({ path, onNavigate, onOpenDoc, onJumpToCwd, 
   const [progress, setProgress] = useState(null);       // { label, pct } during an active transfer, else null
   const fileInputRef = useRef(null);
   const loadedRef = useRef(false);          // real path of the dir currently loaded (false = none yet)
+  const refreshRef = useRef(refreshKey);    // last refreshKey acted on — a bump forces a re-fetch even if the path is unchanged
   const debounceRef = useRef(null);
   const noticeTimerRef = useRef(null);
   const rootDdRef = useRef(null);           // root-prefix dropdown container (for outside-tap close)
@@ -93,13 +94,17 @@ export default function FileBrowser({ path, onNavigate, onOpenDoc, onJumpToCwd, 
   // Load on mount and whenever the persisted `path` changes from outside (restore on remount). Our
   // own navigations set loadedRef to the same value first, so this no-ops for them (no double fetch).
   useEffect(() => {
-    if (path === loadedRef.current) return;
+    // A refreshKey bump (panel reopened) forces a re-fetch even when `path` is unchanged — the sheet
+    // stays mounted while minimized, so the guard below would otherwise keep the stale listing.
+    const forced = refreshKey !== refreshRef.current;
+    refreshRef.current = refreshKey;
+    if (path === loadedRef.current && !forced) return;
     // sync (rewrite the box) but NOT notify: prop-driven loads (restore-on-remount, open-seed,
     // jump-to-cwd) must not report back — a notify here would let the initial null→$HOME load clobber
     // a just-seeded cwd via onNavigate, and persist $HOME over the window's real remembered dir.
     // Persistence happens only on USER navigation (enter/up/onType already pass notify:true).
     load(path, { sync: true, fallbackHome: pickMode });
-  }, [path]);
+  }, [path, refreshKey]);
   useEffect(() => () => { clearTimeout(debounceRef.current); clearTimeout(noticeTimerRef.current); }, []);
   // Close the root dropdown when a tap lands outside it (capture phase, like Dropdown.jsx).
   useEffect(() => {

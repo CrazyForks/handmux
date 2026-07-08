@@ -5,6 +5,10 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Fixed
+- **File browser refreshes its listing when you reopen the sheet.** The sheet stays mounted while
+  minimized, so reopening to the same directory kept showing the listing captured on first open. Both the
+  directory browser and the 最近 (recents) view now re-fetch on every reopen, so you see the current
+  contents (a `cd`, new files, or a newly-opened doc) instead of a stale snapshot.
 - **Chat mode: long-pressing a quick-command chip now types into the terminal, not the chat box.** These
   chips are terminal commands, so a long-press (edit-before-run) now types the command into the pane's input
   line without Enter — the same as command mode's hold — instead of staging it in the chat composer.

@@ -23,7 +23,7 @@ vi.mock('../src/storage.js', () => ({
 }));
 
 import FileManager from '../src/components/FileManager.jsx';
-import { fetchPaneCwd } from '../src/api.js';
+import { fetchPaneCwd, fetchDir } from '../src/api.js';
 import { setBrowseDir } from '../src/storage.js';
 import { HOME_TAB } from '../src/hooks/useDocTabs.js';
 
@@ -92,6 +92,16 @@ describe('FileManager', () => {
     // Still on 新增, still in docs/ — not reset to $HOME.
     expect(q('.browse-input').value).toBe('docs/');
     expect(document.body.textContent).toContain('nested.md');
+  });
+  it('re-fetches the directory listing on reopen, even at the same dir (no stale content)', async () => {
+    await render({ ...base, active: 'home' });
+    await settle();                                        // first open → browser fetched $HOME
+    const before = fetchDir.mock.calls.length;
+    await render({ ...base, active: 'home', open: false }); // minimize — the sheet/browser stay mounted
+    await settle();
+    await render({ ...base, active: 'home', open: true });  // reopen → refreshKey bump forces a fresh fetch
+    await settle();
+    expect(fetchDir.mock.calls.length).toBeGreaterThan(before);
   });
   it('re-seeds to the new window\'s cwd when the window changes while the sheet stays open', async () => {
     // seed is async (fetchPaneCwd → setBrowsePath → FileBrowser fetchDir) — poll until it lands.
