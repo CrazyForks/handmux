@@ -20,11 +20,12 @@ const baseCommands = {
   listWindows: vi.fn(async () => [{ id: '@1', name: 'w', active: true, panes: 2 }]),
   listPanes: vi.fn(async () => [{ id: '%1', active: true, width: 80, height: 24, command: 'zsh', cwd: '/home/u/proj' }]),
   capturePane: vi.fn(async () => 'history-text'),
-  paneInfo: vi.fn(async () => ({ width: 80, height: 24, cursorX: 0, cursorY: 23, cursorVisible: false })),
+  paneInfo: vi.fn(async () => ({ width: 80, height: 24, cursorX: 0, cursorY: 23, cursorVisible: false, altScreen: false, mouseAware: false, mouseSgr: false })),
   exitCopyModeIfActive: vi.fn(async () => {}),
   sendText: vi.fn(async () => {}),
   sendEnter: vi.fn(async () => {}),
   sendKey: vi.fn(async () => {}),
+  sendWheel: vi.fn(async () => {}),
   resizeWindow: vi.fn(async () => {}),
   resizePane: vi.fn(async () => {}),
   getWindowLayout: vi.fn(async () => 'c89a,200x50,0,0{100x50,0,0,1,99x50,101,0,2}'),
@@ -268,6 +269,31 @@ describe('REST API', () => {
       .send({ pane: '%1', keys: ['C-o', 'C-e'] }).expect(200);
     expect(baseCommands.sendKey).toHaveBeenCalledWith('%1', 'C-o');
     expect(baseCommands.sendKey).toHaveBeenCalledWith('%1', 'C-e');
+  });
+
+  it('GET /history exposes alt + mouseAware so the client can pick wheel-scroll vs hint', async () => {
+    const cmds = { ...baseCommands, paneInfo: vi.fn(async () => ({ width: 80, height: 24, cursorX: 0, cursorY: 23, cursorVisible: false, altScreen: true, mouseAware: true, mouseSgr: true })) };
+    const res = await auth(request(appWith(cmds)).get('/api/history?pane=%1&lines=100')).expect(200);
+    expect(res.body).toMatchObject({ alt: true, mouseAware: true });
+  });
+
+  it('POST /scroll injects wheel events at the pane centre when the app is mouse-reporting', async () => {
+    const cmds = { ...baseCommands, paneInfo: vi.fn(async () => ({ width: 80, height: 24, altScreen: true, mouseAware: true, mouseSgr: true })), sendWheel: vi.fn(async () => {}) };
+    const res = await auth(request(appWith(cmds)).post('/api/scroll')).send({ pane: '%1', dir: 'down', lines: 3 }).expect(200);
+    expect(res.body).toEqual({ ok: true });
+    expect(cmds.sendWheel).toHaveBeenCalledWith('%1', 'down', 3, { sgr: true, col: 40, row: 12 });
+  });
+
+  it('POST /scroll REFUSES to inject when the pane is not mouse-reporting (bytes would leak as text)', async () => {
+    const cmds = { ...baseCommands, paneInfo: vi.fn(async () => ({ width: 80, height: 24, altScreen: true, mouseAware: false, mouseSgr: false })), sendWheel: vi.fn(async () => {}) };
+    const res = await auth(request(appWith(cmds)).post('/api/scroll')).send({ pane: '%1', dir: 'up', lines: 2 }).expect(200);
+    expect(res.body).toEqual({ ok: false, reason: 'no-mouse' });
+    expect(cmds.sendWheel).not.toHaveBeenCalled();
+  });
+
+  it('POST /scroll rejects a bad direction / pane id', async () => {
+    await auth(request(appWith(baseCommands)).post('/api/scroll')).send({ pane: '%1', dir: 'sideways' }).expect(400);
+    await auth(request(appWith(baseCommands)).post('/api/scroll')).send({ pane: 'nope', dir: 'up' }).expect(400);
   });
 
   it('PATCH /sessions renames when the new name is valid and free', async () => {

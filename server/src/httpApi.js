@@ -417,7 +417,7 @@ export function createApiRouter({
       // all key off the same trimmed capture. See trimCapture.js.
       const raw = await commands.capturePane(req.query.pane, lines);
       const ansi = capTrailingBlankRows(raw);
-      const { width, height, cursorX, cursorY, cursorVisible, altScreen } = await commands.paneInfo(req.query.pane);
+      const { width, height, cursorX, cursorY, cursorVisible, altScreen, mouseAware } = await commands.paneInfo(req.query.pane);
       // The cursor's row counted from the BOTTOM of the (trimmed) capture. The live screen is the
       // capture's last `height` rows, so the cursor sits `height-1-cursorY` rows above the bottom —
       // less however many trailing blank rows capTrailingBlankRows dropped (all of them below the
@@ -431,11 +431,13 @@ export function createApiRouter({
       // an unchanged screen returns 204 (empty) so an idle pane stops re-sending the whole capture.
       // The cursor is folded in so a bare left/right (which moves the cursor but not the text) still
       // yields a fresh frame — otherwise the move would 204 and the cursor would never visibly track.
+      // mouseAware is folded in too: toggling an app's mouse mode (e.g. `:set mouse=a` in vim) changes
+      // whether a swipe should wheel-scroll or just hint, and the client only re-reads it on a fresh frame.
       const hash = createHash('sha1')
-        .update(`${width}x${height}\n${cur.col},${cursorY},${cur.vis ? 1 : 0}\n${altScreen ? 1 : 0}\n${ansi}`)
+        .update(`${width}x${height}\n${cur.col},${cursorY},${cur.vis ? 1 : 0}\n${altScreen ? 1 : 0}${mouseAware ? 'm' : ''}\n${ansi}`)
         .digest('hex').slice(0, 16);
       if (req.query.since === hash) return res.status(204).end();
-      const json = JSON.stringify({ ansi, width, height, hash, cur, alt: altScreen });
+      const json = JSON.stringify({ ansi, width, height, hash, cur, alt: altScreen, mouseAware });
       res.set('Content-Type', 'application/json');
       res.set('Vary', 'Accept-Encoding'); // both 200 branches vary on encoding (correct for any caching proxy)
       // Capture text is mostly SGR codes + spaces — gzip crushes it ~10x. (204s are empty, never gzipped.)
@@ -503,6 +505,29 @@ export function createApiRouter({
     try {
       await commands.exitCopyModeIfActive(pane);
       for (const k of keys) await commands.sendKey(pane, k);
+      res.json({ ok: true });
+    } catch (e) { next(e); }
+  });
+
+  // Swipe-to-scroll for full-screen (ALT-screen) apps: the client can't scroll the alt buffer itself
+  // (no scrollback), so it forwards the finger travel here and we inject wheel events the app scrolls on.
+  // SAFETY: we re-read the pane's mouse state at inject time and REFUSE unless it's actually reporting
+  // mouse — otherwise the raw escape bytes would print into the shell as literal `<65;…M` garbage. The
+  // client's cached mouseAware is only a UX hint; this check is the real guard (mouse mode can toggle
+  // between the poll and the gesture). Positioned at the pane centre so a split-aware app scrolls the
+  // region the finger is over; a lone full-screen app ignores the position.
+  r.post('/scroll', async (req, res, next) => {
+    const { pane, dir, lines } = req.body || {};
+    if (!isPaneId(pane)) return res.status(400).json({ error: 'bad pane id' });
+    if (dir !== 'up' && dir !== 'down') return res.status(400).json({ error: 'bad dir' });
+    try {
+      const { altScreen, mouseAware, mouseSgr, width, height } = await commands.paneInfo(pane);
+      if (!altScreen || !mouseAware) return res.json({ ok: false, reason: 'no-mouse' });
+      await commands.sendWheel(pane, dir, lines, {
+        sgr: mouseSgr,
+        col: Math.max(1, Math.floor((width || 2) / 2)),
+        row: Math.max(1, Math.floor((height || 2) / 2)),
+      });
       res.json({ ok: true });
     } catch (e) { next(e); }
   });

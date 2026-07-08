@@ -4,13 +4,19 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
-### Fixed
-- **Full-screen apps (vim / htop / less / mouse-mode TUIs) no longer look "broken" to scroll on the phone.**
-  Those run on the terminal's alternate screen, which has no scrollback — so a vertical swipe had nothing to
-  move and instead nudged the browser page a little (the nav chrome peeking in on old iOS). The pane now
-  reports its alt-screen state (`#{alternate_on}`), and on such a pane a vertical swipe is swallowed (no more
-  stray page-scroll) and a brief hint appears: use the app's own paging / arrow keys. On the normal screen,
-  swipe-scroll through the captured scrollback is unchanged.
+### Added
+- **Swipe now scrolls full-screen apps (vim / htop / less / mouse-mode TUIs), and every full-screen pane
+  gets ⇞ / ⇟ pager buttons.** Those apps run on the terminal's alternate screen, which has no scrollback —
+  so a vertical swipe used to have nothing to move and instead nudged the browser page a little (the nav
+  chrome peeking in on old iOS). Now, when the app is reporting mouse (the usual case — mouse mode on), a
+  vertical drag is forwarded to it as mouse-wheel events and the app scrolls itself, exactly like a desktop
+  wheel; the scrolled frame repaints immediately. When the app is *not* mouse-reporting (a swipe can't be
+  mapped safely — arrow keys would move the cursor), the drag is swallowed (no more stray page-scroll) with a
+  brief hint. Either way, two floating **⇞ / ⇟** buttons on the right edge give precise page-up/down in any
+  full-screen app. On the normal screen, swipe-scroll through the captured scrollback is unchanged.
+  Implemented server-side by reporting the pane's mouse state (`#{mouse_any_flag}` / `#{mouse_sgr_flag}`) and
+  injecting wheel events through a new `POST /api/scroll` — which re-checks mouse mode before injecting, so
+  the escape bytes can never leak into a shell as literal text.
 
 ## [0.11.1] - 2026-07-09
 

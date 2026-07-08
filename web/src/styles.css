@@ -258,6 +258,21 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
   background: rgba(var(--blue-rgb),0.96); color: #fff; font-size: 13px; font-weight: 600;
   white-space: nowrap; box-shadow: 0 2px 10px rgba(0,0,0,.5); pointer-events: none;
 }
+/* Full-screen (alt-screen) pager: PgUp/PgDn on the right edge, shown only for full-screen apps
+   (vim/htop/less/…) where there's no scrollback to swipe. The wheel gesture handles mouse-reporting
+   apps; these buttons are the always-available manual scroll for the rest, and precise paging for all.
+   Subtle (blurred, semi-transparent) so it defers to the content; ~44pt targets; clear of the safe area. */
+.term-pager {
+  position: absolute; z-index: 6; right: calc(8px + env(safe-area-inset-right)); top: 50%;
+  transform: translateY(-50%); display: flex; flex-direction: column; gap: 10px;
+}
+.term-pager-btn {
+  width: 44px; height: 44px; border: none; border-radius: 22px;
+  background: rgba(40,42,46,0.60); color: #e5e7eb; font-size: 18px; line-height: 1;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  box-shadow: 0 1px 6px rgba(0,0,0,.35); touch-action: manipulation;
+}
+.term-pager-btn:active { background: rgba(64,67,72,0.82); }
 /* Auto-growing command field: one line by default (a touch taller for an easier tap target), grows
    with content, caps at 6 lines (156px = 6×22 line + 22 padding + 2 border, box-sizing: border-box)
    then scrolls. JS sets the height.

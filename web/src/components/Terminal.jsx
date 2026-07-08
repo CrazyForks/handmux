@@ -2,7 +2,8 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import { Terminal as XTerm } from '@xterm/xterm';
 import { WebglAddon } from '@xterm/addon-webgl';
 import '@xterm/xterm/css/xterm.css';
-import { getHistory, UnauthorizedError } from '../api.js';
+import { getHistory, scrollPane, sendKeys, UnauthorizedError } from '../api.js';
+import { drainWheel, notchDir } from '../wheelScroll.js';
 import { prepareSeed, cursorSeq } from '../terminalSeed.js';
 import { getFont, setFont, clearFont } from '../storage.js';
 import { backoffDelay } from '../backoff.js';
@@ -55,10 +56,14 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
   const [copyBtn, setCopyBtn] = useState(null); // {x,y} in .terminal-wrap px, or null = hidden
   const [selHint, setSelHint] = useState(false); // drag-to-select guidance; lingers a few sec after lift
   const selHintTimerRef = useRef(null);
-  // Alt-screen (a full-screen app: vim/htop/less/a mouse-mode TUI) has no scrollback, so a vertical swipe
-  // can't scroll it. altScreenRef tracks the pane's state (set each poll from the server's `alt` flag);
-  // when set, a vertical drag is swallowed (so it can't scroll the browser page) and altHint flashes.
+  // Alt-screen (a full-screen app: vim/htop/less/a mouse-mode TUI) has no scrollback of its own, so a
+  // vertical swipe can't scroll it the ordinary way. altScreenRef tracks the pane's state (set each poll
+  // from the server's `alt` flag). When the app is ALSO reporting mouse (mouseAwareRef), a swipe is
+  // translated into wheel events the app scrolls on (see the vertical branch below); otherwise the drag is
+  // swallowed and altHint flashes. altScreen (state) drives the always-available PgUp/PgDn pager buttons.
   const altScreenRef = useRef(false);
+  const mouseAwareRef = useRef(false);
+  const [altScreen, setAltScreen] = useState(false);
   const [altHint, setAltHint] = useState(false);
   const altHintTimerRef = useRef(null);
   const [dbg, setDbg] = useState(''); // cols×rows·font readout, flashed on ⊟/⊞ then hidden
@@ -198,6 +203,11 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
     let busy = false;
     let wakeAgain = false; // a wake() landed mid-poll — re-poll right after the in-flight one finishes
     let seeded = false;
+    // Fresh slate per pane: don't carry the previous pane's alt/mouse state (else switching from a
+    // full-screen pane to a normal one flashes the pager buttons until the first poll corrects it).
+    altScreenRef.current = false;
+    mouseAwareRef.current = false;
+    setAltScreen(false);
     // Live capture depth tracks the viewport (+margin) instead of a fixed 100, so we transmit and hash
     // only what's shown plus a little scroll-up slack. Floor 24 covers a not-yet-fit grid; cap at MAX_LINES.
     const liveDepth = () => Math.min(MAX_LINES, Math.max(24, term.rows + LIVE_MARGIN));
@@ -461,6 +471,28 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       };
       flingRAF = requestAnimationFrame(frame);
     };
+
+    // Alt-screen + mouse-reporting app: translate the vertical drag into wheel notches the app scrolls on.
+    // We accumulate finger travel (wheelAccum, px) and emit one notch per WHEEL_PX; notches are coalesced
+    // (wheelPending) and sent in batched /scroll calls — one in flight at a time — so a fast flick becomes a
+    // couple of multi-line requests, not dozens. After each send we poke the poll loop so the scrolled frame
+    // repaints at once (the pane is poll-and-repainted; without the poke the jump would lag up to a tick).
+    const WHEEL_PX = 22;   // finger travel per wheel notch — ~one text row, tuned for a natural drag feel
+    let wheelAccum = 0;    // unsent finger travel, px (+ = finger moved down the screen)
+    let wheelPrevY = 0;    // last sampled clientY, for the incremental delta
+    let wheelPending = 0;  // notches queued while a request is in flight (+ = wheel up / toward earlier)
+    let wheelBusy = false;
+    const flushWheel = async () => {
+      if (wheelBusy || wheelPending === 0) return;
+      wheelBusy = true;
+      const dir = notchDir(wheelPending);
+      const n = Math.min(Math.abs(wheelPending), 40);
+      wheelPending = 0;
+      try { await scrollPane(pane, dir, n); wakeRef.current?.(); } // repaint immediately so the jump shows
+      catch { /* transient (offline/timeout) — the next drag retries; nothing to undo */ }
+      finally { wheelBusy = false; if (wheelPending !== 0) flushWheel(); }
+    };
+
     const onTouchStart = (e) => {
       idleSince = Date.now(); // touching the pane is activity → keep the cadence live
       cancelLongPress();
@@ -486,6 +518,8 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       lastMoveT = e.timeStamp;
       scrollVelX = 0;
       scrollVelY = 0;
+      wheelPrevY = sy; // seed the alt-screen wheel sampler; accum carries no travel across a fresh touch
+      wheelAccum = 0;
       lpTimer = setTimeout(() => {
         lpTimer = null;
         selecting = true;
@@ -535,11 +569,23 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
         e.stopPropagation();
       } else { // axis === -1 vertical
         if (altScreenRef.current) {
-          // Alt-screen (full-screen app): no scrollback to move. Letting it fall through only scrolls the
-          // browser page (chrome peeks in on old iOS). Swallow it and flash a hint to use the app's own keys.
-          flashAltHint();
+          // Alt-screen (full-screen app): no scrollback to move, and letting the drag fall through only
+          // scrolls the browser page (chrome peeks in on old iOS). Always swallow it.
           e.preventDefault();
           e.stopPropagation();
+          if (mouseAwareRef.current) {
+            // App is mouse-reporting → forward the drag as wheel notches; the app scrolls itself. The
+            // travel→notch conversion (incl. the finger-direction mapping) lives in drainWheel.
+            const cy = e.touches[0].clientY;
+            const { notches, rem } = drainWheel(wheelAccum + (cy - wheelPrevY), WHEEL_PX);
+            wheelAccum = rem;
+            wheelPrevY = cy;
+            if (notches) { wheelPending += notches; flushWheel(); }
+          } else {
+            // Not mouse-reporting → can't scroll by gesture (arrow keys would move the cursor, not scroll).
+            // Flash a hint; the always-present PgUp/PgDn pager buttons are the way to scroll here.
+            flashAltHint();
+          }
           return;
         }
         // Normal screen: let xterm own the 1:1 drag (don't preventDefault/stopPropagation — cutting xterm
@@ -621,7 +667,9 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
         // 204: server says the screen is identical to lastHash — keep what's drawn, transmit nothing.
         if (hist.unchanged) { setPaused(keepPosition); return; }
         lastHash = hist.hash;       // a real frame: remember its hash for the next ?since=
-        altScreenRef.current = !!hist.alt; // pane on the alternate screen? → swipe can't scroll here
+        altScreenRef.current = !!hist.alt; // pane on the alternate screen? → no scrollback to swipe
+        mouseAwareRef.current = !!hist.mouseAware; // …but if the app reports mouse, a swipe can wheel-scroll it
+        setAltScreen((v) => (v === !!hist.alt ? v : !!hist.alt)); // toggle the pager buttons (no-op if unchanged)
         idleSince = Date.now();     // …and treat the change as activity → cadence stays/returns fast
         // Match cols to the real pane so wrapping is identical (rows are NOT pinned to the
         // pane — fit() sizes them to fill the container height instead).
@@ -785,6 +833,14 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
     wakeRef.current?.(); // re-poll right away so the live screen is confirmed at the bottom
   };
 
+  // Page a full-screen (alt-screen) pane up/down. PageUp/PageDown is the one manual scroll that works in
+  // any pager/editor regardless of mouse mode (arrows would move the cursor instead) — so it covers the
+  // apps the wheel gesture can't (no mouse reporting) and gives precise paging in the ones it can.
+  const pageScroll = async (dir) => {
+    try { await sendKeys(pane, [dir === 'up' ? 'PageUp' : 'PageDown']); wakeRef.current?.(); }
+    catch { /* transient (offline/timeout) — the button can just be tapped again */ }
+  };
+
   // Copy the live selection, then drop the highlight + bubble. navigator.clipboard only exists in
   // a secure context (https/localhost); over plain http we fall back to a throwaway textarea +
   // execCommand so copy still works on the LAN.
@@ -822,7 +878,13 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       {connected && scrollInfo && <div className="term-banner term-banner--hist">{scrollInfo}</div>}
       {scrollInfo && <button className="new-output" onClick={resume}>↓ 回到底部</button>}
       {selHint && <div className="sel-hint">按住拖动选择文字，松手后点「复制」</div>}
-      {altHint && !selHint && <div className="sel-hint">全屏程序 · 滑动不能滚动,请用翻页 / 方向键</div>}
+      {altHint && !selHint && <div className="sel-hint">全屏程序 · 滑动不能滚动,用右侧 ⇞ ⇟ 翻页</div>}
+      {altScreen && (
+        <div className="term-pager">
+          <button type="button" className="term-pager-btn" aria-label="上翻页" onClick={() => pageScroll('up')}>⇞</button>
+          <button type="button" className="term-pager-btn" aria-label="下翻页" onClick={() => pageScroll('down')}>⇟</button>
+        </div>
+      )}
       {copyBtn && (
         <button
           className="copy-bubble"

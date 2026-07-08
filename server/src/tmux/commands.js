@@ -92,16 +92,43 @@ export async function capturePane(paneId, linesBack) {
 // cursor onto Claude's input cell). cursor_x/cursor_y are 0-based, relative to the visible screen;
 // cursor_flag is DECTCEM visibility (1 while Claude accepts input, 0 while it's working / in a dialog).
 // alternate_on = the pane is on the ALT screen (a full-screen app: vim/htop/less/a mouse-mode TUI). The
-// alt buffer has no scrollback, so the phone can't swipe-scroll it — the client shows a hint instead.
+// alt buffer has no scrollback, so the phone can't swipe-scroll it. mouse_any_flag = the app has requested
+// mouse reporting (any mode); mouse_sgr_flag = it negotiated the SGR (1006) encoding. Together they let the
+// client translate a swipe into wheel events the app scrolls on (sendWheel) instead of a dead swipe.
 export async function paneInfo(paneId) {
   const out = await runTmux(['display-message', '-p', '-t', paneId,
-    '#{pane_width}\t#{pane_height}\t#{cursor_x}\t#{cursor_y}\t#{cursor_flag}\t#{alternate_on}']);
-  const [width, height, cx, cy, cflag, alt] = out.trim().split('\t');
+    '#{pane_width}\t#{pane_height}\t#{cursor_x}\t#{cursor_y}\t#{cursor_flag}\t#{alternate_on}\t#{mouse_any_flag}\t#{mouse_sgr_flag}']);
+  const [width, height, cx, cy, cflag, alt, mAny, mSgr] = out.trim().split('\t');
   return {
     width: Number(width), height: Number(height),
     cursorX: Number(cx), cursorY: Number(cy), cursorVisible: cflag === '1',
-    altScreen: alt === '1',
+    altScreen: alt === '1', mouseAware: mAny === '1', mouseSgr: mSgr === '1',
   };
+}
+
+// Inject mouse-wheel scroll events so a full-screen app on the ALT screen scrolls itself — exactly what a
+// desktop wheel does. dir 'up' scrolls toward earlier content (SGR button 64), 'down' toward later (65);
+// `count` notches go out in ONE send-keys as a repeated escape run. Only meaningful when the app requested
+// mouse reporting — the CALLER MUST verify paneInfo().mouseAware first, or these escape bytes land in the
+// shell as literal text. `sgr` picks the 1006 encoding the app negotiated (else the legacy X10 form);
+// `col`/`row` are the 1-based pointer position the event reports at (the pane centre — irrelevant to a lone
+// full-screen app, but lets a split-aware app scroll the region under the finger).
+export async function sendWheel(paneId, dir, count, opts = {}) {
+  await runTmux(['send-keys', '-t', paneId, '-l', '--', wheelSeq(dir, count, opts)]);
+}
+
+// Pure: build the terminal byte run for `count` wheel notches (kept separate so the encoding is unit-
+// tested without spawning tmux). `count` is clamped to 1..60 (one flick shouldn't inject hundreds).
+export function wheelSeq(dir, count, { sgr = true, col = 1, row = 1 } = {}) {
+  const n = Math.min(Math.max(Math.trunc(Number(count)) || 1, 1), 60);
+  const btn = dir === 'up' ? 64 : 65;
+  const c = Math.max(1, Math.trunc(col) || 1);
+  const r = Math.max(1, Math.trunc(row) || 1);
+  const unit = sgr
+    ? `\x1b[<${btn};${c};${r}M`
+    // legacy X10: ESC [ M  <btn+32> <col+32> <row+32>, each coordinate byte capped at 223.
+    : `\x1b[M${String.fromCharCode(btn + 32, Math.min(c, 223) + 32, Math.min(r, 223) + 32)}`;
+  return unit.repeat(n);
 }
 
 // Resolve a pane to its tmux session name + window for routing a notification back to it. The hook

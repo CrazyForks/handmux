@@ -5,7 +5,7 @@ import {
   isPaneId, isWindowId, isSessionId, isValidSessionName,
   listSessions, listWindows, listPanes, listPaneIds, capturePane, paneInfo, paneLocation, sendText, sendEnter,
   resizeWindow, restoreWindowSize, newSession, paneCurrentPath, newWindow,
-  renameSession, renameWindow, sessionWindowCount, killWindow, swapWindows,
+  renameSession, renameWindow, sessionWindowCount, killWindow, swapWindows, wheelSeq,
 } from '../src/tmux/commands.js';
 
 const execFile = promisify(_execFile);
@@ -83,7 +83,8 @@ describe('tmux commands (integration)', () => {
     const info = await paneInfo(pane);
     expect(info.width).toBe(80);
     expect(info.height).toBe(24);
-    expect(info.altScreen).toBe(false); // a plain shell isn't on the alternate screen
+    expect(info.altScreen).toBe(false); // a plain shell isn't on the alternate screen…
+    expect(info.mouseAware).toBe(false); // …nor is it reporting mouse
   });
 
   // Named guard for the tmux capture behaviours the terminal rendering depends on (CLAUDE.md). If a tmux
@@ -304,5 +305,28 @@ describe('name self-guard', () => {
   it('renameSession/renameWindow reject an invalid name without calling tmux', async () => {
     await expect(renameSession('$0', 'bad name')).rejects.toThrow(/invalid/);
     await expect(renameWindow('@0', '会话')).rejects.toThrow(/invalid/);
+  });
+});
+
+describe('wheelSeq (mouse-wheel byte encoding)', () => {
+  const ESC = '\x1b';
+  it('SGR: wheel-up is button 64, down is 65, at the given 1-based position', () => {
+    expect(wheelSeq('up', 1, { sgr: true, col: 40, row: 12 })).toBe(`${ESC}[<64;40;12M`);
+    expect(wheelSeq('down', 1, { sgr: true, col: 40, row: 12 })).toBe(`${ESC}[<65;40;12M`);
+  });
+  it('repeats the escape run once per notch (count clamped to 1..60)', () => {
+    expect(wheelSeq('down', 3, { sgr: true, col: 1, row: 1 })).toBe(`${ESC}[<65;1;1M`.repeat(3));
+    expect(wheelSeq('down', 0, { sgr: true }).match(/M/g)).toHaveLength(1);   // 0 → 1
+    expect(wheelSeq('down', 999, { sgr: true }).match(/M/g)).toHaveLength(60); // capped
+  });
+  it('legacy X10: ESC [ M with button/coords offset by 32, coords capped at 223', () => {
+    // wheel-down = 65 (+32 = 97); col 40 (+32 = 72); row 12 (+32 = 44)
+    expect(wheelSeq('down', 1, { sgr: false, col: 40, row: 12 }))
+      .toBe(`${ESC}[M` + String.fromCharCode(97, 72, 44));
+    const capped = wheelSeq('up', 1, { sgr: false, col: 500, row: 500 });
+    expect(capped).toBe(`${ESC}[M` + String.fromCharCode(64 + 32, 223 + 32, 223 + 32));
+  });
+  it('clamps a non-positive position to 1', () => {
+    expect(wheelSeq('up', 1, { sgr: true, col: 0, row: -5 })).toBe(`${ESC}[<64;1;1M`);
   });
 });
