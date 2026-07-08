@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-08
+
 ### Fixed
 - **File browser refreshes its listing when you reopen the sheet.** The sheet stays mounted while
   minimized, so reopening to the same directory kept showing the listing captured on first open. Both the
