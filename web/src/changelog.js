@@ -11,6 +11,21 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.11.0',
+    date: '2026-07-08',
+    highlight: { zh: '国内可用隧道 natapp/cpolar · 配置向导重做', en: 'China-usable tunnels · setup redesigned' },
+    items: {
+      zh: [
+        '新增两条国内可用的隧道 natapp 和 cpolar:当 Cloudflare 在国内不稳定时,用你自己的免费账号就能把手机连到电脑。只要一个 authtoken;想要固定地址就填公网地址,留空则用免费临时域名;cpolar 的客户端还会自动下载。',
+        '`handmux setup` 重做成菜单式向导:每项设置一行、直接显示当前值,想改哪项就点哪项,不用再一路问到底。连接分两级——先选隧道类型,再进去配它的参数;推送、语音也各成小面板。第一次用会一步步带你走,默认落在「直连」并停在「保存并启动」,小白也能顺下来。',
+      ],
+      en: [
+        'Two China-usable tunnels, natapp and cpolar: when Cloudflare is unreliable inside mainland China, reach your computer from your phone using your own free account. Just an authtoken; add a public URL for a fixed address or leave it blank for a free temporary one — and cpolar\'s client auto-downloads.',
+        '`handmux setup` is now a menu-style wizard: every setting is a row showing its current value, so you jump straight to what you want to change instead of answering every prompt in order. Connection is two levels — pick the tunnel type, then configure it inside; push and voice are their own mini-panels. A first run walks you through it, defaulting to "Direct" with the cursor on "Save & start".',
+      ],
+    },
+  },
+  {
     version: '0.10.0',
     date: '2026-07-06',
     highlight: { zh: '升级前预览新功能 · 电脑 handmux open 接管', en: 'Preview an update before installing · handmux open' },
