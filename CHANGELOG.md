@@ -4,6 +4,12 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Fixed
+- **CLI crashed on Node 18** — the 0.11.0 setup menu's prompt library (`@clack/prompts` 1.7) uses
+  `util.styleText`, which only exists from Node 20.12, so `import` died before any command ran.
+  Pinned to 0.11.0 — the last release without that import (every 1.x has it top-level); the prompt
+  API we use is identical. CI now also tests Node 22.
+
 ## [0.11.0] - 2026-07-08
 
 ### Fixed
