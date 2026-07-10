@@ -158,6 +158,20 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
         </div>
 
 
+        {/* Feedback entries: GitHub Issues is the tracked channel (always shown); the WeChat user
+            group is Chinese-speaking, so its link only renders on zh locales. Both open externally —
+            the QR lives on the site (one place to update, no app redeploy when it rotates). */}
+        <div className="settings-section">
+          <div className="settings-label">{t('settings.feedback')}</div>
+          <div className="settings-btns">
+            <a className="fontbtn settings-linkbtn" href="https://github.com/handmux/handmux/issues" target="_blank" rel="noreferrer">{t('settings.feedback_issues')}</a>
+            {getLangCode().startsWith('zh') && (
+              <a className="fontbtn settings-linkbtn" href="https://handmux.com/#community" target="_blank" rel="noreferrer">{t('settings.feedback_group')}</a>
+            )}
+          </div>
+          <div className="settings-hint">{t('settings.feedback_hint')}</div>
+        </div>
+
         <div className="settings-section">
           <div className="settings-label">{t('settings.push_notifications')}</div>
           {pushSupported() ? (

@@ -70,6 +70,10 @@ No tunnel by default — the phone connects **straight to your own computer**, n
 
 Your computer needs **Node ≥ 18** and **tmux ≥ 3.0**; the phone just needs a browser. On **Windows**, run it inside **WSL2** (a real Linux kernel + real tmux) — see the [docs](https://handmux.com/docs#windows).
 
+## Feedback & community
+
+Hit a bug, or wish handmux did something? [**Open an issue**](https://github.com/handmux/handmux/issues) — that's the channel that actually gets tracked (Chinese or English both welcome). Users in China can also join the [**WeChat user group**](https://handmux.com/#community).
+
 ## More
 
 **[📖 Docs](https://handmux.com/docs)** · **[📝 Changelog](CHANGELOG.md)** · **[🔒 Security](SECURITY.md)** · License **AGPL-3.0**

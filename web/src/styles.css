@@ -42,6 +42,8 @@ body { font-family: -apple-system, system-ui, sans-serif; background: #1a1b1e; c
 .session-name { font-weight: 600; margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fontbtn { min-width: 36px; padding: 4px 10px; border: none; border-radius: 8px; background: #33353a; color: #e6e6e6; font-size: 14px; touch-action: manipulation; }
 .fontbtn[aria-pressed="true"] { background: #2a4060; color: #7ab4f5; }
+/* An <a> wearing the fontbtn skin (Settings feedback links): kill anchor styling so it reads as a button. */
+a.settings-linkbtn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; box-sizing: border-box; }
 /* Topbar file + settings icons: frameless monochrome line icons in the chrome's grey, sized to sit
    level with the ☰ glyph. stroke=currentColor picks up this color. */
 .topbar-icon { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; border: none; background: none; color: #e6e6e6; touch-action: manipulation; }

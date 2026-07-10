@@ -14,6 +14,10 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   left it (最近 stays 最近), and a doc opened directly just hides the sheet in one press.
 
 ### Added
+- **Feedback channels, linked from everywhere.** Settings gains a 反馈与交流 section — GitHub Issues
+  (always) and the WeChat user group (zh locales) — and the same two channels are now in both READMEs,
+  the landing page (new #community section with the group QR), the docs (Feedback section), and the
+  GitHub issue chooser. The QR image lives only on the site, so rotating it never needs an app release.
 - **The chat composer's unsent draft survives leaving the app.** Whatever is typed in the chat box is
   mirrored to local storage on every keystroke and written back into the box on the next open — so an
   accidental swipe-away, a tab kill, or a crash no longer eats a half-written prompt. Sending (or 填入)

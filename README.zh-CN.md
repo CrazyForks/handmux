@@ -70,6 +70,10 @@ handmux start --tunnel cloudflare   # 即时公网地址(自动装 cloudflared)
 
 电脑需 **Node ≥ 18** 与 **tmux ≥ 3.0**;手机只要浏览器。**Windows** 请装进 **WSL2**(真 Linux 内核 + 真 tmux)——见 [文档](https://handmux.com/docs#windows)。
 
+## 反馈与交流
+
+遇到 bug、或者希望 handmux 多干点什么?[**发个 Issue**](https://github.com/handmux/handmux/issues)——这是真正会被跟踪处理的渠道(中英文都行)。也欢迎加入[**用户微信群**](https://handmux.com/#community),反馈直达、用法交流。
+
 ## 更多
 
 **[📖 文档](https://handmux.com/docs)** · **[📝 更新日志](CHANGELOG.md)** · **[🔒 安全](SECURITY.md)** · 许可证 **AGPL-3.0**
