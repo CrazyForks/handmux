@@ -72,7 +72,9 @@ handmux start --tunnel cloudflare   # 即时公网地址(自动装 cloudflared)
 
 ## 反馈与交流
 
-遇到 bug、或者希望 handmux 多干点什么?[**发个 Issue**](https://github.com/handmux/handmux/issues)——这是真正会被跟踪处理的渠道(中英文都行)。也欢迎加入[**用户微信群**](https://handmux.com/#community),反馈直达、用法交流。
+遇到 bug、或者希望 handmux 多干点什么?[**发个 Issue**](https://github.com/handmux/handmux/issues)——这是真正会被跟踪处理的渠道(中英文都行)。也欢迎加入**用户微信群**,反馈直达、用法交流:
+
+<img src="https://handmux.com/wechat-qr.png" alt="微信用户群:扫码加作者微信,备注 handmux" width="180">
 
 ## 更多
 
