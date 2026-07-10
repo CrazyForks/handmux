@@ -4,6 +4,12 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Fixed
+- **README banner's bottom corners are now rounded.** At an exact window==card fit, headless Chrome
+  clipped the card's bottom rounding, so the lower two corners rendered square while the top two were
+  round. The banner is now a fixed-size card centered in a taller window and centre-cropped back, so
+  all four corners round.
+
 ## [0.12.1] - 2026-07-11
 
 ### Changed
