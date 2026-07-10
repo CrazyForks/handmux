@@ -7,7 +7,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ### Changed
 - **New app icon / brand logo.** Swapped in a new glowing terminal-window mark and regenerated
   every raster icon from it — PWA/home-screen `icon-192`/`icon-512`, the 180px `apple-touch-icon`,
-  and the landing-page header mark (`site/logo-mark.png`, shown as a rounded app chip). The OG /
+  the cold-launch boot splash, and the landing-page header mark (`site/logo-mark.png`, shown as a
+  rounded app chip). The OG /
   Twitter share cards (en + zh) were rebuilt around the new mark from a reusable `tools/og` template.
   The push badge and the SVG favicon are unchanged.
 
