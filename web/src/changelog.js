@@ -11,6 +11,22 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.12.1',
+    date: '2026-07-11',
+    highlight: {
+      zh: '全新品牌图标与双色字标',
+      en: 'New brand icon & two-tone wordmark',
+    },
+    items: {
+      zh: [
+        '焕新品牌:全新的发光终端图标(主屏图标、启动页都换了)+ 圆润的双色「handmux」字标(hand 白、mux 青→绿),官网、分享卡和 README 也一并更新。',
+      ],
+      en: [
+        'Brand refresh: a new glowing terminal app icon (home-screen icon + boot splash) and a rounded two-tone "handmux" wordmark (hand in white, mux teal→green), with the site, share cards, and README updated to match.',
+      ],
+    },
+  },
+  {
     version: '0.12.0',
     date: '2026-07-11',
     highlight: {
