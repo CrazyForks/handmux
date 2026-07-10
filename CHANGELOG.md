@@ -18,18 +18,18 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   mirrored to local storage on every keystroke and written back into the box on the next open — so an
   accidental swipe-away, a tab kill, or a crash no longer eats a half-written prompt. Sending (or 填入)
   clears the stored draft along with the box.
-- **Swipe now scrolls full-screen apps (vim / htop / less / mouse-mode TUIs), and every full-screen pane
-  gets ⇞ / ⇟ pager buttons.** Those apps run on the terminal's alternate screen, which has no scrollback —
-  so a vertical swipe used to have nothing to move and instead nudged the browser page a little (the nav
-  chrome peeking in on old iOS). Now, when the app is reporting mouse (the usual case — mouse mode on), a
-  vertical drag is forwarded to it as mouse-wheel events and the app scrolls itself, exactly like a desktop
-  wheel; the scrolled frame repaints immediately. When the app is *not* mouse-reporting (a swipe can't be
-  mapped safely — arrow keys would move the cursor), the drag is swallowed (no more stray page-scroll) with a
-  brief hint. Either way, two floating **⇞ / ⇟** buttons on the right edge give precise page-up/down in any
-  full-screen app. On the normal screen, swipe-scroll through the captured scrollback is unchanged.
-  Implemented server-side by reporting the pane's mouse state (`#{mouse_any_flag}` / `#{mouse_sgr_flag}`) and
-  injecting wheel events through a new `POST /api/scroll` — which re-checks mouse mode before injecting, so
-  the escape bytes can never leak into a shell as literal text.
+- **Swipe now scrolls full-screen apps (vim / htop / less / mouse-mode TUIs), plus a page up/down button.**
+  Those apps run on the terminal's alternate screen, which has no scrollback — so a vertical swipe used to
+  have nothing to move and instead nudged the browser page a little (the nav chrome peeking in on old iOS).
+  Now a vertical drag is forwarded to the app as scroll input: when it's reporting mouse (the usual case —
+  mouse mode on), as real mouse-wheel events it scrolls on exactly like a desktop wheel; otherwise as arrow
+  keys, which scroll any pager (less / man / git log) line-by-line (in an editor arrows move the cursor
+  instead — the deliberate trade-off for making the common pager case swipe-scroll). The scrolled frame
+  repaints immediately. A floating page up/down control (frosted capsule, right edge) is shown on every
+  full-screen pane for precise, always-available paging. On the normal screen, swipe-scroll through the
+  captured scrollback is unchanged. Server-side: the pane reports its mouse state (`#{mouse_any_flag}` /
+  `#{mouse_sgr_flag}`) and a new `POST /api/scroll` injects wheel events — re-checking mouse mode before
+  injecting so the escape bytes can never leak into a shell as literal text.
 
 ## [0.11.1] - 2026-07-09
 

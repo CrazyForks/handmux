@@ -58,14 +58,12 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
   const selHintTimerRef = useRef(null);
   // Alt-screen (a full-screen app: vim/htop/less/a mouse-mode TUI) has no scrollback of its own, so a
   // vertical swipe can't scroll it the ordinary way. altScreenRef tracks the pane's state (set each poll
-  // from the server's `alt` flag). When the app is ALSO reporting mouse (mouseAwareRef), a swipe is
-  // translated into wheel events the app scrolls on (see the vertical branch below); otherwise the drag is
-  // swallowed and altHint flashes. altScreen (state) drives the always-available PgUp/PgDn pager buttons.
+  // from the server's `alt` flag); a swipe over such a pane is forwarded to the app as scroll input it
+  // understands — wheel events when it reports mouse (mouseAwareRef), else arrow keys (see flushWheel /
+  // the vertical branch). altScreen (state) drives the always-available page up/down pager buttons.
   const altScreenRef = useRef(false);
   const mouseAwareRef = useRef(false);
   const [altScreen, setAltScreen] = useState(false);
-  const [altHint, setAltHint] = useState(false);
-  const altHintTimerRef = useRef(null);
   const [dbg, setDbg] = useState(''); // cols×rows·font readout, flashed on ⊟/⊞ then hidden
   const [dbgVisible, setDbgVisible] = useState(false);
   const flashHideRef = useRef(null);
@@ -410,13 +408,6 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       setSelHint(false);
       term.clearSelection();
     };
-    // Flash the alt-screen hint (a full-screen app can't be swipe-scrolled); auto-fades, re-armed per swipe.
-    const flashAltHint = () => {
-      setAltHint(true);
-      clearTimeout(altHintTimerRef.current);
-      altHintTimerRef.current = setTimeout(() => setAltHint(false), 2600);
-    };
-
     // Touch handling (capture phase):
     //  - two fingers  → pinch to change the terminal font size (our render only);
     //  - long press   → start an in-terminal text selection, drag to extend (see selecting);
@@ -472,15 +463,18 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       flingRAF = requestAnimationFrame(frame);
     };
 
-    // Alt-screen + mouse-reporting app: translate the vertical drag into wheel notches the app scrolls on.
+    // Alt-screen swipe-to-scroll: translate the vertical drag into `count` line-notches the app scrolls on.
     // We accumulate finger travel (wheelAccum, px) and emit one notch per WHEEL_PX; notches are coalesced
-    // (wheelPending) and sent in batched /scroll calls — one in flight at a time — so a fast flick becomes a
-    // couple of multi-line requests, not dozens. After each send we poke the poll loop so the scrolled frame
-    // repaints at once (the pane is poll-and-repainted; without the poke the jump would lag up to a tick).
-    const WHEEL_PX = 22;   // finger travel per wheel notch — ~one text row, tuned for a natural drag feel
+    // (wheelPending) and sent one request at a time — so a fast flick becomes a couple of multi-line requests,
+    // not dozens. HOW they're sent depends on the app: a mouse-reporting app gets real wheel events (/scroll,
+    // which it scrolls on and ignores if it can't); a non-mouse app gets arrow keys instead — Up/Down scroll
+    // any pager (less/man/git log) line-by-line (in an editor they move the cursor, the accepted trade-off).
+    // After each send we poke the poll loop so the scrolled frame repaints at once (poll-and-repaint would
+    // otherwise lag the jump up to a tick).
+    const WHEEL_PX = 22;   // finger travel per notch — ~one text row, tuned for a natural drag feel
     let wheelAccum = 0;    // unsent finger travel, px (+ = finger moved down the screen)
     let wheelPrevY = 0;    // last sampled clientY, for the incremental delta
-    let wheelPending = 0;  // notches queued while a request is in flight (+ = wheel up / toward earlier)
+    let wheelPending = 0;  // notches queued while a request is in flight (+ = toward earlier content)
     let wheelBusy = false;
     const flushWheel = async () => {
       if (wheelBusy || wheelPending === 0) return;
@@ -488,8 +482,11 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       const dir = notchDir(wheelPending);
       const n = Math.min(Math.abs(wheelPending), 40);
       wheelPending = 0;
-      try { await scrollPane(pane, dir, n); wakeRef.current?.(); } // repaint immediately so the jump shows
-      catch { /* transient (offline/timeout) — the next drag retries; nothing to undo */ }
+      try {
+        if (mouseAwareRef.current) await scrollPane(pane, dir, n);
+        else await sendKeys(pane, Array(n).fill(dir === 'up' ? 'Up' : 'Down'));
+        wakeRef.current?.(); // repaint immediately so the jump shows
+      } catch { /* transient (offline/timeout) — the next drag retries; nothing to undo */ }
       finally { wheelBusy = false; if (wheelPending !== 0) flushWheel(); }
     };
 
@@ -570,22 +567,16 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       } else { // axis === -1 vertical
         if (altScreenRef.current) {
           // Alt-screen (full-screen app): no scrollback to move, and letting the drag fall through only
-          // scrolls the browser page (chrome peeks in on old iOS). Always swallow it.
+          // scrolls the browser page (chrome peeks in on old iOS). Always swallow it, and forward the drag
+          // as scroll input (wheel events or arrow keys — flushWheel picks by mouse mode). The travel→notch
+          // conversion + finger-direction mapping lives in drainWheel.
           e.preventDefault();
           e.stopPropagation();
-          if (mouseAwareRef.current) {
-            // App is mouse-reporting → forward the drag as wheel notches; the app scrolls itself. The
-            // travel→notch conversion (incl. the finger-direction mapping) lives in drainWheel.
-            const cy = e.touches[0].clientY;
-            const { notches, rem } = drainWheel(wheelAccum + (cy - wheelPrevY), WHEEL_PX);
-            wheelAccum = rem;
-            wheelPrevY = cy;
-            if (notches) { wheelPending += notches; flushWheel(); }
-          } else {
-            // Not mouse-reporting → can't scroll by gesture (arrow keys would move the cursor, not scroll).
-            // Flash a hint; the always-present PgUp/PgDn pager buttons are the way to scroll here.
-            flashAltHint();
-          }
+          const cy = e.touches[0].clientY;
+          const { notches, rem } = drainWheel(wheelAccum + (cy - wheelPrevY), WHEEL_PX);
+          wheelAccum = rem;
+          wheelPrevY = cy;
+          if (notches) { wheelPending += notches; flushWheel(); }
           return;
         }
         // Normal screen: let xterm own the 1:1 drag (don't preventDefault/stopPropagation — cutting xterm
@@ -804,7 +795,6 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       stopFling();
       if (timer) clearTimeout(timer);
       clearTimeout(selHintTimerRef.current);
-      clearTimeout(altHintTimerRef.current);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('resize', onResize);
       window.removeEventListener('orientationchange', onResize);
@@ -878,11 +868,19 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       {connected && scrollInfo && <div className="term-banner term-banner--hist">{scrollInfo}</div>}
       {scrollInfo && <button className="new-output" onClick={resume}>↓ 回到底部</button>}
       {selHint && <div className="sel-hint">按住拖动选择文字，松手后点「复制」</div>}
-      {altHint && !selHint && <div className="sel-hint">全屏程序 · 滑动不能滚动,用右侧 ⇞ ⇟ 翻页</div>}
       {altScreen && (
-        <div className="term-pager">
-          <button type="button" className="term-pager-btn" aria-label="上翻页" onClick={() => pageScroll('up')}>⇞</button>
-          <button type="button" className="term-pager-btn" aria-label="下翻页" onClick={() => pageScroll('down')}>⇟</button>
+        <div className="term-pager" role="group" aria-label="翻页">
+          <button type="button" className="term-pager-btn" aria-label="上翻页" onClick={() => pageScroll('up')}>
+            <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+              <path d="M6 14.5l6-6 6 6" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <span className="term-pager-div" aria-hidden="true" />
+          <button type="button" className="term-pager-btn" aria-label="下翻页" onClick={() => pageScroll('down')}>
+            <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+              <path d="M6 9.5l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
         </div>
       )}
       {copyBtn && (
