@@ -10,7 +10,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   cold-launch boot splash, the landing-page header mark (`site/logo-mark.png`, a rounded app chip),
   the browser-tab favicon (`site/favicon.svg`, now the new mark), and the OG /
   Twitter share cards (en + zh, rebuilt from a reusable `tools/og` template). The push badge (a
-  monochrome notification silhouette) is unchanged.
+  monochrome notification silhouette) is unchanged. The home-screen icon ships as both an `any`
+  variant (full-bleed art for iOS / desktop) and a dedicated `maskable` variant with a safe-zone
+  margin, so Android's adaptive-icon masking no longer crops or over-enlarges it.
 - **Brand wordmark.** A two-tone “handmux” wordmark — rounded, single-story-a (self-hosted Fredoka),
   `hand` in white and `mux` in a teal→green gradient — now stands in for the old solid green pill and
   is used consistently across the landing header + footer, the OG / Twitter share cards, and the
