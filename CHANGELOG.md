@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-07-11
+
 ### Fixed
 - **Back from a doc preview now retraces how you actually got there — and never exits the app.** Back
   used to force any open preview to the 目录 page of that file's directory, even when you never browsed
