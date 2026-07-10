@@ -1,4 +1,4 @@
-<h1 align="center">handmux</h1>
+<p align="center"><img src="assets/readme-banner.png" alt="handmux" width="420"></p>
 
 <p align="center"><b>English</b> · <a href="README.zh-CN.md">中文</a></p>
 

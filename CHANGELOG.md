@@ -16,6 +16,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   is used consistently across the landing header + footer, the OG / Twitter share cards, and the
   app's cold-launch boot splash. On the landing pages it's preloaded and set `font-display: block` so
   it paints in Fredoka directly, with no flash of a fallback font first.
+- **README title is now the brand banner.** Both READMEs (en + zh) swap the plain-text `handmux`
+  heading for a rendered banner (rounded terminal mark + the Fredoka two-tone wordmark on a dark card)
+  — GitHub strips CSS + web-fonts from READMEs, so the branded title can only ship as an image.
 
 ## [0.12.0] - 2026-07-11
 
