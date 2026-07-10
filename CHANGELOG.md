@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-07-11
+
 ### Changed
 - **New app icon / brand logo.** Swapped in a new glowing terminal-window mark and regenerated every
   brand surface from it — PWA/home-screen `icon-192`/`icon-512`, the 180px `apple-touch-icon`, the
