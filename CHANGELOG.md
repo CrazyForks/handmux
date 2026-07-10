@@ -11,10 +11,11 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   the browser-tab favicon (`site/favicon.svg`, now the new mark), and the OG /
   Twitter share cards (en + zh, rebuilt from a reusable `tools/og` template). The push badge (a
   monochrome notification silhouette) is unchanged.
-- **Landing-page wordmark.** The header brand chip is now a two-tone “handmux” wordmark — rounded,
-  single-story-a (self-hosted Fredoka), `hand` in white and `mux` in a teal→green gradient — set
-  beside the app-icon mark, replacing the solid green pill. Preloaded and `font-display: block` so it
-  paints in Fredoka directly, with no flash of a fallback font first.
+- **Brand wordmark.** A two-tone “handmux” wordmark — rounded, single-story-a (self-hosted Fredoka),
+  `hand` in white and `mux` in a teal→green gradient — now stands in for the old solid green pill and
+  is used consistently across the landing header + footer, the OG / Twitter share cards, and the
+  app's cold-launch boot splash. On the landing pages it's preloaded and set `font-display: block` so
+  it paints in Fredoka directly, with no flash of a fallback font first.
 
 ## [0.12.0] - 2026-07-11
 
