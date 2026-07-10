@@ -6,6 +6,7 @@ import FavDrawer from './FavDrawer.jsx';
 import CmdFavEditor from './CmdFavEditor.jsx';
 import MicButton from './MicButton.jsx';
 import { loadFavs, cmdScope } from '../favStore.js';
+import { getChatDraft, setChatDraft } from '../storage.js';
 import { UPLOAD_ACCEPT, splitUploadable } from '../uploadTypes.js';
 import { ArrowUpIcon, UploadIcon, ClockIcon, KeyboardIcon, GearIcon } from './icons.jsx';
 import { usePushToTalk } from '../voice/usePushToTalk.js';
@@ -94,7 +95,11 @@ function BottomDock({
   pane, onAuthFail, onKey, onText, cwd = null, agent = null, windowId = null,
   recent = [], onSent, onRemoveRecent, inset = 0,
 }, fwdRef) {
-  const [value, setValue] = useState('');
+  // The composer restores its unsent draft across an app exit/kill: seeded from storage, mirrored on
+  // every change (send/fill set '' → the stored draft clears with it). The mount-time autoGrow +
+  // pager ResizeObserver below already size a restored multi-line draft correctly.
+  const [value, setValue] = useState(() => getChatDraft());
+  useEffect(() => { setChatDraft(value); }, [value]);
   const [multi, setMulti] = useState(false); // composer grew past one line → full-width text, mic/send overlay bottom-right
   const [crowd, setCrowd] = useState(false); // last text line would run under the overlaid buttons → reserve a bottom strip
   const [panelOpen, setPanelOpen] = useState(false);

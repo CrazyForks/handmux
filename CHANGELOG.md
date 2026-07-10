@@ -14,6 +14,10 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   left it (最近 stays 最近), and a doc opened directly just hides the sheet in one press.
 
 ### Added
+- **The chat composer's unsent draft survives leaving the app.** Whatever is typed in the chat box is
+  mirrored to local storage on every keystroke and written back into the box on the next open — so an
+  accidental swipe-away, a tab kill, or a crash no longer eats a half-written prompt. Sending (or 填入)
+  clears the stored draft along with the box.
 - **Swipe now scrolls full-screen apps (vim / htop / less / mouse-mode TUIs), and every full-screen pane
   gets ⇞ / ⇟ pager buttons.** Those apps run on the terminal's alternate screen, which has no scrollback —
   so a vertical swipe used to have nothing to move and instead nudged the browser page a little (the nav

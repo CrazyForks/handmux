@@ -12,6 +12,7 @@ const INBOX_READ_TS_KEY = 'tw_inbox_read_ts'; // server-ts high-water mark: done
 const BROWSE_DIR_KEY = 'tw_browse_dir';     // { [windowId]: absPath } — last browsed dir per window (file sheet)
 const PREVIEW_DIR_KEY = 'tw_preview_dir';   // { [windowId]: absPath } — last static-preview dir per window
 const STARTUP_CMD_KEY = 'tw_startup_cmd';   // last startup command chosen in new window/session (e.g. "claude")
+const CHAT_DRAFT_KEY = 'tw_chat_draft';     // the chat composer's unsent text — survives an app exit/kill
 const IDEAS_KEY = 'tw_ideas';               // { [sessionName]: { [windowName]: Idea[] } } — per-window todo list
 const CHANGELOG_SEEN_KEY = 'tw_changelog_seen'; // the latest changelog entry id (v) the user has opened
 const VERSION_SEEN_KEY = 'tw_version_seen';     // the npm "latest" version already acknowledged in Settings
@@ -124,6 +125,14 @@ export function getFont() {
 export const setFont = (n) => localStorage.setItem(FONT_KEY, String(n));
 // Drop the manual size so the terminal returns to height auto-fit.
 export const clearFont = () => localStorage.removeItem(FONT_KEY);
+
+// Chat composer draft — mirrored on every change (send/fill clear the box, which removes the key),
+// so whatever was typed when the app was killed comes back on the next open.
+export const getChatDraft = () => localStorage.getItem(CHAT_DRAFT_KEY) || '';
+export const setChatDraft = (v) => {
+  if (v) localStorage.setItem(CHAT_DRAFT_KEY, v);
+  else localStorage.removeItem(CHAT_DRAFT_KEY);
+};
 
 // Favorite commands — a global, user-curated list (no session scoping), stored as a plain array
 // like the bound-session names.

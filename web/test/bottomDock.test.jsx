@@ -56,6 +56,25 @@ describe('BottomDock', () => {
     expect(container.querySelector('.keyrow-enter')).toBeNull();
   });
 
+  // 草稿本地暂存:无论 App 因何退出,输入框里的未发送文字下次打开自动写回。
+  it('restores an unsent chat draft on mount, and clears the stored draft after send', async () => {
+    localStorage.setItem('tw_chat_draft', '写到一半的想法');
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    expect(container.querySelector('.input-text').value).toBe('写到一半的想法'); // draft came back
+    fire(container.querySelector('.input-send'), 'pointerdown');
+    await act(async () => {
+      container.querySelector('.input-send').dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+    });
+    expect(sendText).toHaveBeenCalledWith('%1', '写到一半的想法', true);
+    expect(localStorage.getItem('tw_chat_draft')).toBeNull(); // sent → stored draft gone
+  });
+
+  it('mirrors every keystroke into the stored draft', () => {
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    typeInto(container.querySelector('.input-text'), '还没发的话');
+    expect(localStorage.getItem('tw_chat_draft')).toBe('还没发的话');
+  });
+
   it('a tap on the 发送 ↑ submits the typed text with enter=true', async () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
     typeInto(container.querySelector('.input-text'), 'ls -la');
