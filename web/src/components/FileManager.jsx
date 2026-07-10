@@ -34,38 +34,45 @@ export default function FileManager({ open, pane, windowId, tabs, active, onActi
   const seededForRef = useRef(null); // windowId we've already seeded for this open (null when closed)
 
   // ── Layered Back ──────────────────────────────────────────────────────────────────────────────
-  // Hardware/browser Back steps back ONE level instead of nuking the whole sheet (mirrors GitPanel):
-  //   • previewing a file (a doc tab is active) → return to THAT file's directory in the browser;
-  //   • browsing a subdir → return to the previous path (a retraced nav history);
-  //   • at the base → close the sheet.
-  // We mirror the depth into browser history — one entry for the open sheet, one per dir nav, one
-  // when a file opens into a preview. popstate only *reads* state + decrements a counter (never
-  // pushState()s inside the handler — some Android WebViews drop that, unbalancing history). Refs
-  // keep the popstate closure (bound once on open) reading live values.
+  // Hardware/browser Back RETRACES the user's actual forward path, one recorded action at a time
+  // (mirrors GitPanel): each dir move and each preview opened from inside the sheet pushes an action;
+  // Back pops and reverses it (doc → home exactly as it was, nav → the previous path). A doc opened
+  // DIRECTLY (sheet was closed — e.g. a terminal link or a recent) records nothing beyond the base,
+  // so Back simply hides the sheet — it never invents a "file's directory" level the user was never
+  // at (doing so consumed the only history entry and made the NEXT Back exit the app).
+  // We mirror the stack into browser history — one entry for the open sheet plus one per action.
+  // popstate only *reads* state + decrements a counter (never pushState()s inside the handler — some
+  // Android WebViews drop that, unbalancing history). Refs keep the popstate closure (bound once per
+  // open) reading live values.
   const browsePathRef = useRef(browsePath); browsePathRef.current = browsePath;
   const activeRef = useRef(active); activeRef.current = active;
   const windowIdRef = useRef(windowId); windowIdRef.current = windowId;
   const onMinimizeRef = useRef(onMinimize); onMinimizeRef.current = onMinimize;
   const onActivateRef = useRef(onActivate); onActivateRef.current = onActivate;
   const prevActiveRef = useRef(active); // last active tab — to spot a home→doc transition (a preview opening)
-  const depthRef = useRef(0);           // # of our live history entries (base + dir navs + previews)
-  const histRef = useRef([]);           // browse-dir back stack: each { prev } = the path we left FROM
+  const depthRef = useRef(0);           // # of our live history entries (base + recorded actions)
+  const histRef = useRef([]);           // action stack: { type:'nav', prev } dir move | { type:'doc' } preview opened
   const pushHist = () => { window.history.pushState({ fileOverlay: true }, ''); depthRef.current += 1; };
 
   // Persist every directory the browser lands on, keyed by window → next open returns here. A real
   // move (new path) also records where we came from and mirrors one history entry so Back retraces.
   const onNavigate = (absPath) => {
-    if (open && absPath !== browsePathRef.current) { histRef.current.push({ prev: browsePathRef.current }); pushHist(); }
+    if (open && absPath !== browsePathRef.current) { histRef.current.push({ type: 'nav', prev: browsePathRef.current }); pushHist(); }
     setBrowsePath(absPath);
     setBrowseDir(windowId, absPath);
   };
 
-  // A file opening into a preview (home→doc) is one more back-level. Returning to home (our own Back,
-  // or a tab tap) never pushes; the initial mount (prev === active) doesn't either.
+  // A file opening into a preview FROM INSIDE the sheet (home→doc while already open) is one more
+  // back-level. A doc that opens TOGETHER with the sheet (open flips in the same commit) is a direct
+  // open — the base entry already covers it, so Back hides the sheet in one step. Returning to home
+  // (our own Back, or a tab tap) never pushes; the initial mount (prev === active) doesn't either.
+  const prevOpenRef = useRef(open);
   useEffect(() => {
     const prev = prevActiveRef.current;
     prevActiveRef.current = active;
-    if (open && prev === 'home' && active !== 'home') pushHist();
+    const wasOpen = prevOpenRef.current;
+    prevOpenRef.current = open;
+    if (open && wasOpen && prev === 'home' && active !== 'home') { histRef.current.push({ type: 'doc' }); pushHist(); }
   }, [active, open]);
 
   // popstate handler + base entry, bound once per open. Cleanup unwinds any entries we still own when
@@ -77,22 +84,17 @@ export default function FileManager({ open, pane, windowId, tabs, active, onActi
     pushHist(); // base entry for the open sheet
     const onPop = () => {
       depthRef.current = Math.max(0, depthRef.current - 1);
-      if (activeRef.current !== 'home') {                  // previewing a file → back to its directory
-        const docPath = activeRef.current;
-        const dir = docPath.slice(0, docPath.lastIndexOf('/')) || '/';
+      const entry = histRef.current.pop();
+      if (entry?.type === 'doc') {                         // preview opened from the sheet → home, as it was
         onActivateRef.current?.('home');
-        setHomeMode('browse');
-        setBrowsePath(dir);
-        setBrowseDir(windowIdRef.current, dir);
         return;
       }
-      if (histRef.current.length) {                        // browsing a subdir → previous path
-        const { prev } = histRef.current.pop();
-        setBrowsePath(prev);
-        if (prev) setBrowseDir(windowIdRef.current, prev);
+      if (entry?.type === 'nav') {                         // dir move → the previous path
+        setBrowsePath(entry.prev);
+        if (entry.prev) setBrowseDir(windowIdRef.current, entry.prev);
         return;
       }
-      onMinimizeRef.current?.();                            // at the base → close the sheet
+      onMinimizeRef.current?.();                            // at the base → hide the sheet (even mid-preview)
     };
     window.addEventListener('popstate', onPop);
     return () => {

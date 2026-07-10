@@ -4,6 +4,15 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Fixed
+- **Back from a doc preview now retraces how you actually got there — and never exits the app.** Back
+  used to force any open preview to the 目录 page of that file's directory, even when you never browsed
+  there (opened straight from a terminal link or 最近). That invented level consumed the sheet's only
+  history entry, so the NEXT Back — which should have minimized the sheet — fell out of the app
+  entirely. The sheet now records each real forward action (a dir move, a preview opened from inside
+  the sheet) and Back pops them in reverse: a doc opened from browsing returns to home exactly as you
+  left it (最近 stays 最近), and a doc opened directly just hides the sheet in one press.
+
 ### Added
 - **Swipe now scrolls full-screen apps (vim / htop / less / mouse-mode TUIs), and every full-screen pane
   gets ⇞ / ⇟ pager buttons.** Those apps run on the terminal's alternate screen, which has no scrollback —

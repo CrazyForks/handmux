@@ -130,15 +130,33 @@ describe('FileManager', () => {
     expect(base.onMinimize).toHaveBeenCalled();
   });
 
-  it('Back while previewing a file returns to that file\'s directory (not closing the sheet)', async () => {
+  it('Back on a doc opened directly (sheet was closed) minimizes — never invents a browse level', async () => {
+    // The user never browsed here: the sheet opened straight into the preview. Back must retrace the
+    // REAL path (one step: open → minimized), not force the 目录 page and strand an unbalanced history.
     const onActivate = vi.fn();
     const onMinimize = vi.fn();
+    await render({ ...base, open: false, active: 'home', windowId: '@1', onActivate, onMinimize });
+    await settle();
+    await render({ ...base, open: true, active: '/home/u/docs/nested.md', windowId: '@1', onActivate, onMinimize });
+    await settle();
+    popBack();
+    expect(onMinimize).toHaveBeenCalled();                        // direct open → Back just hides
+    expect(onActivate).not.toHaveBeenCalledWith('home');          // no forced trip to the home tab
+  });
+
+  it('Back on a doc opened from the browser returns to home as it was (retraces the path)', async () => {
+    const onActivate = vi.fn();
+    const onMinimize = vi.fn();
+    // Open on home first (sheet already open), THEN a preview activates — that's a browsed-into doc.
+    await render({ ...base, active: 'home', windowId: '@1', onActivate, onMinimize });
+    await settle();
     await render({ ...base, active: '/home/u/docs/nested.md', windowId: '@1', onActivate, onMinimize });
     await settle();
     popBack();
-    expect(onActivate).toHaveBeenCalledWith('home');              // leave the preview
-    expect(setBrowseDir).toHaveBeenCalledWith('@1', '/home/u/docs'); // land on the file's dir
+    expect(onActivate).toHaveBeenCalledWith('home');              // leave the preview → home, unchanged
     expect(onMinimize).not.toHaveBeenCalled();                    // sheet stays open
+    popBack();
+    expect(onMinimize).toHaveBeenCalled();                        // at the base → hide
   });
 
   it('Back steps to the previous path while browsing, then closes the sheet at the base', async () => {
