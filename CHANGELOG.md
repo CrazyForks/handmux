@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-07-11
+
 ### Fixed
 - **A changed app icon / manifest now actually reaches returning users.** The server was sending every
   static file — including the hand-authored, stable-URL `icons/*`, `manifest.webmanifest` and favicon —
