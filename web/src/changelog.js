@@ -11,6 +11,22 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.12.2',
+    date: '2026-07-11',
+    highlight: {
+      zh: '修复主屏图标偏大 / 换图标后不刷新',
+      en: 'Home-screen icon: right size & always fresh',
+    },
+    items: {
+      zh: [
+        '修复了「添加到主屏」的图标在安卓上偏大、以及更换图标后旧图标不刷新的问题——图标更新现在会自动生效(已加到 iPhone 主屏的需删掉重加一次)。',
+      ],
+      en: [
+        'Fixed the Add-to-Home-Screen icon looking oversized on Android and a changed icon not refreshing for returning users — icon updates now apply automatically (one already on an iOS home screen needs a one-time remove + re-add).',
+      ],
+    },
+  },
+  {
     version: '0.12.1',
     date: '2026-07-11',
     highlight: {
