@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.12.3] - 2026-07-11
+
 ### Added
 - **Name a session when taking over an orphan.** The takeover sheet now has an editable name field for a
   new session (prefilled with the same `<agent>-<dir>-1` default the server would auto-pick), and the
