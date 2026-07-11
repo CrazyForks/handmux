@@ -34,6 +34,8 @@ npm i -g handmux     # 装一次
 handmux start        # 跑起来 —— 仅本机 / 同 wifi,不对外暴露
 ```
 
+还没装 Node?macOS / Linux 上 `brew install handmux/tap/handmux` 会帮你把 Node + tmux 一并装好。(已经有 Node?用上面的 `npm` 就行,更轻。)
+
 `start` 会打印一个**二维码**(外加地址和 token)。**手机扫它**——token 在码里,首次打开即登录。你会看到自己真实的 tmux 会话,点一个就开始操作。
 
 想从**任何地方**都连得上?加一个参数开一条免费公网 HTTPS 链接:

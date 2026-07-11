@@ -4,6 +4,12 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Added
+- **Homebrew install for machines without Node.** `brew install handmux/tap/handmux` installs handmux
+  plus Node and tmux in one command — the zero-prerequisite path for people without a Node toolchain
+  (published via the new `handmux/homebrew-tap`). If you already have Node, `npm i -g handmux` stays the
+  lighter option (it reuses your existing Node). Documented in the Quick start.
+
 ## [0.12.2] - 2026-07-11
 
 ### Fixed

@@ -34,6 +34,8 @@ npm i -g handmux     # install once
 handmux start        # run it — local / same-wifi, nothing exposed
 ```
 
+No Node yet? On macOS / Linux, `brew install handmux/tap/handmux` pulls in Node + tmux for you. (Already have Node? Stick with `npm` above — it's lighter.)
+
 `start` prints a **QR code** (plus a URL and token). **Scan it with your phone** — the token rides in the code, so you're signed in on first open. You'll see your real tmux session; tap one and start driving.
 
 Want to reach it from **anywhere**? Add one flag for a free public HTTPS link:
