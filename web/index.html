@@ -5,17 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>handmux</title>
 
-    <!-- Installable PWA: "Add to Home Screen" + standalone (no browser address bar). -->
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- Installable PWA: "Add to Home Screen" + standalone (no browser address bar).
+         ?v=2 one-time cache-bust: pre-0.12.2 servers sent these stable-url assets as
+         `immutable, max-age=1y`, so returning browsers pinned the OLD icon/manifest for a year.
+         index.html is no-store (always fresh), so a new query on the refs escapes those poisoned
+         caches at once; staticCache.js now serves them `no-cache`, so no future bump is needed. -->
+    <link rel="manifest" href="/manifest.webmanifest?v=2" />
     <meta name="theme-color" content="#1a1b1e" />
-    <link rel="icon" type="image/png" href="/icons/icon-192.png" />
+    <link rel="icon" type="image/png" href="/icons/icon-192.png?v=2" />
     <!-- iOS Safari ignores the manifest's display mode, so these drive standalone + the
          home-screen icon/label. "black" keeps the white status-bar text readable on the dark topbar. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="handmux" />
-    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=2" />
 
     <!-- Inline boot splash: paints instantly (before the JS bundle loads) so a cold launch shows the
          brand, not a blank dark screen. main.jsx calls window.__hideBootSplash() once React has painted;

@@ -5,6 +5,16 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Fixed
+- **A changed app icon / manifest now actually reaches returning users.** The server was sending every
+  static file — including the hand-authored, stable-URL `icons/*`, `manifest.webmanifest` and favicon —
+  as `Cache-Control: immutable, max-age=1y`, which is only correct for Vite's content-hashed `/assets/*`
+  bundles. A stable-URL asset marked `immutable` gets pinned in every returning browser for a year, so a
+  new icon or manifest would never show up. `staticCache.js` now pins only `/assets/*` and serves the
+  stable-URL assets `no-cache` (revalidate → cheap 304 when unchanged, instant pickup when changed). A
+  one-time `?v=2` on the icon / manifest / og-image references breaks browsers out of the already-cached
+  `immutable` copies (index.html is `no-store`, so the new refs reach them immediately); Android updates
+  an installed PWA's icon automatically, while an icon already on an iOS home screen is frozen at
+  add-time and needs a one-time remove + re-add.
 - **README banner's bottom corners are now rounded.** At an exact window==card fit, headless Chrome
   clipped the card's bottom rounding, so the lower two corners rendered square while the top two were
   round. The banner is now a fixed-size card centered in a taller window and centre-cropped back, so

@@ -81,11 +81,11 @@ self.addEventListener('push', (event) => {
     // icon = the large right-side logo. We MUST set it: HyperOS/MIUI always reserves that slot, and an
     // empty `icon` makes it back-fill the slot with the PWA's own icon at a stray size (the `>` reads as
     // a lone "v") plus leaves a gap. An explicit app icon fills the slot cleanly.
-    icon: '/icons/icon-192.png',
+    icon: '/icons/icon-192.png?v=2',
     // badge = the small monochrome status-bar icon. Android reads only its ALPHA and tints the
     // silhouette; an opaque image (icon-192 has no alpha) can't be used, so it falls back to the
     // browser's own Chrome logo. badge-96.png is a white `>▮` silhouette on transparent → our mark.
-    badge: '/icons/badge-96.png',
+    badge: '/icons/badge-96.png?v=2',
     data: d.data || {},
   }));
 });
