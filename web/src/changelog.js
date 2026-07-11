@@ -11,6 +11,24 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.12.3',
+    date: '2026-07-11',
+    highlight: {
+      zh: '接管会话可自定义名称 + Homebrew 一键安装',
+      en: 'Name a takeover session · Homebrew install',
+    },
+    items: {
+      zh: [
+        '接管电脑上的会话时,可以自己给新会话起名(默认也帮你填好);接管后想回电脑继续的命令,现在直接显示成 handmux open <名称>,照着敲即可。',
+        '新增 Homebrew 一键安装:没装 Node 的 Mac 也能用 brew install handmux/tap/handmux 一条命令装好(handmux + Node + tmux)。已有 Node 的话,npm i -g handmux 仍是更轻的选择。',
+      ],
+      en: [
+        'When taking over a session running on your computer, you can now name the new session yourself (a default is filled in), and the “continue on the computer” hint shows the exact command to run — handmux open <name>.',
+        'New Homebrew install: on a Mac without Node, brew install handmux/tap/handmux sets up handmux, Node, and tmux in one command. If you already have Node, npm i -g handmux stays the lighter option.',
+      ],
+    },
+  },
+  {
     version: '0.12.2',
     date: '2026-07-11',
     highlight: {
