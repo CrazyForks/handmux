@@ -27,14 +27,25 @@ handmux is more than a terminal on your phone. It puts the *same* live **tmux** 
 
 ## Quick start · about a minute
 
-On your computer you need Node ≥ 18 and tmux ≥ 3.0 (the phone just needs a browser). Then:
+Your computer needs tmux and Node ≥ 18; the phone just needs a browser. Pick one:
+
+**Homebrew — macOS (recommended)** · installs Node + tmux for you:
 
 ```bash
-npm i -g handmux     # install once
-handmux start        # run it — local / same-wifi, nothing exposed
+brew install handmux/tap/handmux
 ```
 
-No Node yet? On macOS / Linux, `brew install handmux/tap/handmux` pulls in Node + tmux for you. (Already have Node? Stick with `npm` above — it's lighter.)
+**npm — any platform** · if you already have Node:
+
+```bash
+npm i -g handmux
+```
+
+Then run it:
+
+```bash
+handmux start        # local / same-wifi, nothing exposed
+```
 
 `start` prints a **QR code** (plus a URL and token). **Scan it with your phone** — the token rides in the code, so you're signed in on first open. You'll see your real tmux session; tap one and start driving.
 
