@@ -1,6 +1,6 @@
 <p align="center"><img src="assets/readme-banner.png" alt="handmux" width="420"></p>
 
-<p align="center"><a href="README.md">English</a> · <b>中文</b></p>
+<p align="center">🌐 <a href="README.md">English</a> &nbsp;·&nbsp; 🇨🇳 <b>中文</b></p>
 
 <p align="center"><a href="https://handmux.com"><b>handmux.com</b></a></p>
 
