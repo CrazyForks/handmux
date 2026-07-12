@@ -179,6 +179,25 @@ describe('REST API', () => {
     expect(res.body.cur).toEqual({ row: 3, col: 8, vis: true });
   });
 
+  it('GET /history captures an ALT-screen pane as the exact visible screen — no scrollback, no blank-trim', async () => {
+    // An alt-screen (full-screen app) pane has NO scrollback: asking tmux for history (-S -lines) bleeds
+    // the MAIN screen's scrollback in above the app, and capping its trailing blank rows mangles the
+    // fixed-height screen. So alt panes must be captured as exactly their `height` rows: capturePane with
+    // lines=0 (visible only) and NO capTrailingBlankRows.
+    const cmds = {
+      ...baseCommands,
+      // content at the top, real blank rows below — a short full-screen app filling a 6-row pane
+      capturePane: vi.fn(async () => 'a0\na1\n\n\n\n\n'),
+      paneInfo: vi.fn(async () => ({ width: 80, height: 6, cursorX: 0, cursorY: 1, cursorVisible: true, altScreen: true, mouseAware: false, mouseSgr: false })),
+    };
+    const res = await auth(request(appWith(cmds)).get('/api/history?pane=%1&lines=100')).expect(200);
+    expect(cmds.capturePane).toHaveBeenCalledWith('%1', 0); // visible screen only, not the requested 100
+    expect(res.body.ansi).toBe('a0\na1\n\n\n\n\n');          // trailing blanks kept — the fixed screen is intact
+    expect(res.body.alt).toBe(true);
+    // cursor on row 1 of 6 → 6-1-1 = 4 up from the bottom; no trim, so no extra adjustment
+    expect(res.body.cur).toEqual({ row: 4, col: 0, vis: true });
+  });
+
   it('GET /history: a bare cursor move (same text) is a FRESH frame, not a 204', async () => {
     // left/right moves the cursor but not the text — folding the cursor into the hash means the move
     // still yields a new frame, so the client can re-place the cursor (otherwise it'd never track).

@@ -7,6 +7,13 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ### Added
 - 脚本推送：CLI `handmux push <title> <body>`（全部/`--session`/`--device` 三种范围）+ 内部端点 `/api/push/send-local` + 设备 key + 应用内「脚本推送」说明浮窗（含可靠性边界提示）。
 
+### Fixed
+- **A full-screen app (vim/less/htop) no longer leaks unrelated terminal history above it.** An alt-screen
+  pane has no scrollback, but the server was still asking tmux for history — which returns the *main*
+  screen's scrollback above the app, so scrolling up showed old terminal output that wasn't part of the
+  running app. It also capped the app's trailing blank rows, mangling a fixed-height screen. Alt-screen
+  panes are now captured as exactly their visible screen, so what you see is only the app.
+
 ## [0.13.0] - 2026-07-12
 
 ### Added

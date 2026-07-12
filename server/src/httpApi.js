@@ -412,12 +412,17 @@ export function createApiRouter({
     if (!isPaneId(req.query.pane)) return res.status(400).json({ error: 'bad pane id' });
     const lines = Math.min(Math.max(Number(req.query.lines) || 1000, 1), 5000);
     try {
-      // Cap the empty grid below the cursor (a fresh shell is "prompt + a wall of blank rows") so the
-      // phone's bottom-anchored render shows content instead of blank — and so the hash/body/render
-      // all key off the same trimmed capture. See trimCapture.js.
-      const raw = await commands.capturePane(req.query.pane, lines);
-      const ansi = capTrailingBlankRows(raw);
+      // Read the pane's state FIRST — whether it's on the alternate screen decides how we capture it.
       const { width, height, cursorX, cursorY, cursorVisible, altScreen, mouseAware } = await commands.paneInfo(req.query.pane);
+      // An ALT-screen pane (a full-screen app: vim/less/htop) is a fixed height×width screen with NO
+      // scrollback. Asking tmux for history (-S -lines) there bleeds the MAIN screen's scrollback in
+      // ABOVE the app — you'd scroll up into terminal history that isn't the app's — and capping its
+      // trailing blank rows mangles the fixed screen (those blanks are real cells). So capture an alt
+      // pane as exactly its visible screen (lines=0) and skip the blank-trim. A normal pane still pulls
+      // `lines` of scrollback and caps the empty grid below the cursor (fresh shell = "prompt + a wall of
+      // blank rows") so the phone's bottom-anchored render shows content, not blank. See trimCapture.js.
+      const raw = await commands.capturePane(req.query.pane, altScreen ? 0 : lines);
+      const ansi = altScreen ? raw : capTrailingBlankRows(raw);
       // The cursor's row counted from the BOTTOM of the (trimmed) capture. The live screen is the
       // capture's last `height` rows, so the cursor sits `height-1-cursorY` rows above the bottom —
       // less however many trailing blank rows capTrailingBlankRows dropped (all of them below the
