@@ -237,6 +237,7 @@ export default {
   handmux setup            配置隧道 / 名称 / 通知(写入配置;重跑即可修改)
   handmux stop | restart | status
   handmux logs [--follow] [--lines N]
+  handmux push <标题> <正文>    从脚本推一条通知到手机（--session 会话 · --device 设备key · --tag · --url）
   handmux update           升级到最新发布版本(npm i -g handmux@latest)
 
 第一次用?跑 'handmux setup' —— 它会带你配好外网访问 + 手机通知。

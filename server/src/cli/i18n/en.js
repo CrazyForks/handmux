@@ -238,6 +238,7 @@ export default {
   handmux setup            configure tunnel / name / notifications (writes config; re-run to change)
   handmux stop | restart | status
   handmux logs [--follow] [--lines N]
+  handmux push <title> <body>   notify your phone from a script (--session X · --device K · --tag T · --url U)
   handmux update           upgrade to the latest published version (npm i -g handmux@latest)
 
 New here? run 'handmux setup' — it walks you through remote access + phone notifications.
