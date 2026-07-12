@@ -21,6 +21,9 @@ npm-debug.log*
 .env
 .env.*
 
+# local scripts (personal dev utilities, not shipped)
+monitor.sh
+
 # runtime data (push subscriptions — device endpoints, not source)
 server/data/
 
