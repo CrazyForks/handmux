@@ -25,6 +25,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   mention — kept when it's internal, e.g. `@types/`) are all trimmed, so the real file is found. And a
   path that Claude Code folds across two rows by width (a hard newline, not xterm's own soft wrap) is now
   stitched back into one tappable link instead of only its tail fragment; box-drawn panels stay unfused.
+  A wide-character (CJK) path that soft-wraps on a full-width glyph is also no longer severed — the empty
+  spacer xterm leaves in the last column (a wide glyph can't straddle the wrap) used to inject a space
+  mid-name and drop the head, so `…/超长目录…/报告.md` kept only its tail.
 
 ## [0.12.3] - 2026-07-11
 

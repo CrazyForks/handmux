@@ -45,15 +45,29 @@ function readLogicalLine(buf, idx, cols) {
   for (;;) {
     const line = buf.getLine(r);
     if (!line) break;
+    const cont = r + 1 < buf.length && isContinuation(buf, r, cols);
+    // Collect this row's glyphs (skipping the width-0 placeholder that trails a wide char).
+    const chars = [];
+    const rowCells = [];
     for (let col = 0; col < cols; col++) {
       const cell = line.getCell(col);
       if (!cell) continue;
       const w = cell.getWidth();
       if (w === 0) continue; // placeholder trailing a wide char — already counted
-      text += cell.getChars() || ' ';
-      cells.push({ row: r, col, w });
+      chars.push(cell.getChars());
+      rowCells.push({ row: r, col, w });
     }
-    if (r + 1 < buf.length && isContinuation(buf, r, cols)) { r++; continue; }
+    // A soft wrap that lands on a wide (CJK) glyph can't split it: the last column is left EMPTY and the
+    // glyph moves to the continuation row. Appending that spacer as a space would inject a break INTO a
+    // wrapped path (`…超长中文 目录…`) and sever it. So when this row continues into the next, drop its
+    // trailing empty cells — the content then flows straight through. A blank in the MIDDLE stays a space.
+    let n = chars.length;
+    if (cont) while (n > 0 && chars[n - 1] === '') n--;
+    for (let k = 0; k < n; k++) {
+      text += chars[k] || ' ';
+      cells.push(rowCells[k]);
+    }
+    if (cont) { r++; continue; }
     break;
   }
   return { text, cells };

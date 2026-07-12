@@ -70,6 +70,16 @@ describe('scanDocLinks', () => {
     t.dispose();
   });
 
+  it('stitches a wide-char (CJK) path that soft-wraps on a full-width glyph', async () => {
+    // A wide glyph can't straddle the wrap: the last column is left EMPTY and the glyph moves to the
+    // next row. That spacer must NOT become a space, or the path would sever mid-name (…中文 目录…).
+    const t = new Terminal({ cols: 40, rows: 8, allowProposedApi: true, scrollback: 100 });
+    const p = '~/zxy/query-rule-validation/超长中文目录名称占位占位占位占位占位占位占位占位/最终验证报告-完整版.md';
+    await write(t, `看 ${p} 完`);
+    expect([...new Set(scanDocLinks(t).map((s) => s.path))]).toEqual([p]);
+    t.dispose();
+  });
+
   it('does not fuse a boxed path across the frame padding (only the leaf is found)', async () => {
     const t = new Terminal({ cols: 28, rows: 4, allowProposedApi: true, scrollback: 100 });
     await write(t, '│ /home/u/very/long/path/ │\r\n│ report.md               │');
