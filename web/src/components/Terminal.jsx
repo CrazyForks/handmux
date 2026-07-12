@@ -469,6 +469,13 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
       refreshSelUI();
       navigator.vibrate?.(12);
     };
+    // Width of the cell at a flat offset (2 = wide CJK char's first cell, 0 = its trailing spacer, 1 = normal).
+    const widthAt = (off, cols) => buf().getLine(Math.floor(off / cols))?.getCell(off % cols)?.getWidth() ?? 1;
+    // Snap the selection ends to WHOLE wide (CJK) chars so a handle never cuts a character in half:
+    //  - the low end must not begin on a trailing spacer → step left onto the char's first cell;
+    //  - the high end, if it lands on a wide char's first cell, must include that char's spacer.
+    const snapLo = (off, cols) => (off > 0 && widthAt(off, cols) === 0 ? off - 1 : off);
+    const snapHi = (off, cols) => (widthAt(off, cols) === 2 ? off + 1 : off);
     // Extend from the fixed anchor to the finger cell (offsets flatten the grid so the run wraps
     // across rows exactly like text selection).
     const extendSelection = (x, y) => {
@@ -477,8 +484,9 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
       const cols = term.cols;
       const aOff = selAnchor.row * cols + selAnchor.col;
       const cOff = cur.row * cols + cur.col;
-      const startOff = Math.min(aOff, cOff);
-      term.select(startOff % cols, Math.floor(startOff / cols), Math.abs(cOff - aOff) + 1);
+      const lo = snapLo(Math.min(aOff, cOff), cols);
+      const hi = snapHi(Math.max(aOff, cOff), cols);
+      term.select(lo % cols, Math.floor(lo / cols), hi - lo + 1);
       refreshSelUI();
     };
     // Drop the current selection + bubble and let live refresh resume.
