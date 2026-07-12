@@ -2,17 +2,22 @@ import { describe, it, expect } from 'vitest';
 import { keyboardSwipeAction, shouldKeepKeyboard, rubberBand } from '../src/dockKeyboard.js';
 
 describe('rubberBand', () => {
-  it('is 1:1-ish for small pulls', () => {
-    expect(rubberBand(4, 24)).toBeCloseTo(4, 0); // near-linear near 0
+  it('follows at slope c for small pulls', () => {
+    expect(rubberBand(2, 44, 0.5)).toBeCloseTo(1, 1); // ≈ c*pull near zero
   });
-  it('resists and asymptotes near the limit — never overshoots max', () => {
-    expect(rubberBand(200, 24)).toBeLessThan(24);
-    expect(rubberBand(200, 24)).toBeGreaterThan(23);
-    expect(Math.abs(rubberBand(1e6, 24))).toBeLessThanOrEqual(24);
+  it('never reaches or overshoots max, however hard you pull', () => {
+    expect(rubberBand(1e6, 44, 0.5)).toBeLessThan(44);
+    expect(rubberBand(1e6, 44, 0.5)).toBeGreaterThan(43);
+  });
+  it('resistance grows toward the end — each further pull adds less travel, but never zero', () => {
+    const a = rubberBand(50) - rubberBand(25);   // early increment
+    const b = rubberBand(200) - rubberBand(175); // late increment (same 25px of finger)
+    expect(b).toBeLessThan(a);   // it resists more the further out you are
+    expect(b).toBeGreaterThan(0); // …but still keeps giving, never a dead stop
   });
   it('is symmetric and zero at rest', () => {
     expect(rubberBand(0)).toBe(0);
-    expect(rubberBand(-30, 24)).toBeCloseTo(-rubberBand(30, 24), 6);
+    expect(rubberBand(-30)).toBeCloseTo(-rubberBand(30), 6);
   });
 });
 

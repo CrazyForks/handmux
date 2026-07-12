@@ -177,7 +177,7 @@ function BottomDock({
     const g = grabberRef.current;
     if (!g) return;
     g.style.transition = 'none';
-    g.style.setProperty('--drag', `${rubberBand(dy, 22)}px`);
+    g.style.setProperty('--drag', `${rubberBand(dy)}px`);
     g.classList.add('dragging');
     g.classList.toggle('armed', Math.abs(dy) >= KBD_COMMIT_PX);
   };

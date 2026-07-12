@@ -14,12 +14,13 @@ export function keyboardSwipeAction(dx, dy, threshold = 24) {
   return null;                          // too short to commit
 }
 
-// Rubber-band resistance for the grabber pill's follow. It tracks the finger ~1:1 at first, then resists
-// more and more as it nears the ±max limit, asymptotically — the iOS "pull past the end" feel, instead of a
-// hard clamp that just stops dead. tanh has unit slope at 0 (1:1 start) and never reaches ±1 (so the pill
-// never quite hits ±max, and never overshoots it however hard you pull).
-export function rubberBand(dy, max = 24) {
-  return max * Math.tanh(dy / max);
+// iOS-style rubber-band resistance for the grabber pill's follow — UIScrollView's own curve,
+// b(x) = (x·d·c) / (d + c·|x|). The pill follows at slope `c` near zero, then the marginal travel shrinks
+// the further you pull: resistance is GREATEST near the end, yet it never dead-stops — it keeps creeping
+// asymptotically toward (but never reaching) ±max however hard you pull. That "keeps giving, ever harder"
+// is the system feel; a hard clamp (or a fast-saturating tanh) instead just stops, which reads as dead.
+export function rubberBand(pull, max = 44, c = 0.5) {
+  return (pull * max * c) / (max + c * Math.abs(pull));
 }
 
 // Should a touch on the TERMINAL keep the currently-focused field (and its system keyboard) up, instead
