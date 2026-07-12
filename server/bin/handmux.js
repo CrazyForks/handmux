@@ -38,6 +38,7 @@ import { claudeUsagePath } from '../src/usage.js';
 import { probe } from '../src/cli/probe.js';
 import { notifyUpdate, runUpdateCheck, PKG_NAME } from '../src/cli/updateCheck.js';
 import { t, initLocale, setLocale } from '../src/cli/i18n/index.js';
+import { runPush } from '../src/cli/pushCmd.js';
 
 const HOME = homedir();
 const SELF = fileURLToPath(import.meta.url);
@@ -138,6 +139,7 @@ async function main() {
     case 'restart': { stop(); await sleep(600); return start(); }
     case 'status': return status();
     case 'logs': return logs();
+    case 'push': process.exitCode = await pushCmd(); return;
     case 'config': return configCmd();
     case 'setup': return setupCmd();
     case 'hooks': return hooksCmd();
@@ -282,6 +284,11 @@ async function status() {
 function runSupervise() {
   const cfg = JSON.parse(Buffer.from(flags.payload, 'base64').toString('utf8'));
   supervise(cfg, { home: HOME });
+}
+
+// `handmux push <title> <body> [--session X]... [--device K]... [--tag T] [--url U]` — see src/cli/pushCmd.js.
+function pushCmd() {
+  return runPush({ argv: process.argv.slice(2), home: HOME });
 }
 
 function logs() {

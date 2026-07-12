@@ -69,6 +69,7 @@ handmux start --tunnel cloudflare   # instant public URL (cloudflared auto-insta
 
 - **Claude Code / Codex, deeply** — an inbox status ledger, thumb-approve permissions & plans, per-agent usage bars.
 - **Command & chat modes** — one bottom bar, two modes: type straight into the terminal, or talk to the agent in natural language. Preset ESC/Tab/Ctrl+C, custom ⌃⇧⌥ key-combos, and saved/recent commands split global or per-window (slash-commands included).
+- **Script push** — notify your phone from any script or CI step with `handmux push`; target all devices, a named session, or a specific device.
 - **Git viewer** — changes / commit history / any branch / full-screen colored diff, multi-repo tabs, read-only, never touches your tree.
 - **Site preview** — a static folder, or a running service by port (routing / APIs / live-reload intact), in a phone or desktop viewport.
 - **Docs** — tap a path in the terminal to open it; Markdown rendered, font zoom, sentence-by-sentence read-aloud.
@@ -76,6 +77,41 @@ handmux start --tunnel cloudflare   # instant public URL (cloudflared auto-insta
 - **Ideas — catch every one** — a thought the moment it strikes: a per-window idea/to-do list, jot one by voice and drop it straight into the prompt.
 - **Built for flaky networks** — backoff reconnect, connection-lost banner, offline page, polling that pauses in the background; a reflow-safe cursor and drag-to-select copy.
 - **Zero-install PWA** — runs in the browser; add to home screen for full-screen. Multilingual — English, 简体 / 繁體中文, 日本語, 한국어.
+
+## Script push
+
+Send a push notification to your phone from any script, CI step, or build hook:
+
+```bash
+handmux push "Build done" "Took 3m12s"
+```
+
+Runs **on your computer** against the already-running `handmux` server (loopback + local server token — no config, no remote endpoint). Web Push must be enabled first (`handmux setup`).
+
+**Syntax**
+
+```
+handmux push <title> <body> [options]
+```
+
+| Flag | Description |
+|---|---|
+| `--session <name>` | Target all devices subscribed to this tmux session (repeatable; comma-separated values OK) |
+| `--device <key>` | Target a specific device by its key (repeatable; comma-separated values OK) |
+| `--tag <T>` | Notification tag (collapses duplicates) |
+| `--url <U>` | URL to open when the notification is tapped |
+
+**Scopes — pick at most one:**
+
+- _(default)_ — all subscribed devices
+- `--session` — only devices subscribed to the named session(s)
+- `--device` — only the specified device(s) by key
+
+`--session` and `--device` are mutually exclusive.
+
+The **device key** is shown in the phone app under Settings → Script push. It is an addressing identifier, not a secret — the security boundary is the local server token.
+
+> **Reliability:** Web Push is best-effort. For delivery-critical alerts use a dedicated messaging app (WeChat, Slack, etc.).
 
 ## Networking: one decision
 

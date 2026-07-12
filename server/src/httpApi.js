@@ -597,7 +597,7 @@ export function createApiRouter({
     try {
       push.addSubscription(sub, boundSessions);
       await push.sendToOne(sub, { title: '通知已开启 ✅', body: '会话「需要你」或「已完成」时提醒你', tag: 'handmux-welcome' }, { topic: 'handmux', urgency: 'high' });
-      res.json({ ok: true, count: push.count() });
+      res.json({ ok: true, count: push.count(), pushKey: push.getPushKey(sub.endpoint) });
     } catch (e) { next(e); }
   });
 
@@ -624,6 +624,35 @@ export function createApiRouter({
     const boundSessions = Array.isArray(req.body?.boundSessions) ? req.body.boundSessions : [];
     if (typeof endpoint === 'string') push.updateBound(endpoint, boundSessions);
     res.json({ ok: true });
+  });
+
+  // Local script push (`handmux push`): loopback + server token. Scope is mutually exclusive —
+  // devices (by pushKey) > sessions > all. This is the ONLY push-send entry; no public/remote variant.
+  r.post('/push/send-local', async (req, res, next) => {
+    const { sessions, devices, title, body, tag, url } = req.body || {};
+    if (typeof title !== 'string' || !title.trim()) return res.status(400).json({ error: 'title required' });
+    if (typeof body !== 'string' || !body.trim()) return res.status(400).json({ error: 'body required' });
+    const hasSessions = Array.isArray(sessions) && sessions.length > 0;
+    const hasDevices = Array.isArray(devices) && devices.length > 0;
+    if (hasSessions && hasDevices) return res.status(400).json({ error: 'use --session or --device, not both' });
+    const payload = { title, body };
+    if (typeof tag === 'string' && tag) payload.tag = tag;
+    if (typeof url === 'string' && url) payload.data = { url };
+    const opts = { urgency: 'normal', ttl: 1800 };
+    if (payload.tag) opts.topic = payload.tag;
+    try {
+      const out = hasDevices ? await push.sendToDevices(devices, payload, opts)
+        : hasSessions ? await push.sendToSessions(sessions, payload, opts)
+        : await push.sendToAll(payload, opts);
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+  // This device's addressing key (server-token auth) — the script push sheet reads it to show `--device`.
+  r.post('/push/key', (req, res) => {
+    const endpoint = req.body?.endpoint;
+    if (typeof endpoint !== 'string') return res.status(400).json({ error: 'endpoint required' });
+    res.json({ pushKey: push.getPushKey(endpoint) });
   });
 
   // ?sessions=a,b scopes the roster to the session NAMES this device subscribed to (per-device inbox

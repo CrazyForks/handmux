@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { notifyEnabled, enableNotifications, disableNotifications, pushSupported } from '../push.js';
+import { notifyEnabled, enableNotifications, disableNotifications, pushSupported, getScriptPushKey } from '../push.js';
 import DirPicker from './DirPicker.jsx';
+import PushScriptSheet from './PushScriptSheet.jsx';
 import { fetchPaneCwd } from '../api.js';
 import { fmtRemainMin, useRemaining } from '../previewCountdown.js';
 import { getDocHighlight, setDocHighlight } from '../storage.js';
@@ -21,6 +22,8 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   const [notify, setNotify] = useState(notifyEnabled()); // device-notification toggle state
   const [notifyBusy, setNotifyBusy] = useState(false); // true while (un)subscribing — shows a spinner, disables the button
   const [notifyMsg, setNotifyMsg] = useState(''); // inline status/error shown to the right of the toggle
+  const [scriptPushOpen, setScriptPushOpen] = useState(false);
+  const [scriptPushKey, setScriptPushKey] = useState(null);
   const [dirOpen, setDirOpen] = useState(false);
   const [seedCwd, setSeedCwd] = useState(null); // dir the picker lands on (the pane's live cwd)
   const [previewKind, setPreviewKind] = useState('off');    // start mode: off (default) / static / dynamic
@@ -47,6 +50,11 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   // Open the dir picker seeded at the LAST preview dir for this window (so re-previewing the same
   // build is one tap), else the pane's current cwd (re-fetched, honoring a mid-session `cd`), else
   // $HOME. The picker also has a "jump to cwd" shortcut for switching dirs on the spot.
+  const openScriptPush = async () => {
+    setScriptPushKey(notifyEnabled() ? await getScriptPushKey() : null);
+    setScriptPushOpen(true);
+  };
+
   const openDirPicker = async () => {
     let seed = lastPreviewDir;
     if (!seed && pane) { try { seed = (await fetchPaneCwd(pane)).cwd || null; } catch { /* → $HOME */ } }
@@ -206,6 +214,14 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
           )}
         </div>
 
+        <div className="settings-section">
+          <div className="settings-label">{t('settings.script_push')}</div>
+          <div className="settings-btns">
+            <button className="fontbtn" onClick={openScriptPush} disabled={!pushSupported()}>{t('settings.script_push_open')}</button>
+          </div>
+          <div className="settings-hint">{t('settings.script_push_hint')}</div>
+        </div>
+
         <div className="settings-group">{t('settings.group_session')}</div>
 
         <div className="settings-section">
@@ -295,6 +311,12 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
         hint={t('settings.dir_picker_hint')}
         onPick={(dir) => { setDirOpen(false); onStartPreview?.(dir); onClose?.(); }}
         onClose={() => setDirOpen(false)}
+      />
+      <PushScriptSheet
+        open={scriptPushOpen}
+        pushKey={scriptPushKey}
+        notifyOn={notify}
+        onClose={() => setScriptPushOpen(false)}
       />
     </>
   );
