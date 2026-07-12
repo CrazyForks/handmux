@@ -92,6 +92,9 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
   // wake() lets outside input (sends/keys, via App) snap the poll loop back to the live cadence and
   // poll immediately. Bridged through a ref like fitRef so the imperative handle can reach effect scope.
   const wakeRef = useRef(null);
+  // Callout 整行/整段 buttons live in render scope but need effect-scope helpers (term, buf, refreshSelUI).
+  // Bridged via a ref, same pattern as fitRef/wakeRef. Populated once inside the effect.
+  const selActionsRef = useRef(null);
 
   // App's ⊟/⊞ buttons call getSize to step the grid, and flash to surface the resulting
   // cols×rows·font for ~3s (polling briefly because term.cols only catches up on the next
@@ -402,6 +405,23 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
         end: { x: e.x + off.x, y: e.y + off.y, ch },
       });
     };
+    // Helpers for the callout expand buttons (整行 / 整段). currentRange() reads xterm's live
+    // selection in the {start,end} col/row form expected by terminalSelection.js. selectRange()
+    // applies a new range back to xterm and refreshes the overlay. paraLineText() feeds the
+    // paragraph-expand function the line text it needs to locate blank-line boundaries.
+    const currentRange = () => {
+      const p = term.getSelectionPosition();
+      return p && { start: { col: p.start.x, row: p.start.y }, end: { col: p.end.x, row: p.end.y } };
+    };
+    const paraLineText = (row) => buf().getLine(row)?.translateToString(true) ?? '';
+    const selectRange = (r) => {
+      if (!r) return;
+      const cols = term.cols;
+      const len = (r.end.row * cols + r.end.col) - (r.start.row * cols + r.start.col) + 1;
+      term.select(r.start.col, r.start.row, len);
+      refreshSelUI();
+    };
+    selActionsRef.current = { currentRange, paraLineText, selectRange };
     const startSelection = (x, y) => {
       const cell = cellFromPoint(x, y);
       if (!cell) return;
@@ -893,12 +913,19 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
       maybePullMore();
     });
 
+    // When the user scrolls the xterm viewport (e.g. during an active selection), the handle and
+    // callout positions need to be recomputed — their y offsets are viewport-relative.
+    const vp = elRef.current.querySelector('.xterm-viewport');
+    const onVpScroll = () => { if (selActiveRef.current) refreshSelUI(); };
+    vp?.addEventListener('scroll', onVpScroll, { passive: true });
+
     return () => {
       disposed = true;
       fitRef.current = null;
       wakeRef.current = null;
       stopFlingRef.current = null;
       refreshDecosRef.current = null;
+      selActionsRef.current = null;
       cancelLongPress();
       stopFling();
       if (timer) clearTimeout(timer);
@@ -916,6 +943,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
       wrap.removeEventListener('pointermove', onHandleMove, { capture: true });
       wrap.removeEventListener('pointerup', onHandleUp, { capture: true });
       wrap.removeEventListener('pointercancel', onHandleUp, { capture: true });
+      vp?.removeEventListener('scroll', onVpScroll);
       sub.dispose();
       linkProvider.dispose();
       for (const { deco, marker } of decosRef.current) { deco.dispose(); marker.dispose(); }
@@ -1009,8 +1037,16 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
                style={{ left: Math.max(8, Math.min(selUI.start.x, selUI.end.x)),
                         top: Math.max(4, Math.min(selUI.start.y, selUI.end.y) - 44) }}>
             <button type="button" onClick={doCopy}>拷贝</button>
-            <button type="button" onClick={() => {}}>整行</button>
-            <button type="button" onClick={() => {}}>整段</button>
+            <button type="button" onClick={() => {
+              const a = selActionsRef.current;
+              if (a) a.selectRange(expandToLines(a.currentRange(), termRef.current.cols));
+            }}>整行</button>
+            <button type="button" onClick={() => {
+              const a = selActionsRef.current;
+              if (!a) return;
+              const b = termRef.current.buffer.active;
+              a.selectRange(expandToParagraph(a.currentRange(), termRef.current.cols, a.paraLineText, 0, b.length - 1));
+            }}>整段</button>
           </div>
         </>
       )}
