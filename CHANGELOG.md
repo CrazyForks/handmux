@@ -4,6 +4,13 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Fixed
+- **The bottom input mode no longer slides away by itself.** The command/chat toggle used to float with
+  the live agent state, so anything that briefly dropped the pane from the inbox roster while Claude was
+  still running — most visibly `/clear`, whose `SessionEnd` removes the pane — yanked the dock from the
+  chat composer back to the command keyboard under you. The mode now latches to chat the first time an
+  agent appears in a pane and never auto-switches back; you swipe to command yourself if you want it.
+
 ## [0.12.3] - 2026-07-11
 
 ### Added
