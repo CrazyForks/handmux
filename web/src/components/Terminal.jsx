@@ -32,9 +32,11 @@ const LIVE_SCROLL_SLACK = 15; // scrolled up within this many lines of the botto
 // a smaller font shows more rows (filled from scrollback), a larger font fewer. In AUTO mode
 // (no manual pinch) the font also shrinks so the whole pane fits — full-screen TUIs stay whole.
 // All of this lives in fit() below.
-const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }, ref) {
+const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, onDoubleTap }, ref) {
   const elRef = useRef(null);
   const termRef = useRef(null);
+  const onDoubleTapRef = useRef(onDoubleTap); // double-tap → toggle the dock keyboard (called synchronously)
+  onDoubleTapRef.current = onDoubleTap;
   // Clickable doc-path underlines (xterm decorations), rebuilt after every full repaint. The tap
   // handler is held in a ref so the poll loop's stable closure always calls the latest prop (mirrors
   // how the loop reaches outside state via fitRef/wakeRef). Tapping a path does NOT open it directly
@@ -435,6 +437,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
     let pinchDist0 = 0; // finger distance and font size at pinch start
     let pinchFont0 = 0;
     let selecting = false; // a long-press fired and we're dragging out a selection
+    let lastTapT = 0, lastTapX = 0, lastTapY = 0; // for double-tap detection (toggles the keyboard)
     // Long-press (one finger held still ~500ms) starts a selection; any real movement, a lift,
     // or a second finger cancels it before it fires.
     let lpTimer = null;
@@ -632,6 +635,19 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       if (e.touches.length === 0 && shouldFling(axis === 1 ? scrollVelX : scrollVelY, e.timeStamp - lastMoveT)) {
         if (axis === 1) startFling(host, 'scrollLeft', scrollVelX);
         else if (axis === -1) startFling(host.querySelector('.xterm-viewport'), 'scrollTop', scrollVelY);
+      }
+      // Double-tap the terminal → toggle the keyboard: a familiar, deliberate fallback now that a single tap
+      // no longer dismisses it (and the way to summon it when it's down). Only a real tap counts — one
+      // finger, no pan (axis still 0), no long-press select. Call the toggle SYNCHRONOUSLY: this touchend is
+      // the user gesture iOS requires to pop the soft keyboard, so a deferred timer wouldn't work.
+      if (e.touches.length === 0 && !selecting && !pinching && axis === 0) {
+        const tt = e.changedTouches[0];
+        if (tt && e.timeStamp - lastTapT < 300 && Math.abs(tt.clientX - lastTapX) < 30 && Math.abs(tt.clientY - lastTapY) < 30) {
+          lastTapT = 0; // consume, so a third tap doesn't immediately re-fire
+          onDoubleTapRef.current?.();
+        } else if (tt) {
+          lastTapT = e.timeStamp; lastTapX = tt.clientX; lastTapY = tt.clientY;
+        }
       }
     };
     // Desktop mouse wheel has no equivalent of the touch handler's smart scroll — wire the SAME two

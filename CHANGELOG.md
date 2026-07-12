@@ -17,7 +17,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   the ⌨ button, or the new grip handle at the top of the dock. Drag the handle (or swipe anywhere on the
   dock) up to reveal the keyboard, down to dismiss, or tap to toggle; it works on both the command and chat
   pages. The handle follows your finger with a rubber-band resistance and lights up once you've dragged far
-  enough to commit, so the gesture has live feedback.
+  enough to commit, so the gesture has live feedback. And if you'd rather not learn a new gesture, just
+  double-tap the terminal to toggle the keyboard.
 
 ### Fixed
 - **A full-screen app (vim/less/htop) no longer leaks unrelated terminal history above it.** An alt-screen

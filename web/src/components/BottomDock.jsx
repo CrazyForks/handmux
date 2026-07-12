@@ -593,8 +593,17 @@ function BottomDock({
   const holdTypeOnly = (f) =>
     (f.kind === 'key' || KEY_FAVS[f.text] || !f.enter ? undefined : () => onText(f.text));
 
-  // Let the topbar idea panel drop a picked idea into the box (fill, never send) — same path as pick.
-  useImperativeHandle(fwdRef, () => ({ fill: pick }), []);
+  // Imperative surface: the topbar idea panel drops a picked idea into the box (fill, never send); the
+  // terminal's double-tap toggles the current page's keyboard (focus/blur the capture or composer — the
+  // call must stay synchronous inside the tap gesture so iOS actually pops the soft keyboard).
+  useImperativeHandle(fwdRef, () => ({
+    fill: pick,
+    toggleKeyboard: () => {
+      const el = fieldForPage(pageIndexRef.current);
+      if (!el) return;
+      document.activeElement === el ? el.blur() : el.focus();
+    },
+  }), []);
 
   // After an upload, append the uploaded files' absolute paths to the box (then focus to keep typing).
   // One file → the full path. Multiple → write the shared dir prefix ONCE and brace-expand the names

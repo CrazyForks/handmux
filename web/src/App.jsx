@@ -1092,6 +1092,7 @@ export default function App() {
               pane={current.paneId}
               onAuthFail={onAuthFail}
               onDocLinkTap={onDocLinkTap}
+              onDoubleTap={() => dockRef.current?.toggleKeyboard()}
             />
           )}
           <BottomDock
