@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-07-12
+
 ### Added
 - **A “Token” row in `handmux setup` — set the access token by hand.** Previously the token was only ever
   auto-generated (a fresh one each start, so the phone URL changed on every restart). The setup hub now has
