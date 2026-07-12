@@ -10,6 +10,10 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   Flipping it takes effect immediately, no reload.
 
 ### Fixed
+- **The Settings sheet scrolls when it's taller than the screen.** The centered card had no height cap, so
+  on a short viewport (or with many sections) the top and bottom clipped off with no way to reach them. It's
+  now capped to the viewport and its body scrolls, with the title + close button pinned so they're always
+  reachable.
 - **Desktop mouse-wheel scrolling now loads deeper history instead of stalling at the first chunk.** On a
   desktop browser the wheel drove only xterm's native scroll, and once its scrollbar hit the top it stopped
   firing the events that pull more scrollback — so every pane got stuck about one screen + 100 lines up. The

@@ -99,6 +99,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
           <button className="settings-close" onClick={onClose} aria-label={t('common.close')}>✕</button>
         </div>
 
+        <div className="settings-body">
         <div className="settings-group">{t('settings.group_global')}</div>
 
         <div className="settings-section">
@@ -284,6 +285,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
               )}
             </div>
           )}
+        </div>
         </div>
       </div>
       <DirPicker
