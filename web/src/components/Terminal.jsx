@@ -721,6 +721,8 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
     // go through host's capture listeners). Event delegation via closest('.sel-handle').
     const wrap = elRef.current.parentElement;
     let dragEnd = null; // 'start' | 'end' — which handle is being dragged
+    let autoScrollRAF = null;
+    let lastHandlePt = null;
     const onHandleDown = (ev) => {
       const h = ev.target.closest?.('.sel-handle');
       if (!h) return;
@@ -739,11 +741,35 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
       selAnchor = anchorCell;
       extendSelection(ev.clientX, ev.clientY);
       refreshSelUI();
+      // Auto-scroll when the dragged handle nears the viewport top/bottom edge, extending the selection
+      // into scrollback / newer rows. rAF loop; keeps the last finger point to re-extend each frame.
+      const EDGE = 28;   // px band at each edge that triggers auto-scroll
+      const STEP = 24;   // px scrolled per frame
+      lastHandlePt = { x: ev.clientX, y: ev.clientY };
+      const vpRect = vp.getBoundingClientRect();
+      let dir = 0;
+      if (ev.clientY < vpRect.top + EDGE) dir = -1;
+      else if (ev.clientY > vpRect.bottom - EDGE) dir = 1;
+      if (dir !== 0 && autoScrollRAF == null) {
+        const tick = () => {
+          if (!dragEnd || dir === 0) { autoScrollRAF = null; return; }
+          const before = vp.scrollTop;
+          vp.scrollTop = before + dir * STEP; // fires xterm scroll → repaint + onVpScroll
+          extendSelection(lastHandlePt.x, lastHandlePt.y);
+          refreshSelUI();
+          if (vp.scrollTop === before) { autoScrollRAF = null; return; } // hit an edge
+          autoScrollRAF = requestAnimationFrame(tick);
+        };
+        autoScrollRAF = requestAnimationFrame(tick);
+      } else if (dir === 0 && autoScrollRAF != null) {
+        cancelAnimationFrame(autoScrollRAF); autoScrollRAF = null;
+      }
       ev.preventDefault();
     };
     const onHandleUp = (ev) => {
       if (!dragEnd) return;
       dragEnd = null;
+      if (autoScrollRAF != null) { cancelAnimationFrame(autoScrollRAF); autoScrollRAF = null; }
       wrap.releasePointerCapture?.(ev.pointerId);
     };
     wrap.addEventListener('pointerdown', onHandleDown, { capture: true });
