@@ -751,8 +751,8 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
     // Handle drag: pointer events on .terminal-wrap (handles are siblings of .terminal, so they don't
     // go through host's capture listeners). Event delegation via closest('.sel-handle').
     const wrap = elRef.current.parentElement;
-    let dragEnd = null;     // 'start' | 'end' — which handle the drag STARTED on (also the "dragging" flag)
-    let dragAnchor = null;  // the OTHER end, captured ONCE at pointerdown and held fixed for the whole drag
+    let dragEnd = null;        // 'start' | 'end' — which handle the drag STARTED on (also the "dragging" flag)
+    let dragAnchorEdge = null; // flat EDGE index of the fixed (anchor) handle; a cell offset O spans edges [O, O+1)
     let autoScrollRAF = null;
     let lastHandlePt = null;
     // autoDir/autoStep are hoisted so the rAF tick always reads the CURRENT edge direction and speed,
@@ -760,24 +760,47 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
     // to reverse mid-loop).
     let autoDir = 0;
     let autoStep = 0;
+    // Handle-drag selection in EDGE (half-open) terms, NOT inclusive cells. The start handle sits on a
+    // cell's LEFT edge, the end handle on its RIGHT edge; the fixed anchor is one such edge (dragAnchorEdge)
+    // and the dragged handle is the finger cell's matching edge. Selecting the cells strictly BETWEEN the
+    // two edges is what lets the handles cross and swap without double-counting the boundary cell (the old
+    // inclusive-cell anchor kept the anchor's own cell on a cross → one extra char). Then snap to whole
+    // wide (CJK) chars: never begin on a trailing spacer, always include a wide char's spacer at the end.
+    const dragSelect = (x, y) => {
+      const cur = cellFromPoint(x, y);
+      if (!cur || dragAnchorEdge == null) return;
+      const cols = term.cols;
+      const fo = cur.row * cols + cur.col;
+      const dragEdge = dragEnd === 'start' ? fo : fo + 1; // left edge for start handle, right edge for end
+      let lo = Math.min(dragAnchorEdge, dragEdge);
+      let hi = Math.max(dragAnchorEdge, dragEdge);
+      if (hi <= lo) hi = lo + 1;                       // never empty
+      lo = snapLo(lo, cols);                            // don't start on a wide-char spacer
+      hi = snapHi(hi - 1, cols) + 1;                    // include a trailing wide char's spacer (hi is one-past-last)
+      term.select(lo % cols, Math.floor(lo / cols), hi - lo);
+      refreshSelUI();
+    };
     const onHandleDown = (ev) => {
       const h = ev.target.closest?.('.sel-handle');
       if (!h) return;
       dragEnd = h.dataset.end;
-      // Freeze the opposite end NOW (0-based inclusive). Holding it fixed for the whole drag keeps the
-      // other handle from drifting during auto-scroll, and lets the dragged handle cross past it so the
-      // two ends swap (extendSelection sorts min/max around the fixed anchor) instead of collapsing.
+      // Freeze the opposite handle's EDGE now and hold it for the whole drag: the start handle's edge is
+      // its cell's left side (offset), the end handle's is its cell's right side (offset + 1). A fixed
+      // anchor keeps the other handle from drifting during auto-scroll and lets the dragged one cross it.
       const sel = selCells();
-      dragAnchor = sel && (dragEnd === 'start' ? { ...sel.end } : { ...sel.start });
+      if (sel) {
+        const cols = term.cols;
+        const so = sel.start.row * cols + sel.start.col;
+        const eo = sel.end.row * cols + sel.end.col;
+        dragAnchorEdge = dragEnd === 'start' ? eo + 1 : so; // opposite handle's edge
+      } else dragAnchorEdge = null;
       ev.preventDefault();
       ev.stopPropagation();
       wrap.setPointerCapture?.(ev.pointerId);
     };
     const onHandleMove = (ev) => {
-      if (!dragEnd || !dragAnchor) return;
-      selAnchor = dragAnchor;
-      extendSelection(ev.clientX, ev.clientY);
-      refreshSelUI();
+      if (!dragEnd || dragAnchorEdge == null) return;
+      dragSelect(ev.clientX, ev.clientY);
       // Auto-scroll when the dragged handle nears the viewport top/bottom edge, extending the selection
       // into scrollback / newer rows. Speed ramps with how far past the edge the finger is (like iOS),
       // capped — the old flat 24px/frame scrolled far too fast to control.
@@ -794,9 +817,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
           if (!dragEnd || autoDir === 0) { autoScrollRAF = null; return; }
           const before = vp.scrollTop;
           vp.scrollTop = before + autoDir * autoStep; // fires xterm scroll → repaint + onVpScroll
-          selAnchor = dragAnchor;                     // re-assert the fixed anchor each frame
-          extendSelection(lastHandlePt.x, lastHandlePt.y);
-          refreshSelUI();
+          dragSelect(lastHandlePt.x, lastHandlePt.y); // re-extend from the fixed anchor edge to the finger
           if (vp.scrollTop === before) { autoScrollRAF = null; return; } // hit an edge — stop
           autoScrollRAF = requestAnimationFrame(tick);
         };
@@ -809,7 +830,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
     const onHandleUp = (ev) => {
       if (!dragEnd) return;
       dragEnd = null;
-      dragAnchor = null;
+      dragAnchorEdge = null;
       autoDir = 0;
       if (autoScrollRAF != null) { cancelAnimationFrame(autoScrollRAF); autoScrollRAF = null; }
       wrap.releasePointerCapture?.(ev.pointerId);
