@@ -131,7 +131,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
         </div>
 
         <div className="settings-section">
-          <label className="cmd-toggle-row">
+          <label className="settings-toggle">
             <span className="settings-label">{t('settings.path_highlight')}</span>
             <span className="cmd-switch">
               <input type="checkbox" checked={docHl} onChange={(e) => toggleDocHl(e.target.checked)} />

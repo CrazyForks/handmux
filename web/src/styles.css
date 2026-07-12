@@ -68,6 +68,10 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .settings-section { padding: 10px 0; border-top: 1px solid #33353a; }
 .settings-label { font-size: 12px; color: #888; letter-spacing: 1px; margin-bottom: 8px; }
 .settings-btns { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* A toggle row that matches the sheet's flat sections (no card): the section caption on the left, an
+   iOS switch on the right. The label keeps the .settings-label caption style, just inlined (no bottom gap). */
+.settings-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.settings-toggle .settings-label { margin-bottom: 0; }
 
 /* "Add to Home Screen" coach — a light, dismissible top strip (not a modal); flick the ✕ to close. */
 .a2hs-banner {
