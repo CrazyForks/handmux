@@ -697,6 +697,40 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
     host.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
     host.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
 
+    // Handle drag: pointer events on .terminal-wrap (handles are siblings of .terminal, so they don't
+    // go through host's capture listeners). Event delegation via closest('.sel-handle').
+    const wrap = elRef.current.parentElement;
+    let dragEnd = null; // 'start' | 'end' — which handle is being dragged
+    const onHandleDown = (ev) => {
+      const h = ev.target.closest?.('.sel-handle');
+      if (!h) return;
+      dragEnd = h.dataset.end;
+      ev.preventDefault();
+      ev.stopPropagation();
+      wrap.setPointerCapture?.(ev.pointerId);
+    };
+    const onHandleMove = (ev) => {
+      if (!dragEnd) return;
+      const pos = term.getSelectionPosition();
+      if (!pos) return;
+      // Anchor = the OTHER end; drag = the finger.
+      const anchorCell = dragEnd === 'start' ? { col: pos.end.x, row: pos.end.y }
+                                             : { col: pos.start.x, row: pos.start.y };
+      selAnchor = anchorCell;
+      extendSelection(ev.clientX, ev.clientY);
+      refreshSelUI();
+      ev.preventDefault();
+    };
+    const onHandleUp = (ev) => {
+      if (!dragEnd) return;
+      dragEnd = null;
+      wrap.releasePointerCapture?.(ev.pointerId);
+    };
+    wrap.addEventListener('pointerdown', onHandleDown, { capture: true });
+    wrap.addEventListener('pointermove', onHandleMove, { capture: true });
+    wrap.addEventListener('pointerup', onHandleUp, { capture: true });
+    wrap.addEventListener('pointercancel', onHandleUp, { capture: true });
+
     // Rebuild the persistent doc-path UNDERLINE after each full repaint (the visual cue; the actual
     // tap is handled by the link provider above). Underline-only (no bg) so it can't trigger the
     // scroll/BCE shading trap. Markers/decorations are disposed and recreated every repaint to match
@@ -878,6 +912,10 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
       host.removeEventListener('touchstart', onTouchStart, { capture: true });
       host.removeEventListener('touchmove', onTouchMove, { capture: true });
       host.removeEventListener('touchend', onTouchEnd, { capture: true });
+      wrap.removeEventListener('pointerdown', onHandleDown, { capture: true });
+      wrap.removeEventListener('pointermove', onHandleMove, { capture: true });
+      wrap.removeEventListener('pointerup', onHandleUp, { capture: true });
+      wrap.removeEventListener('pointercancel', onHandleUp, { capture: true });
       sub.dispose();
       linkProvider.dispose();
       for (const { deco, marker } of decosRef.current) { deco.dispose(); marker.dispose(); }
