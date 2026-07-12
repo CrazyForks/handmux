@@ -54,10 +54,19 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .settings-card {
   position: fixed; z-index: 20; left: 50%; top: 50%; transform: translate(-50%, -50%);
   width: calc(100% - 48px); max-width: 360px;
+  /* Cap to the viewport (dvh tracks the mobile URL bar) and let the body scroll, so a tall list of
+     sections is fully reachable instead of clipping off the top/bottom of the centered card. */
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  display: flex; flex-direction: column;
   background: #232427; border-radius: 12px; padding: 16px;
   box-shadow: 0 10px 40px rgba(0,0,0,.5);
 }
-.settings-head { display: flex; align-items: center; margin-bottom: 12px; }
+.settings-head { flex: none; display: flex; align-items: center; margin-bottom: 12px; }
+/* The head stays put; everything below it scrolls. Negative margin + matching padding pulls the scroll
+   edge (and its scrollbar) out to the card edge while keeping the content inset by the card padding. */
+.settings-body { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  margin: 0 -16px; padding: 0 16px; }
 .settings-title { font-size: 16px; font-weight: 600; margin-right: auto; }
 .settings-close { flex: none; display: inline-flex; align-items: center; justify-content: center;
   width: 30px; height: 30px; padding: 0; border: none; border-radius: 50%;
@@ -236,6 +245,14 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
    scroll the scrollback; horizontal swipes fall through to the container. (Inertia for the
    scrollback is added in JS — xterm tracks touch 1:1 with none; see Terminal.jsx startFling.) */
 .terminal .xterm-viewport { touch-action: pan-x pan-y; overscroll-behavior: contain; }
+/* Thin, low-key scrollbar on BOTH platforms: the desktop default bar is too heavy and mobile's
+   overlay bar auto-hides entirely, so neither signals "there's more above" the way we want. A faint
+   rounded thumb over a transparent track defers to the terminal content (HIG) while still marking the
+   scroll position. */
+.terminal .xterm-viewport { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.22) transparent; }
+.terminal .xterm-viewport::-webkit-scrollbar { width: 7px; height: 7px; }
+.terminal .xterm-viewport::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); border-radius: 4px; }
+.terminal .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
 /* Read-only view: don't let taps focus xterm's hidden input textarea (which would pop the
    mobile soft keyboard and steal taps near the cursor, e.g. the back-to-bottom button). */
 .terminal .xterm-helper-textarea { pointer-events: none; opacity: 0; }

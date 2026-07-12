@@ -10,6 +10,12 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   Flipping it takes effect immediately, no reload.
 
 ### Fixed
+- **Desktop mouse-wheel scrolling now loads deeper history instead of stalling at the first chunk.** On a
+  desktop browser the wheel drove only xterm's native scroll, and once its scrollbar hit the top it stopped
+  firing the events that pull more scrollback — so every pane got stuck about one screen + 100 lines up. The
+  wheel now triggers the deeper-history pull directly (as the touch path already did), and on a full-screen
+  app (alt-screen) it's forwarded to the app as scroll instead of exposing the stale main-screen buffer
+  underneath. A thin, unobtrusive scrollbar is now shown on both desktop and mobile.
 - **The agent icon (and the dock's default mode) now track whether the agent is actually running, not
   whether it just spoke.** Both keyed off the inbox roster, which only lists panes with a recent hook
   event — so a freshly-opened session that hadn't been prompted yet, or one right after `/clear` (whose

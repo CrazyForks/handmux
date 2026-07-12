@@ -633,6 +633,33 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
         else if (axis === -1) startFling(host.querySelector('.xterm-viewport'), 'scrollTop', scrollVelY);
       }
     };
+    // Desktop mouse wheel has no equivalent of the touch handler's smart scroll — wire the SAME two
+    // behaviours here (the touch path branches on altScreenRef the same way, see onTouchMove).
+    //  • Alt-screen: forward the wheel to the app as notches (it owns the scrollback), and swallow the
+    //    event so xterm doesn't scroll its stale main-screen buffer underneath — the exact "scrolling up
+    //    shows history that isn't this full-screen app's" bug. Sign: wheel DOWN (deltaY>0) reveals LATER
+    //    content, which drainWheel expects as NEGATIVE finger travel, so feed it -deltaY.
+    //  • Normal screen: let xterm own the native scroll, but ALSO trigger the deeper-history pull
+    //    directly — onScroll alone can miss the very top after a reseed (its native scrollbar doesn't
+    //    resync), which is what left desktop stuck at the first loaded chunk. onTouchMove does this
+    //    same redundant call on every move; the wheel had no such safety net.
+    const onWheel = (e) => {
+      if (!e.deltaY) return;
+      if (altScreenRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        const px = e.deltaMode === 1 ? e.deltaY * WHEEL_PX          // lines → px (Firefox)
+                 : e.deltaMode === 2 ? e.deltaY * term.rows * WHEEL_PX // pages → px
+                 : e.deltaY;                                        // already px
+        const { notches, rem } = drainWheel(wheelAccum - px, WHEEL_PX);
+        wheelAccum = rem;
+        if (notches) { wheelPending += notches; flushWheel(); }
+        return;
+      }
+      showScrollPos();
+      maybePullMore();
+    };
+    host.addEventListener('wheel', onWheel, { capture: true, passive: false });
     host.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
     host.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
     host.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
@@ -813,6 +840,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       window.removeEventListener('resize', onResize);
       window.removeEventListener('orientationchange', onResize);
       ro?.disconnect();
+      host.removeEventListener('wheel', onWheel, { capture: true });
       host.removeEventListener('touchstart', onTouchStart, { capture: true });
       host.removeEventListener('touchmove', onTouchMove, { capture: true });
       host.removeEventListener('touchend', onTouchEnd, { capture: true });
