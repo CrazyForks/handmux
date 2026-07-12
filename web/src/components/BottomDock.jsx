@@ -137,6 +137,7 @@ function BottomDock({
   // animation on release — both pages stay mounted so you see them slide. pageIndex 0 = command, 1 = chat.
   const pagerRef = useRef(null);
   const trackRef = useRef(null);
+  const dockLeftRef = useRef(null); // the whole dock top: ONE gesture zone for both axes (see the unified handler)
   const pageIndex = mode === 'command' ? 0 : 1;
   const pageIndexRef = useRef(pageIndex);
   pageIndexRef.current = pageIndex;
@@ -246,10 +247,15 @@ function BottomDock({
     const pager = pagerRef.current;
     if (pager) { pager.scrollLeft = 0; pager.scrollTop = 0; }
   }, [mode]);
-  // Native (non-passive) touch handlers so a horizontal drag can preventDefault the page's own scroll.
+  // ONE unified gesture over the WHOLE dock top (grabber, dots, keys, gaps). A single drag is axis-detected
+  // and routed by DIRECTION, not by which spot the finger landed on: horizontal → the page carousel,
+  // vertical → the keyboard show/hide. So you can start on the grabber and swipe sideways to page, or start
+  // on the dots/keys and swipe up/down for the keyboard — the two no longer exclude each other. Native
+  // (non-passive) so a claimed drag can preventDefault the page's own scroll.
   useEffect(() => {
+    const zone = dockLeftRef.current;
     const pager = pagerRef.current;
-    if (!pager) return;
+    if (!zone || !pager) return;
     let d = null;
     const onStart = (e) => {
       releaseTrack(); // drop any inline transform a previous (interrupted) gesture may have left behind
@@ -341,17 +347,17 @@ function BottomDock({
     // slides it into the right half). Snap any such scroll straight back to 0 — the hard guarantee that a
     // keypress can't drag the other page into view / park the dock half-way.
     const onScroll = () => { if (pager.scrollLeft || pager.scrollTop) { pager.scrollLeft = 0; pager.scrollTop = 0; } };
-    pager.addEventListener('scroll', onScroll, { passive: true });
-    pager.addEventListener('touchstart', onStart, { passive: true });
-    pager.addEventListener('touchmove', onMove, { passive: false });
-    pager.addEventListener('touchend', onEnd, { passive: true });
-    pager.addEventListener('touchcancel', onEnd, { passive: true });
+    pager.addEventListener('scroll', onScroll, { passive: true }); // scroll-snap stays on the pager itself
+    zone.addEventListener('touchstart', onStart, { passive: true });
+    zone.addEventListener('touchmove', onMove, { passive: false });
+    zone.addEventListener('touchend', onEnd, { passive: true });
+    zone.addEventListener('touchcancel', onEnd, { passive: true });
     return () => {
       pager.removeEventListener('scroll', onScroll);
-      pager.removeEventListener('touchstart', onStart);
-      pager.removeEventListener('touchmove', onMove);
-      pager.removeEventListener('touchend', onEnd);
-      pager.removeEventListener('touchcancel', onEnd);
+      zone.removeEventListener('touchstart', onStart);
+      zone.removeEventListener('touchmove', onMove);
+      zone.removeEventListener('touchend', onEnd);
+      zone.removeEventListener('touchcancel', onEnd);
     };
   }, []);
 
@@ -540,39 +546,12 @@ function BottomDock({
   // chat → the composer textarea. Keyed off pageIndexRef so it's correct from the long-lived pager effect
   // too (which closes over a stale `mode`).
   const fieldForPage = (pg) => (pg === 0 ? cmdRef.current : ref.current);
-  const showField = (pg) => fieldForPage(pg)?.focus();
-  const hideField = (pg) => fieldForPage(pg)?.blur();
   const toggleField = (pg) => { const el = fieldForPage(pg); if (!el) return; document.activeElement === el ? el.blur() : el.focus(); };
 
-  // The grabber IS the handle: drag it up to reveal the keyboard, down to dismiss (the pill follows the
-  // finger via setGrabberDrag); a tap with no travel just toggles. Works on BOTH pages — command capture or
-  // chat composer. Pointer events only (never touch+mouse) so one gesture = one action. Pointer capture keeps
-  // the whole drag bound to the handle even if the finger slides off it.
-  const grabberPt = useRef(null);
-  const onGrabberDown = (e) => {
-    grabberPt.current = { y0: e.clientY, moved: false };
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-  };
-  const onGrabberMove = (e) => {
-    const p = grabberPt.current;
-    if (!p) return;
-    const dy = e.clientY - p.y0;
-    if (Math.abs(dy) > 4) p.moved = true;
-    setGrabberDrag(dy);
-  };
-  const onGrabberUp = (e) => {
-    const p = grabberPt.current;
-    if (!p) return;
-    grabberPt.current = null;
-    const dy = e.clientY - p.y0;
-    const pg = pageIndexRef.current;
-    releaseGrabber();
-    if (!p.moved) { toggleField(pg); return; } // tap (no travel) → toggle
-    const action = keyboardSwipeAction(0, dy);
-    if (action === 'show') showField(pg);
-    else if (action === 'hide') hideField(pg);
-  };
-  const onGrabberCancel = () => { grabberPt.current = null; releaseGrabber(); };
+  // The grabber's DRAG is handled by the unified dock gesture (it drives the pill via setGrabberDrag), so the
+  // handle itself only needs a TAP → toggle the current page's keyboard. (A drag suppresses the click, so this
+  // fires on taps only.)
+  const onGrabberTap = () => toggleField(pageIndexRef.current);
 
   // Pick a command from the panel: fill the box (never send), close the panel, refocus so the user
   // can edit before submitting.
@@ -802,14 +781,14 @@ function BottomDock({
 
   return (
     <div className="bottom-dock">
-      <div className="dock-left" onPointerDown={keepDockFocus}>
-        {/* Keyboard grabber (iOS-style handle): drag up to show the system keyboard, down to hide, tap to
-            toggle. touch-action:none so the drag never scrolls; the pill follows the finger + arms past the
-            commit threshold (see setGrabberDrag). A vertical swipe on the keyboard area drives the same pill. */}
+      <div className="dock-left" ref={dockLeftRef} onPointerDown={keepDockFocus}>
+        {/* Keyboard grabber (iOS-style handle): a visible affordance for the keyboard gesture. The DRAG is
+            owned by the unified dock handler (drag up shows / down hides, over the whole dock); the handle
+            just TAPS to toggle. The pill (driven by setGrabberDrag) follows the finger + arms past the commit
+            threshold for any vertical drag on the dock. */}
         <div className="dock-grabber" role="button" tabIndex={-1}
           aria-label={keyboardUp ? t('dock.kbdHide') : t('dock.kbdShow')}
-          onPointerDown={onGrabberDown} onPointerMove={onGrabberMove}
-          onPointerUp={onGrabberUp} onPointerCancel={onGrabberCancel}>
+          onClick={onGrabberTap}>
           <i ref={grabberRef} aria-hidden="true" />
         </div>
         {/* Two-dot page indicator (command · chat); the filled dot marks the current page. A tiny label
