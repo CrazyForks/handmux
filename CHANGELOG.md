@@ -13,6 +13,12 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   a pane whose foreground program *is* a coding agent as present (matched by process name, so a plain
   shell or bare `node` is never mistaken for one), independent of activity — the icon stays and the mode
   holds while the agent lives, and both correctly clear the moment it exits to a shell.
+- **The agent logo in a split (multi-pane) window is now per-pane, not per-window.** The window bar
+  squashed every pane in a window down to one agent, so exiting the agent in the pane you were on left the
+  tab's logo lit by a sibling pane, and two *different* agents in one window collapsed to a single
+  (arbitrary) logo. The active window's tab now shows only the current pane's agent (exit it → the logo
+  clears), and the pane menu shows each pane its own logo — Claude and Codex side by side render
+  distinctly, and a pane that has dropped to a shell shows none.
 
 ## [0.12.3] - 2026-07-11
 
