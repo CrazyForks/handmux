@@ -63,7 +63,8 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
   // is a ref so liveTick (effect scope) and the bubble (render scope) share the "don't repaint /
   // a selection is showing" flag without a re-render race.
   const selActiveRef = useRef(false);
-  const [selUI, setSelUI] = useState(null); // {start:{x,y}, end:{x,y}} in .terminal-wrap px, or null
+  const [selInfo, setSelInfo] = useState(''); // blue selection status strip text ("已选 N 行 · M 字"), '' = hidden
+const [selUI, setSelUI] = useState(null); // {start:{x,y}, end:{x,y}} in .terminal-wrap px, or null
   const [selHint, setSelHint] = useState(false); // drag-to-select guidance; lingers a few sec after lift
   const selHintTimerRef = useRef(null);
   // Alt-screen (a full-screen app: vim/htop/less/a mouse-mode TUI) has no scrollback of its own, so a
@@ -231,6 +232,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
     setAltScreen(false);
     selActiveRef.current = false;
     setSelUI(null);
+    setSelInfo('');
     setSelHint(false);
     // Live capture depth tracks the viewport (+margin) instead of a fixed 100, so we transmit and hash
     // only what's shown plus a little scroll-up slack. Floor 24 covers a not-yet-fit grid; cap at MAX_LINES.
@@ -395,32 +397,49 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
     // Start a selection at the long-pressed cell, pre-selecting the word under the finger so
     // there's immediate visible feedback (lift without dragging copies just that word).
     // Recompute the handle/callout overlay from xterm's current selection (the single source of truth).
+    // getSelectionPosition() returns xterm's IBufferRange — 1-based and INCLUSIVE for BOTH x and y
+    // (the same convention as the doc-path link ranges, see docDecorations.js). The rest of our
+    // selection code (term.select / cellFromPoint / getLine / viewportY) is 0-based, so convert once
+    // here, at the single read boundary. Mixing the two bases is what made the end handle sit a cell
+    // past the text and the anchor creep on every drag frame.
+    const selCells = () => {
+      const p = term.getSelectionPosition?.();
+      if (!p) return null;
+      return {
+        start: { col: p.start.x - 1, row: p.start.y - 1 },
+        end: { col: p.end.x - 1, row: p.end.y - 1 }, // 0-based, inclusive last cell
+      };
+    };
     const refreshSelUI = () => {
-      const pos = term.getSelectionPosition?.();
+      const sel = selCells();
       const screen = elRef.current?.querySelector('.xterm-screen');
-      if (!pos || !screen) { setSelUI(null); return; }
+      if (!sel || !screen) { setSelUI(null); setSelInfo(''); return; }
       const sr = screen.getBoundingClientRect();
       const wr = elRef.current.parentElement.getBoundingClientRect(); // .terminal-wrap
       const cw = sr.width / term.cols;
       const ch = sr.height / term.rows;
       const vy = buf().viewportY;
       const off = { x: sr.left - wr.left, y: sr.top - wr.top };
-      const s = cellToPx(pos.start.x, pos.start.y, vy, cw, ch);
-      const e = cellToPx(pos.end.x + 1, pos.end.y, vy, cw, ch); // end handle sits after the last cell
+      const s = cellToPx(sel.start.col, sel.start.row, vy, cw, ch);
+      const e = cellToPx(sel.end.col + 1, sel.end.row, vy, cw, ch); // right edge of the last cell
       setSelUI({
         start: { x: s.x + off.x, y: s.y + off.y, ch },
         end: { x: e.x + off.x, y: e.y + off.y, ch },
         wrapW: wr.width,
       });
+      // Blue status strip: how much is selected (rows the selection spans · visible chars).
+      const text = term.getSelection();
+      if (text) {
+        const lines = text.split('\n').length;
+        const chars = text.replace(/\n/g, '').length;
+        setSelInfo(`已选 ${lines} 行 · ${chars} 字`);
+      } else setSelInfo('');
     };
     // Helpers for the callout expand buttons (整行 / 整段). currentRange() reads xterm's live
     // selection in the {start,end} col/row form expected by terminalSelection.js. selectRange()
     // applies a new range back to xterm and refreshes the overlay. paraLineText() feeds the
     // paragraph-expand function the line text it needs to locate blank-line boundaries.
-    const currentRange = () => {
-      const p = term.getSelectionPosition();
-      return p && { start: { col: p.start.x, row: p.start.y }, end: { col: p.end.x, row: p.end.y } };
-    };
+    const currentRange = () => selCells(); // 0-based {start,end} — the shape terminalSelection.js expects
     const paraLineText = (row) => buf().getLine(row)?.translateToString(true) ?? '';
     const selectRange = (r) => {
       if (!r) return;
@@ -468,6 +487,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
       selAnchor = null;
       selActiveRef.current = false;
       setSelUI(null);
+      setSelInfo('');
       clearTimeout(selHintTimerRef.current);
       setSelHint(false);
       term.clearSelection();
@@ -486,7 +506,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
     let pinchDist0 = 0; // finger distance and font size at pinch start
     let pinchFont0 = 0;
     let selecting = false; // a long-press fired and we're dragging out a selection
-    let clearedOnDown = false; // this touch started by dismissing a live selection → its tap must NOT dismiss the kbd
+    let selOnDown = false; // a selection was showing when this touch began → a clean TAP clears it (a swipe keeps it)
     // Long-press (one finger held still ~500ms) starts a selection; any real movement, a lift,
     // or a second finger cancels it before it fires.
     let lpTimer = null;
@@ -559,9 +579,9 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
       idleSince = Date.now(); // touching the pane is activity → keep the cadence live
       cancelLongPress();
       stopFling(); // any new touch interrupts an in-flight coast (tap-to-stop)
-      // A tap anywhere dismisses a showing selection before doing anything else.
-      clearedOnDown = selActiveRef.current;
-      if (selActiveRef.current) clearSelection();
+      // A showing selection is now dismissed by a clean TAP (decided in onTouchEnd), NOT on touchdown —
+      // so a swipe/scroll can pan the viewport with the handles still up. Just remember it was showing.
+      selOnDown = selActiveRef.current;
       selecting = false;
       if (e.touches.length === 2) {
         pinching = true;
@@ -677,13 +697,13 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
         if (axis === 1) startFling(host, 'scrollLeft', scrollVelX);
         else if (axis === -1) startFling(host.querySelector('.xterm-viewport'), 'scrollTop', scrollVelY);
       }
-      // A clean single tap on the terminal DISMISSES the keyboard — the iOS-native "tap outside the field to
-      // put the keyboard away" habit. A SWIPE never does (a pan sets axis, a long-press sets selecting, so a
-      // scroll reads through with the keyboard up); onKeepKbdDown pins focus through the gesture so only this
-      // explicit tap blurs. Call SYNCHRONOUSLY — this touchend is the user gesture iOS wants. clearedOnDown
-      // skips the tap that merely dismissed a live selection (its job was the dismiss, not the keyboard).
-      if (e.touches.length === 0 && !selecting && !pinching && axis === 0 && !clearedOnDown) {
-        onTapRef.current?.();
+      // A clean single tap (no pan, no long-press, no pinch): if a selection was showing, the tap CLEARS it
+      // (and stops there — its job was the dismiss, not the keyboard); otherwise it dismisses the keyboard,
+      // the iOS-native "tap outside the field to put it away" habit. A SWIPE sets axis≠0, so a scroll keeps
+      // both the selection and the keyboard. Call SYNCHRONOUSLY — this touchend is the gesture iOS wants.
+      if (e.touches.length === 0 && !selecting && !pinching && axis === 0) {
+        if (selOnDown) clearSelection();
+        else onTapRef.current?.();
       }
     };
     // Desktop mouse wheel has no equivalent of the touch handler's smart scroll — wire the SAME two
@@ -745,12 +765,11 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
     };
     const onHandleMove = (ev) => {
       if (!dragEnd) return;
-      const pos = term.getSelectionPosition();
-      if (!pos) return;
-      // Anchor = the OTHER end; drag = the finger.
-      const anchorCell = dragEnd === 'start' ? { col: pos.end.x, row: pos.end.y }
-                                             : { col: pos.start.x, row: pos.start.y };
-      selAnchor = anchorCell;
+      const sel = selCells();
+      if (!sel) return;
+      // Anchor = the OTHER end (0-based, so it flattens against the finger's 0-based cell without drift).
+      selAnchor = dragEnd === 'start' ? { col: sel.end.col, row: sel.end.row }
+                                      : { col: sel.start.col, row: sel.start.row };
       extendSelection(ev.clientX, ev.clientY);
       refreshSelUI();
       // Auto-scroll when the dragged handle nears the viewport top/bottom edge, extending the selection
@@ -1040,6 +1059,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
     term?.clearSelection();
     selActiveRef.current = false;
     setSelUI(null);
+    setSelInfo('');
     clearTimeout(selHintTimerRef.current);
     setSelHint(false);
   };
@@ -1049,7 +1069,8 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
       <div ref={elRef} className={ready ? 'terminal' : 'terminal terminal--loading'} />
       {!connected && <div className="term-banner term-banner--err">⚠ 连接断开,重连中…</div>}
       {dbgVisible && <div className="dbg">{dbg}</div>}
-      {connected && scrollInfo && <div className="term-banner term-banner--hist">{scrollInfo}</div>}
+      {connected && scrollInfo && !selInfo && <div className="term-banner term-banner--hist">{scrollInfo}</div>}
+      {selInfo && <div className="term-banner term-banner--sel">{selInfo}</div>}
       {scrollInfo && <button className="new-output" onClick={resume}>↓ 回到底部</button>}
       {selHint && <div className="sel-hint">拖动两端手柄调整选区，点「拷贝」复制</div>}
       {altScreen && (
