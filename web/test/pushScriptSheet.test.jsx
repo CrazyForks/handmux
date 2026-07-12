@@ -7,10 +7,12 @@ describe('PushScriptSheet', () => {
     const { container } = render(<PushScriptSheet open={false} pushKey="k" notifyOn onClose={() => {}} />);
     expect(container.firstChild).toBeNull();
   });
-  it('shows the command, this device key, and the reliability note', () => {
+  it('shows one example per scope, inlines this device key, and the reliability note', () => {
     render(<PushScriptSheet open pushKey="DEVKEY1" notifyOn onClose={() => {}} />);
-    expect(screen.getByText(/handmux push "构建完成"/)).toBeTruthy();
-    expect(screen.getByText(/DEVKEY1/)).toBeTruthy();
+    // three standalone command examples (all / session / device)
+    expect(screen.getAllByText(/handmux push "构建完成"/).length).toBeGreaterThanOrEqual(3);
+    // the device example carries the real key inline, not a placeholder
+    expect(screen.getByText(/--device DEVKEY1/)).toBeTruthy();
     expect(screen.getByText(/FCM|APNs|IM|微信|Telegram/)).toBeTruthy();
   });
   // Regression: the sheet must use the real, existing settings-card shell (visible + interactive),

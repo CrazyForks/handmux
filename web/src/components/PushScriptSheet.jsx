@@ -1,17 +1,33 @@
 import { useState } from 'react';
 import { t } from '../i18n';
 
-// Self-contained "script push" doc module: the local `handmux push` command, this device's addressing
-// key (for --device), the scope/option list, and — deliberately prominent — the reliability boundary.
+// Self-contained "script push" doc module: three standalone command examples (all devices / a session /
+// this device), the two optional flags as a footnote, and — deliberately prominent — the reliability
+// boundary. The device example inlines THIS device's real key so it's copy-and-run.
 export default function PushScriptSheet({ open, pushKey, notifyOn, onClose }) {
   const [copied, setCopied] = useState('');
   if (!open) return null;
 
-  const cmd = 'handmux push "构建完成" "耗时 3m12s"';
+  const base = 'handmux push "构建完成" "耗时 3m12s"';
+  const hasKey = !!(notifyOn && pushKey);
+  const cmdAll = base;
+  const cmdSession = `${base} --session ${t('scriptPush.session_placeholder')}`;
+  const cmdDevice = `${base} --device ${hasKey ? pushKey : t('scriptPush.device_placeholder')}`;
+
   const copy = async (text, which) => {
     try { await navigator.clipboard.writeText(text); setCopied(which); setTimeout(() => setCopied(''), 1500); }
     catch { /* clipboard blocked — user can select manually */ }
   };
+  const copyLabel = (which) => (copied === which ? t('scriptPush.copied') : t('common.copy'));
+
+  const example = (which, label, cmd, note) => (
+    <div className="push-script-block">
+      <div className="push-script-label">{label}</div>
+      <pre className="push-script-cmd"><code>{cmd}</code></pre>
+      {note && <div className="push-script-hint">{note}</div>}
+      <button className="fontbtn" onClick={() => copy(cmd, which)}>{copyLabel(which)}</button>
+    </div>
+  );
 
   return (
     <>
@@ -24,30 +40,18 @@ export default function PushScriptSheet({ open, pushKey, notifyOn, onClose }) {
 
         <p className="push-script-intro">{t('scriptPush.intro')}</p>
 
+        {example('all', t('scriptPush.scope_all'), cmdAll)}
+        {example('session', t('scriptPush.scope_session'), cmdSession)}
+        {example('device', t('scriptPush.scope_device'), cmdDevice,
+          hasKey ? t('scriptPush.device_key_note') : t('scriptPush.device_need_enable'))}
+
         <div className="push-script-block">
-          <div className="push-script-label">{t('scriptPush.cmd_label')}</div>
-          <pre className="push-script-cmd"><code>{cmd}</code></pre>
-          <button className="fontbtn" onClick={() => copy(cmd, 'cmd')}>{copied === 'cmd' ? t('scriptPush.copied') : t('common.copy')}</button>
+          <div className="push-script-label">{t('scriptPush.opts_label')}</div>
+          <ul className="push-script-fields">
+            <li>{t('scriptPush.opt_tag')}</li>
+            <li>{t('scriptPush.opt_url')}</li>
+          </ul>
         </div>
-
-        {notifyOn && pushKey ? (
-          <div className="push-script-block">
-            <div className="push-script-label">{t('scriptPush.key_label')}</div>
-            <code className="push-script-key">{pushKey}</code>
-            <button className="fontbtn" onClick={() => copy(pushKey, 'key')}>{copied === 'key' ? t('scriptPush.copied') : t('common.copy')}</button>
-            <div className="push-script-hint">{t('scriptPush.key_hint')}</div>
-          </div>
-        ) : (
-          <div className="push-script-hint">{t('scriptPush.enable_first')}</div>
-        )}
-
-        <ul className="push-script-fields">
-          <li>{t('scriptPush.field_args')}</li>
-          <li>{t('scriptPush.field_session')}</li>
-          <li>{t('scriptPush.field_device')}</li>
-          <li>{t('scriptPush.field_tag')}</li>
-          <li>{t('scriptPush.field_url')}</li>
-        </ul>
 
         <div className="push-script-note">{t('scriptPush.reliability')}</div>
       </div>
