@@ -384,6 +384,24 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
     let selAnchor = null; // {col,row} fixed end of the drag selection
     // Start a selection at the long-pressed cell, pre-selecting the word under the finger so
     // there's immediate visible feedback (lift without dragging copies just that word).
+    // Recompute the handle/callout overlay from xterm's current selection (the single source of truth).
+    const refreshSelUI = () => {
+      const pos = term.getSelectionPosition?.();
+      const screen = elRef.current?.querySelector('.xterm-screen');
+      if (!pos || !screen) { setSelUI(null); return; }
+      const sr = screen.getBoundingClientRect();
+      const wr = elRef.current.parentElement.getBoundingClientRect(); // .terminal-wrap
+      const cw = sr.width / term.cols;
+      const ch = sr.height / term.rows;
+      const vy = buf().viewportY;
+      const off = { x: sr.left - wr.left, y: sr.top - wr.top };
+      const s = cellToPx(pos.start.x, pos.start.y, vy, cw, ch);
+      const e = cellToPx(pos.end.x + 1, pos.end.y, vy, cw, ch); // end handle sits after the last cell
+      setSelUI({
+        start: { x: s.x + off.x, y: s.y + off.y, ch },
+        end: { x: e.x + off.x, y: e.y + off.y, ch },
+      });
+    };
     const startSelection = (x, y) => {
       const cell = cellFromPoint(x, y);
       if (!cell) return;
@@ -416,24 +434,6 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
       const startOff = Math.min(aOff, cOff);
       term.select(startOff % cols, Math.floor(startOff / cols), Math.abs(cOff - aOff) + 1);
       refreshSelUI();
-    };
-    // Recompute the handle/callout overlay from xterm's current selection (the single source of truth).
-    const refreshSelUI = () => {
-      const pos = term.getSelectionPosition?.();
-      const screen = elRef.current?.querySelector('.xterm-screen');
-      if (!pos || !screen) { setSelUI(null); return; }
-      const sr = screen.getBoundingClientRect();
-      const wr = elRef.current.parentElement.getBoundingClientRect(); // .terminal-wrap
-      const cw = sr.width / term.cols;
-      const ch = sr.height / term.rows;
-      const vy = buf().viewportY;
-      const off = { x: sr.left - wr.left, y: sr.top - wr.top };
-      const s = cellToPx(pos.start.x, pos.start.y, vy, cw, ch);
-      const e = cellToPx(pos.end.x + 1, pos.end.y, vy, cw, ch); // end handle sits after the last cell
-      setSelUI({
-        start: { x: s.x + off.x, y: s.y + off.y, ch },
-        end: { x: e.x + off.x, y: e.y + off.y, ch },
-      });
     };
     // Drop the current selection + bubble and let live refresh resume.
     const clearSelection = () => {
