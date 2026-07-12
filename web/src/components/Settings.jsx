@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { notifyEnabled, enableNotifications, disableNotifications, pushSupported, getScriptPushKey } from '../push.js';
+import { notifyEnabled, enableNotifications, disableNotifications, pushSupported } from '../push.js';
 import DirPicker from './DirPicker.jsx';
-import PushScriptSheet from './PushScriptSheet.jsx';
 import { fetchPaneCwd } from '../api.js';
 import { fmtRemainMin, useRemaining } from '../previewCountdown.js';
+import { getDocHighlight, setDocHighlight } from '../storage.js';
 import { t, getLangCode, setLang, AVAILABLE } from '../i18n';
 
 // Settings modal: the screen-column controls (⊟/⊞/↺, previously in the topbar) plus an explicit
@@ -15,13 +15,12 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   getColCount = null,
   onStartPreview, onStartDynamicPreview, onOpenPreview, onRenew, onStop }) {
   const [font, setFont] = useState(null); // { size, auto } snapshot for display
+  const [docHl, setDocHl] = useState(getDocHighlight()); // doc-path highlight toggle (default off)
   const [cols, setCols] = useState(null); // current col count for display (null = unknown/restored)
   const [langOpen, setLangOpen] = useState(false);
   const [notify, setNotify] = useState(notifyEnabled()); // device-notification toggle state
   const [notifyBusy, setNotifyBusy] = useState(false); // true while (un)subscribing — shows a spinner, disables the button
   const [notifyMsg, setNotifyMsg] = useState(''); // inline status/error shown to the right of the toggle
-  const [scriptPushOpen, setScriptPushOpen] = useState(false);
-  const [scriptPushKey, setScriptPushKey] = useState(null);
   const [dirOpen, setDirOpen] = useState(false);
   const [seedCwd, setSeedCwd] = useState(null); // dir the picker lands on (the pane's live cwd)
   const [previewKind, setPreviewKind] = useState('off');    // start mode: off (default) / static / dynamic
@@ -48,11 +47,6 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   // Open the dir picker seeded at the LAST preview dir for this window (so re-previewing the same
   // build is one tap), else the pane's current cwd (re-fetched, honoring a mid-session `cd`), else
   // $HOME. The picker also has a "jump to cwd" shortcut for switching dirs on the spot.
-  const openScriptPush = async () => {
-    setScriptPushKey(notifyEnabled() ? await getScriptPushKey() : null);
-    setScriptPushOpen(true);
-  };
-
   const openDirPicker = async () => {
     let seed = lastPreviewDir;
     if (!seed && pane) { try { seed = (await fetchPaneCwd(pane)).cwd || null; } catch { /* → $HOME */ } }
@@ -89,6 +83,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
     termRef.current?.autoFont?.();
     setFont({ size: null, auto: true });
   };
+  const toggleDocHl = (on) => { setDocHl(on); setDocHighlight(on); termRef.current?.setDocHighlight?.(on); };
 
   const fontLabel = font?.auto ? t('settings.font_auto') : font?.size ? `${font.size}px` : '—';
   const colsLabel = cols != null ? `${cols} 列` : '—';
@@ -104,6 +99,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
           <button className="settings-close" onClick={onClose} aria-label={t('common.close')}>✕</button>
         </div>
 
+        <div className="settings-body">
         <div className="settings-group">{t('settings.group_global')}</div>
 
         <div className="settings-section">
@@ -133,6 +129,18 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
             <button className="fontbtn" onClick={() => stepFont(1)} aria-label={t('settings.font_increase')}>A+</button>
             <button className="fontbtn" onClick={auto} title={t('settings.font_auto_title')}>{t('settings.font_auto')}</button>
           </div>
+        </div>
+
+        <div className="settings-section">
+          <label className="settings-toggle">
+            <span className="settings-label">{t('settings.path_highlight')}</span>
+            <span className="cmd-switch">
+              <input type="checkbox" checked={docHl} onChange={(e) => toggleDocHl(e.target.checked)} />
+              <span className="cmd-switch-track" aria-hidden="true" />
+              <span className="cmd-switch-knob" aria-hidden="true" />
+            </span>
+          </label>
+          <div className="settings-hint">{t('settings.path_highlight_hint')}</div>
         </div>
 
         <div className="settings-section">
@@ -196,14 +204,6 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
           ) : (
             <div className="settings-value" style={{ display: 'block' }}>{t('settings.push_unsupported')}</div>
           )}
-        </div>
-
-        <div className="settings-section">
-          <div className="settings-label">{t('settings.script_push')}</div>
-          <div className="settings-btns">
-            <button className="fontbtn" onClick={openScriptPush} disabled={!pushSupported()}>{t('settings.script_push_open')}</button>
-          </div>
-          <div className="settings-hint">{t('settings.script_push_hint')}</div>
         </div>
 
         <div className="settings-group">{t('settings.group_session')}</div>
@@ -286,6 +286,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
             </div>
           )}
         </div>
+        </div>
       </div>
       <DirPicker
         open={dirOpen}
@@ -294,12 +295,6 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
         hint={t('settings.dir_picker_hint')}
         onPick={(dir) => { setDirOpen(false); onStartPreview?.(dir); onClose?.(); }}
         onClose={() => setDirOpen(false)}
-      />
-      <PushScriptSheet
-        open={scriptPushOpen}
-        pushKey={scriptPushKey}
-        notifyOn={notify}
-        onClose={() => setScriptPushOpen(false)}
       />
     </>
   );

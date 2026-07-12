@@ -142,6 +142,15 @@ export default {
   'setup.secConnection': 'Connection',
   'setup.secName': 'Name',
   'setup.secPort': 'Port',
+  'setup.secToken': 'Token',
+  'setup.tokenAuto': 'auto · new each start',
+  'setup.tokenCustom': 'Set a custom token…',
+  'setup.tokenRandom': 'Generate a random one',
+  'setup.tokenReset': 'Reset to auto (new each start)',
+  'setup.askToken': 'Access token — it appears in the URL you open on the phone',
+  'setup.tokenGenerated': 'New token: {token}',
+  'setup.valToken': 'enter a token',
+  'setup.valTokenSpace': 'no spaces — the token goes in a URL',
   'setup.secLanguage': 'CLI language / 命令行语言',
   'setup.secPush': 'Push',
   'setup.secVoice': 'Voice',
@@ -238,7 +247,6 @@ export default {
   handmux setup            configure tunnel / name / notifications (writes config; re-run to change)
   handmux stop | restart | status
   handmux logs [--follow] [--lines N]
-  handmux push <title> <body>   notify your phone from a script (--session X · --device K · --tag T · --url U)
   handmux update           upgrade to the latest published version (npm i -g handmux@latest)
 
 New here? run 'handmux setup' — it walks you through remote access + phone notifications.

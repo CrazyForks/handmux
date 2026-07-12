@@ -29,7 +29,7 @@ function WindowTab({ window: win, active, agent, onSelect, onManage }) {
 // Active window with >1 pane: the tab carries the current pane inline and taps open the pane menu.
 // Long-press = manage the window. The menu reuses Dropdown's .dd-menu / .dd-option visuals; the
 // current pane is pre-selected (✓), so opening it is just "confirm or switch".
-function PaneTab({ window: win, panes, currentPaneId, agent, onManage, onSelectPane }) {
+function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, onManage, onSelectPane }) {
   const [open, setOpen] = useState(false);
   // The menu is position:fixed (anchored by measured rect), not absolute: its anchor sits inside the
   // horizontally-scrolling .windowbar-scroll, whose overflow would otherwise CLIP a normal dropdown
@@ -88,7 +88,11 @@ function PaneTab({ window: win, panes, currentPaneId, agent, onManage, onSelectP
               className={`dd-option${p.id === currentPaneId ? ' is-selected' : ''}`}
               onClick={() => { onSelectPane(p.id); setOpen(false); }}
             >
-              <span className="dd-option-label">{paneLabel(p, i)}</span>
+              <span className="dd-option-label">
+                <span className="dd-pane-seq" aria-hidden="true">{seq(i)}</span>
+                {paneAgents[p.id] && <AgentMark agent={paneAgents[p.id]} />}
+                <span className="dd-pane-cmd">{p.command || p.id}</span>
+              </span>
               {p.id === currentPaneId && <span className="dd-check" aria-hidden="true">✓</span>}
             </button>
           ))}
@@ -99,7 +103,7 @@ function PaneTab({ window: win, panes, currentPaneId, agent, onManage, onSelectP
 }
 
 export default function WindowBar({
-  windows, windowAgents = {}, currentAgent, currentWindowId, panes, currentPaneId, onSelectWindow, onSelectPane, onNewWindow, onManageWindow,
+  windows, windowAgents = {}, paneAgents = {}, currentAgent, currentWindowId, panes, currentPaneId, onSelectWindow, onSelectPane, onNewWindow, onManageWindow,
   trackWindowId,
 }) {
   const scrollRef = useRef(null);
@@ -123,8 +127,9 @@ export default function WindowBar({
                 key={w.id}
                 window={w}
                 panes={panes}
+                paneAgents={paneAgents}
                 currentPaneId={currentPaneId}
-                agent={currentAgent || windowAgents[w.id]}
+                agent={currentAgent}
                 onManage={onManageWindow}
                 onSelectPane={onSelectPane}
               />

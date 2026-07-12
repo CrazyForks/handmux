@@ -10,7 +10,6 @@ import webpush from 'web-push';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import crypto from 'node:crypto';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const STORE = process.env.PUSH_STORE || path.resolve(here, '../data/push-subs.json');
@@ -37,15 +36,13 @@ function ensureInit() {
   }
 }
 
-const genKey = () => crypto.randomBytes(18).toString('base64url');
-
 let subs = load();
 
 function load() {
   try {
     const raw = JSON.parse(fs.readFileSync(STORE, 'utf8')) || [];
     return raw.map((e) => (e && e.subscription)
-      ? { subscription: e.subscription, boundSessions: e.boundSessions || [], pushKey: e.pushKey || undefined }
+      ? { subscription: e.subscription, boundSessions: e.boundSessions || [] }
       : { subscription: e, boundSessions: [] }); // migrate old bare-subscription entries
   } catch { return []; }
 }
@@ -63,8 +60,8 @@ export function count() { return subs.length; }
 export function addSubscription(sub, boundSessions = []) {
   if (!sub || typeof sub.endpoint !== 'string') return false;
   const i = subs.findIndex((s) => s.subscription.endpoint === sub.endpoint);
-  if (i === -1) subs.push({ subscription: sub, boundSessions, pushKey: genKey() });
-  else subs[i] = { subscription: sub, boundSessions, pushKey: subs[i].pushKey || genKey() };
+  if (i === -1) subs.push({ subscription: sub, boundSessions });
+  else subs[i] = { subscription: sub, boundSessions };
   persist();
   return true;
 }
@@ -78,15 +75,6 @@ export function removeSubscription(endpoint) {
   const before = subs.length;
   subs = subs.filter((s) => s.subscription.endpoint !== endpoint);
   if (subs.length !== before) persist();
-}
-
-// The device-addressing id (NOT an auth credential — see /api/push/send-local). Lazy-generate for
-// records stored before the feature existed so an already-subscribed device still has one.
-export function getPushKey(endpoint) {
-  const rec = subs.find((s) => s.subscription.endpoint === endpoint);
-  if (!rec) return null;
-  if (!rec.pushKey) { rec.pushKey = genKey(); persist(); }
-  return rec.pushKey;
 }
 
 // The push-service Topic header (RFC 8030) must be ≤32 URL/filename-safe base64 chars [A-Za-z0-9_-].
@@ -124,14 +112,6 @@ async function deliver(records, payload, opts = {}) {
 export const sendToAll = (payload, opts = {}) => deliver(subs, payload, opts);
 export const sendToSession = (session, payload, opts = {}) =>
   deliver(subs.filter((s) => s.boundSessions.includes(session)), payload, opts);
-
-export const sendToDevices = (keys, payload, opts = {}) =>
-  deliver(subs.filter((s) => keys.includes(s.pushKey)), payload, opts);
-
-// Union of the given sessions, deduped: a device bound to several of them is still delivered once
-// (deliver() iterates the record list, so each record appears at most once here).
-export const sendToSessions = (sessions, payload, opts = {}) =>
-  deliver(subs.filter((s) => s.boundSessions.some((x) => sessions.includes(x))), payload, opts);
 
 // Back-compat: the /push/subscribe welcome still pushes to a single just-added subscription.
 export async function sendToOne(sub, payload, opts = {}) {

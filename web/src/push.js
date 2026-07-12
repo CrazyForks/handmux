@@ -102,25 +102,6 @@ export async function sendTestPush() {
   return r.json();
 }
 
-// This device's addressing key, resolved from the live subscription's endpoint (server-token auth).
-// Returns null if push isn't enabled/subscribed here. The key is not a secret — it only selects a
-// device for `handmux push --device`; sending still requires the loopback server token.
-export async function getScriptPushKey() {
-  if (!pushSupported()) return null;
-  try {
-    const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.getSubscription();
-    if (!sub) return null;
-    const r = await fetch('/api/push/key', {
-      method: 'POST',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ endpoint: sub.endpoint }),
-    });
-    if (!r.ok) return null;
-    return (await r.json()).pushKey || null;
-  } catch { return null; }
-}
-
 // Clear any OS notification for a pane (called when the user navigates to that pane). Best-effort.
 export async function clearPaneNotification(pane) {
   if (!pushSupported()) return;

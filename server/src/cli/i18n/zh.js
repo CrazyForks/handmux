@@ -141,6 +141,15 @@ export default {
   'setup.secConnection': '连接',
   'setup.secName': '名称',
   'setup.secPort': '端口',
+  'setup.secToken': '令牌',
+  'setup.tokenAuto': '自动 · 每次启动新生成',
+  'setup.tokenCustom': '自定义令牌…',
+  'setup.tokenRandom': '随机生成一个',
+  'setup.tokenReset': '恢复自动(每次启动新生成)',
+  'setup.askToken': '访问令牌 —— 会出现在手机打开的网址里',
+  'setup.tokenGenerated': '新令牌:{token}',
+  'setup.valToken': '请输入令牌',
+  'setup.valTokenSpace': '不能有空格 —— 令牌会放进网址',
   'setup.secLanguage': '命令行语言 / CLI language',
   'setup.secPush': '推送',
   'setup.secVoice': '语音',
@@ -237,7 +246,6 @@ export default {
   handmux setup            配置隧道 / 名称 / 通知(写入配置;重跑即可修改)
   handmux stop | restart | status
   handmux logs [--follow] [--lines N]
-  handmux push <标题> <正文>    从脚本推一条通知到手机（--session 会话 · --device 设备key · --tag · --url）
   handmux update           升级到最新发布版本(npm i -g handmux@latest)
 
 第一次用?跑 'handmux setup' —— 它会带你配好外网访问 + 手机通知。
