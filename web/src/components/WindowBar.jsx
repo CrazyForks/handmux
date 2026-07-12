@@ -89,8 +89,9 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
               onClick={() => { onSelectPane(p.id); setOpen(false); }}
             >
               <span className="dd-option-label">
-                {paneAgents[p.id] && <AgentMark agent={paneAgents[p.id]} />}
-                {paneLabel(p, i)}
+                <span className="dd-pane-seq" aria-hidden="true">{seq(i)}</span>
+                <span className="dd-pane-ag">{paneAgents[p.id] && <AgentMark agent={paneAgents[p.id]} />}</span>
+                <span className="dd-pane-cmd">{p.command || p.id}</span>
               </span>
               {p.id === currentPaneId && <span className="dd-check" aria-hidden="true">✓</span>}
             </button>
