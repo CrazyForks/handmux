@@ -166,6 +166,28 @@ function BottomDock({
     t.style.transition = ''; // fall back to the CSS transition
     t.style.transform = '';  // fall back to the CSS class → page-aligned rest (animated)
   };
+  // Keyboard grabber feedback. The OS keyboard can't be dragged interactively on the web (it only slides
+  // on focus/blur), so the GRABBER is what follows the finger: it translates a resisted fraction of the
+  // drag (--drag), fattens while dragging, and turns blue once past the commit threshold — live feedback
+  // that a release will actually toggle. Driven by BOTH the grabber's own drag and the keyboard-area swipe,
+  // so they animate identically. Cleared on release → the CSS transition springs it back.
+  const grabberRef = useRef(null);
+  const KBD_COMMIT_PX = 24; // matches keyboardSwipeAction's default threshold
+  const setGrabberDrag = (dy) => {
+    const g = grabberRef.current;
+    if (!g) return;
+    g.style.transition = 'none';
+    g.style.setProperty('--drag', `${Math.max(-16, Math.min(16, dy * 0.4))}px`);
+    g.classList.add('dragging');
+    g.classList.toggle('armed', Math.abs(dy) >= KBD_COMMIT_PX);
+  };
+  const releaseGrabber = () => {
+    const g = grabberRef.current;
+    if (!g) return;
+    g.style.transition = '';
+    g.style.removeProperty('--drag');
+    g.classList.remove('dragging', 'armed');
+  };
   // Safety net: on any AT-REST render, drop a lingering inline transform so the class snaps the track to
   // its page. Covers a gesture interrupted so badly that onEnd never fired (browser-hijacked touch,
   // missed touchend) — plus onStart clears it on the next touch, so a stuck track always self-corrects.
@@ -277,7 +299,7 @@ function BottomDock({
         // gesture from here so a vertical flick can't leak into a page swipe or the strip's native scroll.
         if (!d.horiz && !d.onKey && pageIndexRef.current === 0 && Math.abs(dy) > Math.abs(dx) * 1.4) d.vert = true;
       }
-      if (d.vert) { d.dx = dx; d.dy = dy; if (e.cancelable) e.preventDefault(); return; }
+      if (d.vert) { d.dx = dx; d.dy = dy; setGrabberDrag(dy); if (e.cancelable) e.preventDefault(); return; }
       if (!d.horiz) return; // a vertical drag (or a strip-scroll we handed off) → leave it to native
       e.preventDefault();
       draggingRef.current = true; // the finger owns the transform now
@@ -297,6 +319,7 @@ function BottomDock({
         const action = keyboardSwipeAction(d.dx, d.dy);
         d = null;
         releaseTrack();
+        releaseGrabber();
         if (action === 'show') cmdRef.current?.focus();
         else if (action === 'hide') cmdRef.current?.blur();
         return;
@@ -512,6 +535,35 @@ function BottomDock({
     if (!el) return;
     if (document.activeElement === el) el.blur(); else el.focus();
   };
+
+  // The grabber IS the handle: drag it up to reveal the keyboard, down to dismiss (the pill follows the
+  // finger via setGrabberDrag); a tap with no travel just toggles. Pointer events only (never touch+mouse)
+  // so one gesture = one action. Pointer capture keeps the whole drag bound to the handle even if the finger
+  // slides off it.
+  const grabberPt = useRef(null);
+  const onGrabberDown = (e) => {
+    grabberPt.current = { y0: e.clientY, moved: false };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onGrabberMove = (e) => {
+    const p = grabberPt.current;
+    if (!p) return;
+    const dy = e.clientY - p.y0;
+    if (Math.abs(dy) > 4) p.moved = true;
+    setGrabberDrag(dy);
+  };
+  const onGrabberUp = (e) => {
+    const p = grabberPt.current;
+    if (!p) return;
+    grabberPt.current = null;
+    const dy = e.clientY - p.y0;
+    releaseGrabber();
+    if (!p.moved) { toggleKeyboard(); return; } // tap (no travel) → toggle
+    const action = keyboardSwipeAction(0, dy);
+    if (action === 'show') cmdRef.current?.focus();
+    else if (action === 'hide') cmdRef.current?.blur();
+  };
+  const onGrabberCancel = () => { grabberPt.current = null; releaseGrabber(); };
 
   // Pick a command from the panel: fill the box (never send), close the panel, refocus so the user
   // can edit before submitting.
@@ -742,6 +794,15 @@ function BottomDock({
   return (
     <div className="bottom-dock">
       <div className="dock-left" onPointerDown={keepDockFocus}>
+        {/* Keyboard grabber (iOS-style handle): drag up to show the system keyboard, down to hide, tap to
+            toggle. touch-action:none so the drag never scrolls; the pill follows the finger + arms past the
+            commit threshold (see setGrabberDrag). A vertical swipe on the keyboard area drives the same pill. */}
+        <div className="dock-grabber" role="button" tabIndex={-1}
+          aria-label={keyboardUp ? t('dock.kbdHide') : t('dock.kbdShow')}
+          onPointerDown={onGrabberDown} onPointerMove={onGrabberMove}
+          onPointerUp={onGrabberUp} onPointerCancel={onGrabberCancel}>
+          <i ref={grabberRef} aria-hidden="true" />
+        </div>
         {/* Two-dot page indicator (command · chat); the filled dot marks the current page. A tiny label
             sits at the top-left, absolutely positioned so it adds no height (stays in the dots' row).
             It's also the reliable mode switch: TAP it to flip command ⇄ chat (swiping still works, but the

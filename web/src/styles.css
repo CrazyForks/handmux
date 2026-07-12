@@ -363,6 +363,19 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 /* Mode label at the top-left. Absolute so it takes no vertical space — the row stays the dots' height. */
 .dock-mode-label { position: absolute; left: 2px; top: 50%; transform: translateY(-50%);
   font-size: 10px; line-height: 1; color: #8a93a0; white-space: nowrap; pointer-events: none; }
+/* Keyboard grabber: an iOS sheet-style handle at the top of the dock. The row is a generous touch target;
+   the pill inside is the moving part. touch-action:none so the drag owns the gesture (never scrolls). */
+.dock-grabber { display: flex; justify-content: center; align-items: center; padding: 6px 0 2px;
+  touch-action: none; -webkit-tap-highlight-color: transparent; cursor: grab; }
+.dock-grabber:active { cursor: grabbing; }
+/* The pill follows the finger via --drag, fattens while dragging, and turns blue once the drag is far
+   enough that releasing will commit — live feedback instead of a blind fire-on-release. */
+.dock-grabber > i { display: block; width: 36px; height: 5px; border-radius: 2.5px; background: #4a4d54;
+  transform: translateY(var(--drag, 0)); will-change: transform;
+  transition: transform .28s cubic-bezier(.22,.61,.36,1), background .15s ease, width .15s ease; }
+.dock-grabber > i.dragging { width: 46px; background: #6a6f78; }
+.dock-grabber > i.armed { background: var(--blue); }
+@media (prefers-reduced-motion: reduce) { .dock-grabber > i { transition: background .15s ease; } }
 /* Swipe carousel: a two-page track (command | chat) that follows the finger and snaps with an ease
    animation (transform set imperatively in BottomDock). Both pages stay mounted so they slide into view.
    The pager's HEIGHT is deliberately NOT transitioned: the terminal above is poll-and-repaint, so easing

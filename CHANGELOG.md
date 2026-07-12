@@ -11,7 +11,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 - **The command-mode keyboard no longer vanishes the moment you touch the terminal.** Tapping or scrolling
   the output used to blur the input and drop the on-screen keyboard — so you couldn't read while it stayed
   up. It now persists like a real terminal app's: touching the terminal keeps it up, and you show/hide it
-  explicitly — the ⌨ button, or a vertical drag on the dock (swipe up to reveal, down to dismiss).
+  explicitly — the ⌨ button, or the new grip handle at the top of the dock: drag it up to reveal the
+  keyboard, down to dismiss, or tap to toggle. The handle follows your finger and lights up once you've
+  dragged far enough to commit, so the gesture has live feedback.
 
 ### Fixed
 - **A full-screen app (vim/less/htop) no longer leaks unrelated terminal history above it.** An alt-screen
