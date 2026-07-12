@@ -743,46 +743,50 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
     // Handle drag: pointer events on .terminal-wrap (handles are siblings of .terminal, so they don't
     // go through host's capture listeners). Event delegation via closest('.sel-handle').
     const wrap = elRef.current.parentElement;
-    let dragEnd = null; // 'start' | 'end' — which handle is being dragged
+    let dragEnd = null;     // 'start' | 'end' — which handle the drag STARTED on (also the "dragging" flag)
+    let dragAnchor = null;  // the OTHER end, captured ONCE at pointerdown and held fixed for the whole drag
     let autoScrollRAF = null;
     let lastHandlePt = null;
-    // autoDir is hoisted so the rAF tick always reads the CURRENT edge direction, not the one
-    // captured when the loop started. Without this, dragging from the bottom edge to the top
-    // kept scrolling downward (the tick captured dir=1 from the start branch and couldn't update).
+    // autoDir/autoStep are hoisted so the rAF tick always reads the CURRENT edge direction and speed,
+    // not the ones captured when the loop started (dragging from the bottom edge to the top must be able
+    // to reverse mid-loop).
     let autoDir = 0;
+    let autoStep = 0;
     const onHandleDown = (ev) => {
       const h = ev.target.closest?.('.sel-handle');
       if (!h) return;
       dragEnd = h.dataset.end;
+      // Freeze the opposite end NOW (0-based inclusive). Holding it fixed for the whole drag keeps the
+      // other handle from drifting during auto-scroll, and lets the dragged handle cross past it so the
+      // two ends swap (extendSelection sorts min/max around the fixed anchor) instead of collapsing.
+      const sel = selCells();
+      dragAnchor = sel && (dragEnd === 'start' ? { ...sel.end } : { ...sel.start });
       ev.preventDefault();
       ev.stopPropagation();
       wrap.setPointerCapture?.(ev.pointerId);
     };
     const onHandleMove = (ev) => {
-      if (!dragEnd) return;
-      const sel = selCells();
-      if (!sel) return;
-      // Anchor = the OTHER end (0-based, so it flattens against the finger's 0-based cell without drift).
-      selAnchor = dragEnd === 'start' ? { col: sel.end.col, row: sel.end.row }
-                                      : { col: sel.start.col, row: sel.start.row };
+      if (!dragEnd || !dragAnchor) return;
+      selAnchor = dragAnchor;
       extendSelection(ev.clientX, ev.clientY);
       refreshSelUI();
       // Auto-scroll when the dragged handle nears the viewport top/bottom edge, extending the selection
-      // into scrollback / newer rows. rAF loop; keeps the last finger point to re-extend each frame.
-      // autoDir is written every move so the single persistent tick always scrolls toward the current edge.
-      const EDGE = 28;   // px band at each edge that triggers auto-scroll
-      const STEP = 24;   // px scrolled per frame
+      // into scrollback / newer rows. Speed ramps with how far past the edge the finger is (like iOS),
+      // capped — the old flat 24px/frame scrolled far too fast to control.
+      const EDGE = 28; // px band at each edge that triggers auto-scroll
       lastHandlePt = { x: ev.clientX, y: ev.clientY };
       const vpRect = vp.getBoundingClientRect();
-      if (ev.clientY < vpRect.top + EDGE) autoDir = -1;
-      else if (ev.clientY > vpRect.bottom - EDGE) autoDir = 1;
+      let over = 0; // px the finger is past the edge band
+      if (ev.clientY < vpRect.top + EDGE) { autoDir = -1; over = vpRect.top + EDGE - ev.clientY; }
+      else if (ev.clientY > vpRect.bottom - EDGE) { autoDir = 1; over = ev.clientY - (vpRect.bottom - EDGE); }
       else autoDir = 0;
+      autoStep = Math.min(14, 2 + over * 0.28); // px/frame, gentle near the band, faster the deeper you push
       if (autoDir !== 0 && autoScrollRAF == null) {
-        // Start one persistent tick; it reads autoDir each frame so direction changes propagate naturally.
         const tick = () => {
           if (!dragEnd || autoDir === 0) { autoScrollRAF = null; return; }
           const before = vp.scrollTop;
-          vp.scrollTop = before + autoDir * STEP; // fires xterm scroll → repaint + onVpScroll
+          vp.scrollTop = before + autoDir * autoStep; // fires xterm scroll → repaint + onVpScroll
+          selAnchor = dragAnchor;                     // re-assert the fixed anchor each frame
           extendSelection(lastHandlePt.x, lastHandlePt.y);
           refreshSelUI();
           if (vp.scrollTop === before) { autoScrollRAF = null; return; } // hit an edge — stop
@@ -797,6 +801,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
     const onHandleUp = (ev) => {
       if (!dragEnd) return;
       dragEnd = null;
+      dragAnchor = null;
       autoDir = 0;
       if (autoScrollRAF != null) { cancelAnimationFrame(autoScrollRAF); autoScrollRAF = null; }
       wrap.releasePointerCapture?.(ev.pointerId);
