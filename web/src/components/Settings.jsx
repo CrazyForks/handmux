@@ -3,6 +3,7 @@ import { notifyEnabled, enableNotifications, disableNotifications, pushSupported
 import DirPicker from './DirPicker.jsx';
 import { fetchPaneCwd } from '../api.js';
 import { fmtRemainMin, useRemaining } from '../previewCountdown.js';
+import { getDocHighlight, setDocHighlight } from '../storage.js';
 import { t, getLangCode, setLang, AVAILABLE } from '../i18n';
 
 // Settings modal: the screen-column controls (⊟/⊞/↺, previously in the topbar) plus an explicit
@@ -14,6 +15,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   getColCount = null,
   onStartPreview, onStartDynamicPreview, onOpenPreview, onRenew, onStop }) {
   const [font, setFont] = useState(null); // { size, auto } snapshot for display
+  const [docHl, setDocHl] = useState(getDocHighlight()); // doc-path highlight toggle (default off)
   const [cols, setCols] = useState(null); // current col count for display (null = unknown/restored)
   const [langOpen, setLangOpen] = useState(false);
   const [notify, setNotify] = useState(notifyEnabled()); // device-notification toggle state
@@ -81,6 +83,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
     termRef.current?.autoFont?.();
     setFont({ size: null, auto: true });
   };
+  const toggleDocHl = (on) => { setDocHl(on); setDocHighlight(on); termRef.current?.setDocHighlight?.(on); };
 
   const fontLabel = font?.auto ? t('settings.font_auto') : font?.size ? `${font.size}px` : '—';
   const colsLabel = cols != null ? `${cols} 列` : '—';
@@ -125,6 +128,18 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
             <button className="fontbtn" onClick={() => stepFont(1)} aria-label={t('settings.font_increase')}>A+</button>
             <button className="fontbtn" onClick={auto} title={t('settings.font_auto_title')}>{t('settings.font_auto')}</button>
           </div>
+        </div>
+
+        <div className="settings-section">
+          <label className="cmd-toggle-row">
+            <span className="settings-label">{t('settings.path_highlight')}</span>
+            <span className="cmd-switch">
+              <input type="checkbox" checked={docHl} onChange={(e) => toggleDocHl(e.target.checked)} />
+              <span className="cmd-switch-track" aria-hidden="true" />
+              <span className="cmd-switch-knob" aria-hidden="true" />
+            </span>
+          </label>
+          <div className="settings-hint">{t('settings.path_highlight_hint')}</div>
         </div>
 
         <div className="settings-section">

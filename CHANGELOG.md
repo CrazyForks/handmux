@@ -4,6 +4,11 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Added
+- **A “Highlight file paths” switch in Settings (off by default).** The soft blue wash behind tappable
+  terminal paths is now opt-in — off, the terminal stays plain, but the paths remain tappable either way.
+  Flipping it takes effect immediately, no reload.
+
 ### Fixed
 - **The agent icon (and the dock's default mode) now track whether the agent is actually running, not
   whether it just spoke.** Both keyed off the inbox roster, which only lists panes with a recent hook

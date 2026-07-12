@@ -5,7 +5,7 @@ import '@xterm/xterm/css/xterm.css';
 import { getHistory, scrollPane, sendKeys, UnauthorizedError } from '../api.js';
 import { drainWheel, notchDir } from '../wheelScroll.js';
 import { prepareSeed, cursorSeq } from '../terminalSeed.js';
-import { getFont, setFont, clearFont } from '../storage.js';
+import { getFont, setFont, clearFont, getDocHighlight } from '../storage.js';
 import { backoffDelay } from '../backoff.js';
 import { idleDelay } from '../cadence.js';
 import { flingStep, shouldFling } from '../momentum.js';
@@ -41,6 +41,11 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
   const decosRef = useRef([]);
   const onDocLinkTapRef = useRef(onDocLinkTap);
   onDocLinkTapRef.current = onDocLinkTap;
+  // The doc-path wash is an opt-in visual cue (Settings toggle, default off) — paths stay tappable
+  // regardless. Held in a ref the poll-loop closure reads; setDocHighlight() (imperative handle) flips it
+  // and pokes refreshDecosRef to re-scan at once, without waiting for the next repaint.
+  const docHighlightRef = useRef(getDocHighlight());
+  const refreshDecosRef = useRef(null);
   // Terminal font is set by two-finger pinch and persisted. null = auto-fit (height).
   const fontRef = useRef(getFont());
   // Kills an in-flight inertial coast. Held in a ref (like fitRef/wakeRef) so resume() — defined in
@@ -132,6 +137,8 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       fitRef.current?.();
     },
     wake: () => wakeRef.current?.(),
+    // Settings' doc-path-highlight switch: flip the flag and re-scan now (default off, so no wash until on).
+    setDocHighlight: (on) => { docHighlightRef.current = !!on; refreshDecosRef.current?.(); },
   }), []);
 
   useEffect(() => () => {
@@ -639,7 +646,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
     const refreshDocDecorations = (t) => {
       for (const { deco, marker } of decosRef.current) { deco.dispose(); marker.dispose(); }
       decosRef.current = [];
-      if (!onDocLinkTapRef.current) return;
+      if (!onDocLinkTapRef.current || !docHighlightRef.current) return; // off → clear + draw nothing
       const b = t.buffer.active;
       const cursorAbsY = b.baseY + b.cursorY;
       for (const { y, x, width } of scanDocLinks(t)) {
@@ -651,6 +658,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
         decosRef.current.push({ deco, marker });
       }
     };
+    refreshDecosRef.current = () => { if (!disposed && seeded) refreshDocDecorations(term); };
 
     const repaint = async (lines, keepPosition) => {
       if (busy || disposed) return;
@@ -796,6 +804,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       fitRef.current = null;
       wakeRef.current = null;
       stopFlingRef.current = null;
+      refreshDecosRef.current = null;
       cancelLongPress();
       stopFling();
       if (timer) clearTimeout(timer);
