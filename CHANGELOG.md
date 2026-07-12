@@ -4,6 +4,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Added
+- 脚本推送：CLI `handmux push <title> <body>`（全部/`--session`/`--device` 三种范围）+ 内部端点 `/api/push/send-local` + 设备 key + 应用内「脚本推送」说明浮窗（含可靠性边界提示）。
+
 ## [0.12.3] - 2026-07-11
 
 ### Added
