@@ -8,12 +8,13 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 - 脚本推送：CLI `handmux push <title> <body>`（全部/`--session`/`--device` 三种范围）+ 内部端点 `/api/push/send-local` + 设备 key + 应用内「脚本推送」说明浮窗（含可靠性边界提示）。
 
 ### Changed
-- **The command-mode keyboard no longer vanishes the moment you touch the terminal.** Tapping or scrolling
-  the output used to blur the input and drop the on-screen keyboard — so you couldn't read while it stayed
-  up. It now persists like a real terminal app's: touching the terminal keeps it up, and you show/hide it
-  explicitly — the ⌨ button, or the new grip handle at the top of the dock: drag it up to reveal the
-  keyboard, down to dismiss, or tap to toggle. The handle follows your finger and lights up once you've
-  dragged far enough to commit, so the gesture has live feedback.
+- **The on-screen keyboard no longer vanishes the moment you touch the terminal.** Tapping or scrolling
+  the output used to blur the input and drop the keyboard — so you couldn't read while it stayed up. It now
+  persists like a real terminal app's: touching the terminal keeps it up, and you show/hide it explicitly —
+  the ⌨ button, or the new grip handle at the top of the dock. Drag the handle (or swipe anywhere on the
+  dock) up to reveal the keyboard, down to dismiss, or tap to toggle; it works on both the command and chat
+  pages. The handle follows your finger with a rubber-band resistance and lights up once you've dragged far
+  enough to commit, so the gesture has live feedback.
 
 ### Fixed
 - **A full-screen app (vim/less/htop) no longer leaks unrelated terminal history above it.** An alt-screen

@@ -6,7 +6,7 @@ import FavDrawer from './FavDrawer.jsx';
 import CmdFavEditor from './CmdFavEditor.jsx';
 import MicButton from './MicButton.jsx';
 import { loadFavs, cmdScope } from '../favStore.js';
-import { keyboardSwipeAction } from '../dockKeyboard.js';
+import { keyboardSwipeAction, rubberBand } from '../dockKeyboard.js';
 import { getChatDraft, setChatDraft } from '../storage.js';
 import { UPLOAD_ACCEPT, splitUploadable } from '../uploadTypes.js';
 import { ArrowUpIcon, UploadIcon, ClockIcon, KeyboardIcon, GearIcon } from './icons.jsx';
@@ -177,7 +177,7 @@ function BottomDock({
     const g = grabberRef.current;
     if (!g) return;
     g.style.transition = 'none';
-    g.style.setProperty('--drag', `${Math.max(-22, Math.min(22, dy * 0.55))}px`);
+    g.style.setProperty('--drag', `${rubberBand(dy, 22)}px`);
     g.classList.add('dragging');
     g.classList.toggle('armed', Math.abs(dy) >= KBD_COMMIT_PX);
   };
@@ -291,11 +291,12 @@ function BottomDock({
           const toChat = dx < 0 && atRight && pg === 0;
           if (!(toCommand || toChat)) d.horiz = false;
         }
-        // A clearly-VERTICAL drag ANYWHERE on the command dock is the keyboard show/hide swipe: up pops the
-        // system keyboard, down collapses it (committed in onEnd). It owns the gesture from here so a vertical
-        // flick can't leak into a page swipe or the strip's native scroll. Works over keys too: a KeyBar key
-        // hands the touch off the moment it moves >8px (see KeyBar `move`), so a swipe never also fires a key.
-        if (!d.horiz && pageIndexRef.current === 0 && Math.abs(dy) > Math.abs(dx) * 1.4) d.vert = true;
+        // A clearly-VERTICAL drag ANYWHERE on the dock (either page) is the keyboard show/hide swipe: up pops
+        // the system keyboard, down collapses it (committed in onEnd). It owns the gesture from here so a
+        // vertical flick can't leak into a page swipe or the strip's native scroll. Works over keys too: a
+        // KeyBar key hands the touch off the moment it moves >8px (see KeyBar `move`), so a swipe never also
+        // fires a key.
+        if (!d.horiz && Math.abs(dy) > Math.abs(dx) * 1.4) d.vert = true;
       }
       if (d.vert) { d.dx = dx; d.dy = dy; setGrabberDrag(dy); if (e.cancelable) e.preventDefault(); return; }
       if (!d.horiz) return; // a vertical drag (or a strip-scroll we handed off) → leave it to native
@@ -315,11 +316,12 @@ function BottomDock({
       // down) is a harmless no-op.
       if (d && d.vert) {
         const action = keyboardSwipeAction(d.dx, d.dy);
+        const pg = pageIndexRef.current;
         d = null;
         releaseTrack();
         releaseGrabber();
-        if (action === 'show') cmdRef.current?.focus();
-        else if (action === 'hide') cmdRef.current?.blur();
+        if (action === 'show') fieldForPage(pg)?.focus();
+        else if (action === 'hide') fieldForPage(pg)?.blur();
         return;
       }
       if (!d || !d.horiz) { d = null; releaseTrack(); return; }
@@ -534,10 +536,18 @@ function BottomDock({
     if (document.activeElement === el) el.blur(); else el.focus();
   };
 
+  // The field the keyboard gesture drives depends on the current page: command → the hidden capture,
+  // chat → the composer textarea. Keyed off pageIndexRef so it's correct from the long-lived pager effect
+  // too (which closes over a stale `mode`).
+  const fieldForPage = (pg) => (pg === 0 ? cmdRef.current : ref.current);
+  const showField = (pg) => fieldForPage(pg)?.focus();
+  const hideField = (pg) => fieldForPage(pg)?.blur();
+  const toggleField = (pg) => { const el = fieldForPage(pg); if (!el) return; document.activeElement === el ? el.blur() : el.focus(); };
+
   // The grabber IS the handle: drag it up to reveal the keyboard, down to dismiss (the pill follows the
-  // finger via setGrabberDrag); a tap with no travel just toggles. Pointer events only (never touch+mouse)
-  // so one gesture = one action. Pointer capture keeps the whole drag bound to the handle even if the finger
-  // slides off it.
+  // finger via setGrabberDrag); a tap with no travel just toggles. Works on BOTH pages — command capture or
+  // chat composer. Pointer events only (never touch+mouse) so one gesture = one action. Pointer capture keeps
+  // the whole drag bound to the handle even if the finger slides off it.
   const grabberPt = useRef(null);
   const onGrabberDown = (e) => {
     grabberPt.current = { y0: e.clientY, moved: false };
@@ -555,11 +565,12 @@ function BottomDock({
     if (!p) return;
     grabberPt.current = null;
     const dy = e.clientY - p.y0;
+    const pg = pageIndexRef.current;
     releaseGrabber();
-    if (!p.moved) { toggleKeyboard(); return; } // tap (no travel) → toggle
+    if (!p.moved) { toggleField(pg); return; } // tap (no travel) → toggle
     const action = keyboardSwipeAction(0, dy);
-    if (action === 'show') cmdRef.current?.focus();
-    else if (action === 'hide') cmdRef.current?.blur();
+    if (action === 'show') showField(pg);
+    else if (action === 'hide') hideField(pg);
   };
   const onGrabberCancel = () => { grabberPt.current = null; releaseGrabber(); };
 
@@ -919,6 +930,8 @@ function BottomDock({
                     e.currentTarget.focus(); // 同步夺焦,确保这一下就弹出键盘
                   }}
                   onChange={(e) => { setValue(e.target.value); autoGrow(e.target); }}
+                  onFocus={() => setKeyboardUp(true)}
+                  onBlur={() => setKeyboardUp(false)}
                   placeholder={t('dock.input.placeholder')}
                   autoCapitalize="off"
                   autoCorrect="off"

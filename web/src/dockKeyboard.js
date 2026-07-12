@@ -14,6 +14,14 @@ export function keyboardSwipeAction(dx, dy, threshold = 24) {
   return null;                          // too short to commit
 }
 
+// Rubber-band resistance for the grabber pill's follow. It tracks the finger ~1:1 at first, then resists
+// more and more as it nears the ±max limit, asymptotically — the iOS "pull past the end" feel, instead of a
+// hard clamp that just stops dead. tanh has unit slope at 0 (1:1 start) and never reaches ±1 (so the pill
+// never quite hits ±max, and never overshoots it however hard you pull).
+export function rubberBand(dy, max = 24) {
+  return max * Math.tanh(dy / max);
+}
+
 // Should a touch on the TERMINAL keep the currently-focused field (and its system keyboard) up, instead
 // of letting the browser blur it? True only when a real handmux text field holds focus — the command
 // capture or the chat composer. xterm's own hidden helper textarea (inside .xterm) is never "the
