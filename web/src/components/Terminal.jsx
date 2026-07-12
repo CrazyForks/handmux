@@ -397,17 +397,21 @@ const [selUI, setSelUI] = useState(null); // {start:{x,y}, end:{x,y}} in .termin
     // Start a selection at the long-pressed cell, pre-selecting the word under the finger so
     // there's immediate visible feedback (lift without dragging copies just that word).
     // Recompute the handle/callout overlay from xterm's current selection (the single source of truth).
-    // getSelectionPosition() returns xterm's IBufferRange — 1-based and INCLUSIVE for BOTH x and y
-    // (the same convention as the doc-path link ranges, see docDecorations.js). The rest of our
-    // selection code (term.select / cellFromPoint / getLine / viewportY) is 0-based, so convert once
-    // here, at the single read boundary. Mixing the two bases is what made the end handle sit a cell
-    // past the text and the anchor creep on every drag frame.
+    // getSelectionPosition() is 0-based and HALF-OPEN: start is inclusive; end.x is one PAST the last
+    // selected cell (end.y is that last cell's row). term.select / cellFromPoint / getLine / viewportY
+    // are all 0-based inclusive, so convert once here, at the single read boundary — collapse end to the
+    // inclusive last cell, leave start/rows as-is. (Device-verified: subtracting 1 from start or the rows
+    // over-corrects — handles sit a cell/row early; and using the raw half-open end as a drag anchor made
+    // it eat one extra cell per frame → the runaway.)
     const selCells = () => {
       const p = term.getSelectionPosition?.();
       if (!p) return null;
+      let ec = p.end.x - 1;      // half-open end col → inclusive last cell
+      let er = p.end.y;
+      if (ec < 0) { er -= 1; ec = term.cols - 1; } // selection ended exactly at a row boundary
       return {
-        start: { col: p.start.x - 1, row: p.start.y - 1 },
-        end: { col: p.end.x - 1, row: p.end.y - 1 }, // 0-based, inclusive last cell
+        start: { col: p.start.x, row: p.start.y },
+        end: { col: ec, row: er },
       };
     };
     const refreshSelUI = () => {
