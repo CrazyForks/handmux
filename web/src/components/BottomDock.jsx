@@ -125,17 +125,6 @@ function BottomDock({
   const [modeOverride, setModeOverride] = useState({}); // pane → 'command' | 'agent'
   const mode = modeOverride[pane] || (agent ? 'agent' : 'command');
   const setMode = (next) => setModeOverride((m) => ({ ...m, [pane]: next }));
-  // The mode STICKS once the pane is in chat: the first time a coding agent appears, latch a per-pane
-  // override to 'agent' (starting Claude → chat page, the intended default) and then leave it. Without this
-  // the default floats with `agent` (= the live inbox roster), which drops a pane on any "false end" while
-  // Claude is still running — most visibly `/clear`, whose SessionEnd removes the pane from the roster and
-  // would otherwise slide the dock back to command mode under the user. Rising edge auto-switches to chat
-  // (helpful); nothing auto-switches BACK — the user swipes to command if they want it. The functional
-  // update reads the freshest map, so a manual choice already recorded here is never clobbered.
-  useEffect(() => {
-    if (!agent) return;
-    setModeOverride((m) => (m[pane] === undefined ? { ...m, [pane]: 'agent' } : m));
-  }, [agent, pane]);
   // Live modifier state, lifted here so the KeyBar and the command-mode capture input can share it.
   const [mods, setMods] = useState({ ctrl: 'off', shift: 'off', alt: 'off' });
   // Whether the system keyboard is up (the capture input is focused) — lights the ⌨ toggle. Kept in

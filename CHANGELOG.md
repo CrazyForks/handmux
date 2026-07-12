@@ -5,11 +5,14 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Fixed
-- **The bottom input mode no longer slides away by itself.** The command/chat toggle used to float with
-  the live agent state, so anything that briefly dropped the pane from the inbox roster while Claude was
-  still running — most visibly `/clear`, whose `SessionEnd` removes the pane — yanked the dock from the
-  chat composer back to the command keyboard under you. The mode now latches to chat the first time an
-  agent appears in a pane and never auto-switches back; you swipe to command yourself if you want it.
+- **The agent icon (and the dock's default mode) now track whether the agent is actually running, not
+  whether it just spoke.** Both keyed off the inbox roster, which only lists panes with a recent hook
+  event — so a freshly-opened session that hadn't been prompted yet, or one right after `/clear` (whose
+  `SessionEnd` drops the roster entry though Claude is still running), showed no agent icon and slid the
+  bottom input from the chat composer back to the command keyboard under you. The server now also reports
+  a pane whose foreground program *is* a coding agent as present (matched by process name, so a plain
+  shell or bare `node` is never mistaken for one), independent of activity — the icon stays and the mode
+  holds while the agent lives, and both correctly clear the moment it exits to a shell.
 
 ## [0.12.3] - 2026-07-11
 

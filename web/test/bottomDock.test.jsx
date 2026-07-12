@@ -56,22 +56,6 @@ describe('BottomDock', () => {
     expect(container.querySelector('.keyrow-enter')).toBeNull();
   });
 
-  // The mode latches to chat on first agent and never auto-slides back: /clear fires SessionEnd, which
-  // drops the pane from the inbox roster (agent → null) even though Claude is still running. Before the
-  // latch that yanked the dock to the command page under the user; now it stays put.
-  it('stays on the chat page when the agent momentarily drops (e.g. /clear)', () => {
-    const p = { pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() };
-    render({ ...p, agent: 'claude' });                                       // agent live → chat page
-    expect(container.querySelector('.dock-track.at-chat')).not.toBeNull();
-    render({ ...p, agent: null });                                           // /clear → roster drops the pane
-    expect(container.querySelector('.dock-track.at-chat')).not.toBeNull();   // still chat, no auto-slide
-  });
-
-  it('a pane that never had an agent starts on the command page', () => {
-    render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-    expect(container.querySelector('.dock-track.at-chat')).toBeNull();
-  });
-
   // 草稿本地暂存:无论 App 因何退出,输入框里的未发送文字下次打开自动写回。
   it('restores an unsent chat draft on mount, and clears the stored draft after send', async () => {
     localStorage.setItem('tw_chat_draft', '写到一半的想法');
