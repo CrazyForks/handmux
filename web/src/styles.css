@@ -432,6 +432,9 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
    offsetHeight 就漏掉它)。与 .bottom-dock 自身 8px 叠加。 */
 .dock-page.chat { padding-bottom: 6px; }
 .input-wrap:focus-within { border-color: var(--green); box-shadow: 0 0 0 1px rgba(var(--green-rgb),.4), 0 2px 12px rgba(0,0,0,.4); }
+/* While a horizontal page-swipe is in progress (and the keyboard wasn't already up), a graze that stray-
+   focuses the composer must NOT flash its green glow — hold it at the resting look until the swipe ends. */
+.dock-left.dock-swiping .input-wrap:focus-within { border-color: #3a3d44; box-shadow: 0 1px 6px rgba(0,0,0,.35); }
 /* 多行(BottomDock 置 .multi):麦克风/发送脱离文档流、悬在框内右下角 → textarea 独占整行。
    末行文字快挤到按钮时 JS 再置 .crowd → textarea 用 padding-bottom 空出一条按钮带;末行还短时
    盒子紧贴文字、按钮悬在末行右侧的空白上——不会提前空出一整行(见 autoGrow/lastLineEndX)。

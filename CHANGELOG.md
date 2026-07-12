@@ -11,16 +11,26 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 - **A stray Back press on the main page no longer drops you out of the app.** The first Back now just shows
   a "press Back again to exit" hint; only a second press within ~2s actually leaves. Back still closes any
   open sheet/panel first, exactly as before — the guard only kicks in at the root.
-- **The on-screen keyboard no longer vanishes the moment you touch the terminal.** Tapping or scrolling
-  the output used to blur the input and drop the keyboard — so you couldn't read while it stayed up. It now
-  persists like a real terminal app's: touching the terminal keeps it up, and you show/hide it explicitly —
-  the ⌨ button, or the new grip handle at the top of the dock. Drag the handle (or swipe anywhere on the
-  dock) up to reveal the keyboard, down to dismiss, or tap to toggle; it works on both the command and chat
-  pages. The handle follows your finger with a rubber-band resistance and lights up once you've dragged far
-  enough to commit, so the gesture has live feedback. And if you'd rather not learn a new gesture, just
-  double-tap the terminal to toggle the keyboard.
+- **Scrolling the terminal no longer drops the on-screen keyboard.** Dragging to scroll used to blur the
+  input and collapse the keyboard, so you couldn't read while it stayed up. Now a *swipe* keeps it up (read
+  freely while it's open); a *single tap* on the terminal puts it away (the iOS-native "tap outside to
+  dismiss" habit). You can also show/hide it with the ⌨ button or the grip handle at the top of the dock —
+  drag the handle (or swipe anywhere on the dock) up to reveal, down to dismiss, or tap to toggle, on both
+  the command and chat pages; it follows your finger with a rubber-band resistance and lights up once you've
+  dragged far enough to commit.
+- **The keyboard now stays open when you switch between command and chat.** Opening it in one page used to
+  leave the other page's box inactive (or drop the keyboard entirely on the way back); it's now a shared
+  state — switch modes with the keyboard up and it stays up, with the newly-shown box focused and ready. A
+  page-swipe that merely grazes the chat composer no longer conjures the keyboard in the other mode.
 
 ### Fixed
+- **The bottom dock no longer drifts up/down under your finger with the keyboard open.** With the soft
+  keyboard up the browser was natively panning the whole page to keep the focused field in view, and that
+  scroll was draggable — so a drag on the keys/input slid the entire dock (grip handle and all) with your
+  finger (worst on iOS, a jitter on Android). The page is now locked against that pan (real scrollers — the
+  terminal, sheets, the key strip — still scroll), which also fixes the keyboard inset mis-measuring to zero
+  on iOS, so the dock now sits squarely above the keyboard. Switching modes no longer momentarily jumps the
+  layout either (the focus no longer drags the page).
 - **A full-screen app (vim/less/htop) no longer leaks unrelated terminal history above it.** An alt-screen
   pane has no scrollback, but the server was still asking tmux for history — which returns the *main*
   screen's scrollback above the app, so scrolling up showed old terminal output that wasn't part of the

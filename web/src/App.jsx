@@ -52,6 +52,7 @@ import IdeaPanel from './components/IdeaPanel.jsx';
 import Changelog from './components/Changelog.jsx';
 import { FolderIcon, GearIcon, BulbIcon, MonitorIcon, GitIcon, GaugeIcon } from './components/icons.jsx';
 import { useKeyboardInset } from './hooks/useKeyboardInset.js';
+import { usePageScrollLock } from './hooks/usePageScrollLock.js';
 import { useLongPress } from './hooks/useLongPress.js';
 import { useBackButton } from './hooks/useBackButton.js';
 import { useExitConfirm } from './hooks/useExitConfirm.js';
@@ -200,6 +201,7 @@ export default function App() {
     setNeedToken(true);
   }, []);
 
+  usePageScrollLock(); // keyboard-up: stop the browser panning the whole page (see hook) — also keeps inset honest
   const inset = useKeyboardInset();
 
   // Hardware Back closes the open overlay (→ one level up) instead of exiting the app.
@@ -1092,7 +1094,7 @@ export default function App() {
               pane={current.paneId}
               onAuthFail={onAuthFail}
               onDocLinkTap={onDocLinkTap}
-              onDoubleTap={() => dockRef.current?.toggleKeyboard()}
+              onTap={() => dockRef.current?.hideKeyboard()}
             />
           )}
           <BottomDock

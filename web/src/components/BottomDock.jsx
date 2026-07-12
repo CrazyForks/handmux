@@ -125,7 +125,21 @@ function BottomDock({
   }, [cmdEditOpen, windowId]);
   const [modeOverride, setModeOverride] = useState({}); // pane → 'command' | 'agent'
   const mode = modeOverride[pane] || (agent ? 'agent' : 'command');
-  const setMode = (next) => setModeOverride((m) => ({ ...m, [pane]: next }));
+  const setMode = (next) => {
+    // Carry the keyboard across a mode switch. The soft keyboard is held up by whichever field has focus
+    // (command capture ⇄ chat composer); a switch used to leave focus on the OLD page's field, so the new
+    // box wasn't active, the hide gesture landed on an unfocused field (no-op), and sliding the focused
+    // field off-screen could let the OS blur it and drop the keyboard. If a dock field currently holds it
+    // up, hand focus to the new page's field synchronously — input→input keeps the keyboard on iOS and
+    // re-activates the right box. Only ever when it was already up; never pops it unbidden.
+    const kbUp = document.activeElement === cmdRef.current || document.activeElement === ref.current;
+    setModeOverride((m) => ({ ...m, [pane]: next }));
+    // preventScroll: the field is already lifted above the keyboard by translateY(-inset), so DON'T let
+    // iOS scroll the page to reveal it — that programmatic scroll-to-focus is the transient "jumps taller
+    // then settles" on switch (and what shoved the debug bar off-screen), and its timing race is why the
+    // keyboard sync was intermittent.
+    if (kbUp) (next === 'command' ? cmdRef.current : ref.current)?.focus({ preventScroll: true });
+  };
   // Live modifier state, lifted here so the KeyBar and the command-mode capture input can share it.
   const [mods, setMods] = useState({ ctrl: 'off', shift: 'off', alt: 'off' });
   // Whether the system keyboard is up (the capture input is focused) — lights the ⌨ toggle. Kept in
@@ -264,13 +278,20 @@ function BottomDock({
     let d = null;
     const onStart = (e) => {
       releaseTrack(); // drop any inline transform a previous (interrupted) gesture may have left behind
+      zone.classList.remove('dock-swiping'); // clear any stale swipe-suppression from an interrupted gesture
       // Remember if the drag began on the horizontally-scrolling quick-command strip: that gesture is
       // normally the strip's own native scroll, but at an EDGE a further drag in the same direction should
       // carry over into a page swipe (decided in onMove once we know the direction). Both pages have a
       // strip: chat's carries LEFT-edge→right-drag to command; command's carries RIGHT-edge→left-drag to chat.
       const strip = e.target?.closest?.('.quick-scroll') || null;
+      // Was the keyboard genuinely up as the gesture BEGAN (a dock field already focused)? Captured here,
+      // before the drag can graze the composer. A horizontal swipe that merely brushes the textarea focuses
+      // it (turns it green) WITHOUT popping the keyboard — and the mode-switch focus-carry would then treat
+      // that stray focus as "keyboard up" and pop it in the other page. If it wasn't up at the start, we undo
+      // any such stray focus on release (below) so a swipe never conjures the keyboard.
+      const kbUp = document.activeElement === cmdRef.current || document.activeElement === ref.current;
       d = e.touches.length === 1
-        ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, dy: 0, decided: false, horiz: false, vert: false, strip }
+        ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, dy: 0, decided: false, horiz: false, vert: false, strip, kbUp }
         : null;
     };
     const onMove = (e) => {
@@ -289,6 +310,18 @@ function BottomDock({
         if (Math.abs(dx) < 16 && Math.abs(dy) < 16) return;
         d.decided = true;
         d.horiz = Math.abs(dx) > Math.abs(dy) * 1.4;
+        // This is a drag, not a tap. If the keyboard wasn't up when it began, drop any focus the drag
+        // grazed into the composer NOW — the moment we know it's a swipe — not at release. The focus glow
+        // fades in over .15s (styles.css), so clearing it ~16px in (a frame or two) means it barely starts
+        // to green before it's pulled back: no visible flash, and no stray focus for the switch to carry.
+        if (!d.kbUp && (document.activeElement === cmdRef.current || document.activeElement === ref.current)) {
+          document.activeElement.blur();
+        }
+        // Belt-and-braces on the green flash: for the whole horizontal swipe (only when the keyboard wasn't
+        // already up), suppress the composer's focus glow via a class, so even a graze that focuses it AFTER
+        // this point never shows. Removed on release / next gesture. When the keyboard WAS up we leave the
+        // glow alone — the input is genuinely active and being carried across.
+        if (d.horiz && !d.kbUp) zone.classList.add('dock-swiping');
         // Drag started on the strip: only steal it as a page swipe when the strip can't scroll further
         // in that direction, so a further drag "falls off" toward the neighbouring page. Two symmetric cases:
         //   • chat page (1), strip at LEFT edge, dragging RIGHT → reveal the command page (dx > 0)
@@ -322,6 +355,7 @@ function BottomDock({
     };
     const onEnd = () => {
       draggingRef.current = false; // finger's gone
+      zone.classList.remove('dock-swiping'); // swipe over → let the focus glow behave normally again
       // A vertical dock swipe: pop or collapse the system keyboard by direction (focus/blur the capture —
       // onFocus/onBlur keep keyboardUp in sync). Idempotent: a 'show' while already up (or 'hide' while
       // down) is a harmless no-op.
@@ -331,16 +365,21 @@ function BottomDock({
         d = null;
         releaseTrack();
         releaseHandle();
-        if (action === 'show') fieldForPage(pg)?.focus();
+        if (action === 'show') fieldForPage(pg)?.focus({ preventScroll: true });
         else if (action === 'hide') fieldForPage(pg)?.blur();
         return;
       }
       if (!d || !d.horiz) { d = null; releaseTrack(); return; }
-      const cur = pageIndexRef.current, dx = d.dx;
+      const cur = pageIndexRef.current, dx = d.dx, wasKbUp = d.kbUp;
       d = null;
       let target = cur;
       if (cur === 0 && dx < -SWIPE_COMMIT_PX) target = 1;      // dragged far left off command → chat
       else if (cur === 1 && dx > SWIPE_COMMIT_PX) target = 0;  // dragged far right off chat → command
+      // The keyboard wasn't up when the swipe began, but the drag may have grazed the composer and focused
+      // it (green, no keyboard). Undo that stray focus BEFORE switching, so the focus-carry sees nothing
+      // focused and the keyboard stays down in the new page too. (When it WAS up, we leave focus alone so
+      // setMode carries it across.)
+      if (!wasKbUp) { cmdRef.current?.blur(); ref.current?.blur(); }
       // Hand the rest position back to the CSS class: clearing the inline transform lets the class snap
       // the track to a page (animated). If the page changed, flip React state — the class follows it. The
       // track is now ALWAYS class-aligned at rest, so it can't stay stuck between pages.
@@ -544,7 +583,7 @@ function BottomDock({
   const toggleKeyboard = () => {
     const el = cmdRef.current;
     if (!el) return;
-    if (document.activeElement === el) el.blur(); else el.focus();
+    if (document.activeElement === el) el.blur(); else el.focus({ preventScroll: true });
   };
 
   // The field the keyboard gesture drives depends on the current page: command → the hidden capture,
@@ -597,15 +636,14 @@ function BottomDock({
   const holdTypeOnly = (f) =>
     (f.kind === 'key' || KEY_FAVS[f.text] || !f.enter ? undefined : () => onText(f.text));
 
-  // Imperative surface: the topbar idea panel drops a picked idea into the box (fill, never send); the
-  // terminal's double-tap toggles the current page's keyboard (focus/blur the capture or composer — the
-  // call must stay synchronous inside the tap gesture so iOS actually pops the soft keyboard).
+  // Imperative surface: the topbar idea panel drops a picked idea into the box (fill, never send); a clean
+  // single tap on the terminal dismisses the keyboard (blur whichever field — command capture or composer —
+  // currently holds it; a no-op when it's already down). Kept synchronous inside the tap gesture.
   useImperativeHandle(fwdRef, () => ({
     fill: pick,
-    toggleKeyboard: () => {
-      const el = fieldForPage(pageIndexRef.current);
-      if (!el) return;
-      document.activeElement === el ? el.blur() : el.focus();
+    hideKeyboard: () => {
+      const a = document.activeElement;
+      if (a === cmdRef.current || a === ref.current) a.blur();
     },
   }), []);
 
