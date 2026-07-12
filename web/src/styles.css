@@ -200,11 +200,10 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 /* Pane menu: position:fixed (anchored by JS from the tab's rect) so the scroll strip's overflow
    can't clip it. Size to its content, not the narrow tab. */
 .wt-menu { position: fixed; top: auto; right: auto; min-width: 160px; max-width: 240px; }
-/* Each pane row: [seq] · [agent logo, fixed slot so commands align across rows] · [command]. Scoped to the
-   pane menu so the shared .dd-option-label (plain text elsewhere) is untouched. */
+/* Each pane row: [seq] · [agent logo, only when the pane runs one] · [command]. Scoped to the pane menu so
+   the shared .dd-option-label (plain text elsewhere) is untouched. */
 .wt-menu .dd-option-label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .wt-menu .dd-pane-seq { flex: none; opacity: .55; font-variant-numeric: tabular-nums; }
-.wt-menu .dd-pane-ag { flex: none; width: 15px; height: 15px; display: inline-flex; align-items: center; justify-content: center; }
 .wt-menu .dd-pane-cmd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .terminal-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 /* Width follows the real pane: the terminal renders at its natural cols width and the
