@@ -41,6 +41,25 @@ describe('scanDocLinks', () => {
     t.dispose();
   });
 
+  it('scans the visible viewport (viewportY), so scrolling into scrollback still finds its paths', async () => {
+    // Many path lines + a short viewport → most scroll into the scrollback. scanDocLinks must follow the
+    // viewport as it scrolls, not stay pinned to the bottom page (baseY) — otherwise a path scrolled up
+    // out of the bottom page loses its underline.
+    const t = new Terminal({ cols: 40, rows: 6, allowProposedApi: true, scrollback: 200 });
+    let s = '';
+    for (let i = 1; i <= 20; i++) s += `line${i} dir/f${i}.md x\r\n`;
+    await write(t, `${s}prompt$ `);
+    const paths = () => [...new Set(scanDocLinks(t).map((x) => x.path))];
+    const atBottom = paths();
+    expect(atBottom).toContain('dir/f20.md'); // bottom page
+    expect(atBottom).not.toContain('dir/f1.md'); // scrolled off the top
+    t.scrollToTop();
+    const atTop = paths();
+    expect(atTop).toContain('dir/f1.md'); // now visible after scrolling up
+    expect(atTop).not.toContain('dir/f20.md'); // and the bottom page is no longer in view
+    t.dispose();
+  });
+
   it('returns [] when no doc path is on screen', async () => {
     const t = new Terminal({ cols: 40, rows: 2, allowProposedApi: true, scrollback: 100 });
     await write(t, 'plain line\r\nanother one');

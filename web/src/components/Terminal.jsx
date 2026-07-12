@@ -652,6 +652,18 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       }
     };
 
+    // Scrolling doesn't repaint (no new content), and refreshDocDecorations rebuilds only for the
+    // currently-visible viewport — so without this, a path scrolled up into the scrollback loses its
+    // underline. Re-scan on scroll, rAF-coalesced so a fling doesn't rebuild every frame.
+    let decoRaf = 0;
+    const refreshDecosOnScroll = () => {
+      if (decoRaf) return;
+      decoRaf = requestAnimationFrame(() => {
+        decoRaf = 0;
+        if (!disposed && seeded) { try { refreshDocDecorations(term); } catch { /* decorations are cosmetic */ } }
+      });
+    };
+
     const repaint = async (lines, keepPosition) => {
       if (busy || disposed) return;
       busy = true;
@@ -785,6 +797,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
 
     const sub = term.onScroll(() => {
       if (disposed) return;
+      refreshDecosOnScroll(); // re-underline whatever the scroll brought into view
       if (atBottom()) { setPaused(false); setScrollInfo(''); return; }
       setPaused(true);
       showScrollPos();
@@ -798,6 +811,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap }
       stopFlingRef.current = null;
       cancelLongPress();
       stopFling();
+      if (decoRaf) cancelAnimationFrame(decoRaf);
       if (timer) clearTimeout(timer);
       clearTimeout(selHintTimerRef.current);
       document.removeEventListener('visibilitychange', onVisibility);

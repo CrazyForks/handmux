@@ -33,6 +33,10 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   without `allowProposedApi`, so every call threw and a broad catch swallowed it. Paths were tappable but
   looked like plain text (what colour they had was the program's own, e.g. Claude Code's). They now carry
   a thin blue underline, in every pane.
+- **Scrolled-up paths keep their underline.** The highlight was computed only for the bottom page (xterm's
+  `baseY`) and rebuilt only when new output arrived — so a path scrolled up into the scrollback lost its
+  underline, and a long path that had wrapped its way up there never got one. The scan now follows the
+  visible viewport and re-runs on scroll, so any path you can see is underlined wherever it sits.
 
 ## [0.12.3] - 2026-07-11
 

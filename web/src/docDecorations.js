@@ -80,7 +80,10 @@ function readLogicalLine(buf, idx, cols) {
 export function scanDocLinks(term) {
   const buf = term.buffer.active;
   const cols = term.cols;
-  const top = buf.baseY;
+  // Scan the ACTUALLY-visible viewport (viewportY), not the bottom page (baseY) — otherwise a path
+  // scrolled up into the scrollback loses its underline, since baseY stays pinned to the bottom while
+  // viewportY follows the scroll. The caller re-runs this on every scroll (see Terminal's onScroll).
+  const top = buf.viewportY;
   const bottom = top + term.rows; // exclusive
   const out = [];
 
