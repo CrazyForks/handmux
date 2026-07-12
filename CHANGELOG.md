@@ -5,6 +5,11 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Added
+- **A “Token” row in `handmux setup` — set the access token by hand.** Previously the token was only ever
+  auto-generated (a fresh one each start, so the phone URL changed on every restart). The setup hub now has
+  its own top-level Token row (after Port): type a custom one, generate + pin a strong random one, or reset
+  back to auto. A pinned token keeps the URL stable across restarts; the hub masks it and the edit field
+  pre-fills it so you can read it off.
 - **A “Highlight file paths” switch in Settings (off by default).** The soft blue wash behind tappable
   terminal paths is now opt-in — off, the terminal stays plain, but the paths remain tappable either way.
   Flipping it takes effect immediately, no reload.
