@@ -351,31 +351,35 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
    rides up above the keyboard as one unit. */
 .bottom-dock { display: flex; gap: 8px; padding: 8px; background: #2a2b2e; align-items: stretch; }
 .dock-left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-/* Two-dot page indicator above the pager (command · chat); the filled dot marks the current page. */
-/* Also the tap-to-switch control (a <button>): reset the native chrome, keep it full-width so the whole
-   indicator row is an easy tap target. */
-.dock-dots { position: relative; display: flex; justify-content: center; align-items: center; gap: 8px;
-  padding: 3px 0 4px; width: 100%; border: none; background: transparent; -webkit-tap-highlight-color: transparent; }
-.dock-dots:active .dock-dot { background: #5a5e66; }
-.dock-dots:active .dock-dot.on { background: #6a93ff; }
-.dock-dot { width: 6px; height: 6px; border-radius: 50%; background: #4a4d54; }
-.dock-dot.on { background: var(--blue); }
+/* ONE morphing handle above the pager. At rest (--morph 0) it's the two-dot page indicator (filled dot =
+   current page) and the tap-to-switch control; under a vertical drag (--morph → 1) the two dots slide
+   together, widen and fuse into a single bar that follows the finger (--drag) — the keyboard grabber.
+   touch-action:none so a vertical drag on it is owned by the dock gesture (never a native scroll). */
+.dock-handle { position: relative; display: flex; justify-content: center; align-items: center;
+  width: 100%; padding: 6px 0 4px; border: none; background: transparent; cursor: grab;
+  -webkit-tap-highlight-color: transparent; touch-action: none; --morph: 0; --drag: 0px; --bar: #6a6f78; }
+.dock-handle:active { cursor: grabbing; }
+.dock-handle.armed { --bar: var(--blue); }
+/* The dots' row carries the vertical follow (--drag) so the whole bar tracks the finger; snaps back on
+   release. Only the follow is animated — --morph is set live per move, its own .15s smooths the fuse. */
+.dock-dots { display: flex; align-items: center; justify-content: center; gap: 7px;
+  transform: translateY(var(--drag)); transition: transform .28s cubic-bezier(.22,.61,.36,1); }
+.dock-handle.dragging .dock-dots { transition: none; }
+/* Each dot: a 6px circle at rest; as --morph rises it widens toward a 21px capsule and slides inward, so
+   the two overlap into one seamless bar. Colour cross-fades from its rest tint (grey / active-blue) to the
+   shared --bar via color-mix, so the fused bar is a single flat colour (blue while armed). */
+.dock-dot { width: calc(6px + var(--morph) * 15px); height: 6px; border-radius: 999px;
+  background: color-mix(in srgb, #4a4d54, var(--bar) calc(var(--morph) * 100%));
+  transition: width .15s ease, background .15s ease; }
+.dock-dot.on { background: color-mix(in srgb, var(--blue), var(--bar) calc(var(--morph) * 100%)); }
+.dock-dot[data-page="command"] { transform: translateX(calc(var(--morph) * 7px)); }
+.dock-dot[data-page="agent"] { transform: translateX(calc(var(--morph) * -7px)); }
+.dock-handle:active:not(.dragging) .dock-dot { background: #5a5e66; }
+.dock-handle:active:not(.dragging) .dock-dot.on { background: #6a93ff; }
 /* Mode label at the top-left. Absolute so it takes no vertical space — the row stays the dots' height. */
 .dock-mode-label { position: absolute; left: 2px; top: 50%; transform: translateY(-50%);
   font-size: 10px; line-height: 1; color: #8a93a0; white-space: nowrap; pointer-events: none; }
-/* Keyboard grabber: an iOS sheet-style handle at the top of the dock. The row is a generous touch target;
-   the pill inside is the moving part. touch-action:none so the drag owns the gesture (never scrolls). */
-.dock-grabber { display: flex; justify-content: center; align-items: center; padding: 6px 0 2px;
-  touch-action: none; -webkit-tap-highlight-color: transparent; cursor: grab; }
-.dock-grabber:active { cursor: grabbing; }
-/* The pill follows the finger via --drag, fattens while dragging, and turns blue once the drag is far
-   enough that releasing will commit — live feedback instead of a blind fire-on-release. */
-.dock-grabber > i { display: block; width: 36px; height: 5px; border-radius: 2.5px; background: #4a4d54;
-  transform: translateY(var(--drag, 0)); will-change: transform;
-  transition: transform .28s cubic-bezier(.22,.61,.36,1), background .15s ease, width .15s ease; }
-.dock-grabber > i.dragging { width: 46px; background: #6a6f78; }
-.dock-grabber > i.armed { background: var(--blue); }
-@media (prefers-reduced-motion: reduce) { .dock-grabber > i { transition: background .15s ease; } }
+@media (prefers-reduced-motion: reduce) { .dock-dots { transition: none; } }
 /* Swipe carousel: a two-page track (command | chat) that follows the finger and snaps with an ease
    animation (transform set imperatively in BottomDock). Both pages stay mounted so they slide into view.
    The pager's HEIGHT is deliberately NOT transitioned: the terminal above is poll-and-repaint, so easing

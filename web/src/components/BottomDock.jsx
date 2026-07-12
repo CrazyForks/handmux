@@ -167,27 +167,28 @@ function BottomDock({
     t.style.transition = ''; // fall back to the CSS transition
     t.style.transform = '';  // fall back to the CSS class → page-aligned rest (animated)
   };
-  // Keyboard grabber feedback. The OS keyboard can't be dragged interactively on the web (it only slides
-  // on focus/blur), so the GRABBER is what follows the finger: it translates a resisted fraction of the
-  // drag (--drag), fattens while dragging, and turns blue once past the commit threshold — live feedback
-  // that a release will actually toggle. Driven by BOTH the grabber's own drag and the keyboard-area swipe,
-  // so they animate identically. Cleared on release → the CSS transition springs it back.
-  const grabberRef = useRef(null);
+  // The handle IS the two page-dots at rest and the keyboard grabber under a vertical drag — one element
+  // that morphs between them. A vertical drag drives --morph (0 → 1: the dots slide together, widen and fuse
+  // into a single bar) and --drag (the bar follows the finger, resisted by rubberBand; the OS keyboard itself
+  // can't be dragged on the web, only slid on focus/blur, so the bar is what carries the motion). Past the
+  // commit threshold it arms (turns blue). Cleared on release → the CSS transition springs it back to dots.
+  const handleRef = useRef(null);
   const KBD_COMMIT_PX = 24; // matches keyboardSwipeAction's default threshold
-  const setGrabberDrag = (dy) => {
-    const g = grabberRef.current;
+  const MORPH_PX = 40;      // finger travel over which the dots fully become a bar
+  const setHandleDrag = (dy) => {
+    const g = handleRef.current;
     if (!g) return;
-    g.style.transition = 'none';
-    g.style.setProperty('--drag', `${rubberBand(dy)}px`);
     g.classList.add('dragging');
+    g.style.setProperty('--drag', `${rubberBand(dy)}px`);
+    g.style.setProperty('--morph', `${Math.min(1, Math.abs(dy) / MORPH_PX)}`);
     g.classList.toggle('armed', Math.abs(dy) >= KBD_COMMIT_PX);
   };
-  const releaseGrabber = () => {
-    const g = grabberRef.current;
+  const releaseHandle = () => {
+    const g = handleRef.current;
     if (!g) return;
-    g.style.transition = '';
-    g.style.removeProperty('--drag');
     g.classList.remove('dragging', 'armed');
+    g.style.removeProperty('--drag');
+    g.style.removeProperty('--morph');
   };
   // Safety net: on any AT-REST render, drop a lingering inline transform so the class snaps the track to
   // its page. Covers a gesture interrupted so badly that onEnd never fired (browser-hijacked touch,
@@ -304,7 +305,7 @@ function BottomDock({
         // fires a key.
         if (!d.horiz && Math.abs(dy) > Math.abs(dx) * 1.4) d.vert = true;
       }
-      if (d.vert) { d.dx = dx; d.dy = dy; setGrabberDrag(dy); if (e.cancelable) e.preventDefault(); return; }
+      if (d.vert) { d.dx = dx; d.dy = dy; setHandleDrag(dy); if (e.cancelable) e.preventDefault(); return; }
       if (!d.horiz) return; // a vertical drag (or a strip-scroll we handed off) → leave it to native
       e.preventDefault();
       draggingRef.current = true; // the finger owns the transform now
@@ -325,7 +326,7 @@ function BottomDock({
         const pg = pageIndexRef.current;
         d = null;
         releaseTrack();
-        releaseGrabber();
+        releaseHandle();
         if (action === 'show') fieldForPage(pg)?.focus();
         else if (action === 'hide') fieldForPage(pg)?.blur();
         return;
@@ -544,14 +545,8 @@ function BottomDock({
 
   // The field the keyboard gesture drives depends on the current page: command → the hidden capture,
   // chat → the composer textarea. Keyed off pageIndexRef so it's correct from the long-lived pager effect
-  // too (which closes over a stale `mode`).
+  // too (which closes over a stale `mode`). The ⌨ button still taps-to-toggle; the handle's tap flips pages.
   const fieldForPage = (pg) => (pg === 0 ? cmdRef.current : ref.current);
-  const toggleField = (pg) => { const el = fieldForPage(pg); if (!el) return; document.activeElement === el ? el.blur() : el.focus(); };
-
-  // The grabber's DRAG is handled by the unified dock gesture (it drives the pill via setGrabberDrag), so the
-  // handle itself only needs a TAP → toggle the current page's keyboard. (A drag suppresses the click, so this
-  // fires on taps only.)
-  const onGrabberTap = () => toggleField(pageIndexRef.current);
 
   // Pick a command from the panel: fill the box (never send), close the panel, refocus so the user
   // can edit before submitting.
@@ -782,25 +777,18 @@ function BottomDock({
   return (
     <div className="bottom-dock">
       <div className="dock-left" ref={dockLeftRef} onPointerDown={keepDockFocus}>
-        {/* Keyboard grabber (iOS-style handle): a visible affordance for the keyboard gesture. The DRAG is
-            owned by the unified dock handler (drag up shows / down hides, over the whole dock); the handle
-            just TAPS to toggle. The pill (driven by setGrabberDrag) follows the finger + arms past the commit
-            threshold for any vertical drag on the dock. */}
-        <div className="dock-grabber" role="button" tabIndex={-1}
-          aria-label={keyboardUp ? t('dock.kbdHide') : t('dock.kbdShow')}
-          onClick={onGrabberTap}>
-          <i ref={grabberRef} aria-hidden="true" />
-        </div>
-        {/* Two-dot page indicator (command · chat); the filled dot marks the current page. A tiny label
-            sits at the top-left, absolutely positioned so it adds no height (stays in the dots' row).
-            It's also the reliable mode switch: TAP it to flip command ⇄ chat (swiping still works, but the
-            key-dense command page has little room to start one — a tap always does it). It sits OUTSIDE
-            the pager, so this tap never collides with the swipe handlers. */}
-        <button type="button" className="dock-dots" aria-label={t('dock.mode.toggle')}
+        {/* ONE morphing handle. At rest it's the two-dot page indicator (filled dot = current page); TAP it
+            to flip command ⇄ chat, swipe it (or the dock) sideways to page. Under a VERTICAL drag the two
+            dots slide together, widen and fuse into a single bar (--morph) that follows the finger (--drag)
+            — the keyboard grabber — arming blue past the commit point. The tiny mode label is absolute so it
+            adds no height. It sits OUTSIDE the pager, so its tap never collides with the swipe handlers. */}
+        <button type="button" className="dock-handle" ref={handleRef} aria-label={t('dock.mode.toggle')}
           onClick={() => setMode(mode === 'command' ? 'agent' : 'command')}>
           <span className="dock-mode-label">{mode === 'command' ? t('dock.mode.command') : t('dock.mode.chat')}</span>
-          <i className={`dock-dot${mode === 'command' ? ' on' : ''}`} data-page="command" aria-hidden="true" />
-          <i className={`dock-dot${mode === 'agent' ? ' on' : ''}`} data-page="agent" aria-hidden="true" />
+          <span className="dock-dots">
+            <i className={`dock-dot${mode === 'command' ? ' on' : ''}`} data-page="command" aria-hidden="true" />
+            <i className={`dock-dot${mode === 'agent' ? ' on' : ''}`} data-page="agent" aria-hidden="true" />
+          </span>
         </button>
         <div className="dock-pager" ref={pagerRef}>
           <div className={`dock-track${pageIndex === 1 ? ' at-chat' : ''}`} ref={trackRef}>
