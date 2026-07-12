@@ -947,6 +947,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
 
     return () => {
       disposed = true;
+      if (autoScrollRAF != null) cancelAnimationFrame(autoScrollRAF);
       fitRef.current = null;
       wakeRef.current = null;
       stopFlingRef.current = null;
