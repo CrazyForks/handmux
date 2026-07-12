@@ -177,7 +177,7 @@ function BottomDock({
     const g = grabberRef.current;
     if (!g) return;
     g.style.transition = 'none';
-    g.style.setProperty('--drag', `${Math.max(-16, Math.min(16, dy * 0.4))}px`);
+    g.style.setProperty('--drag', `${Math.max(-22, Math.min(22, dy * 0.55))}px`);
     g.classList.add('dragging');
     g.classList.toggle('armed', Math.abs(dy) >= KBD_COMMIT_PX);
   };
@@ -258,11 +258,8 @@ function BottomDock({
       // carry over into a page swipe (decided in onMove once we know the direction). Both pages have a
       // strip: chat's carries LEFT-edge→right-drag to command; command's carries RIGHT-edge→left-drag to chat.
       const strip = e.target?.closest?.('.quick-scroll') || null;
-      // A drag that starts on a key/button is never the keyboard show/hide swipe (a vertical flick over an
-      // arrow key must not toggle the keyboard as well as press the key). onKey gates the vert gesture below.
-      const onKey = !!e.target?.closest?.('button');
       d = e.touches.length === 1
-        ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, dy: 0, decided: false, horiz: false, vert: false, strip, onKey }
+        ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, dy: 0, decided: false, horiz: false, vert: false, strip }
         : null;
     };
     const onMove = (e) => {
@@ -294,10 +291,11 @@ function BottomDock({
           const toChat = dx < 0 && atRight && pg === 0;
           if (!(toCommand || toChat)) d.horiz = false;
         }
-        // A clearly-VERTICAL drag on the command dock (not on a key, not the chat page) is the keyboard
-        // show/hide swipe: up pops the system keyboard, down collapses it (committed in onEnd). It owns the
-        // gesture from here so a vertical flick can't leak into a page swipe or the strip's native scroll.
-        if (!d.horiz && !d.onKey && pageIndexRef.current === 0 && Math.abs(dy) > Math.abs(dx) * 1.4) d.vert = true;
+        // A clearly-VERTICAL drag ANYWHERE on the command dock is the keyboard show/hide swipe: up pops the
+        // system keyboard, down collapses it (committed in onEnd). It owns the gesture from here so a vertical
+        // flick can't leak into a page swipe or the strip's native scroll. Works over keys too: a KeyBar key
+        // hands the touch off the moment it moves >8px (see KeyBar `move`), so a swipe never also fires a key.
+        if (!d.horiz && pageIndexRef.current === 0 && Math.abs(dy) > Math.abs(dx) * 1.4) d.vert = true;
       }
       if (d.vert) { d.dx = dx; d.dy = dy; setGrabberDrag(dy); if (e.cancelable) e.preventDefault(); return; }
       if (!d.horiz) return; // a vertical drag (or a strip-scroll we handed off) → leave it to native
