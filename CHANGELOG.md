@@ -32,7 +32,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   as tappable never rendered — `registerDecoration` is a *proposed* xterm API and the terminal was created
   without `allowProposedApi`, so every call threw and a broad catch swallowed it. Paths were tappable but
   looked like plain text (what colour they had was the program's own, e.g. Claude Code's). They now carry
-  the intended blue underline, in every pane.
+  a thin blue underline, in every pane.
 
 ## [0.12.3] - 2026-07-11
 
