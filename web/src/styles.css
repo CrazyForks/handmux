@@ -269,14 +269,32 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 }
 .term-banner--hist { background: #e0a800; color: #1a1400; } /* history mode */
 .term-banner--err  { background: #d32f2f; color: #fff; }    /* disconnected */
-/* Floating copy bubble shown after a long-press selection (the live terminal is a WebGL canvas
-   with no selectable DOM, so there's no OS menu — this is our copy affordance). */
-.copy-bubble {
-  position: absolute; z-index: 7; padding: 7px 16px;
-  border: none; border-radius: 16px; background: var(--blue); color: #fff;
-  font-size: 14px; font-weight: 600; box-shadow: 0 2px 10px rgba(0,0,0,.5);
-  touch-action: manipulation;
+/* iOS-style selection handles: a thin stem the height of one cell, capped with a ball at the outer end. */
+.sel-handle {
+  position: absolute; z-index: 8; width: 2px; height: var(--h); background: var(--blue);
+  touch-action: none; /* we drive the drag ourselves */
 }
+.sel-handle::after {
+  content: ''; position: absolute; left: 50%; width: 13px; height: 13px; border-radius: 50%;
+  background: var(--blue); transform: translateX(-50%);
+}
+.sel-handle--start::after { top: -11px; }   /* ball above the stem */
+.sel-handle--end::after { bottom: -11px; }  /* ball below the stem */
+.sel-handle::before { /* 44pt invisible hit target */
+  content: ''; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px;
+  transform: translate(-50%, -50%);
+}
+.sel-callout {
+  position: absolute; z-index: 9; display: flex; align-items: stretch;
+  border-radius: 12px; overflow: hidden; background: rgba(28,30,34,0.92);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  box-shadow: 0 3px 14px rgba(0,0,0,.5); border: 0.5px solid rgba(255,255,255,0.12);
+}
+.sel-callout button {
+  border: none; background: none; color: #fff; font-size: 15px; font-weight: 500;
+  padding: 9px 16px; touch-action: manipulation;
+}
+.sel-callout button + button { border-left: 0.5px solid rgba(255,255,255,0.14); }
 /* Guidance shown WHILE a finger is dragging out a selection — the long-press selects one word, but
    most users never discover they must keep dragging to grab more. pointer-events:none so it never
    eats the drag; bottom-centered to stay clear of the finger. */

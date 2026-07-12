@@ -13,6 +13,7 @@ import { flingStep, shouldFling } from '../momentum.js';
 import { initialConnection, nextConnection } from '../connection.js';
 import { scanDocLinks, docLinksOnLine } from '../docDecorations.js';
 import { ensureBundledFonts } from '../bundledFonts.js';
+import { trimCopy, expandToLines, expandToParagraph, cellToPx } from '../terminalSelection.js';
 
 const LIVE_MARGIN = 20; // capture this many rows beyond the viewport so a small scroll-up has slack
                         // before triggering a deeper history pull (replaces the old fixed 100-line tail)
@@ -61,7 +62,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
   // is a ref so liveTick (effect scope) and the bubble (render scope) share the "don't repaint /
   // a selection is showing" flag without a re-render race.
   const selActiveRef = useRef(false);
-  const [copyBtn, setCopyBtn] = useState(null); // {x,y} in .terminal-wrap px, or null = hidden
+  const [selUI, setSelUI] = useState(null); // {start:{x,y}, end:{x,y}} in .terminal-wrap px, or null
   const [selHint, setSelHint] = useState(false); // drag-to-select guidance; lingers a few sec after lift
   const selHintTimerRef = useRef(null);
   // Alt-screen (a full-screen app: vim/htop/less/a mouse-mode TUI) has no scrollback of its own, so a
@@ -395,12 +396,13 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
       }
       selAnchor = { col: a, row: cell.row };
       selActiveRef.current = true;
-      setCopyBtn(null);
+      setSelUI(null);
       // tell the user to KEEP dragging — the missing step most users never discover. Stays up while
       // the finger is down (no timer yet); the linger timer starts on lift (onTouchEnd).
       clearTimeout(selHintTimerRef.current);
       setSelHint(true);
       term.select(a, cell.row, b - a + 1);
+      refreshSelUI();
       navigator.vibrate?.(12);
     };
     // Extend from the fixed anchor to the finger cell (offsets flatten the grid so the run wraps
@@ -413,12 +415,31 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
       const cOff = cur.row * cols + cur.col;
       const startOff = Math.min(aOff, cOff);
       term.select(startOff % cols, Math.floor(startOff / cols), Math.abs(cOff - aOff) + 1);
+      refreshSelUI();
+    };
+    // Recompute the handle/callout overlay from xterm's current selection (the single source of truth).
+    const refreshSelUI = () => {
+      const pos = term.getSelectionPosition?.();
+      const screen = elRef.current?.querySelector('.xterm-screen');
+      if (!pos || !screen) { setSelUI(null); return; }
+      const sr = screen.getBoundingClientRect();
+      const wr = elRef.current.parentElement.getBoundingClientRect(); // .terminal-wrap
+      const cw = sr.width / term.cols;
+      const ch = sr.height / term.rows;
+      const vy = buf().viewportY;
+      const off = { x: sr.left - wr.left, y: sr.top - wr.top };
+      const s = cellToPx(pos.start.x, pos.start.y, vy, cw, ch);
+      const e = cellToPx(pos.end.x + 1, pos.end.y, vy, cw, ch); // end handle sits after the last cell
+      setSelUI({
+        start: { x: s.x + off.x, y: s.y + off.y, ch },
+        end: { x: e.x + off.x, y: e.y + off.y, ch },
+      });
     };
     // Drop the current selection + bubble and let live refresh resume.
     const clearSelection = () => {
       selAnchor = null;
       selActiveRef.current = false;
-      setCopyBtn(null);
+      setSelUI(null);
       clearTimeout(selHintTimerRef.current);
       setSelHint(false);
       term.clearSelection();
@@ -610,20 +631,11 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
       cancelLongPress();
       if (selecting && e.touches.length === 0) {
         selecting = false;
-        // Finger lifted — let the guidance LINGER a few seconds instead of vanishing on release.
         clearTimeout(selHintTimerRef.current);
         selHintTimerRef.current = setTimeout(() => setSelHint(false), 3500);
         const text = term.getSelection();
-        if (text && text.trim()) {
-          // Float the copy bubble just above where the finger lifted, clamped into the pane.
-          const t = e.changedTouches[0];
-          const r = host.getBoundingClientRect();
-          const x = Math.max(8, Math.min(r.width - 72, t.clientX - r.left));
-          const y = Math.max(8, t.clientY - r.top - 46);
-          setCopyBtn({ x, y });
-        } else {
-          clearSelection();
-        }
+        if (text && text.trim()) refreshSelUI();  // persist handles + callout
+        else clearSelection();
         return;
       }
       if (pinching && e.touches.length < 2) {
@@ -900,7 +912,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
   // execCommand so copy still works on the LAN.
   const doCopy = async () => {
     const term = termRef.current;
-    const text = term?.getSelection();
+    const text = trimCopy(term?.getSelection() ?? '');
     if (text) {
       let ok = false;
       if (navigator.clipboard && window.isSecureContext) {
@@ -919,7 +931,7 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
     }
     term?.clearSelection();
     selActiveRef.current = false;
-    setCopyBtn(null);
+    setSelUI(null);
     clearTimeout(selHintTimerRef.current);
     setSelHint(false);
   };
@@ -947,14 +959,22 @@ const Terminal = forwardRef(function Terminal({ pane, onAuthFail, onDocLinkTap, 
           </button>
         </div>
       )}
-      {copyBtn && (
-        <button
-          className="copy-bubble"
-          style={{ left: copyBtn.x, top: copyBtn.y }}
-          onClick={doCopy}
-        >
-          复制
-        </button>
+      {selUI && (
+        <>
+          <div className="sel-handle sel-handle--start"
+               style={{ left: selUI.start.x, top: selUI.start.y, '--h': `${selUI.start.ch}px` }}
+               data-end="start" />
+          <div className="sel-handle sel-handle--end"
+               style={{ left: selUI.end.x, top: selUI.end.y, '--h': `${selUI.end.ch}px` }}
+               data-end="end" />
+          <div className="sel-callout"
+               style={{ left: Math.max(8, Math.min(selUI.start.x, selUI.end.x)),
+                        top: Math.max(4, Math.min(selUI.start.y, selUI.end.y) - 44) }}>
+            <button type="button" onClick={doCopy}>拷贝</button>
+            <button type="button" onClick={() => {}}>整行</button>
+            <button type="button" onClick={() => {}}>整段</button>
+          </div>
+        </>
       )}
     </div>
   );
