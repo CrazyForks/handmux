@@ -11,3 +11,21 @@ export function trimCopy(text) {
   while (b > a && lines[b - 1] === '') b--;
   return lines.slice(a, b).join('\n');
 }
+
+// Expand a cell range to cover the whole line(s) it spans.
+export function expandToLines(range, cols) {
+  return {
+    start: { col: 0, row: range.start.row },
+    end: { col: cols - 1, row: range.end.row },
+  };
+}
+
+// Expand to a blank-line-bounded paragraph: walk up while the line above is non-blank, down likewise,
+// clamped to [minRow, maxRow] (the buffer's first/last row).
+export function expandToParagraph(range, cols, lineText, minRow, maxRow) {
+  let top = range.start.row;
+  let bot = range.end.row;
+  while (top > minRow && lineText(top - 1).trim() !== '') top--;
+  while (bot < maxRow && lineText(bot + 1).trim() !== '') bot++;
+  return { start: { col: 0, row: top }, end: { col: cols - 1, row: bot } };
+}

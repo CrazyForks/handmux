@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { trimCopy } from '../src/terminalSelection.js';
+import { expandToLines, expandToParagraph } from '../src/terminalSelection.js';
 
 describe('trimCopy', () => {
   it('去掉每行首尾空白（含行首缩进）', () => {
@@ -14,5 +15,28 @@ describe('trimCopy', () => {
   });
   it('空/纯空白 → 空串', () => {
     expect(trimCopy('   \n  \n')).toBe('');
+  });
+});
+
+describe('expandToLines', () => {
+  it('每端扩到整行', () => {
+    const r = { start: { col: 3, row: 5 }, end: { col: 7, row: 8 } };
+    expect(expandToLines(r, 80)).toEqual({ start: { col: 0, row: 5 }, end: { col: 79, row: 8 } });
+  });
+});
+
+describe('expandToParagraph', () => {
+  // rows: 10 空, 11 "foo", 12 "bar", 13 "  ", 14 "baz"
+  const text = { 10: '', 11: 'foo', 12: 'bar', 13: '  ', 14: 'baz' };
+  const lineText = (r) => text[r] ?? '';
+  it('扩到空白行界定的段（13 是空白行，11-12 成段）', () => {
+    const r = { start: { col: 1, row: 12 }, end: { col: 1, row: 12 } };
+    expect(expandToParagraph(r, 80, lineText, 0, 20))
+      .toEqual({ start: { col: 0, row: 11 }, end: { col: 79, row: 12 } });
+  });
+  it('夹在 buffer 边界内', () => {
+    const r = { start: { col: 0, row: 11 }, end: { col: 0, row: 11 } };
+    expect(expandToParagraph(r, 80, lineText, 11, 12))
+      .toEqual({ start: { col: 0, row: 11 }, end: { col: 79, row: 12 } });
   });
 });
