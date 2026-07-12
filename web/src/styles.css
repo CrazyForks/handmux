@@ -475,6 +475,12 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .quick-fix svg { width: 15px; height: 15px; display: block; color: #aeb6c2; }
 .quick-fix:active { background: #454a54; }
 .quick-fix:disabled { opacity: .4; }
+/* Keyboard toggle: nudge it a touch more prominent than its neighbours (it's the primary, always-there way
+   to summon/dismiss the keyboard) WITHOUT shouting — a brighter icon, and a clear blue "on" state when the
+   keyboard is up so the control reads as a real switch. */
+.quick-fix-kbd svg { color: #d3dcec; }
+.quick-fix-kbd[aria-pressed="true"] { border-color: #3d63a8; background: #2c3849; color: #eaf1ff; }
+.quick-fix-kbd[aria-pressed="true"] svg { color: var(--blue); }
 /* 可横滑的自定义命令区:溢出横向滚动、隐藏滚动条;chip 单行不换、不压缩。 */
 .quick-scroll { flex: 1; min-width: 0; display: flex; align-items: stretch; gap: 5px; overflow-x: auto;
   scrollbar-width: none; -webkit-overflow-scrolling: touch; }

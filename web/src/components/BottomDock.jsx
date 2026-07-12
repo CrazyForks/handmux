@@ -173,14 +173,18 @@ function BottomDock({
   // can't be dragged on the web, only slid on focus/blur, so the bar is what carries the motion). Past the
   // commit threshold it arms (turns blue). Cleared on release → the CSS transition springs it back to dots.
   const handleRef = useRef(null);
-  const KBD_COMMIT_PX = 24; // matches keyboardSwipeAction's default threshold
-  const MORPH_PX = 40;      // finger travel over which the dots fully become a bar
+  // Deliberately a bit "stiff": a small drag must NOT change the keyboard. A dead zone means a tiny nudge
+  // doesn't even start the morph, and the commit needs real travel — so the dots fully fuse into the bar
+  // exactly as it arms (DEAD + RANGE = COMMIT), and only a release past that point toggles.
+  const KBD_COMMIT_PX = 50;
+  const MORPH_DEAD_PX = 12;  // below this the handle stays two dots — a nudge is inert
+  const MORPH_RANGE_PX = 38; // 12 + 38 = 50: fully a bar right at the commit point
   const setHandleDrag = (dy) => {
     const g = handleRef.current;
     if (!g) return;
     g.classList.add('dragging');
     g.style.setProperty('--drag', `${rubberBand(dy)}px`);
-    g.style.setProperty('--morph', `${Math.min(1, Math.abs(dy) / MORPH_PX)}`);
+    g.style.setProperty('--morph', `${Math.min(1, Math.max(0, (Math.abs(dy) - MORPH_DEAD_PX) / MORPH_RANGE_PX))}`);
     g.classList.toggle('armed', Math.abs(dy) >= KBD_COMMIT_PX);
   };
   const releaseHandle = () => {
@@ -322,7 +326,7 @@ function BottomDock({
       // onFocus/onBlur keep keyboardUp in sync). Idempotent: a 'show' while already up (or 'hide' while
       // down) is a harmless no-op.
       if (d && d.vert) {
-        const action = keyboardSwipeAction(d.dx, d.dy);
+        const action = keyboardSwipeAction(d.dx, d.dy, KBD_COMMIT_PX);
         const pg = pageIndexRef.current;
         d = null;
         releaseTrack();
@@ -826,7 +830,7 @@ function BottomDock({
                   文字随状态变);右=一排可横滑的、你自己的命令(命令模式独立一份),点=输入终端+回车,末尾 ＋ 增删。 */}
               <div className="quick-bar">
                 <div className="quick-fixed">
-                  <button type="button" className="quick-fix"
+                  <button type="button" className="quick-fix quick-fix-kbd"
                     aria-pressed={keyboardUp} aria-label={keyboardUp ? t('dock.kbdHide') : t('dock.kbdShow')}
                     onPointerDown={keepFocus} onClick={toggleKeyboard}>
                     <KeyboardIcon down={keyboardUp} /><span>{keyboardUp ? t('dock.kbdHide') : t('dock.kbdShow')}</span></button>
