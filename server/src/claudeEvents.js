@@ -98,7 +98,7 @@ export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, 
   // crash / Ctrl-C-out with no SessionEnd). `allowedSessions` (session NAMES, or null) scopes only the
   // OUTPUT — push and reconciliation run over every pane. On a tmux failure we degrade: no location, no
   // reconciliation, no push (we'd have no session name to route to), roster returned best-effort.
-  async function getStates(allowedSessions = null) {
+  async function _getStates(allowedSessions = null) {
     const allow = allowedSessions == null ? null : new Set(allowedSessions);
     const recorded = readStateFile(file);
     let live = null;
@@ -160,6 +160,17 @@ export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, 
       }
     }
     return out;
+  }
+
+  // Run getStates run-to-completion: the /states poll and the file-watcher both call it, and it mutates the
+  // shared `lastPushed` dedup and `await sendPush` mid-loop — overlapping runs could interleave on that state.
+  // Serialize on a tail promise so calls queue instead of racing; each caller still gets its own filtered
+  // roster (allowedSessions differs per call), and the tmux read isn't duplicated concurrently.
+  let tail = Promise.resolve();
+  function getStates(allowedSessions = null) {
+    const run = tail.then(() => _getStates(allowedSessions), () => _getStates(allowedSessions));
+    tail = run.catch(() => {});
+    return run;
   }
 
   // Watch the state file's directory (the hook replaces the file via rename, which changes the inode, so

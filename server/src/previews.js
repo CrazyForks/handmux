@@ -1,14 +1,17 @@
 // server/src/previews.js
 // Preview registry. Maps a safe single-segment name → either an on-disk directory under $HOME
-// (kind:'static') or a local port (kind:'dynamic'), with a TTL. Persistence mirrors push.js: a JSON
-// array at server/data/previews.json, read fresh on each op. Pure-ish: home/now/store/ttl plus the
-// dynamic switch and port probe are injected so it unit-tests on its own.
+// (kind:'static') or a local port (kind:'dynamic'), with a TTL. Like push.js it's a single-writer
+// in-memory registry (loaded once at construction, flushed atomically on each mutation) — the previous
+// reload-and-write-back on every op was an unguarded read-modify-write that could lose an entry when a
+// GET's expiry-prune raced a concurrent register(). Pure-ish: home/now/store/ttl plus the dynamic switch
+// and port probe are injected so it unit-tests on its own.
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { isUnder } from './docPath.js';
+import { readJsonArray, writeJsonAtomic } from './jsonStore.js';
 
 export function safePreviewName(raw) {
   if (typeof raw !== 'string') return null;
@@ -51,22 +54,18 @@ export function createPreviews({
   let realHome;
   try { realHome = fs.realpathSync(home); } catch { realHome = home; }
 
-  const loadStore = () => {
-    try { return JSON.parse(fs.readFileSync(store, 'utf8')) || []; } catch { return []; }
-  };
-  const saveStore = (arr) => {
-    try { fs.mkdirSync(path.dirname(store), { recursive: true }); fs.writeFileSync(store, JSON.stringify(arr)); }
-    catch { /* best effort: a lost registry just means previews must be re-started */ }
-  };
+  // Loaded ONCE — this in-memory array is the source of truth; every op mutates it and flushes atomically.
+  let entries = readJsonArray(store);
+  const flush = () => writeJsonAtomic(store, entries);
 
   // Common upsert: drop any prior entry with this name (so static↔dynamic switching just replaces),
   // stamp a single now() into createdAt/expiresAt, persist.
   const upsert = (fields) => {
-    const all = loadStore().filter((e) => e && e.name !== fields.name);
+    entries = entries.filter((e) => e && e.name !== fields.name);
     const ts = now();
     const entry = { ...fields, createdAt: ts, expiresAt: ts + ttlMs };
-    all.push(entry);
-    saveStore(all);
+    entries.push(entry);
+    flush();
     return { name: entry.name, kind: entry.kind, expiresAt: entry.expiresAt };
   };
 
@@ -92,26 +91,23 @@ export function createPreviews({
   }
 
   function get(name) {
-    const all = loadStore();
-    const entry = all.find((e) => e && e.name === name);
+    const entry = entries.find((e) => e && e.name === name);
     if (!entry) return { state: 'missing' };
-    if (entry.expiresAt <= now()) { saveStore(all.filter((e) => e.name !== name)); return { state: 'expired' }; }
+    if (entry.expiresAt <= now()) { entries = entries.filter((e) => e.name !== name); flush(); return { state: 'expired' }; }
     return { state: 'active', entry: { kind: 'static', ...entry } }; // legacy rows (no kind) → static
   }
 
   function list() {
-    const all = loadStore();
-    const active = all.filter((e) => e && e.expiresAt > now());
-    if (active.length !== all.length) saveStore(active);
+    const active = entries.filter((e) => e && e.expiresAt > now());
+    if (active.length !== entries.length) { entries = active; flush(); }
     return active.map((e) => (e.kind === 'dynamic'
       ? { name: e.name, kind: 'dynamic', port: e.port, expiresAt: e.expiresAt }
       : { name: e.name, kind: 'static', dir: e.dir, expiresAt: e.expiresAt }));
   }
 
   function remove(name) {
-    const all = loadStore();
-    const next = all.filter((e) => e && e.name !== name);
-    if (next.length !== all.length) saveStore(next);
+    const next = entries.filter((e) => e && e.name !== name);
+    if (next.length !== entries.length) { entries = next; flush(); }
   }
 
   return { register, get, list, remove };

@@ -154,7 +154,10 @@ describe('dynamic register', () => {
       const raw = JSON.parse(await fsp.readFile(store, 'utf8'));
       delete raw[0].kind;
       await fsp.writeFile(store, JSON.stringify(raw));
-      expect(dyn.list()[0].kind).toBe('static');
+      // The registry is in-memory (loaded once), so a legacy row on disk is adopted at the next boot —
+      // a fresh instance reads it and defaults the missing kind to static.
+      const reloaded = createPreviews({ home, store, now: () => clock.t, ttlMs: 600_000, dynamicEnabled: true });
+      expect(reloaded.list()[0].kind).toBe('static');
     });
   });
 });

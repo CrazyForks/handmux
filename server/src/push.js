@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
+import { writeJsonAtomic } from './jsonStore.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const STORE = process.env.PUSH_STORE || path.resolve(here, '../data/push-subs.json');
@@ -49,12 +50,7 @@ function load() {
       : { subscription: e, boundSessions: [] }); // migrate old bare-subscription entries
   } catch { return []; }
 }
-function persist() {
-  try {
-    fs.mkdirSync(path.dirname(STORE), { recursive: true });
-    fs.writeFileSync(STORE, JSON.stringify(subs));
-  } catch { /* best effort — a lost subscription just means the client re-subscribes next launch */ }
-}
+function persist() { writeJsonAtomic(STORE, subs); }
 
 export function isConfigured() { ensureInit(); return configured; }
 export function publicKey() { ensureInit(); return process.env.VAPID_PUBLIC || null; }
