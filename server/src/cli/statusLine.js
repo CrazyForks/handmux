@@ -9,6 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { homedir } from 'node:os';
+import { writeJsonAtomic } from './hookScaffold.js';
 
 const STATUS_MARK = 'handmux-statusline.cjs'; // identifies our statusLine command among the user's own
 const SCRIPT = 'handmux-statusline.cjs';
@@ -18,11 +19,6 @@ function settingsPath(home = homedir()) { return path.join(claudeDir(home), 'set
 
 function readSettings(home) {
   try { return JSON.parse(fs.readFileSync(settingsPath(home), 'utf8')); } catch { return {}; }
-}
-function writeJsonAtomic(file, obj) {
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
-  fs.renameSync(tmp, file);
 }
 
 function isOurs(sl) {

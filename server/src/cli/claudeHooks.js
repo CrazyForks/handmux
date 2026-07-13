@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { homedir } from 'node:os';
+import { writeJsonAtomic, deployHookScripts, removeHookScripts } from './hookScaffold.js';
 
 // The six events the inbox reads. src is the arg passed to handmux-notify.sh; only PostToolUse is scoped to
 // a matcher (the two "需要你" interaction tools) — every other Read/Bash/Edit must NOT wake the hook, or
@@ -73,15 +74,6 @@ export function hooksStatus(home = homedir()) {
   return Object.keys(hooks).some((ev) => alreadyHas(hooks, ev)) ? 'installed' : 'absent';
 }
 
-const SCRIPTS = ['handmux-notify.sh', 'handmux-write.cjs'];
-
-// Atomic JSON write (tmp + rename) so a crash can't leave a half-written settings.json.
-function writeJsonAtomic(file, obj) {
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
-  fs.renameSync(tmp, file);
-}
-
 // Install (opt-in): copy the bundled hook scripts to ~/.claude/hooks/, write the env pointing at the state
 // file, and merge our six hooks into settings.json. Returns { status }. NEVER creates ~/.claude — if it's
 // absent the user doesn't run Claude Code, so we report 'no-claude' and do nothing.
@@ -90,10 +82,7 @@ function writeJsonAtomic(file, obj) {
 export function installHooks(home = homedir(), { srcDir, stateFile } = {}) {
   if (!fs.existsSync(claudeDir(home))) return { status: 'no-claude' };
   const hooksDir = path.join(claudeDir(home), 'hooks');
-  fs.mkdirSync(hooksDir, { recursive: true });
-  for (const f of SCRIPTS) fs.copyFileSync(path.join(srcDir, f), path.join(hooksDir, f));
-  fs.chmodSync(path.join(hooksDir, 'handmux-notify.sh'), 0o755);
-  fs.writeFileSync(path.join(hooksDir, 'handmux-notify.env'), `HANDMUX_STATE=${stateFile}\n`, { mode: 0o600 });
+  deployHookScripts(hooksDir, srcDir, stateFile);
 
   const dest = path.join(hooksDir, 'handmux-notify.sh');
   let settings = {};
@@ -108,9 +97,6 @@ export function uninstallHooks(home = homedir()) {
   let settings = {};
   try { settings = JSON.parse(fs.readFileSync(settingsPath(home), 'utf8')); } catch { /* nothing to strip */ }
   if (fs.existsSync(settingsPath(home))) writeJsonAtomic(settingsPath(home), stripHooks(settings));
-  const hooksDir = path.join(claudeDir(home), 'hooks');
-  for (const f of [...SCRIPTS, 'handmux-notify.env']) {
-    try { fs.unlinkSync(path.join(hooksDir, f)); } catch { /* already gone */ }
-  }
+  removeHookScripts(path.join(claudeDir(home), 'hooks'));
   return { status: 'absent' };
 }

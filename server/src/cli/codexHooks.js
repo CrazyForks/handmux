@@ -15,6 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { homedir } from 'node:os';
+import { writeFileAtomic, deployHookScripts, removeHookScripts } from './hookScaffold.js';
 
 // The events we register → the verb passed to handmux-notify.sh (classified by the shared Claude classifier,
 // since Codex's payloads match): UserPromptSubmit→working, Stop→done, PermissionRequest→需要你. PostToolUse
@@ -27,8 +28,6 @@ const CODEX_HOOK_EVENTS = [
   { event: 'PostToolUse', src: 'resume' },
 ];
 
-// Shared with Claude — the same scripts drive both (stdin payloads are identical).
-const SCRIPTS = ['handmux-notify.sh', 'handmux-write.cjs'];
 const BEGIN = '# >>> handmux codex-hooks >>>';
 const END = '# <<< handmux codex-hooks <<<';
 
@@ -96,30 +95,19 @@ export function codexHooksStatus(home = homedir()) {
   return readConf(home).includes(BEGIN) ? 'installed' : 'absent';
 }
 
-function writeAtomic(file, text) {
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, text);
-  fs.renameSync(tmp, file);
-}
-
 // Install (opt-in): copy the shared hook scripts into ~/.codex/hooks/, point their env at the shared state
 // file, and splice our hook region into config.toml (creating ~/.codex if needed — safe, Codex is on PATH).
 // Returns { status }: 'no-codex' (nothing to do) | 'installed'.
 export function installCodexHooks(home = homedir(), { srcDir, stateFile } = {}) {
   if (!codexOnPath()) return { status: 'no-codex' };
-  fs.mkdirSync(hooksDir(home), { recursive: true });
-  for (const f of SCRIPTS) fs.copyFileSync(path.join(srcDir, f), path.join(hooksDir(home), f));
-  fs.chmodSync(path.join(hooksDir(home), 'handmux-notify.sh'), 0o755);
-  fs.writeFileSync(path.join(hooksDir(home), 'handmux-notify.env'), `HANDMUX_STATE=${stateFile}\n`, { mode: 0o600 });
-  writeAtomic(configPath(home), mergeCodexHooks(readConf(home), codexHooksBlock(home)));
+  deployHookScripts(hooksDir(home), srcDir, stateFile);
+  writeFileAtomic(configPath(home), mergeCodexHooks(readConf(home), codexHooksBlock(home)));
   return { status: 'installed' };
 }
 
 // Uninstall: strip our config.toml region and remove the copied scripts/env. Best-effort.
 export function uninstallCodexHooks(home = homedir()) {
-  if (fs.existsSync(configPath(home))) writeAtomic(configPath(home), stripCodexHooks(readConf(home)));
-  for (const f of [...SCRIPTS, 'handmux-notify.env']) {
-    try { fs.unlinkSync(path.join(hooksDir(home), f)); } catch { /* already gone */ }
-  }
+  if (fs.existsSync(configPath(home))) writeFileAtomic(configPath(home), stripCodexHooks(readConf(home)));
+  removeHookScripts(hooksDir(home));
   return { status: 'absent' };
 }
