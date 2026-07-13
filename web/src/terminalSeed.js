@@ -136,8 +136,12 @@ export function prepareSeed(ansi) {
 // content's last row, i.e. min(rows, seedRows), or the cursor lands on the empty grid bottom instead of
 // on the prompt. When the content fills/overflows the grid, seedRows ≥ rows and this is the plain
 // viewport-bottom count (unchanged). seedRows = 0 (unknown) ⇒ fall back to the bare viewport bottom.
-export function cursorSeq(cur, rows, seedRows = 0) {
-  if (!cur || !cur.vis) return '\x1b[?25l';
+// `force` overrides the app's DECTCEM-hide (cur.vis === false): after the user sends a key/command we
+// briefly light the block at the cursor's real position even if the app has it hidden, so operating the
+// terminal always shows WHERE you're operating (see forceCursorRef in Terminal.jsx). We still need cur
+// (row/col) — tmux reports position even while the cursor is hidden — so a genuinely absent cur stays hidden.
+export function cursorSeq(cur, rows, seedRows = 0, force = false) {
+  if (!cur || (!cur.vis && !force)) return '\x1b[?25l';
   const base = seedRows ? Math.min(rows | 0, seedRows | 0) : (rows | 0);
   const row = Math.max(1, base - Math.max(0, cur.row | 0)); // 1-based, from the content's bottom row
   const col = Math.max(0, cur.col | 0) + 1; // CUP is 1-based

@@ -92,6 +92,13 @@ describe('cursorSeq', () => {
   it('hides the cursor when it is not visible (Claude is working) — no stray box', () => {
     expect(cursorSeq({ row: 4, col: 2, vis: false }, 24)).toBe('\x1b[?25l');
   });
+  it('force reveals the block at the real position even when the app has it hidden (reveal-on-activity)', () => {
+    // User just sent a key → show WHERE the cursor is despite cur.vis === false.
+    expect(cursorSeq({ row: 4, col: 2, vis: false }, 24, 0, true)).toBe('\x1b[20;3H\x1b[?25h');
+  });
+  it('force still hides when there is no cursor at all (nothing to place)', () => {
+    expect(cursorSeq(null, 24, 0, true)).toBe('\x1b[?25l');
+  });
   it('hides the cursor when the server sent nothing (graceful fallback, never the stray box)', () => {
     expect(cursorSeq(undefined, 24)).toBe('\x1b[?25l');
     expect(cursorSeq(null, 24)).toBe('\x1b[?25l');

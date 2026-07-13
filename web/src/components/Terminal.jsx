@@ -98,6 +98,10 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
   // wake() lets outside input (sends/keys, via App) snap the poll loop back to the live cadence and
   // poll immediately. Bridged through a ref like fitRef so the imperative handle can reach effect scope.
   const wakeRef = useRef(null);
+  // When true, placeCursor lights the block at the cursor's real position even if the app has hidden it
+  // (cur.vis === false). Set for a short window after any key/command send (see wake) so operating the
+  // terminal always reveals WHERE the cursor is — you can't drive a terminal you can't see the cursor on.
+  const forceCursorRef = useRef(false);
   // Callout 整行/整段 buttons live in render scope but need effect-scope helpers (term, buf, refreshSelUI).
   // Bridged via a ref, same pattern as fitRef/wakeRef. Populated once inside the effect.
   const selActionsRef = useRef(null);
@@ -270,6 +274,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     let lastAnsi = null;
     let lastCur = ''; // last frame's cursor key (row,col,vis) — a cursor-only move must still repaint
     let curInfo = null; // last frame's cursor {row,col,vis}, placed by placeCursor() after sizing settles
+    let forceCursorTimer = null; // reveal-on-activity window (see wake/forceCursorRef)
     let seedRows = 0; // rows in the last seed (trimmed capture) — cur.row counts up from its bottom
     let lastHash = null; // last frame's server hash, echoed as ?since= so an unchanged screen returns 204
     let idleSince = Date.now(); // timestamp of the last change/activity → drives the adaptive cadence
@@ -358,7 +363,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     //     captured scrollback, so a smaller font simply shows more lines.
     // Put xterm's own cursor on Claude's input cell (or hide it), AFTER the grid is sized + scrolled —
     // never inside the seed. Absolute from the viewport bottom, so it's correct at any row count.
-    const placeCursor = () => { if (!disposed) term.write(cursorSeq(curInfo, term.rows, seedRows)); };
+    const placeCursor = () => { if (!disposed) term.write(cursorSeq(curInfo, term.rows, seedRows, forceCursorRef.current)); };
     // Scroll the alt-screen window so the cursor sits centred. Bridged via a ref so the inset effect
     // (render scope) can trigger it after a keyboard-open refit. rAF so it runs after the resize settles.
     centerOnCursorRef.current = () => {
@@ -1108,6 +1113,13 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     // back-to-back polls instead of stacking timer chains.
     const wake = () => {
       idleSince = Date.now();
+      // A send/keypress is the user operating the terminal → reveal the cursor NOW (even if the app has it
+      // hidden) and hold it lit for a short window, refreshed by each key. placeCursor here shows it this
+      // frame at the last known position; the immediate poll below re-places it at the fresh position.
+      forceCursorRef.current = true;
+      placeCursor();
+      clearTimeout(forceCursorTimer);
+      forceCursorTimer = setTimeout(() => { forceCursorRef.current = false; placeCursor(); }, 1500);
       if (busy) { wakeAgain = true; return; }
       startLoop();
     };
@@ -1144,6 +1156,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
 
     return () => {
       disposed = true;
+      clearTimeout(forceCursorTimer);
       if (autoScrollRAF != null) cancelAnimationFrame(autoScrollRAF);
       fitRef.current = null;
       wakeRef.current = null;
