@@ -52,6 +52,11 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   exit guard mistook for a root Back — so the hint appeared the instant you arrived, without touching Back.
   The guard now marks its own root entry and only arms when a Back genuinely lands back on it, ignoring
   forward navigations.
+- **Tapping a notification into an already-open app no longer costs an extra Back press to leave.** The
+  service worker used to `navigate()` the open tab to the deep link, which pushed a spurious history entry
+  above the app — so the first Back just silently consumed it and you needed one more to exit. It now hands
+  the deep link to the running app to open in place (no history push); a genuinely closed/discarded tab still
+  opens fresh at the deep link as before.
 
 ## [0.13.0] - 2026-07-12
 

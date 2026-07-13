@@ -106,12 +106,15 @@ self.addEventListener('notificationclick', (event) => {
     const open = all.find((c) => 'focus' in c);
     if (open) {
       await open.focus();
-      // Prefer navigate(): it changes the client URL, so the target survives even a backgrounded tab
-      // the browser discarded (it reloads into the deep-link hash, which the boot effect reads).
-      // postMessage is a fallback for engines without WindowClient.navigate. URL format MUST match
-      // hashRoute.readRoute()/buildDeepLink.
-      if ('navigate' in open) { try { await open.navigate(url); return; } catch { /* fall back ↓ */ } }
-      open.postMessage({ type: 'navigate', session: d.session, window: d.window, pane: d.pane });
+      // A session deep-link opens IN PLACE via postMessage (the app switches sessions and writes the hash
+      // with replaceState). We deliberately do NOT navigate() an already-open client for this: a
+      // same-document navigation pushes a spurious history entry ABOVE the app, so Back then needed an
+      // extra press to leave (and could confuse the exit guard). A genuinely discarded tab isn't in
+      // matchAll → it falls through to openWindow below, where the fresh load carries the deep-link hash.
+      // (message shape MUST match App.jsx's onMsg / hashRoute.) The rare non-session `url` push
+      // (`handmux push --url`) can't be resolved in place, so it still navigate()s the client.
+      if (d.session) { open.postMessage({ type: 'navigate', session: d.session, window: d.window, pane: d.pane }); return; }
+      if ('navigate' in open) { try { await open.navigate(url); return; } catch { /* focus alone must do */ } }
       return;
     }
     return self.clients.openWindow(url);

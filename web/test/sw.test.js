@@ -82,4 +82,41 @@ describe('service worker', () => {
     expect(del).not.toHaveBeenCalledWith('tmw-offline-v1');
     expect(self.clients.claim).toHaveBeenCalled();
   });
+
+  // Wire up self.clients for the notificationclick handler and fire it with the given data.
+  function clickNotification(data, { clients }) {
+    const { handlers, self } = loadSW();
+    self.clients.matchAll = clients.matchAll;
+    self.clients.openWindow = clients.openWindow || vi.fn(() => Promise.resolve());
+    const event = { notification: { data, close: vi.fn() }, waitUntil(p) { this.waited = p; } };
+    handlers.notificationclick(event);
+    return event.waited.then(() => ({ self, event }));
+  }
+
+  it('opens a session deep-link in an ALREADY-OPEN client via postMessage, NOT navigate (no extra history entry)', async () => {
+    const client = { focus: vi.fn(() => Promise.resolve()), navigate: vi.fn(() => Promise.resolve()), postMessage: vi.fn() };
+    await clickNotification({ session: 'S', window: '@1', pane: '%2' }, {
+      clients: { matchAll: vi.fn(() => Promise.resolve([client])) },
+    });
+    expect(client.focus).toHaveBeenCalled();
+    expect(client.postMessage).toHaveBeenCalledWith({ type: 'navigate', session: 'S', window: '@1', pane: '%2' });
+    expect(client.navigate).not.toHaveBeenCalled(); // navigate() would push a spurious history entry
+  });
+
+  it('still navigate()s an open client for a non-session url push (handmux push --url)', async () => {
+    const client = { focus: vi.fn(() => Promise.resolve()), navigate: vi.fn(() => Promise.resolve()), postMessage: vi.fn() };
+    await clickNotification({ url: '/somewhere' }, {
+      clients: { matchAll: vi.fn(() => Promise.resolve([client])) },
+    });
+    expect(client.navigate).toHaveBeenCalledWith('/somewhere');
+    expect(client.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('opens a fresh window at the deep-link when no client is open (discarded/closed tab)', async () => {
+    const openWindow = vi.fn(() => Promise.resolve());
+    const { self } = await clickNotification({ session: 'S', window: '@1', pane: '%2' }, {
+      clients: { matchAll: vi.fn(() => Promise.resolve([])), openWindow },
+    });
+    expect(self.clients.openWindow).toHaveBeenCalledWith('/#/s/S/w/%401/p/%252');
+  });
 });
