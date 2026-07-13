@@ -43,6 +43,10 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   the Back-button guard uses to tell the exit guard and open panels apart. That desynced the guard from the
   real history stack, so the hint could fire at the wrong time, a single Back could drop straight out, or it
   could take several Backs to leave. The hash rewrite now preserves that state, keeping the guard in sync.
+- **Once the "press again to exit" hint disappears, the next Back re-prompts instead of dropping you out.**
+  The hint and the exit window were two independent 2s timers that could drift apart, leaving a gap where the
+  hint had vanished but a Back still exited. They're now a single timer: the hint is visible for exactly the
+  exit window, so the moment it's gone the guard has re-armed.
 
 ## [0.13.0] - 2026-07-12
 

@@ -226,8 +226,10 @@ export default function App() {
     if (renameTarget) setRenameTarget(null); else setManageWindow(null);
   });
   // Root double-back-to-exit: on the main page (a pane is showing, all the overlays above push their own
-  // entries first), the first Back only surfaces a hint — a second within the window actually exits.
-  useExitConfirm(!!current, () => setExitHint(true));
+  // entries first), the first Back only surfaces a hint — a second within the window actually exits. The
+  // hook toggles the hint (show on arm, hide when the window lapses), so its visibility IS the arm window —
+  // the moment it hides, the guard is re-armed and the next Back re-prompts (no separate display timer).
+  useExitConfirm(!!current, setExitHint);
 
   const sendKey = useCallback(async (name) => {
     const paneId = current?.paneId;
@@ -750,13 +752,6 @@ export default function App() {
     const id = setTimeout(() => setDocToast(null), 4000);
     return () => clearTimeout(id);
   }, [docToast]);
-
-  // The exit hint auto-clears in step with useExitConfirm's window (~2s) so it isn't left lingering.
-  useEffect(() => {
-    if (!exitHint) return;
-    const id = setTimeout(() => setExitHint(false), 2000);
-    return () => clearTimeout(id);
-  }, [exitHint]);
 
   // Initial open: resolve the target session by precedence hash > last > first, then open it.
   // The URL hash (#session-name) deep-links to a session; otherwise the last-opened session;

@@ -15,11 +15,15 @@ import { useEffect, useRef } from 'react';
 // landing back on `{exitGuard:true}` means an overlay above us closed (do nothing); landing past it (guard
 // consumed) is the real root Back → arm.
 //
-// notify is held in a ref so an unstable inline callback doesn't re-run the effect (which would pile up
-// guard entries); the effect depends only on `enabled`.
-export function useExitConfirm(enabled, notify, windowMs = 2000) {
-  const cbRef = useRef(notify);
-  cbRef.current = notify;
+// onHint(show) toggles the "press again to exit" hint. ONE timer drives both the hint's visibility and
+// the re-trap, so the hint is shown for EXACTLY the arm window: the instant it hides, the guard is back on
+// the stack and the next Back re-prompts instead of silently exiting. (A separate display timer would drift
+// out of step with this window — hint gone but guard not yet re-pushed → a dead zone where Back falls
+// straight through.) onHint is held in a ref so an unstable inline callback doesn't re-run the effect
+// (which would pile up guard entries); the effect depends only on `enabled`.
+export function useExitConfirm(enabled, onHint, windowMs = 2000) {
+  const cbRef = useRef(onHint);
+  cbRef.current = onHint;
   useEffect(() => {
     if (!enabled) return undefined;
     let armed = false;
@@ -30,20 +34,28 @@ export function useExitConfirm(enabled, notify, windowMs = 2000) {
       window.history.pushState({ exitGuard: true }, '');
       pushed = true;
     };
-    const disarm = () => { armed = false; if (timer) { clearTimeout(timer); timer = null; } };
+    const clearArm = () => {           // drop the armed state AND hide the hint together
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (armed) { armed = false; cbRef.current?.(false); }
+    };
     pushGuard();
     const onPop = () => {
-      if (window.history.state?.exitGuard) { pushed = true; disarm(); return; } // back onto our guard: an overlay above closed
+      if (window.history.state?.exitGuard) { pushed = true; clearArm(); return; } // back onto our guard: an overlay above closed
       pushed = false;                       // our guard was consumed → we're at root
       if (armed) return;                    // (a fast 2nd press usually exits before this fires; be safe)
       armed = true;
-      cbRef.current?.();                    // show "press again to exit"
-      timer = setTimeout(() => { armed = false; timer = null; pushGuard(); }, windowMs); // lapsed → re-trap
+      cbRef.current?.(true);                // show "press again to exit"
+      timer = setTimeout(() => {            // window lapsed → hide hint AND re-trap, in one shot
+        armed = false; timer = null;
+        cbRef.current?.(false);
+        pushGuard();
+      }, windowMs);
     };
     window.addEventListener('popstate', onPop);
     return () => {
       window.removeEventListener('popstate', onPop);
       if (timer) clearTimeout(timer);
+      if (armed) cbRef.current?.(false); // leaving while armed → don't strand the hint on screen
       // Closed by other means (unbind / navigation) while our guard is still on top → reclaim it so history
       // stays balanced. If Back already consumed it, the state is no longer ours and we leave history alone.
       if (pushed && window.history.state?.exitGuard) window.history.back();
