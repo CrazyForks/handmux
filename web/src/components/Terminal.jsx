@@ -360,7 +360,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       // faked round at the display layer. floor()·CHUNK+CHUNK is always strictly > depth, so it never stalls.
       depth = Math.min(Math.floor(depth / CHUNK) * CHUNK + CHUNK, MAX_LINES);
       showScrollPos(' · 拉取↑');
-      repaint(depth, true);
+      repaint(depth, true, true); // isPull: pixel-floored anchor (fling may stop mid-row)
     };
 
     let paneRows = 0; // the real pane's row count (drives auto-shrink, below)
@@ -972,19 +972,24 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     };
     refreshDecosRef.current = () => { if (!disposed && seeded) refreshDocDecorations(term); };
 
-    const repaint = async (lines, keepPosition) => {
+    const repaint = async (lines, keepPosition, isPull = false) => {
       if (busy || disposed) return;
       busy = true;
-      // Anchor the pull: remember how far the top-visible row sits from the buffer's END, so after the reseed
-      // prepends history above we restore the same content (scrollToLine below). Verified line-exact against
-      // real captures in headless xterm.
-      // Anchor to the row that's actually RENDERED at the top, not buf().viewportY. xterm derives viewportY
-      // as Math.round(scrollTop / rowHeight), but the content is drawn at the FLOORED row — so a coast that
-      // stops mid-row (fractional ≥ .5) leaves viewportY one row ABOVE what's on screen. Anchoring off that
-      // rounded value drops the reseeded view one row too low ("拉取后高一行"; usually, but 0 when frac < .5).
-      // Use floor(scrollTop / rowHeight) so the anchor matches the pixels. Fall back to viewportY with no live
-      // viewport (headless tests). rowHeight = the viewport's own metric (scrollHeight / lines).
-      const anchorVp = keepPosition ? elRef.current?.querySelector('.xterm-viewport') : null;
+      // Anchor: remember how far the top-visible row sits from the buffer's END, so after the reseed
+      // (which prepends history above, on a pull) we restore the same content via scrollToLine below.
+      // TWO anchor modes, because the two callers need different things:
+      //  • Live in-place refresh (pollOnce, isPull=false): the view is STATIONARY and the buffer length is
+      //    unchanged — we're just restoring the exact same top row every frame. Use xterm's own INTEGER
+      //    line index (viewportY). Re-deriving it from pixels here is fatal: rowHeight is fractional and the
+      //    browser stores scrollTop as an integer, so floor(round(K·rowHeight)/rowHeight) occasionally yields
+      //    K-1 → the view creeps up one line PER FRAME on any actively-updating pane ("自己往上滚"). Integer
+      //    anchoring can't drift (scrollToLine set it, so viewportY is already exact).
+      //  • History pull (maybePullMore, isPull=true): a fling coast may stop MID-ROW. xterm derives viewportY
+      //    as round(scrollTop/rowHeight) but draws the FLOORED row, so a coast stopping at fractional ≥ .5
+      //    leaves viewportY one row ABOVE what's on screen → the pull lands one row too low ("拉取后高一行").
+      //    Here we DO want the pixel-floored row so the anchor matches what's rendered. Verified line-exact
+      //    against real captures in headless xterm. Fall back to viewportY with no live viewport (headless).
+      const anchorVp = (keepPosition && isPull) ? elRef.current?.querySelector('.xterm-viewport') : null;
       const anchorRowH = anchorVp && buf().length ? anchorVp.scrollHeight / buf().length : 0;
       const anchorTop = anchorRowH ? Math.floor(anchorVp.scrollTop / anchorRowH) : buf().viewportY;
       const anchorFromBottom = keepPosition ? buf().length - anchorTop : 0;

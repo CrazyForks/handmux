@@ -5,6 +5,10 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Fixed
+- 终端上滑一点后不再会自己一行一行往上爬：根因是上一版把「原地直播刷新」的滚动锚点也改成了按像素反推
+  （`floor(scrollTop/行高)`），而行高是小数、浏览器把 scrollTop 存成整数，反推偶尔少一行——于是每帧重绘就掉一行
+  （只在滚了一点、且是活跃刷新的 pane 上出现，空闲页不重绘所以不漂）。日常直播刷新改回用 xterm 的整数行号锚定
+  （零漂移），像素反推只保留给上滑拉历史那条（fling 可能停在半行，仍需对齐渲染行以免「拉取后高一行」）。
 - 启动**动态端口预览**后现在会像静态预览一样自动弹出预览面板：此前从设置里启动动态预览，面板会一闪而过又收回（要手动点顶栏预览图标才打开）——根因是设置面板被关闭了两次，多余那次的返回键平衡把预览面板刚压入的历史项弹掉了。
 - `handmux stop`（及 `restart`）在 supervisor 已崩溃/被强杀时不再遗留孤儿的 server/tunnel 子进程：停止时
   若发现 supervisor 已死但状态文件仍在，会先回收记录在案的子进程再清理状态（此前正是「stop 后 cloudflared
