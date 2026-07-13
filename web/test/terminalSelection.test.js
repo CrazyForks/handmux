@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { trimCopy, cellToPx } from '../src/terminalSelection.js';
+import { trimCopy, cellToPx, selectionCounts } from '../src/terminalSelection.js';
 import { expandToLines, expandToParagraph } from '../src/terminalSelection.js';
 
 describe('trimCopy', () => {
@@ -15,6 +15,20 @@ describe('trimCopy', () => {
   });
   it('空/纯空白 → 空串', () => {
     expect(trimCopy('   \n  \n')).toBe('');
+  });
+});
+
+describe('selectionCounts', () => {
+  it('行数用原始换行，字数用 copy-trim 后去掉换行', () => {
+    // 3 行；trim 后 "ls -la"+"foo"+"bar" = 6+3+3 = 12 字
+    expect(selectionCounts('  ls -la  \n foo \n bar ')).toEqual({ lines: 3, chars: 12 });
+  });
+  it('字数与实际复制内容一致（去掉行首尾padding空格）', () => {
+    // trimCopy 去掉首尾空白行 + 每行首尾空白；中间空行保留但计 0 字
+    expect(selectionCounts('\n  a  \n\n b \n')).toEqual({ lines: 5, chars: 2 });
+  });
+  it('空串 → 0/0', () => {
+    expect(selectionCounts('')).toEqual({ lines: 0, chars: 0 });
   });
 });
 

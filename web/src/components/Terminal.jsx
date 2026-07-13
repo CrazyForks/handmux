@@ -14,7 +14,8 @@ import { initialConnection, nextConnection } from '../connection.js';
 import { scanDocLinks, docLinksOnLine } from '../docDecorations.js';
 import { fitRows, bottomPadRows, scrollDecision, cursorBufferLine, centerTarget, followTarget } from '../terminalViewport.js';
 import { ensureBundledFonts } from '../bundledFonts.js';
-import { trimCopy, expandToLines, expandToParagraph, cellToPx } from '../terminalSelection.js';
+import { trimCopy, expandToLines, expandToParagraph, cellToPx, selectionCounts } from '../terminalSelection.js';
+import { useFlash } from '../hooks/useFlash.js';
 
 const CALLOUT_W = 200; // estimated callout width (px) used for right-edge clamp (3 buttons, nowrap)ing; real-device-tuned
 const LIVE_MARGIN = 20; // capture this many rows beyond the viewport so a small scroll-up has slack
@@ -79,10 +80,8 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
   const altScreenRef = useRef(false);
   const mouseAwareRef = useRef(false);
   const [altScreen, setAltScreen] = useState(false);
-  const [dbg, setDbg] = useState(''); // cols×rows·font readout, flashed on ⊟/⊞ then hidden
-  const [dbgVisible, setDbgVisible] = useState(false);
-  const flashHideRef = useRef(null);
-  const flashPollRef = useRef(null);
+  // cols×rows·font readout flashed on ⊟/⊞ then hidden — a self-contained component-scope cluster.
+  const { dbg, dbgVisible, flash } = useFlash(termRef);
   // History-mode banner text (历史模式 · 行 viewportY/baseY): non-empty only while browsing outside
   // the live zone; '' (hidden) when at/near the bottom and still live. Set by showScrollPos.
   const [scrollInfo, setScrollInfo] = useState('');
@@ -115,21 +114,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       const term = termRef.current;
       return term ? { cols: term.cols, rows: term.rows } : null;
     },
-    flash: () => {
-      const read = () => {
-        const term = termRef.current;
-        if (term) setDbg(`${term.cols}×${term.rows} · ${term.options.fontSize}px`);
-      };
-      read();
-      setDbgVisible(true);
-      clearTimeout(flashHideRef.current);
-      clearInterval(flashPollRef.current);
-      flashPollRef.current = setInterval(read, 400);
-      flashHideRef.current = setTimeout(() => {
-        setDbgVisible(false);
-        clearInterval(flashPollRef.current);
-      }, 3000);
-    },
+    flash,
     // Settings-modal font controls (A−/A+/自适应). The two-finger pinch still works the same;
     // these are just an explicit way to drive the same persisted size.
     getFontSize: () => {
@@ -158,11 +143,6 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     // Settings' doc-path-highlight switch: flip the flag and re-scan now (default off, so no wash until on).
     setDocHighlight: (on) => { docHighlightRef.current = !!on; refreshDecosRef.current?.(); },
   }), []);
-
-  useEffect(() => () => {
-    clearTimeout(flashHideRef.current);
-    clearInterval(flashPollRef.current);
-  }, []);
 
   // Keyboard open/close changes the visible height above the keyboard. App only translateY(-inset)s the
   // page, so our clientHeight is unchanged and the container ResizeObserver never fires — re-fit here on
@@ -522,8 +502,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       // on the clipboard rather than counting the row-padding spaces.
       const text = term.getSelection();
       if (text) {
-        const lines = text.split('\n').length;                  // rows the selection spans
-        const chars = trimCopy(text).replace(/\n/g, '').length; // chars after the copy-trim
+        const { lines, chars } = selectionCounts(text); // rows spanned / chars after the copy-trim
         setSelInfo(`复制模式 · ${lines} 行 · ${chars} 字`);
       } else setSelInfo('');
     };
