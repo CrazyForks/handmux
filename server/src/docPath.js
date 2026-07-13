@@ -1,4 +1,6 @@
-const EXT = {
+// Renderable doc types by extension. Exported so the web mirror (docPath.js DOC_LINK_EXTS) can be
+// parity-checked against it — the client's tappable-path detector must open exactly what we can render.
+export const EXT = {
   '.md': 'markdown', '.markdown': 'markdown', '.html': 'html', '.htm': 'html',
   // Plain-text files: rendered verbatim in a <pre> (no markdown parsing).
   '.txt': 'text', '.log': 'text', '.sh': 'text',
@@ -12,7 +14,7 @@ export function docTypeFor(name) {
 
 // Image extensions the in-app viewer can show inline via <img> (GIF animates natively). SVG is safe
 // here because <img>-loaded SVG never runs its scripts. Returns 'image' or null. Case-insensitive.
-const IMG_EXT = new Set(['png', 'jpg', 'jpeg', 'jfif', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif', 'apng']);
+export const IMG_EXT = new Set(['png', 'jpg', 'jpeg', 'jfif', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif', 'apng']);
 export function imageTypeFor(name) {
   const m = /\.([A-Za-z0-9]+)$/.exec(name || '');
   return m && IMG_EXT.has(m[1].toLowerCase()) ? 'image' : null;

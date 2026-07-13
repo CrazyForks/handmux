@@ -7,10 +7,13 @@
 //   `:` — a label/line-number separator with no space (`参考:docs/plan.md`, `file.md:12`);
 //   `│` — box-drawing border, so a path never fuses across a framed panel's `│ … │` padding.
 const DELIMS = "\\s'\"`()\\[\\]<>,;，。、；：！？（）【】《》「」“”‘’*…:│";
-// Openable extensions: in-app docs (md/html) AND images the viewer shows inline (the same set as the
-// server's imageTypeFor). A terminal path ending in any of these is a tappable link; onOpenDoc routes
-// it to the doc reader or the image viewer by extension.
-const LINK_EXT = 'md|markdown|html|htm|txt|log|sh|png|jpg|jpeg|jfif|gif|webp|svg|bmp|ico|avif|apng';
+// Openable extensions: in-app docs (md/html/text) AND images the viewer shows inline. A terminal path
+// ending in any of these is a tappable link; onOpenDoc routes it to the doc reader or the image viewer
+// by extension. These two lists MUST mirror the server's classifiers (docPath.js `EXT` keys and `IMG_EXT`)
+// — a shared-types parity test (web/test/sharedTypesParity.test.js) fails loudly if they ever drift.
+export const DOC_LINK_EXTS = ['md', 'markdown', 'html', 'htm', 'txt', 'log', 'sh'];
+export const IMAGE_LINK_EXTS = ['png', 'jpg', 'jpeg', 'jfif', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif', 'apng'];
+const LINK_EXT = [...DOC_LINK_EXTS, ...IMAGE_LINK_EXTS].join('|');
 // Match a path token (≥1 non-delimiter char) ending in an openable extension; the lookahead pins the
 // extension to a boundary (a delimiter, end-of-line, or a trailing `.`) so `foo.png.` yields `foo.png`
 // and `archive.mdx` matches nothing.
