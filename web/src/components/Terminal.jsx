@@ -639,6 +639,8 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     // After each send we poke the poll loop so the scrolled frame repaints at once (poll-and-repaint would
     // otherwise lag the jump up to a tick).
     const WHEEL_PX = 22;   // finger travel per notch — ~one text row, tuned for a natural drag feel
+    const WHEEL_PX_FWD = 12; // finger travel per key when FORWARDING a drag past the internal edge — more
+                             // sensitive than a plain scroll so alt-screen up/down keys fire readily
     let wheelAccum = 0;    // unsent finger travel, px (+ = finger moved down the screen)
     let wheelPrevY = 0;    // last sampled clientY, for the incremental delta
     let wheelPending = 0;  // notches queued while a request is in flight (+ = toward earlier content)
@@ -751,7 +753,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
             return;
           }
           // At the internal top/bottom boundary → forward the residual to the app as wheel/arrow keys.
-          const { notches, rem } = drainWheel(wheelAccum + dyStep, WHEEL_PX);
+          const { notches, rem } = drainWheel(wheelAccum + dyStep, WHEEL_PX_FWD);
           wheelAccum = rem;
           if (notches) { wheelPending += notches; flushWheel(); }
           return;
