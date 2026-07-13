@@ -1,6 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
-import { sendText, uploadFile, UnauthorizedError, UploadAbort } from '../api.js';
-import { startUpload, updateUpload, finishUpload } from '../uploadJob.js';
+import { sendText, UnauthorizedError } from '../api.js';
 import KeyBar from './KeyBar.jsx';
 import FavDrawer from './FavDrawer.jsx';
 import CmdFavEditor from './CmdFavEditor.jsx';
@@ -8,8 +7,9 @@ import MicButton from './MicButton.jsx';
 import { loadFavs, cmdScope } from '../favStore.js';
 import { keyboardSwipeAction, rubberBand, composerAbsorbsScroll } from '../dockKeyboard.js';
 import { getChatDraft, setChatDraft } from '../storage.js';
-import { UPLOAD_ACCEPT, splitUploadable } from '../uploadTypes.js';
+import { UPLOAD_ACCEPT } from '../uploadTypes.js';
 import { ArrowUpIcon, UploadIcon, ClockIcon, KeyboardIcon, GearIcon } from './icons.jsx';
+import { useUpload } from '../hooks/useUpload.js';
 import { usePushToTalk } from '../voice/usePushToTalk.js';
 import { useAsrAvailable } from '../voice/useAsrAvailable.js';
 import { useScreenWakeLock } from '../hooks/useScreenWakeLock.js';
@@ -413,11 +413,9 @@ function BottomDock({
 
   // Hardware Back closes the command panel instead of exiting the app.
   useBackButton(panelOpen, () => setPanelOpen(false));
-  const [upload, setUpload] = useState(null); // { label, pct, error } during/after an upload, else null
   const ref = useRef(null);      // agent-mode composer textarea
   const cmdRef = useRef(null);   // command-mode single-line capture (streams to the pane)
   const uploadRef = useRef(null);
-  const upTimerRef = useRef(null);
 
   // The system can drop the soft keyboard WITHOUT blurring the focused field — e.g. an app-switch gesture
   // aborted mid-way, or Android's Back. Focus (hence keyboardUp) then lies "up" while the keyboard is really
@@ -461,7 +459,6 @@ function BottomDock({
   const micAvailable = useAsrAvailable(); // hide the mic when no ASR engine is configured (keyless install)
   const recording = voice.state === 'recording' || voice.state === 'finalizing';
   useScreenWakeLock(recording); // 语音激活时屏幕常亮,别中途变暗/锁屏
-  useEffect(() => () => clearTimeout(upTimerRef.current), []); // 卸载时清掉上传提示自动消失的定时器
 
   // 录音中:partial 实时写进框、插在锚点处,光标跟到插入末尾。已 suppress(发送过)则不再回写。
   useEffect(() => {
@@ -698,59 +695,9 @@ function BottomDock({
     requestAnimationFrame(() => { ref.current?.focus(); autoGrow(ref.current); });
   };
 
-  // ＋ upload: native multi-select → upload each file sequentially into this cwd's space under
-  // ~/.handmux/uploads (server creates it; kept out of the project tree so nothing gets committed).
-  // Progress shows per-file with an (n/total) counter; a partial failure leaves a red note that
-  // self-clears. Succeeded paths (absolute) get pasted into the box.
-  const uploadFiles = async (files) => {
-    const { allowed: list, rejected } = splitUploadable(files);
-    if (!list.length) {
-      if (rejected.length) {
-        clearTimeout(upTimerRef.current);
-        setUpload({ label: t('dock.upload.rejected', { names: rejected.join('、') }), error: true });
-        upTimerRef.current = setTimeout(() => setUpload(null), 3500);
-      }
-      return;
-    }
-    clearTimeout(upTimerRef.current);
-    setUpload(null);                                  // the inline note is only for post-run errors now
-    const total = list.length;
-    const paths = [];
-    const failed = [];
-    // One AbortController for the whole batch → the overlay's Cancel aborts the in-flight file and we
-    // break out of the loop. Active-transfer feedback lives in the app-wide overlay (uploadJob store).
-    const ac = new AbortController();
-    startUpload(ac, t('dock.upload.progress', { name: list[0].name, tag: total > 1 ? `（1/${total}）` : '' }));
-    try {
-      for (let i = 0; i < total; i++) {
-        if (ac.signal.aborted) break;
-        const f = list[i];
-        const tag = total > 1 ? `（${i + 1}/${total}）` : '';
-        updateUpload({ label: t('dock.upload.progress', { name: f.name, tag }), phase: 'sending', pct: 0 });
-        try {
-          const res = await uploadFile(cwd || '', f, (pct, phase) => updateUpload({ pct, phase }), true, { signal: ac.signal });
-          if (res?.path) paths.push(res.path);
-        } catch (err) {
-          if (err instanceof UploadAbort) break;      // user canceled → stop the batch, keep done files
-          if (err instanceof UnauthorizedError) { onAuthFail?.(); finishUpload(); setUpload(null); return; }
-          // Keep the SPECIFIC reason (uploadFile maps it: too large / bad type / …) so the note explains why.
-          failed.push({ name: f.name, reason: err?.message || t('api.uploadFailed') });
-        }
-      }
-    } finally {
-      finishUpload();
-    }
-    if (paths.length) insertPaths(paths);
-    if (failed.length || rejected.length) {
-      // Each failure carries its own reason (name：why); rejected types keep their one-line note.
-      const parts = failed.map((x) => `${x.name}：${x.reason}`);
-      if (rejected.length) parts.push(t('dock.upload.rejected', { names: rejected.join('、') }));
-      setUpload({ label: parts.join('；'), error: true });
-      upTimerRef.current = setTimeout(() => setUpload(null), 5000);
-    } else {
-      setUpload(null);
-    }
-  };
+  // ＋ upload: the multi-select pipeline lives in useUpload (transient note state + per-file sequential
+  // transfer via the app-wide overlay); onPaths pastes the uploaded absolute paths into the composer.
+  const { upload, uploadFiles } = useUpload({ cwd, onAuthFail, onPaths: insertPaths });
 
   // 填入: type the box text into the pane WITHOUT Enter (no submit), then clear — the secondary to
   // 发送 (which types + Enter). Mirrors send() with enter=false; a filled command is still recorded.
