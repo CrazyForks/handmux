@@ -5,6 +5,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Fixed
+- `handmux stop`（及 `restart`）在 supervisor 已崩溃/被强杀时不再遗留孤儿的 server/tunnel 子进程：停止时
+  若发现 supervisor 已死但状态文件仍在，会先回收记录在案的子进程再清理状态（此前正是「stop 后 cloudflared
+  仍在跑」的成因）。`state.json` 改为原子写（临时文件 + rename），并发读不再读到写了一半的内容而误判为「未运行」。
 - 键盘弹起时终端不再把顶部内容顶出屏外：网格按键盘上方的真实高度重排，主屏短内容贴键盘上沿显示；全屏应用（vim/less/htop 等）可在内部上下滚动、到顶/底才翻页，展开键盘时自动把光标带到视野中央并跟随、手动滚动时让位。
 - 光标不点屏幕也能显示了：根因是 xterm 在终端从未被聚焦前根本不渲染光标（连失焦 block 样式也不画），而我们的网格只读、从不聚焦，所以之前必须点一下（点击会聚焦终端）才看得到光标。现在终端创建时用一次 focus/blur 激活渲染器，之后光标随 tmux 状态正常显示。此外，发键/发指令后即使 Claude 正在工作（光标本被隐藏）也会点亮光标并保持到它重新空闲，操作时始终看得到光标在哪。
 - 全屏应用手指滑动触发上下键更灵敏（每 12px 一格）。

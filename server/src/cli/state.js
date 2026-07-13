@@ -25,9 +25,15 @@ export function readState(home) {
   try { return JSON.parse(fs.readFileSync(statePath(home), 'utf8')); } catch { return null; }
 }
 
+// Atomic write (tmp + rename): the supervisor persist()s frequently while the CLI concurrently readState()s
+// (waitAndPrint/status), so a plain writeFileSync could be caught mid-write and JSON.parse-fail — silently
+// degrading to "not running". rename is atomic on the same filesystem, so a reader sees old or new, never torn.
 export function writeState(state, home) {
   fs.mkdirSync(pocketHome(home), { recursive: true });
-  fs.writeFileSync(statePath(home), JSON.stringify(state, null, 2));
+  const file = statePath(home);
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
+  fs.renameSync(tmp, file);
 }
 
 export function clearState(home) {

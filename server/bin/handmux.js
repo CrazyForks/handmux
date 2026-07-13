@@ -271,9 +271,26 @@ async function start() {
   await waitAndPrint(true);
 }
 
+// Best-effort SIGTERM to the supervisor's recorded children. The supervisor reaps its own children on a
+// graceful SIGTERM (supervisor.js shutdown), but if it was SIGKILL'd or crashed, its server/tunnel children
+// are orphaned with no reaper — the classic "stray cloudflared after stop". Only called on the dead-
+// supervisor branch, so these pids have no live parent to clean them up.
+function reapOrphans(st) {
+  for (const pid of [st.serverPid, st.tunnelPid]) {
+    if (isAlive(pid)) { try { process.kill(pid, 'SIGTERM'); } catch { /* raced away */ } }
+  }
+}
+
 function stop() {
   const st = readState(HOME);
-  if (!st || !isAlive(st.supervisorPid)) { console.log(t('stop.notRunning')); clearState(HOME); return; }
+  if (!st || !isAlive(st.supervisorPid)) {
+    // Supervisor already gone — but a non-graceful death may have orphaned its children. Reap them before
+    // dropping the state file, or nothing ever will.
+    if (st) reapOrphans(st);
+    console.log(t('stop.notRunning'));
+    clearState(HOME);
+    return;
+  }
   try { process.kill(st.supervisorPid, 'SIGTERM'); } catch { /* race: already gone */ }
   console.log(t('stop.stopped', { pid: st.supervisorPid }));
 }
