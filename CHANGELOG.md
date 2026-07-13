@@ -37,6 +37,12 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   screen's scrollback above the app, so scrolling up showed old terminal output that wasn't part of the
   running app. It also capped the app's trailing blank rows, mangling a fixed-height screen. Alt-screen
   panes are now captured as exactly their visible screen, so what you see is only the app.
+- **The Back-to-exit guard is now reliable — no more phantom "press again to exit" hints, silent exits, or
+  needing several Back presses.** Opening a session (from the drawer, an inbox row, or a notification tap)
+  rewrote the URL hash in a way that wiped the state marker off the current history entry — the very marker
+  the Back-button guard uses to tell the exit guard and open panels apart. That desynced the guard from the
+  real history stack, so the hint could fire at the wrong time, a single Back could drop straight out, or it
+  could take several Backs to leave. The hash rewrite now preserves that state, keeping the guard in sync.
 
 ## [0.13.0] - 2026-07-12
 

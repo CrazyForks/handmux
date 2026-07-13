@@ -24,6 +24,17 @@ describe('hashRoute', () => {
     expect(readSessionHash()).toBe('my work');
     expect(history.length).toBe(before); // replaceState, not pushState
   });
+
+  it('preserves the current entry state (must not clobber a back-button guard)', () => {
+    // openSession writes the hash on top of whatever entry is current — often the useExitConfirm
+    // guard ({exitGuard}) or a useBackButton overlay ({overlay}). Nulling that state desyncs the
+    // back-button state machines from real history (spurious "press again to exit", silent exits,
+    // several backs needed). writeSessionHash only changes the URL, so it must keep the state.
+    history.replaceState({ exitGuard: true }, '', location.pathname);
+    writeSessionHash('main');
+    expect(history.state).toEqual({ exitGuard: true });
+    expect(readSessionHash()).toBe('main');
+  });
 });
 
 describe('hashRoute deep link', () => {

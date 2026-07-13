@@ -15,7 +15,8 @@ export function clearShareFlag() {
   if (typeof location === 'undefined' || typeof history === 'undefined') return;
   const url = new URL(location.href);
   url.searchParams.delete('share');
-  history.replaceState(null, '', url.pathname + url.search + url.hash);
+  // Preserve state (not null): keep any back-button guard/overlay marker on the current entry intact.
+  history.replaceState(history.state, '', url.pathname + url.search + url.hash);
 }
 
 // Pull the most-recently shared file out of the cache and delete it (consume). Returns a File, or

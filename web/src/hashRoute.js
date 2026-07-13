@@ -9,9 +9,13 @@ export function readSessionHash() {
 }
 
 // replaceState (not assigning location.hash) so switching sessions doesn't pile up history
-// entries / hijack the back button. Refresh still resolves the hash on load.
+// entries / hijack the back button. Refresh still resolves the hash on load. We PRESERVE the
+// current entry's state (pass history.state, not null): the top entry is often the useExitConfirm
+// guard ({exitGuard}) or a useBackButton overlay ({overlay}), and openSession writes the hash right
+// on top of it. Nulling that marker desyncs the back-button state machines (spurious "press again to
+// exit", silent exits, several backs needed before the app closes).
 export function writeSessionHash(name) {
-  history.replaceState(null, '', `#${encodeURIComponent(name)}`);
+  history.replaceState(history.state, '', `#${encodeURIComponent(name)}`);
 }
 
 // Deep-link route: `#/s/<session>/w/<window>/p/<pane>`, each segment URL-encoded (pane ids contain
