@@ -36,12 +36,15 @@ import { codexHooksStatus, installCodexHooks, uninstallCodexHooks } from '../src
 import { statusLineStatus, installStatusLine, uninstallStatusLine, composeHint } from '../src/cli/statusLine.js';
 import { claudeUsagePath } from '../src/usage.js';
 import { probe } from '../src/cli/probe.js';
-import { notifyUpdate, runUpdateCheck, PKG_NAME } from '../src/cli/updateCheck.js';
+import { notifyUpdate, runUpdateCheck, isBrewInstall, PKG_NAME } from '../src/cli/updateCheck.js';
 import { t, initLocale, setLocale } from '../src/cli/i18n/index.js';
 import { runPush } from '../src/cli/pushCmd.js';
 
 const HOME = homedir();
 const SELF = fileURLToPath(import.meta.url);
+// Symlink-resolved entry path — a brew (tap) install is symlinked from the prefix's bin into the Cellar,
+// so isBrewInstall() needs the real target, not the symlink, to spot the `/Cellar/` segment.
+const SELF_REAL = (() => { try { return fs.realpathSync(SELF); } catch { return SELF; } })();
 const HOOKS_SRC = path.resolve(path.dirname(SELF), '../hooks'); // server/hooks (bundled scripts)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -162,6 +165,7 @@ function version() {
 // restart a running instance; on success we refresh the update cache so the "upgrade available" notice
 // clears, and remind them to `handmux restart` to actually run the new code.
 function updateCmd() {
+  if (isBrewInstall(SELF_REAL)) { console.log(t('update.brew')); return; }
   console.log(t('update.running'));
   const r = spawnSync('npm', ['install', '-g', `${PKG_NAME}@latest`], { stdio: 'inherit' });
   if (r.status === 0) {
@@ -176,7 +180,7 @@ function updateCmd() {
 
 // Best-effort upgrade notice from the cached "latest version" (never blocks; refreshes in the background).
 function maybeNotifyUpdate() {
-  notifyUpdate(HOME, { version: requireOpt('../package.json').version, selfPath: SELF });
+  notifyUpdate(HOME, { version: requireOpt('../package.json').version, selfPath: SELF_REAL });
 }
 
 async function start() {

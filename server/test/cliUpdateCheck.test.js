@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import {
   compareVersions, isNewer, shouldRefresh, fetchLatest, parseView, VIEW_ARGS,
   readCache, writeCache, updateCachePath, runUpdateCheck, notifyUpdate,
-  refreshLatestAsync, CHECK_INTERVAL_MS,
+  refreshLatestAsync, CHECK_INTERVAL_MS, isBrewInstall,
 } from '../src/cli/updateCheck.js';
 import { tmpHome } from './tmphome.js';
 
@@ -113,7 +113,31 @@ describe('runUpdateCheck', () => {
   });
 });
 
+describe('isBrewInstall', () => {
+  it('detects Homebrew (Cellar) and linuxbrew paths', () => {
+    expect(isBrewInstall('/opt/homebrew/Cellar/handmux/0.14.0/libexec/bin/handmux.js')).toBe(true);
+    expect(isBrewInstall('/usr/local/Cellar/handmux/0.14.0/libexec/bin/handmux.js')).toBe(true);
+    expect(isBrewInstall('/home/linuxbrew/.linuxbrew/Cellar/handmux/0.14.0/x')).toBe(true);
+  });
+  it('is false for a plain npm global install', () => {
+    expect(isBrewInstall('/usr/local/lib/node_modules/handmux/server/bin/handmux.js')).toBe(false);
+    expect(isBrewInstall('/Users/me/.nvm/versions/node/v22/lib/node_modules/handmux/x')).toBe(false);
+    expect(isBrewInstall('')).toBe(false);
+  });
+});
+
 describe('notifyUpdate', () => {
+  it('routes the upgrade hint to `brew upgrade handmux/tap/handmux` for a brew install', () => {
+    const home = tmpHome('upd-');
+    writeCache(home, { checkedAt: Date.now(), latest: '3.0.0' });
+    const log = vi.fn();
+    const selfPath = '/opt/homebrew/Cellar/handmux/2.9.0/libexec/bin/handmux.js';
+    notifyUpdate(home, { version: '2.9.0', selfPath, now: Date.now(), log, spawnFn: () => ({ unref() {} }) });
+    const out = log.mock.calls.flat().join('\n');
+    expect(out).toContain('brew upgrade handmux/tap/handmux');
+    expect(out).not.toContain('npm i -g');
+  });
+
   it('prints an upgrade notice when the cache is newer than the running version', () => {
     const home = tmpHome('upd-');
     writeCache(home, { checkedAt: Date.now(), latest: '3.0.0' });

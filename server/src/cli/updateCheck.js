@@ -16,6 +16,12 @@ import { t } from './i18n/index.js';
 export const PKG_NAME = 'handmux';
 export const CHECK_INTERVAL_MS = 60 * 60 * 1000; // refresh the cached "latest" at most once an hour
 
+// A Homebrew-installed handmux lives under the Cellar (…/Cellar/handmux/<ver>/…, symlinked from the brew
+// prefix's bin), or under a linuxbrew prefix. For such installs `handmux update` must NOT `npm i -g` over
+// itself — that plants a second, conflicting copy that brew can't see or upgrade — and the "how to upgrade"
+// hint must point at `brew upgrade` instead. Detect the source from the (real, symlink-resolved) entry path.
+export function isBrewInstall(selfPath = '') { return /\/(Cellar|homebrew)\//.test(selfPath); }
+
 export function updateCachePath(home) { return path.join(pocketHome(home), 'update-check.json'); }
 
 export function readCache(home) {
@@ -114,7 +120,7 @@ export function notifyUpdate(home, { version, selfPath, now = Date.now(), log = 
   if (cache && cache.latest && isNewer(cache.latest, version)) {
     log('');
     log(t('update.available', { current: version, latest: cache.latest }));
-    log(t('update.how'));
+    log(t(isBrewInstall(selfPath) ? 'update.howBrew' : 'update.how'));
     shown = true;
   }
   if (selfPath && shouldRefresh(cache, now)) {

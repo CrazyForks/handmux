@@ -4,6 +4,11 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Fixed
+- `handmux update` on a Homebrew (tap) install no longer runs `npm i -g` over itself — that planted a
+  second, conflicting copy Homebrew couldn't see or upgrade. It now detects the brew install and points you
+  at `brew upgrade handmux/tap/handmux`; the "upgrade available" notice shows the matching command per source.
+
 ## [0.14.0] - 2026-07-13
 
 ### Added

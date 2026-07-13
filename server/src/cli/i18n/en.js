@@ -49,6 +49,8 @@ export default {
   // update
   'update.available': '  ⬆  handmux {latest} is available (you have {current})',
   'update.how': '     upgrade:  handmux update   (or npm i -g handmux@latest)',
+  'update.howBrew': '     upgrade:  brew upgrade handmux/tap/handmux',
+  'update.brew': 'This handmux was installed with Homebrew — upgrade it with:  brew upgrade handmux/tap/handmux',
   'update.running': 'Upgrading handmux (npm i -g handmux@latest)…',
   'update.done': '✓ handmux updated.',
   'update.restartHint': '  run `handmux restart` to run the new version.',
