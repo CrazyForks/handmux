@@ -262,7 +262,9 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
    (live refresh paused — shows 历史模式 · 行 x/x); red = disconnected/reconnecting. They're mutually
    exclusive in the render (disconnect wins). pointer-events:none so taps pass straight through. */
 .term-banner {
-  position: absolute; left: 0; right: 0; top: 0; z-index: 6;
+  /* Anchor to the top of the VISIBLE slice (--vis-h, set by fit()); with the keyboard up the container's
+     real top is clipped off-screen. Falls back to the container top (100%) when the var is unset. */
+  position: absolute; left: 0; right: 0; top: calc(100% - var(--vis-h, 100%)); z-index: 6;
   font: 12px/1.7 -apple-system, system-ui, sans-serif; text-align: center;
   padding: 2px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   pointer-events: none;
@@ -305,7 +307,10 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
    One frosted-glass capsule with a hairline divider and crisp chevrons (an iOS-style stacked control) —
    subtle so it defers to the content; ~42pt targets; clear of the safe area. */
 .term-pager {
-  position: absolute; z-index: 6; right: calc(10px + env(safe-area-inset-right)); top: 50%;
+  /* Center in the VISIBLE slice (--vis-h), not the full container — its top is clipped with the keyboard
+     up. calc(100% - --vis-h/2) is the visible middle; falls back to 50% when the var is unset. */
+  position: absolute; z-index: 6; right: calc(10px + env(safe-area-inset-right));
+  top: calc(100% - var(--vis-h, 100%) / 2);
   transform: translateY(-50%); display: flex; flex-direction: column; align-items: stretch;
   border-radius: 21px; overflow: hidden;
   background: rgba(28,30,34,0.52);

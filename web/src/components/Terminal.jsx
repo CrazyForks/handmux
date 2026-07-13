@@ -382,6 +382,9 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       const screen = elRef.current.querySelector('.xterm-screen');
       const curH = screen ? screen.getBoundingClientRect().height : 0;
       if (!avail || !curH) return;
+      // Publish the visible height so absolutely-positioned overlays (pager, top banner) anchor to the
+      // on-screen slice instead of the full container (whose top is clipped off-screen with the keyboard up).
+      elRef.current.parentElement?.style.setProperty('--vis-h', `${avail}px`);
       const cellH = curH / term.rows;
 
       // Auto font-shrink only when the keyboard is down. Keyboard up keeps the font and just drops rows
