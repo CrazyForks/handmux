@@ -6,7 +6,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ### Fixed
 - 键盘弹起时终端不再把顶部内容顶出屏外：网格按键盘上方的真实高度重排，主屏短内容贴键盘上沿显示；全屏应用（vim/less/htop 等）可在内部上下滚动、到顶/底才翻页，展开键盘时自动把光标带到视野中央并跟随、手动滚动时让位。
-- 发键/发指令后光标必定亮出来：过去应用把光标藏起来（如 Claude 工作中 cur.vis=0）时我们跟着藏，导致往 Claude 发消息后看不到光标；现在任何一次发送都会在光标真实位置点亮方块，并一直保持到 Claude 重新空闲（自己显示光标），不用先点一下屏幕。
+- 光标不点屏幕也能显示了：根因是 xterm 在终端从未被聚焦前根本不渲染光标（连失焦 block 样式也不画），而我们的网格只读、从不聚焦，所以之前必须点一下（点击会聚焦终端）才看得到光标。现在终端创建时用一次 focus/blur 激活渲染器，之后光标随 tmux 状态正常显示。此外，发键/发指令后即使 Claude 正在工作（光标本被隐藏）也会点亮光标并保持到它重新空闲，操作时始终看得到光标在哪。
 - 全屏应用手指滑动触发上下键更灵敏（每 12px 一格）。
 - `handmux update` on a Homebrew (tap) install no longer runs `npm i -g` over itself — that planted a
   second, conflicting copy Homebrew couldn't see or upgrade. It now detects the brew install and points you

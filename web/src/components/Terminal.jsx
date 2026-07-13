@@ -204,13 +204,25 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       // shaded message boxes) plus a forced white foreground so the selected text stays legible whatever
       // colour sat underneath, the macOS/iOS text-selection convention.
       theme: { selectionBackground: 'rgba(10,132,255,0.9)', selectionForeground: '#ffffff' },
-      // The grid is read-only and never focused, so xterm draws the INACTIVE cursor — 'block'
-      // (solid, inverts its cell) reads as a real cursor on Claude's input. It's only ever shown
-      // where placeCursor()/cursorSeq puts it (and DECTCEM-hidden when Claude's cursor is hidden).
+      // The grid is read-only, so xterm draws the INACTIVE cursor — 'block' (solid, inverts its cell) reads
+      // as a real cursor on Claude's input. It renders only after a one-time focus/blur prime below (xterm
+      // won't draw the cursor on a never-focused terminal); thereafter it's shown wherever placeCursor()/
+      // cursorSeq puts it (and DECTCEM-hidden when the cursor is hidden and we're not forcing it).
       cursorInactiveStyle: 'block',
     });
     term.open(elRef.current);
     termRef.current = term;
+    // xterm never renders the cursor — not even the INACTIVE 'block' style — until the terminal has been
+    // focused at least ONCE. This grid is read-only and never gets focus, so the cursor was invisible until
+    // you tapped (which focuses it); sending keys did nothing, because ?25h alone can't draw on a
+    // never-focused renderer. Verified in headless Chrome: never-focused → no cursor; focus()+blur() once →
+    // the ?25h block renders and survives the blur. So prime the renderer here with one focus/blur. This
+    // effect only re-runs on a real pane change (dep [pane]), always via a nav tap that already blurred the
+    // composer — never mid-typing — so it can't steal the soft keyboard. Restore prior focus as insurance.
+    const prevFocus = document.activeElement;
+    term.focus();
+    term.blur();
+    if (prevFocus && prevFocus !== document.body && typeof prevFocus.focus === 'function') prevFocus.focus();
     // Make doc paths TAPPABLE. xterm decorations (the underline below) are visual-only — they sit
     // under the event-capturing .xterm-viewport and never receive taps — so clicks go through the
     // link provider instead, which hooks xterm's own hit-testing and fires through the viewport.
