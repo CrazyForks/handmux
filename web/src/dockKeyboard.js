@@ -14,6 +14,20 @@ export function keyboardSwipeAction(dx, dy, threshold = 24) {
   return null;                          // too short to commit
 }
 
+// A vertical drag that STARTS inside the chat composer should scroll the draft first, iOS-style: the
+// keyboard toggle only "falls off" once the textarea can't scroll further that way (rubber-banding at an
+// edge). Returns true when the textarea can still absorb this drag → hand it to native scroll and do NOT
+// toggle the keyboard. `s` = the textarea's { scrollTop, scrollHeight, clientHeight }; dy = px from the
+// gesture origin (finger up < 0 reveals lower text; finger down > 0 reveals upper text).
+export function composerAbsorbsScroll(s, dy) {
+  if (!s) return false;                        // gesture didn't start on the composer → keyboard owns it
+  const max = s.scrollHeight - s.clientHeight;
+  if (max <= 1) return false;                  // draft fits → not scrollable → keyboard owns vertical
+  if (dy < 0) return s.scrollTop < max - 1;    // dragging UP: room below? (not yet at the bottom edge)
+  if (dy > 0) return s.scrollTop > 1;          // dragging DOWN: room above? (not yet at the top edge)
+  return false;
+}
+
 // iOS-style rubber-band resistance for the grabber pill's follow — UIScrollView's own curve,
 // b(x) = (x·d·c) / (d + c·|x|). The pill follows at slope `c` near zero, then the marginal travel shrinks
 // the further you pull: resistance is GREATEST near the end, yet it never dead-stops — it keeps creeping

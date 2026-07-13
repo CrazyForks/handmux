@@ -6,7 +6,7 @@ import FavDrawer from './FavDrawer.jsx';
 import CmdFavEditor from './CmdFavEditor.jsx';
 import MicButton from './MicButton.jsx';
 import { loadFavs, cmdScope } from '../favStore.js';
-import { keyboardSwipeAction, rubberBand } from '../dockKeyboard.js';
+import { keyboardSwipeAction, rubberBand, composerAbsorbsScroll } from '../dockKeyboard.js';
 import { getChatDraft, setChatDraft } from '../storage.js';
 import { UPLOAD_ACCEPT, splitUploadable } from '../uploadTypes.js';
 import { ArrowUpIcon, UploadIcon, ClockIcon, KeyboardIcon, GearIcon } from './icons.jsx';
@@ -284,6 +284,9 @@ function BottomDock({
       // carry over into a page swipe (decided in onMove once we know the direction). Both pages have a
       // strip: chat's carries LEFT-edge→right-drag to command; command's carries RIGHT-edge→left-drag to chat.
       const strip = e.target?.closest?.('.quick-scroll') || null;
+      // Did the drag begin inside the chat composer's textarea? A vertical drag there scrolls the draft
+      // first and only "falls off" into a keyboard toggle at the textarea's top/bottom edge (see onMove).
+      const cmp = e.target?.closest?.('.input-text') || null;
       // Was the keyboard genuinely up as the gesture BEGAN (a dock field already focused)? Captured here,
       // before the drag can graze the composer. A horizontal swipe that merely brushes the textarea focuses
       // it (turns it green) WITHOUT popping the keyboard — and the mode-switch focus-carry would then treat
@@ -291,7 +294,7 @@ function BottomDock({
       // any such stray focus on release (below) so a swipe never conjures the keyboard.
       const kbUp = document.activeElement === cmdRef.current || document.activeElement === ref.current;
       d = e.touches.length === 1
-        ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, dy: 0, decided: false, horiz: false, vert: false, strip, kbUp }
+        ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, dy: 0, decided: false, horiz: false, vert: false, strip, cmp, kbUp }
         : null;
     };
     const onMove = (e) => {
@@ -340,7 +343,10 @@ function BottomDock({
         // vertical flick can't leak into a page swipe or the strip's native scroll. Works over keys too: a
         // KeyBar key hands the touch off the moment it moves >8px (see KeyBar `move`), so a swipe never also
         // fires a key.
-        if (!d.horiz && Math.abs(dy) > Math.abs(dx) * 1.4) d.vert = true;
+        // …UNLESS the drag started inside the chat composer and the textarea can still scroll that way:
+        // then the draft scrolls natively (no d.vert, no preventDefault below) and the keyboard toggle only
+        // takes over once we're at the top/bottom edge — iOS nested-scroll fall-off.
+        if (!d.horiz && Math.abs(dy) > Math.abs(dx) * 1.4 && !composerAbsorbsScroll(d.cmp, dy)) d.vert = true;
       }
       if (d.vert) { d.dx = dx; d.dy = dy; setHandleDrag(dy); if (e.cancelable) e.preventDefault(); return; }
       if (!d.horiz) return; // a vertical drag (or a strip-scroll we handed off) → leave it to native
@@ -412,6 +418,22 @@ function BottomDock({
   const cmdRef = useRef(null);   // command-mode single-line capture (streams to the pane)
   const uploadRef = useRef(null);
   const upTimerRef = useRef(null);
+
+  // The system can drop the soft keyboard WITHOUT blurring the focused field — e.g. an app-switch gesture
+  // aborted mid-way, or Android's back. Focus (hence keyboardUp) then lies "up" while the keyboard is really
+  // down, and the ⌨ toggle sticks showing 收起 with no way to re-raise it. visualViewport's `inset` is ground
+  // truth (the whole .app translateY rides on it, so it's stable): watch it fall from >0 back to 0 — the
+  // keyboard is really gone — and reconcile. Drop the stale focus so the next tap cleanly re-opens. The 0→>0
+  // opening edge is ignored so this never fights the open animation.
+  const insetWasUpRef = useRef(false);
+  useEffect(() => {
+    if (inset > 0) { insetWasUpRef.current = true; return; }
+    if (!insetWasUpRef.current) return;   // was already down (or mid-open) — nothing to reconcile
+    insetWasUpRef.current = false;
+    const active = document.activeElement;
+    if (active === cmdRef.current || active === ref.current) active.blur();
+    setKeyboardUp(false);
+  }, [inset]);
 
   const anchorRef = useRef({ head: '', tail: '' }); // 起录时的光标两侧文本
   const caretRef = useRef(null);                    // 程序化改 value 后要落的光标位置

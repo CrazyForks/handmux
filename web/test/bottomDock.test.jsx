@@ -56,6 +56,21 @@ describe('BottomDock', () => {
     expect(container.querySelector('.keyrow-enter')).toBeNull();
   });
 
+  // 系统在未 blur 输入框的情况下偷偷收起键盘(未完成的切应用手势)→ 只靠 focus 推导的 keyboardUp 会卡在
+  // 「收起键盘」且无法再展开。inset(visualViewport)由 >0 落回 0 是真值信号,应据此复位状态并放掉残留焦点。
+  it('reconciles the ⌨ toggle when the OS drops the keyboard without blurring (inset >0 → 0)', () => {
+    render({ pane: '%1', inset: 44, onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    const cap = container.querySelector('.cmd-capture');
+    const kbd = container.querySelector('.quick-fix-kbd');
+    act(() => cap.focus()); // onFocus → keyboardUp true → 显示「收起键盘」
+    expect(kbd.getAttribute('aria-pressed')).toBe('true');
+    expect(document.activeElement).toBe(cap);
+    // 系统悄悄收起键盘:inset 落回 0,但输入框仍持有焦点(没有 blur 事件)。
+    render({ pane: '%1', inset: 0, onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    expect(kbd.getAttribute('aria-pressed')).toBe('false'); // 状态复位为「展开键盘」
+    expect(document.activeElement).not.toBe(cap);            // 残留焦点被放掉,下次点击能干净弹起
+  });
+
   // 草稿本地暂存:无论 App 因何退出,输入框里的未发送文字下次打开自动写回。
   it('restores an unsent chat draft on mount, and clears the stored draft after send', async () => {
     localStorage.setItem('tw_chat_draft', '写到一半的想法');

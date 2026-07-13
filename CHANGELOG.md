@@ -25,6 +25,13 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   page-swipe that merely grazes the chat composer no longer conjures the keyboard in the other mode.
 
 ### Fixed
+- **The ⌨ toggle no longer gets stuck on "hide keyboard" after the system quietly drops the keyboard.**
+  An aborted app-switch gesture (and similar) can dismiss the soft keyboard *without* blurring the input,
+  so the toggle kept showing "收起键盘" with no way to raise it again. The keyboard state now reconciles
+  against the actual viewport, so it flips back to "展开键盘" and the next tap opens it cleanly.
+- **Scrolling a long chat draft no longer randomly pops or drops the keyboard.** A multi-line draft that
+  overflows the composer now scrolls on its own; the up/down keyboard gesture only takes over once you're
+  at the very top or bottom of the draft (iOS nested-scroll fall-off), instead of every vertical swipe.
 - **The bottom dock no longer drifts up/down under your finger with the keyboard open.** With the soft
   keyboard up the browser was natively panning the whole page to keep the focused field in view, and that
   scroll was draggable — so a drag on the keys/input slid the entire dock (grip handle and all) with your

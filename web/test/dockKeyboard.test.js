@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { keyboardSwipeAction, shouldKeepKeyboard, rubberBand } from '../src/dockKeyboard.js';
+import { keyboardSwipeAction, shouldKeepKeyboard, rubberBand, composerAbsorbsScroll } from '../src/dockKeyboard.js';
 
 describe('rubberBand', () => {
   it('follows at slope c for small pulls', () => {
@@ -38,6 +38,29 @@ describe('keyboardSwipeAction', () => {
   it('respects a custom threshold', () => {
     expect(keyboardSwipeAction(0, -30, 50)).toBeNull();
     expect(keyboardSwipeAction(0, -60, 50)).toBe('show');
+  });
+});
+
+describe('composerAbsorbsScroll', () => {
+  const s = (scrollTop, scrollHeight, clientHeight = 156) => ({ scrollTop, scrollHeight, clientHeight });
+  it('a non-scrollable draft never absorbs — the keyboard gesture owns vertical', () => {
+    expect(composerAbsorbsScroll(s(0, 44), -30)).toBe(false); // scrollHeight < clientHeight
+    expect(composerAbsorbsScroll(s(0, 156), 30)).toBe(false); // exactly fits
+  });
+  it('a mid-scrolled draft absorbs BOTH directions (still room either way)', () => {
+    expect(composerAbsorbsScroll(s(100, 400), -30)).toBe(true); // drag up, room below
+    expect(composerAbsorbsScroll(s(100, 400), 30)).toBe(true);  // drag down, room above
+  });
+  it('at the BOTTOM edge, a further UP drag falls off to the keyboard (does not absorb)', () => {
+    expect(composerAbsorbsScroll(s(244, 400), -30)).toBe(false); // scrollTop === max, drag up
+    expect(composerAbsorbsScroll(s(244, 400), 30)).toBe(true);   // but drag down still scrolls
+  });
+  it('at the TOP edge, a further DOWN drag falls off to the keyboard (does not absorb)', () => {
+    expect(composerAbsorbsScroll(s(0, 400), 30)).toBe(false); // scrollTop 0, drag down
+    expect(composerAbsorbsScroll(s(0, 400), -30)).toBe(true); // but drag up still scrolls
+  });
+  it('no composer (gesture began elsewhere) never absorbs', () => {
+    expect(composerAbsorbsScroll(null, -30)).toBe(false);
   });
 });
 
