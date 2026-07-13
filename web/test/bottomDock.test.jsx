@@ -35,6 +35,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  if ('visualViewport' in window) delete window.visualViewport; // drop any per-test mock
 });
 
 const render = (props) => act(() => root.render(<BottomDock {...props} />));
@@ -56,19 +57,49 @@ describe('BottomDock', () => {
     expect(container.querySelector('.keyrow-enter')).toBeNull();
   });
 
+  // 键盘状态对账:用 visualViewport 高度(与页面滚动/offsetTop 无关)判定键盘真在不在。装一个可驱动的
+  // visualViewport mock,resize 时改高度并派发事件。
+  const installVV = (height) => {
+    const listeners = new Set();
+    const vv = {
+      height, width: 320, offsetTop: 0,
+      addEventListener: (type, fn) => { if (type === 'resize') listeners.add(fn); },
+      removeEventListener: (type, fn) => listeners.delete(fn),
+    };
+    Object.defineProperty(window, 'visualViewport', { value: vv, configurable: true });
+    return {
+      resize: (h) => act(() => { vv.height = h; listeners.forEach((fn) => fn()); }),
+      scroll: (top) => act(() => { vv.offsetTop = top; listeners.forEach((fn) => fn()); }), // 应被忽略
+    };
+  };
+  const kbdUp = 400, kbdDown = 768; // innerHeight 768:up 时遮挡 368>120,down 时遮挡 0
+
   // 系统在未 blur 输入框的情况下偷偷收起键盘(未完成的切应用手势)→ 只靠 focus 推导的 keyboardUp 会卡在
-  // 「收起键盘」且无法再展开。inset(visualViewport)由 >0 落回 0 是真值信号,应据此复位状态并放掉残留焦点。
-  it('reconciles the ⌨ toggle when the OS drops the keyboard without blurring (inset >0 → 0)', () => {
-    render({ pane: '%1', inset: 44, onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+  // 「收起键盘」且无法再展开。visualViewport 高度回涨=键盘真没了,据此复位状态并放掉残留焦点。
+  it('reconciles the ⌨ toggle when the OS drops the keyboard without blurring', () => {
+    const vv = installVV(kbdUp);
+    render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
     const cap = container.querySelector('.cmd-capture');
     const kbd = container.querySelector('.quick-fix-kbd');
     act(() => cap.focus()); // onFocus → keyboardUp true → 显示「收起键盘」
     expect(kbd.getAttribute('aria-pressed')).toBe('true');
     expect(document.activeElement).toBe(cap);
-    // 系统悄悄收起键盘:inset 落回 0,但输入框仍持有焦点(没有 blur 事件)。
-    render({ pane: '%1', inset: 0, onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    vv.resize(kbdDown); // 系统悄悄收起键盘:高度回涨,但输入框仍持有焦点(没有 blur 事件)
     expect(kbd.getAttribute('aria-pressed')).toBe('false'); // 状态复位为「展开键盘」
     expect(document.activeElement).not.toBe(cap);            // 残留焦点被放掉,下次点击能干净弹起
+  });
+
+  // iOS 回归护栏:聚焦弹键盘时 iOS 会滚页,把 vv.offsetTop 顶到抵消 inset≈0——绝不能据此误判键盘没了而
+  // 立刻收起(旧 Fix 用了含 offsetTop 的 inset,导致 iOS 一点就弹一下又收上、永远打不开)。只看高度就不受影响。
+  it('does NOT collapse the keyboard when iOS scrolls the page on focus (offsetTop churn)', () => {
+    const vv = installVV(kbdUp);
+    render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    const cap = container.querySelector('.cmd-capture');
+    const kbd = container.querySelector('.quick-fix-kbd');
+    act(() => cap.focus());
+    vv.scroll(368); // iOS 聚焦滚页:offsetTop 顶上去,但键盘还在(高度不变)
+    expect(kbd.getAttribute('aria-pressed')).toBe('true'); // 键盘保持展开
+    expect(document.activeElement).toBe(cap);              // 焦点保住,键盘不被收
   });
 
   // 草稿本地暂存:无论 App 因何退出,输入框里的未发送文字下次打开自动写回。

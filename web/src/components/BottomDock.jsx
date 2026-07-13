@@ -420,20 +420,31 @@ function BottomDock({
   const upTimerRef = useRef(null);
 
   // The system can drop the soft keyboard WITHOUT blurring the focused field — e.g. an app-switch gesture
-  // aborted mid-way, or Android's back. Focus (hence keyboardUp) then lies "up" while the keyboard is really
-  // down, and the ⌨ toggle sticks showing 收起 with no way to re-raise it. visualViewport's `inset` is ground
-  // truth (the whole .app translateY rides on it, so it's stable): watch it fall from >0 back to 0 — the
-  // keyboard is really gone — and reconcile. Drop the stale focus so the next tap cleanly re-opens. The 0→>0
-  // opening edge is ignored so this never fights the open animation.
-  const insetWasUpRef = useRef(false);
+  // aborted mid-way, or Android's Back. Focus (hence keyboardUp) then lies "up" while the keyboard is really
+  // down, and the ⌨ toggle sticks showing 收起 with no way to re-raise it. Reconcile against the visualViewport
+  // HEIGHT: overlap = innerHeight − vv.height is the keyboard's real height, immune to page scroll. We do NOT
+  // use the layout `inset` here — it also subtracts vv.offsetTop, which iOS pushes up during the focus scroll
+  // until the inset cancels to ~0 (see usePageScrollLock), so an inset edge would false-fire mid-open and
+  // slam the keyboard shut the instant you tapped the field. Height only falls when the keyboard truly goes,
+  // and only 'resize' (not 'scroll') is watched, so offsetTop churn is ignored. Latch on the up→down edge:
+  // drop the stale focus so the next tap cleanly re-opens. The rising (opening) edge is a no-op.
+  const kbdWasUpRef = useRef(false);
   useEffect(() => {
-    if (inset > 0) { insetWasUpRef.current = true; return; }
-    if (!insetWasUpRef.current) return;   // was already down (or mid-open) — nothing to reconcile
-    insetWasUpRef.current = false;
-    const active = document.activeElement;
-    if (active === cmdRef.current || active === ref.current) active.blur();
-    setKeyboardUp(false);
-  }, [inset]);
+    const vv = window.visualViewport;
+    if (!vv) return undefined;
+    const reconcile = () => {
+      const overlap = window.innerHeight - vv.height; // keyboard height (offsetTop-immune), 0 when down
+      if (overlap > 120) { kbdWasUpRef.current = true; return; }
+      if (!kbdWasUpRef.current) return; // opening, or already down — nothing to reconcile
+      kbdWasUpRef.current = false;
+      const active = document.activeElement;
+      if (active === cmdRef.current || active === ref.current) active.blur();
+      setKeyboardUp(false);
+    };
+    reconcile();
+    vv.addEventListener('resize', reconcile);
+    return () => vv.removeEventListener('resize', reconcile);
+  }, []);
 
   const anchorRef = useRef({ head: '', tail: '' }); // 起录时的光标两侧文本
   const caretRef = useRef(null);                    // 程序化改 value 后要落的光标位置
