@@ -370,9 +370,15 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
 
     const fit = (pass = 0) => {
       if (disposed || !elRef.current || !term.rows) return;
-      // Subtract the keyboard overlap so the grid fits the height ABOVE the keyboard (App translateY(-inset)
-      // leaves clientHeight unchanged, so we account for it here). Keyboard up → shorter grid + scrollback.
-      const avail = elRef.current.clientHeight - (insetRef.current || 0);
+      // Fit to the container's ACTUAL on-screen height, not clientHeight. App translateY(-inset) lifts the
+      // whole column, so the container's top can be clipped above the screen (the topbar scrolls off) and
+      // its bottom sits at the keyboard top. Measure the visible slice = intersect its rect with
+      // [0, innerHeight - inset]. Using clientHeight - inset over-subtracts the (clipped) topbar and left a
+      // black band; measuring is exact for both keyboard-down (inset 0) and keyboard-up.
+      const rect = elRef.current.getBoundingClientRect();
+      const visBottom = Math.min(rect.bottom, window.innerHeight - (insetRef.current || 0));
+      const visTop = Math.max(rect.top, 0);
+      const avail = Math.max(0, visBottom - visTop);
       const screen = elRef.current.querySelector('.xterm-screen');
       const curH = screen ? screen.getBoundingClientRect().height : 0;
       if (!avail || !curH) return;
