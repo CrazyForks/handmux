@@ -12,7 +12,7 @@ import { idleDelay } from '../cadence.js';
 import { flingStep, shouldFling } from '../momentum.js';
 import { initialConnection, nextConnection } from '../connection.js';
 import { scanDocLinks, docLinksOnLine } from '../docDecorations.js';
-import { fitRows, bottomPadRows } from '../terminalViewport.js';
+import { fitRows, bottomPadRows, scrollDecision } from '../terminalViewport.js';
 import { ensureBundledFonts } from '../bundledFonts.js';
 import { trimCopy, expandToLines, expandToParagraph, cellToPx } from '../terminalSelection.js';
 
@@ -39,6 +39,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
   const elRef = useRef(null);
   const termRef = useRef(null);
   const insetRef = useRef(0); // keyboard overlap (px) — fit() subtracts it so the grid == visible height
+  const userScrolledRef = useRef(false); // manual vertical scroll → disarms alt-screen cursor-follow
   const onTapRef = useRef(onTap); // a clean single tap → dismiss the dock keyboard (called synchronously)
   onTapRef.current = onTap;
   // Clickable doc-path underlines (xterm decorations), rebuilt after every full repaint. The tap
@@ -702,16 +703,24 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
         e.stopPropagation();
       } else { // axis === -1 vertical
         if (altScreenRef.current) {
-          // Alt-screen (full-screen app): no scrollback to move, and letting the drag fall through only
-          // scrolls the browser page (chrome peeks in on old iOS). Always swallow it, and forward the drag
-          // as scroll input (wheel events or arrow keys — flushWheel picks by mouse mode). The travel→notch
-          // conversion + finger-direction mapping lives in drainWheel.
+          // Alt-screen (full-screen app): scroll our WINDOW over the captured screen INTERNALLY first, and
+          // only forward the drag to the app as keys (wheel / arrows, per mouse mode) once we hit the top or
+          // bottom of that window. Nested-scroll fall-off — mirrors the long-chat-draft behaviour.
           e.preventDefault();
           e.stopPropagation();
           const cy = e.touches[0].clientY;
-          const { notches, rem } = drainWheel(wheelAccum + (cy - wheelPrevY), WHEEL_PX);
-          wheelAccum = rem;
+          const dyStep = cy - wheelPrevY; // + = finger down (reveal earlier rows), - = finger up
           wheelPrevY = cy;
+          const vp = elRef.current.querySelector('.xterm-viewport');
+          const dir = dyStep > 0 ? -1 : 1; // finger down → scroll toward the top (dir -1)
+          if (vp && scrollDecision(buf().viewportY, buf().baseY, dir) === 'internal') {
+            vp.scrollTop -= dyStep;          // 1:1 internal scroll (finger down → content moves down)
+            userScrolledRef.current = true;  // manual scroll disarms cursor-follow
+            return;
+          }
+          // At the internal top/bottom boundary → forward the residual to the app as wheel/arrow keys.
+          const { notches, rem } = drainWheel(wheelAccum + dyStep, WHEEL_PX);
+          wheelAccum = rem;
           if (notches) { wheelPending += notches; flushWheel(); }
           return;
         }
@@ -1013,7 +1022,9 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     const pollOnce = async () => {
       if (busy || disposed) return;
       if (selActiveRef.current) return; // a selection is showing — repainting would wipe it
-      if (seeded && !nearBottom()) { setPaused(true); return; } // browsing history (past the live zone) — hold still
+      // Browsing history (scrolled past the live zone) → hold still. EXCEPT alt-screen: a full-screen app is
+      // live, so keep polling even when scrolled up (repaint(keepPosition) preserves the internal offset).
+      if (seeded && !nearBottom() && !altScreenRef.current) { setPaused(true); return; }
       depth = liveDepth();
       // at the very bottom → follow new output (scrollToBottom); scrolled up within the live zone →
       // refresh in place (keepPosition) so a live pane doesn't yank you to the bottom on every frame.
