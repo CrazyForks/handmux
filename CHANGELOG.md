@@ -5,6 +5,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Fixed
+- 键盘弹起时终端不再把顶部内容顶出屏外：网格按键盘上方的真实高度重排，主屏短内容贴键盘上沿显示；全屏应用（vim/less/htop 等）可在内部上下滚动、到顶/底才翻页，展开键盘时自动把光标带到视野中央并跟随、手动滚动时让位。
 - `handmux update` on a Homebrew (tap) install no longer runs `npm i -g` over itself — that planted a
   second, conflicting copy Homebrew couldn't see or upgrade. It now detects the brew install and points you
   at `brew upgrade handmux/tap/handmux`; the "upgrade available" notice shows the matching command per source.
