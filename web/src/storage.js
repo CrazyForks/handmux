@@ -48,19 +48,9 @@ export function removeBoundSession(name) {
 export function renameBoundSession(oldName, newName) {
   const list = getBoundSessions().map((n) => (n === oldName ? newName : n));
   localStorage.setItem(BOUND_KEY, JSON.stringify(list));
-  const recents = readMap(RECENT_KEY);
-  if (recents[oldName] != null) {
-    recents[newName] = recents[oldName];
-    delete recents[oldName];
-    localStorage.setItem(RECENT_KEY, JSON.stringify(recents));
-  }
-  // Ideas are keyed by session name too — carry the whole window→ideas sub-tree to the new name.
-  const ideas = readMap(IDEAS_KEY);
-  if (ideas[oldName] != null) {
-    ideas[newName] = ideas[oldName];
-    delete ideas[oldName];
-    localStorage.setItem(IDEAS_KEY, JSON.stringify(ideas));
-  }
+  // Recent-command history and ideas are both keyed by session NAME — carry each whole sub-tree across.
+  recentStore.renameSession(oldName, newName);
+  ideasStore.renameSession(oldName, newName);
   return list;
 }
 
@@ -79,6 +69,50 @@ function writeMapEntry(key, k, v) {
   m[k] = v;
   localStorage.setItem(key, JSON.stringify(m));
 }
+
+// A localStorage-backed nested map { [session]: { [window]: T[] } } — the shape shared by recent commands
+// and per-window ideas. Coerces a legacy non-object session value back to {} (recent was once a flat
+// { [session]: string[] } before it became window-scoped), so a per-window write can't be a non-index
+// property that JSON.stringify SILENTLY DROPS. Empty lists drop the window key (and an emptied session key)
+// so storage never accretes husks. rename{Window,Session} carry a sub-tree when a tmux name changes.
+function nestedMapStore(key) {
+  const wins = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+  return {
+    get(session, window) {
+      if (!session || !window) return [];
+      return wins(readMap(key)[session])[window] ?? [];
+    },
+    set(session, window, list) {
+      const all = readMap(key);
+      const w = wins(all[session]);
+      if (list && list.length) w[window] = list;
+      else delete w[window];
+      if (Object.keys(w).length) all[session] = w;
+      else delete all[session];
+      localStorage.setItem(key, JSON.stringify(all));
+      return list ?? [];
+    },
+    renameWindow(session, oldWindow, newWindow) {
+      if (!session || !oldWindow || !newWindow || oldWindow === newWindow) return;
+      const all = readMap(key);
+      const w = wins(all[session]);
+      if (w[oldWindow] == null) return;
+      w[newWindow] = w[oldWindow];
+      delete w[oldWindow];
+      all[session] = w;
+      localStorage.setItem(key, JSON.stringify(all));
+    },
+    renameSession(oldSession, newSession) {
+      const all = readMap(key);
+      if (all[oldSession] == null) return;
+      all[newSession] = all[oldSession];
+      delete all[oldSession];
+      localStorage.setItem(key, JSON.stringify(all));
+    },
+  };
+}
+const recentStore = nestedMapStore(RECENT_KEY);
+const ideasStore = nestedMapStore(IDEAS_KEY);
 
 // Inbox read-state: the ts of the last event the user viewed per pane. A pane's idle/permission
 // counts as unread only while its event ts exceeds this. Viewing a pane bumps it (see App).
@@ -172,29 +206,11 @@ export const getDocHighlight = () => localStorage.getItem(DOC_HIGHLIGHT_KEY) ===
 export const setDocHighlight = (on) => localStorage.setItem(DOC_HIGHLIGHT_KEY, on ? '1' : '0');
 
 // Recent (sent) commands scoped per session NAME + WINDOW — the composer history is window-level, so each
-// tmux window keeps its own send log. Stored nested { [session]: { [window]: [...] } } like ideas.
-// pushRecent dedupes to the front and caps the list.
-const winMap = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
-export function getRecent(session, window) {
-  if (!session || !window) return [];
-  return winMap(readMap(RECENT_KEY)[session])[window] ?? [];
-}
-// Overwrite one window's list (add/delete funnel through here); an empty list drops the window key (and
-// an emptied session key) so storage doesn't accrete husks — same shape as setIdeas.
-// NOTE: coerce all[session] through winMap. Recent used to be flat ({ [session]: string[] }) before it
-// became window-scoped, so an upgraded user can have a legacy ARRAY under a session key. Writing
-// arr[windowId]=… would set a non-index property that JSON.stringify SILENTLY DROPS — so every send
-// vanished on reload (visible in memory, gone after restart). Treat a non-object session value as empty.
-function setRecent(session, window, list) {
-  const all = readMap(RECENT_KEY);
-  const wins = winMap(all[session]);
-  if (list && list.length) wins[window] = list;
-  else delete wins[window];
-  if (Object.keys(wins).length) all[session] = wins;
-  else delete all[session];
-  localStorage.setItem(RECENT_KEY, JSON.stringify(all));
-  return list ?? [];
-}
+// tmux window keeps its own send log. Stored nested { [session]: { [window]: [...] } } like ideas, via the
+// shared nestedMapStore (which owns the legacy-flat-array coercion + husk-dropping). pushRecent dedupes to
+// the front and caps the list.
+export const getRecent = (session, window) => recentStore.get(session, window);
+const setRecent = (session, window, list) => recentStore.set(session, window, list);
 export function pushRecent(session, window, cmd) {
   const c = (cmd || '').trim();
   const cur = getRecent(session, window);
@@ -257,22 +273,12 @@ export const setDiffFontIndex = (i) =>
 
 // Per-window idea list (a lightweight todo), keyed by session NAME + window NAME so it survives a
 // tmux restart (ids churn, names don't). Shape: { [session]: { [window]: Idea[] } }, Idea = {id,text}.
-export function getIdeas(session, window) {
-  if (!session || !window) return [];
-  return readMap(IDEAS_KEY)[session]?.[window] ?? [];
-}
+export const getIdeas = (session, window) => ideasStore.get(session, window);
 // Overwrite the whole list for one window — add/edit/delete/reorder all funnel through here. An
 // empty list drops the window key (and an emptied session key) so storage doesn't accrete husks.
 export function setIdeas(session, window, list) {
   if (!session || !window) return [];
-  const all = readMap(IDEAS_KEY);
-  const wins = all[session] || {};
-  if (list && list.length) wins[window] = list;
-  else delete wins[window];
-  if (Object.keys(wins).length) all[session] = wins;
-  else delete all[session];
-  localStorage.setItem(IDEAS_KEY, JSON.stringify(all));
-  return list ?? [];
+  return ideasStore.set(session, window, list);
 }
 // Changelog read-state: the id of the latest entry the user has opened. The "new features" entry
 // shows an unread dot while the newest changelog id differs from this.
@@ -286,13 +292,7 @@ export const setVersionSeen = (v) => { if (v) localStorage.setItem(VERSION_SEEN_
 
 // Window rename: tmux keeps the window id but the name (our key) changes, so move the ideas across.
 export function renameWindowIdeas(session, oldWindow, newWindow) {
-  if (!session || !oldWindow || !newWindow || oldWindow === newWindow) return;
-  const all = readMap(IDEAS_KEY);
-  const wins = all[session];
-  if (!wins || wins[oldWindow] == null) return;
-  wins[newWindow] = wins[oldWindow];
-  delete wins[oldWindow];
-  localStorage.setItem(IDEAS_KEY, JSON.stringify(all));
+  ideasStore.renameWindow(session, oldWindow, newWindow);
 }
 
 // 绑定的 git 仓库(绝对路径数组),顺序即 tab 顺序。按 window 隔离:每个 window 各有一套
