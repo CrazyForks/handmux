@@ -127,14 +127,18 @@ describe('isBrewInstall', () => {
 });
 
 describe('notifyUpdate', () => {
-  it('routes the upgrade hint to `brew upgrade handmux/tap/handmux` for a brew install', () => {
+  // Bare `brew upgrade handmux` (not the tap-qualified name) is deliberate: verified against real Homebrew
+  // to resolve a tap-installed formula AND to keep working after an eventual move into homebrew-core, so the
+  // hint never needs revisiting. The tap prefix is only required for `brew install`, never `brew upgrade`.
+  it('routes the upgrade hint to `brew upgrade handmux` for a brew install', () => {
     const home = tmpHome('upd-');
     writeCache(home, { checkedAt: Date.now(), latest: '3.0.0' });
     const log = vi.fn();
     const selfPath = '/opt/homebrew/Cellar/handmux/2.9.0/libexec/bin/handmux.js';
     notifyUpdate(home, { version: '2.9.0', selfPath, now: Date.now(), log, spawnFn: () => ({ unref() {} }) });
     const out = log.mock.calls.flat().join('\n');
-    expect(out).toContain('brew upgrade handmux/tap/handmux');
+    expect(out).toContain('brew upgrade handmux');
+    expect(out).not.toContain('brew upgrade handmux/tap/handmux'); // bare name, not tap-qualified
     expect(out).not.toContain('npm i -g');
   });
 

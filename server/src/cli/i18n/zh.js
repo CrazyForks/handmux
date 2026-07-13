@@ -48,8 +48,8 @@ export default {
   // update
   'update.available': '  ⬆  handmux {latest} 可升级(当前 {current})',
   'update.how': '     升级:  handmux update  (或 npm i -g handmux@latest)',
-  'update.howBrew': '     升级:  brew upgrade handmux/tap/handmux',
-  'update.brew': '这个 handmux 是用 Homebrew 安装的 — 请用:  brew upgrade handmux/tap/handmux 升级',
+  'update.howBrew': '     升级:  brew upgrade handmux',
+  'update.brew': '这个 handmux 是用 Homebrew 安装的 — 请用:  brew upgrade handmux 升级',
   'update.running': '正在升级 handmux(npm i -g handmux@latest)…',
   'update.done': '✓ handmux 已更新。',
   'update.restartHint': '  运行 `handmux restart` 以启用新版本。',
