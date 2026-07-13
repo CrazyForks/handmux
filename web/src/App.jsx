@@ -8,7 +8,7 @@ import {
   getInboxSeen, markInboxSeen, getInboxReadTs, setInboxReadTs,
   renameWindowIdeas, getChangelogSeen, setChangelogSeen,
   getVersionSeen, setVersionSeen,
-  getPreviewDir, setPreviewDir, getIdeas,
+  getPreviewDir, getIdeas,
 } from './storage.js';
 import { LATEST_RELEASE } from './changelog.js';
 import {
@@ -16,10 +16,8 @@ import {
   restoreWindowSize, sendKeys, sendText, createWindow,
   renameSession, renameWindow, deleteWindow, swapWindows, fetchDoc, fetchImageUrl, UnauthorizedError,
   getStates, getOrphans, takeoverOrphan,
-  getPreviews, createPreview, deletePreview,
   getServerVersion,
 } from './api.js';
-import { previewName } from './previewName.js';
 import PreviewSheet from './components/PreviewSheet.jsx';
 import { inboxRows, topView, maxTs } from './inbox.js';
 import { moveTarget } from './windowOrder.js';
@@ -27,6 +25,7 @@ import { reportBound, clearPaneNotification } from './push.js';
 import { isAbsolute, joinPath } from './docPath.js';
 import { isImageName } from './mime.js';
 import { useDocTabs } from './hooks/useDocTabs.js';
+import { usePreviews } from './hooks/usePreviews.js';
 
 import Drawer from './components/Drawer.jsx';
 import WindowBar from './components/WindowBar.jsx';
@@ -87,10 +86,6 @@ export default function App() {
   const [favorites, setFavorites] = useState(getFavorites); // global favorite commands
   const [recent, setRecent] = useState([]); // current session's recent commands (keyed by session name)
   const [current, setCurrent] = useState(null); // { session, windows, window, panes, paneId }
-  const [previews, setPreviews] = useState([]);
-  const [previewDomain, setPreviewDomain] = useState(null);
-  const [dynamicEnabled, setDynamicEnabled] = useState(false);
-  const [previewSheetOpen, setPreviewSheetOpen] = useState(false); // in-app preview sheet visible
   const [booting, setBooting] = useState(true);
   const [states, setStates] = useState({}); // pane → {session,window,kind,…} from /api/states
   const [orphans, setOrphans] = useState([]); // claude sessions running outside tmux (/api/orphans)
@@ -112,15 +107,13 @@ export default function App() {
 
   const onAuthFail = useCallback(() => setNeedToken(true), []);
 
-  const refreshPreviews = useCallback(async () => {
-    try {
-      const r = await getPreviews();
-      setPreviews(r.previews || []);
-      setPreviewDomain(r.domain ?? null);
-      setDynamicEnabled(!!r.dynamicEnabled);
-    } catch { /* ignore */ }
-  }, []);
-  useEffect(() => { refreshPreviews(); }, [refreshPreviews]);
+  // The in-app preview subsystem (registry state, active-preview derivation, start/stop/renew/open),
+  // extracted verbatim into a hook — it coordinates with Settings' history entry via settingsOpen.
+  const {
+    previewDomain, dynamicEnabled, previewSheetOpen, setPreviewSheetOpen,
+    activePreview, openPreviewSheet,
+    startPreview, startDynamicPreview, stopPreview, renewPreview,
+  } = usePreviews(current, { settingsOpen, setSettingsOpen });
 
   // Update check: once per app launch (not polled), ask the server whether the installed CLI is behind the
   // latest npm release. The result lights the gear's dot and drives the "run `handmux update`" hint in Settings.
@@ -128,86 +121,6 @@ export default function App() {
     if (needToken) return;
     getServerVersion().then(setUpdateInfo).catch(() => { /* best-effort; no hint on failure */ });
   }, [needToken]);
-
-  // The preview name for the open session-window, and its active entry (if any, not expired).
-  const curPreviewName = current
-    ? previewName({ session: current.session?.name, windowName: current.window?.name, windowId: current.window?.id })
-    : null;
-  const activePreview = previews.find((p) => p.name === curPreviewName && p.expiresAt > Date.now()) || null;
-  const activeExpiresAt = activePreview?.expiresAt ?? null;
-
-  // Reset the sheet's open flag once there's no active preview, so a later fresh preview doesn't
-  // pop the sheet open on its own (the flag would otherwise stay true from a previous session).
-  const hasActivePreview = !!activePreview;
-  useEffect(() => { if (!hasActivePreview) setPreviewSheetOpen(false); }, [hasActivePreview]);
-
-  // Auto-clear the topbar icon when this preview's TTL elapses (refetch drops the expired entry).
-  useEffect(() => {
-    if (activeExpiresAt == null) return undefined;
-    const id = setTimeout(refreshPreviews, Math.max(0, activeExpiresAt - Date.now()) + 500);
-    return () => clearTimeout(id);
-  }, [activeExpiresAt, refreshPreviews]);
-
-  // Open the preview sheet. If Settings is open (launching/opening from there), close Settings FIRST
-  // and open the sheet on the NEXT frame — never in the same commit. Both overlays balance the Back
-  // button via useBackButton (each pushes one history entry); swapping them in one commit makes the
-  // closing Settings' cleanup `history.back()` pop the sheet's just-pushed entry, whose fresh popstate
-  // listener then fires → the sheet flashes open and immediately closes back to the main page.
-  const openPreviewSheet = useCallback(() => {
-    if (settingsOpen) {
-      setSettingsOpen(false);
-      requestAnimationFrame(() => setPreviewSheetOpen(true));
-    } else {
-      setPreviewSheetOpen(true);
-    }
-  }, [settingsOpen]);
-
-  const startPreview = useCallback(async (dir) => {
-    if (!curPreviewName) return;
-    try {
-      await createPreview(curPreviewName, { dir });
-      setPreviewDir(current?.window?.id, dir); // remember → next open seeds here
-      await refreshPreviews();
-      openPreviewSheet();
-    } catch { /* ignore */ }
-  }, [curPreviewName, current?.window?.id, refreshPreviews, openPreviewSheet]);
-
-  // Throws on failure (e.g. the port isn't listening) so Settings can show why instead of silently closing.
-  const startDynamicPreview = useCallback(async (port) => {
-    if (!curPreviewName) return;
-    await createPreview(curPreviewName, { port }); // throws on failure → Settings keeps its inline error, stays open
-    await refreshPreviews();
-    // Auto-open the sheet — but NOT in the same frame we close Settings. Settings' useBackButton pops its
-    // history entry on close (history.back() → an async popstate); if the sheet opened immediately its
-    // freshly-mounted popstate listener would catch THAT back and close itself — the preview flashed open
-    // then shut (the exact dynamic-preview symptom). The static path dodges this only by luck: its caller
-    // closes Settings seconds earlier (before the network), so the back-popstate has long dissipated by the
-    // time the sheet opens. Here we make the gap explicit — open the sheet only AFTER Settings' back-popstate,
-    // so the sheet's listener mounts on a clean history stack. Fallback timer covers the (rare) case where
-    // Settings wasn't back-tracked and no popstate fires.
-    let opened = false;
-    const openSheet = () => {
-      if (opened) return;
-      opened = true;
-      window.removeEventListener('popstate', onPop);
-      clearTimeout(fallback);
-      setPreviewSheetOpen(true);
-    };
-    const onPop = () => openSheet();
-    window.addEventListener('popstate', onPop);
-    const fallback = setTimeout(openSheet, 300);
-    setSettingsOpen(false); // → Settings' useBackButton cleanup → history.back() → popstate → openSheet()
-  }, [curPreviewName, refreshPreviews]);
-
-  const stopPreview = useCallback(async () => {
-    if (!curPreviewName) return;
-    try { await deletePreview(curPreviewName); await refreshPreviews(); } catch { /* ignore */ }
-  }, [curPreviewName, refreshPreviews]);
-  const renewPreview = useCallback(async () => {
-    if (!activePreview) return;
-    const opts = activePreview.kind === 'dynamic' ? { port: activePreview.port } : { dir: activePreview.dir };
-    try { await createPreview(activePreview.name, opts); await refreshPreviews(); } catch { /* ignore */ }
-  }, [activePreview?.name, activePreview?.kind, activePreview?.dir, activePreview?.port, refreshPreviews]);
 
   // Drop the saved token and bounce back to the token prompt — handy for testing the login flow.
   const logout = useCallback(() => {
