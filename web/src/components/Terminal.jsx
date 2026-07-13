@@ -310,7 +310,9 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       // visible screen, so baseY = length − rows = depth. maybePullMore snaps depth to whole CHUNK pages, so
       // baseY is already a clean 100/200/300 with no faking. Numerator = how far up from the live bottom
       // you've scrolled (0 at the bottom, baseY at the very top → N/N).
-      setScrollInfo(seeded && !nearBottom()
+      // Alt-screen never shows the history banner: its scrollback is synthetic (the keyboard-shrunk grid),
+      // scrolling it is our internal window pan over a live app — not browsing tmux history.
+      setScrollInfo(seeded && !nearBottom() && !altScreenRef.current
         ? `历史模式 · 距底 ${b.baseY - b.viewportY}/${b.baseY} 行${busy ? ' · 拉取中' : ''}${tag}`
         : '');
     };
@@ -1189,6 +1191,17 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
   // any pager/editor regardless of mouse mode (arrows would move the cursor instead) — so it covers the
   // apps the wheel gesture can't (no mouse reporting) and gives precise paging in the ones it can.
   const pageScroll = async (dir) => {
+    // Mirror the drag's nested-scroll fall-off: when the keyboard-shrunk grid leaves an internal window
+    // (baseY > 0), page OUR window over the captured app screen first; only forward PageUp/PageDown to the
+    // app once we're at the internal top/bottom. Keyboard down (baseY 0) → forward straight to the app.
+    const term = termRef.current;
+    const b = term?.buffer.active;
+    const d = dir === 'up' ? -1 : 1;
+    if (term && b && scrollDecision(b.viewportY, b.baseY, d) === 'internal') {
+      term.scrollLines(d * Math.max(1, term.rows - 1)); // one page, minus a row of overlap
+      userScrolledRef.current = true;                   // manual paging disarms cursor-follow
+      return;
+    }
     try { await sendKeys(pane, [dir === 'up' ? 'PageUp' : 'PageDown']); wakeRef.current?.(); }
     catch { /* transient (offline/timeout) — the button can just be tapped again */ }
   };
@@ -1230,7 +1243,14 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       {selInfo && <div className="term-banner term-banner--sel">{selInfo}</div>}
       {scrollInfo && <button className="new-output" onClick={resume}>↓ 回到底部</button>}
       {altScreen && (
-        <div className="term-pager" role="group" aria-label="翻页">
+        <div
+          className="term-pager"
+          role="group"
+          aria-label="翻页"
+          // Keep the keyboard up when tapping the pager: preventDefault the pointerdown so it doesn't blur
+          // the focused input (same keepFocus trick as the dock buttons). onClick still fires.
+          onPointerDown={(e) => { if (shouldKeepKeyboard(document.activeElement) && e.cancelable) e.preventDefault(); }}
+        >
           <button type="button" className="term-pager-btn" aria-label="上翻页" onClick={() => pageScroll('up')}>
             <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
               <path d="M6 14.5l6-6 6 6" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
