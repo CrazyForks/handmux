@@ -17,7 +17,9 @@ import {
   renameSession, renameWindow, deleteWindow, swapWindows, fetchDoc, fetchImageUrl,
   getStates, getOrphans, takeoverOrphan,
   getServerVersion,
+  splitPane as apiSplitPane, closePane as apiClosePane,
 } from './api.js';
+import { runSplitPane, runClosePane } from './paneActions.js';
 import PreviewSheet from './components/PreviewSheet.jsx';
 import { inboxRows, topView, maxTs } from './inbox.js';
 import { moveTarget } from './windowOrder.js';
@@ -61,6 +63,7 @@ import { readRoute, writeSessionHash } from './hashRoute.js';
 import { hasShareFlag, takeSharedFile, clearShareFlag } from './shareIntake.js';
 
 const COL_STEP = 10; // columns added/removed per ⊟/⊞ tap
+const CIRCLED = '①②③④⑤⑥⑦⑧⑨'; // pane-sheet title numbering, mirrors WindowBar's seq()
 
 // Pick the remembered id if it still exists, else the first. We deliberately don't fall back
 // to tmux's "active" — the local last-opened choice wins, first is the fallback.
@@ -76,6 +79,7 @@ export default function App() {
   const [newWinOpen, setNewWinOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState(null); // { kind:'session'|'window', id, name } | null
   const [manageWindow, setManageWindow] = useState(null); // the window long-pressed for its action menu
+  const [managePane, setManagePane] = useState(null); // pane id long-pressed in the map
   const [fileManagerOpen, setFileManagerOpen] = useState(false); // file-viewer bottom-sheet visibility
   const [gitOpen, setGitOpen] = useState(false);
   const [pendingShare, setPendingShare] = useState(null); // a File shared in via Web Share Target, awaiting a destination
@@ -162,6 +166,7 @@ export default function App() {
   useBackButton(!!manageWindow || !!renameTarget, () => {
     if (renameTarget) setRenameTarget(null); else setManageWindow(null);
   });
+  useBackButton(!!managePane, () => setManagePane(null));
   // Root double-back-to-exit: on the main page (a pane is showing, all the overlays above push their own
   // entries first), the first Back only surfaces a hint — a second within the window actually exits. The
   // hook toggles the hint (show on arm, hide when the window lapses), so its visibility IS the arm window —
@@ -467,6 +472,52 @@ export default function App() {
       return { ...c, paneId };
     });
   }, []);
+
+  // Refetch the open window's panes after a structural change (split/close) and splice them into `current`.
+  const refreshPanes = useCallback((windowId, panes) => {
+    setCurrent((c) => (c && c.window.id === windowId ? { ...c, panes } : c));
+  }, []);
+
+  // Split `paneId` into two (dir 'h' left|right, 'v' top/bottom); jump the phone to the new pane. The
+  // decision logic (call the api, refetch, pick the new pane) lives in paneActions.js — unit-tested there.
+  const splitPaneAction = useCallback(async (paneId, dir) => {
+    const windowId = current?.window?.id;
+    if (!windowId) return;
+    setManagePane(null);
+    setManageWindow(null);
+    try {
+      const { panes, selectPaneId } = await runSplitPane({
+        paneId, dir, windowId, api: { splitPane: apiSplitPane }, getPanes,
+      });
+      refreshPanes(windowId, panes);
+      selectPane(selectPaneId); // you split to work in the new pane
+      savedLayoutRef.current = null; // the window's split layout changed
+    } catch (e) {
+      if (handledAuth(e)) return;
+      window.alert(t('pane.splitFailed'));
+    }
+  }, [current, refreshPanes, selectPane, onAuthFail]);
+
+  // Close `paneId`; if it was the pane being viewed, re-target to a survivor (via pickId).
+  const closeManagedPane = useCallback(async () => {
+    const paneId = managePane;
+    const windowId = current?.window?.id;
+    const viewedPaneId = current?.paneId;
+    if (!paneId || !windowId) return;
+    try {
+      const { panes, selectPaneId } = await runClosePane({
+        paneId, windowId, viewedPaneId, api: { closePane: apiClosePane }, getPanes, pickId,
+      });
+      setManagePane(null);
+      refreshPanes(windowId, panes);
+      if (selectPaneId) selectPane(selectPaneId);
+      savedLayoutRef.current = null;
+    } catch (e) {
+      setManagePane(null);
+      if (handledAuth(e)) return;
+      window.alert(t('pane.closeFailed'));
+    }
+  }, [managePane, current, refreshPanes, selectPane, onAuthFail]);
 
   // Reload the recent (send) history whenever the open session OR window changes — history is
   // window-level, keyed by session NAME + window ID. Use the tmux window ID (@N), which is stable for the
@@ -895,6 +946,13 @@ export default function App() {
         title={manageWindow ? (manageWindow.name || manageWindow.id) : ''}
         onClose={() => setManageWindow(null)}
         actions={manageWindow ? [
+          // A single-pane window has nothing to reorder-within, but IS splittable — offer it here so a
+          // lone pane can still be split from the window-level menu (the per-pane menu only appears once
+          // there's a map to long-press).
+          ...(current && manageWindow.id === current.window.id && current.panes.length === 1 ? [
+            { key: 'split-h', label: t('pane.splitH'), onClick: () => splitPaneAction(current.paneId, 'h') },
+            { key: 'split-v', label: t('pane.splitV'), onClick: () => splitPaneAction(current.paneId, 'v') },
+          ] : []),
           // Reorder: shown only with >1 window (nothing to reorder otherwise, mirrors delete). Each
           // direction disables at its edge so positions stay put during repeated taps. onClick does
           // NOT close the sheet — moveManagedWindow keeps it open for the next nudge.
@@ -922,6 +980,26 @@ export default function App() {
               ? t('app.deleteLastWindowConfirm')
               : t('app.deleteConfirm'),
             onClick: deleteManagedWindow,
+          },
+        ] : []}
+      />
+      <ActionSheet
+        open={!!managePane}
+        title={(() => {
+          if (!managePane || !current) return '';
+          const idx = current.panes.findIndex((p) => p.id === managePane);
+          const p = current.panes[idx];
+          if (!p) return '';
+          const seq = idx < CIRCLED.length ? CIRCLED[idx] : String(idx + 1);
+          return `${seq} ${p.command || p.id}`;
+        })()}
+        onClose={() => setManagePane(null)}
+        actions={managePane ? [
+          { key: 'split-h', label: t('pane.splitH'), onClick: () => splitPaneAction(managePane, 'h') },
+          { key: 'split-v', label: t('pane.splitV'), onClick: () => splitPaneAction(managePane, 'v') },
+          {
+            key: 'close', label: t('pane.close'), danger: true, confirm: true,
+            confirmLabel: t('pane.closeConfirm'), onClick: closeManagedPane,
           },
         ] : []}
       />
@@ -1003,6 +1081,7 @@ export default function App() {
             onSelectPane={selectPane}
             onNewWindow={() => setNewWinOpen(true)}
             onManageWindow={(w) => setManageWindow(w)}
+            onManagePane={(paneId) => setManagePane(paneId)}
             trackWindowId={manageWindow?.id}
           />
           {current.paneId && (
