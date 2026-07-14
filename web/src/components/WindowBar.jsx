@@ -34,7 +34,45 @@ function WindowTab({ window: win, active, agent, onSelect, onManage }) {
 // so you SEE which pane you chose (an instant close gives no feedback that anything happened).
 const PICK_MS = 200;
 
-function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, onManage, onSelectPane }) {
+// One map tile. Tap = switch (onChoose); long-press = manage this pane (onManage). Its own component
+// so useLongPress is a valid per-tile hook. `releasing` drives the blue-handoff on the outgoing tile.
+function PaneMapCell({ cell, cur, releasing, picking, agent, onChoose, onManage }) {
+  const fit = cellFit(cell); // '' | 'flat' | 'narrow' | 'tiny'
+  const cmd = cell.command || cell.id;
+  const lp = useLongPress(() => onManage(cell.id), { onClick: () => onChoose(cell.id) });
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={cur}
+      aria-label={cmd}
+      className={`pane-map-cell${cur ? ' is-current' : ''}${releasing ? ' is-releasing' : ''}${fit ? ` is-${fit}` : ''}${picking ? ' is-picking' : ''}`}
+      style={{ left: `${cell.left + MAP_PAD}px`, top: `${cell.top + MAP_PAD}px`, width: `${cell.width}px`, height: `${cell.height}px` }}
+      {...lp}
+    >
+      <span className="pmc-surf">
+        {fit === 'narrow' || fit === 'tiny' ? (
+          <span className="pmc-seq" aria-hidden="true">{seq(cell.seq)}</span>
+        ) : fit === 'flat' ? (
+          <>
+            <span className="pmc-seq" aria-hidden="true">{seq(cell.seq)}</span>
+            <span className="pmc-cmd">{cmd}</span>
+          </>
+        ) : (
+          <>
+            <span className="pmc-row">
+              <span className="pmc-seq" aria-hidden="true">{seq(cell.seq)}</span>
+              {agent && <AgentMark agent={agent} />}
+            </span>
+            <span className="pmc-cmd">{cmd}</span>
+          </>
+        )}
+      </span>
+    </button>
+  );
+}
+
+function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, onManage, onManagePane, onSelectPane }) {
   const [open, setOpen] = useState(false);
   // Id of the tile mid-selection (drives the .is-picking flash) until the switch commits.
   const [picking, setPicking] = useState(null);
@@ -46,13 +84,12 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
     try { navigator.vibrate?.(10); } catch { /* unsupported */ }
     const reduce = typeof window !== 'undefined' && window.matchMedia
       && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduce) { onSelectPane(id); setOpen(false); return; }
+    if (reduce) { onSelectPane(id); return; } // map stays open — outside tap closes it
     setPicking(id);
     clearTimeout(pickTimer.current);
     pickTimer.current = setTimeout(() => {
       setPicking(null);
-      setOpen(false);
-      onSelectPane(id);
+      onSelectPane(id); // no setOpen(false): dwell in the map to split/close next
     }, PICK_MS);
   };
   // The menu is position:fixed (anchored by measured rect), not absolute: its anchor sits inside the
@@ -124,41 +161,18 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
         hasGeometry(panes) ? (
           <div className="pane-map" role="listbox" style={{ top: pos.top, left: pos.left, width: mapW, height: mapH }}>
             {layout.cells.map((c) => {
-              const fit = cellFit(c); // '' | 'flat' | 'narrow' | 'tiny' — degrades cramped cells
-              const cmd = c.command || c.id;
-              const cur = c.id === currentPaneId;
-              // The outgoing current tile releases its blue as another tile is picked — a color handoff.
-              const releasing = cur && picking && picking !== currentPaneId;
+              const isCur = c.id === currentPaneId;
               return (
-                <button
-                  type="button"
+                <PaneMapCell
                   key={c.id}
-                  role="option"
-                  aria-selected={cur}
-                  aria-label={cmd}
-                  className={`pane-map-cell${cur ? ' is-current' : ''}${releasing ? ' is-releasing' : ''}${fit ? ` is-${fit}` : ''}${picking === c.id ? ' is-picking' : ''}`}
-                  style={{ left: `${c.left + MAP_PAD}px`, top: `${c.top + MAP_PAD}px`, width: `${c.width}px`, height: `${c.height}px` }}
-                  onClick={() => choose(c.id)}
-                >
-                  <span className="pmc-surf">
-                    {fit === 'narrow' || fit === 'tiny' ? (
-                      <span className="pmc-seq" aria-hidden="true">{seq(c.seq)}</span>
-                    ) : fit === 'flat' ? (
-                      <>
-                        <span className="pmc-seq" aria-hidden="true">{seq(c.seq)}</span>
-                        <span className="pmc-cmd">{cmd}</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="pmc-row">
-                          <span className="pmc-seq" aria-hidden="true">{seq(c.seq)}</span>
-                          {paneAgents[c.id] && <AgentMark agent={paneAgents[c.id]} />}
-                        </span>
-                        <span className="pmc-cmd">{cmd}</span>
-                      </>
-                    )}
-                  </span>
-                </button>
+                  cell={c}
+                  cur={isCur}
+                  releasing={isCur && !!picking && picking !== currentPaneId}
+                  picking={picking === c.id}
+                  agent={paneAgents[c.id]}
+                  onChoose={choose}
+                  onManage={onManagePane}
+                />
               );
             })}
           </div>
@@ -190,7 +204,7 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
 
 export default function WindowBar({
   windows, windowAgents = {}, paneAgents = {}, currentAgent, currentWindowId, panes, currentPaneId, onSelectWindow, onSelectPane, onNewWindow, onManageWindow,
-  trackWindowId,
+  onManagePane, trackWindowId,
 }) {
   const scrollRef = useRef(null);
   // While a window is being managed (its long-press menu open), keep its tab in view as the order
@@ -217,6 +231,7 @@ export default function WindowBar({
                 currentPaneId={currentPaneId}
                 agent={currentAgent}
                 onManage={onManageWindow}
+                onManagePane={onManagePane}
                 onSelectPane={onSelectPane}
               />
             );

@@ -220,7 +220,7 @@ describe('WindowBar', () => {
     expect(cells[1].textContent).toContain('node');
   });
 
-  it('map cell tap flashes the chosen tile, then commits the switch and closes the map', () => {
+  it('map cell tap flashes the chosen tile, then commits the switch and keeps the map open', () => {
     vi.useFakeTimers();
     const onSelectPane = vi.fn();
     render({ ...base, panes: geomPanes, onSelectPane });
@@ -233,10 +233,39 @@ describe('WindowBar', () => {
     expect(flashing[0].className).toContain('is-releasing');    // A (the outgoing current) hands off its blue
     expect(onSelectPane).not.toHaveBeenCalled();
     expect(container.querySelector('.pane-map')).not.toBeNull(); // still open during the flash
-    // after the flash the switch lands and the map closes
+    // after the flash the switch lands, but the map dwells open (only an outside tap closes it)
     act(() => vi.advanceTimersByTime(250));
     expect(onSelectPane).toHaveBeenCalledWith('%2');
-    expect(container.querySelector('.pane-map')).toBe(null);
+    expect(container.querySelector('.pane-map')).not.toBeNull();
+  });
+
+  it('long-pressing a map tile calls onManagePane and does NOT switch', () => {
+    vi.useFakeTimers();
+    const onSelectPane = vi.fn();
+    const onManagePane = vi.fn();
+    render({ ...base, panes: geomPanes, onSelectPane, onManagePane });
+    openPaneMenu();
+    const cells = container.querySelectorAll('.pane-map-cell');
+    fire(cells[1], 'pointerdown');
+    act(() => vi.advanceTimersByTime(600));
+    fire(cells[1], 'pointerup');
+    fire(cells[1], 'click'); // the browser click that follows — must be swallowed
+    expect(onManagePane).toHaveBeenCalledWith(geomPanes[1].id);
+    expect(onSelectPane).not.toHaveBeenCalled();
+  });
+
+  it('tapping a map tile switches AND leaves the map open', () => {
+    vi.useFakeTimers();
+    const onSelectPane = vi.fn();
+    render({ ...base, panes: geomPanes, onSelectPane });
+    openPaneMenu();
+    const cells = container.querySelectorAll('.pane-map-cell');
+    fire(cells[1], 'pointerdown');
+    fire(cells[1], 'pointerup');
+    fire(cells[1], 'click');
+    act(() => vi.advanceTimersByTime(250));
+    expect(onSelectPane).toHaveBeenCalledWith('%2');
+    expect(container.querySelector('.pane-map')).not.toBeNull(); // map still open after the switch
   });
 
   it('falls back to the flat list when panes lack geometry', () => {
