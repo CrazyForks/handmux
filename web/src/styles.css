@@ -221,7 +221,7 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 /* Proportional layout map: reproduces the real tmux split. .pane-map declares its OWN frosted-glass
    shell (background/blur/border/radius/shadow) and reuses .wt-menu only for its fixed positioning;
    cells are absolutely placed inside it by percentage (from paneLayout.js paneRects), one per pane. */
-.pane-map { width: 220px; aspect-ratio: 16 / 10; padding: 0; overflow: hidden;
+.pane-map { width: 220px; aspect-ratio: 16 / 10; padding: 0; overflow: hidden; z-index: 30;
   background: rgba(28, 30, 34, 0.72);
   -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4);
   border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;

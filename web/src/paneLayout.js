@@ -17,6 +17,7 @@ export function paneRects(panes) {
   if (!hasGeometry(panes)) return [];
   const W = Math.max(...panes.map((p) => p.left + p.width));
   const H = Math.max(...panes.map((p) => p.top + p.height));
+  if (W <= 0 || H <= 0) return [];
   return panes.map((p, seq) => ({
     id: p.id,
     active: !!p.active,

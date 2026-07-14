@@ -47,4 +47,7 @@ describe('paneRects', () => {
   it('returns [] when geometry is missing', () => {
     expect(paneRects([{ id: '%1', command: 'zsh' }])).toEqual([]);
   });
+  it('returns [] when panes have zero-size bounding box', () => {
+    expect(paneRects([{ id: '%1', active: true, command: 'zsh', left: 0, top: 0, width: 0, height: 0 }])).toEqual([]);
+  });
 });
