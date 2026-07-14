@@ -208,13 +208,25 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     });
     term.open(elRef.current);
     termRef.current = term;
+    // Read-only display: neuter xterm's hidden helper textarea BEFORE anything can focus it. On Android a
+    // focus() on a NOT-yet-neutered textarea summons the soft keyboard — and the cursor prime just below
+    // focuses it on EVERY pane-switch remount. With the neutering placed after the prime (as it was), rapid
+    // window-switching would occasionally race the switch tap's user-activation and pop the keyboard by
+    // itself, stuck open. inputmode=none + readOnly make a focus keyboard-inert, yet it still fires xterm's
+    // focus handler, so the cursor prime below keeps working.
+    const ta = elRef.current.querySelector('.xterm-helper-textarea');
+    if (ta) {
+      ta.readOnly = true;
+      ta.tabIndex = -1;
+      ta.setAttribute('inputmode', 'none');
+      ta.setAttribute('aria-hidden', 'true');
+    }
     // xterm never renders the cursor — not even the INACTIVE 'block' style — until the terminal has been
     // focused at least ONCE. This grid is read-only and never gets focus, so the cursor was invisible until
     // you tapped (which focuses it); sending keys did nothing, because ?25h alone can't draw on a
     // never-focused renderer. Verified in headless Chrome: never-focused → no cursor; focus()+blur() once →
-    // the ?25h block renders and survives the blur. So prime the renderer here with one focus/blur. This
-    // effect only re-runs on a real pane change (dep [pane]), always via a nav tap that already blurred the
-    // composer — never mid-typing — so it can't steal the soft keyboard. Restore prior focus as insurance.
+    // the ?25h block renders and survives the blur. Prime the renderer with one focus/blur (the textarea is
+    // now keyboard-inert, above), then restore prior focus as insurance.
     const prevFocus = document.activeElement;
     term.focus();
     term.blur();
@@ -246,14 +258,6 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       } catch { webgl = null; /* keep the default renderer */ }
     };
     mountWebgl();
-    // Read-only display: keep xterm's hidden input from opening the mobile keyboard.
-    const ta = elRef.current.querySelector('.xterm-helper-textarea');
-    if (ta) {
-      ta.readOnly = true;
-      ta.tabIndex = -1;
-      ta.setAttribute('inputmode', 'none');
-      ta.setAttribute('aria-hidden', 'true');
-    }
     let timer = null;
     let disposed = false;
     let busy = false;
