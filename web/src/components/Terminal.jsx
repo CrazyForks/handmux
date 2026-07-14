@@ -101,6 +101,9 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
   // One-shot flag for the pager's "适配高度" button: the next fit() sizes the font so the whole pane fills
   // the screen (see the fit-to-fill block in fit()). Set here, consumed in effect scope.
   const fitScreenPendingRef = useRef(false);
+  // After the fit-height estimate, verify against the REAL cell height and shrink a step at a time until all
+  // paneRows actually fit (xterm rounds cell height to whole pixels, so the estimate can be a row too big).
+  const fitScreenVerifyRef = useRef(false);
   // One-shot flag: the keyboard just collapsed → the next fit keeps the cursor in view (scroll-into-view)
   // instead of jumping to the first line, so you don't lose your editing spot. Set in the inset effect.
   const collapseKeepCursorRef = useRef(false);
@@ -464,20 +467,31 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       if (insetRef.current === 0) fullAvailRef.current = avail; // remember the real keyboard-down usable height
       const cellH = curH / term.rows;
 
-      // "适配高度" (pager button): size the font so the WHOLE pane (paneRows) fills the visible height —
-      // grows OR shrinks (unlike the auto-shrink below, which only shrinks) and pins the result as a manual
-      // size, so a full-screen app shows all its rows on one screen with no scrollback (⇒ cursor always
-      // addressable). One-shot: consumed here, then the recursive pass re-fits the row count to the new size.
-      if (fitScreenPendingRef.current && paneRows && pass < 4) {
+      // "适配高度" (pager button): size the font so the WHOLE pane (paneRows) fits the screen with no
+      // scrollback (⇒ the cursor is always addressable), pinned as a manual size. Two steps:
+      //  1) jump to a linear estimate against the real keyboard-DOWN usable height (fullAvailRef — NOT the
+      //     tiny keyboard-up slice `avail`, NOT clientHeight which over-counts the strip under the dock);
+      //  2) verify against the ACTUAL cell height and shrink a step at a time until all paneRows fit —
+      //     xterm rounds cell height to whole pixels, so the estimate can leave the pane a row too tall.
+      if (fitScreenPendingRef.current && paneRows) {
         fitScreenPendingRef.current = false;
-        // Size against the real keyboard-DOWN usable height (fullAvailRef), NOT the current slice `avail`
-        // (which is tiny with the keyboard up → font far too small) and NOT clientHeight (which over-counts
-        // the strip under the dock → font ~2 rows too big). The goal is "fills the screen keyboard-down".
-        const fullH = fullAvailRef.current || avail;
         const cur = term.options.fontSize || 14;
-        const target = Math.max(8, Math.min(40, Math.round(cur * fullH / (paneRows * cellH))));
-        fontRef.current = target; setFont(target); // pin manual + persist so auto-shrink won't fight it
-        if (target !== cur) { term.options.fontSize = target; requestAnimationFrame(() => fit(pass + 1)); return; }
+        const est = Math.max(8, Math.min(40, Math.round(cur * (fullAvailRef.current || avail) / (paneRows * cellH))));
+        fitScreenVerifyRef.current = true;
+        fontRef.current = est; setFont(est); // pin manual so auto-shrink won't fight it
+        if (est !== cur) { term.options.fontSize = est; requestAnimationFrame(() => fit(pass)); return; }
+      }
+      if (fitScreenVerifyRef.current && paneRows) {
+        const rows = Math.floor((fullAvailRef.current || avail) / cellH); // rows that actually fit now
+        const cur = term.options.fontSize || 14;
+        if (rows < paneRows && cur > 8) { // a row is still cut → shrink one and re-check
+          fontRef.current = cur - 1; setFont(cur - 1);
+          term.options.fontSize = cur - 1;
+          requestAnimationFrame(() => fit(pass));
+          return;
+        }
+        fitScreenVerifyRef.current = false; // all paneRows fit (or hit the min font) → settle
+        fontRef.current = cur; setFont(cur);
       }
 
       // Auto font-shrink only when the keyboard is down. Keyboard up keeps the font and just drops rows
