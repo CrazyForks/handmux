@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { hasGeometry, paneLayout, cellFit, MAP_W, MAP_H } from '../src/paneLayout.js';
 
-const hsplit = [ // left / right, each 40 of an 80-col window, full height
+const hsplit = [ // real tmux half-split of an 80-col window: a 1-col BORDER seam at col 40 between them
   { id: '%1', active: true,  command: 'zsh',  left: 0,  top: 0, width: 40, height: 24 },
-  { id: '%2', active: false, command: 'node', left: 40, top: 0, width: 40, height: 24 },
+  { id: '%2', active: false, command: 'node', left: 41, top: 0, width: 39, height: 24 },
 ];
 const grid = [ // 2x2
   { id: '%1', active: true,  command: 'a', left: 0,  top: 0,  width: 40, height: 12 },
@@ -24,16 +24,17 @@ describe('hasGeometry', () => {
 });
 
 describe('paneLayout', () => {
-  it('roomy split → base-size map, equal pixel cells, no growth', () => {
+  it('a real border-separated half split stays at base size — the 1-col seam is NOT bumped to the min', () => {
     const { w, h, cells } = paneLayout(hsplit);
-    expect(w).toBe(MAP_W);
+    // The seam must NOT inflate to MIN_W and shove the right pane across / overflow the map.
+    expect(w).toBe(MAP_W); // 117 (left) + 2.925 (seam, proportional) + 114.075 (right) + 14 pad = 248
     expect(h).toBe(MAP_H);
     expect(cells.map((c) => c.id)).toEqual(['%1', '%2']);
     expect(cells[0]).toMatchObject({ left: 0, top: 0, seq: 0, active: true });
-    expect(cells[0].width).toBeCloseTo(117); // (40/80) * (248-14)
-    expect(cells[1].left).toBeCloseTo(117);
-    expect(cells[1].width).toBeCloseTo(117);
-    expect(cells[0].height).toBeCloseTo(144); // full height (158-14)
+    expect(cells[0].width).toBeCloseTo(117);   // (40/80) * 234
+    expect(cells[1].left).toBeCloseTo(119.925); // 117 + 2.925 seam — a hairline, not a 30px gap
+    expect(cells[1].width).toBeCloseTo(114.075); // (39/80) * 234
+    expect(cells[0].height).toBeCloseTo(144);   // full height (158-14)
   });
 
   it('2x2 grid → four equal quarter tiles with the right labels', () => {

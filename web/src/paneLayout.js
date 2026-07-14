@@ -30,15 +30,22 @@ export function hasGeometry(panes) {
 const uniqSorted = (nums) => [...new Set(nums)].sort((a, b) => a - b);
 
 // Turn the split lines along one axis into pixel track sizes: each track is proportional to its cell
-// span of the base length, but never smaller than `min` — so a too-thin track is padded out and the
-// axis total grows by exactly that shortfall (additive, not a scale). Returns [{ at, px }] prefix
-// offsets so a pane spanning edges[i]..edges[j] gets left=out[i].at, width=out[j].at-out[i].at.
-function trackOffsets(edges, total, baseInner, min) {
+// span of the base length. A track that a PANE actually occupies is padded up to `min` when too small
+// (so the axis total grows by exactly that shortfall — additive, not a scale). A track that NO pane
+// covers is a BORDER SEAM (tmux separates panes by a 1-cell border, e.g. a half-split is left=0 w=40,
+// right=41 w=39 with col 40 the seam) — it must stay at its hairline proportional size, never bumped to
+// `min`, or a phantom ~min gap would shove the neighbour across and overflow the map. `spans` are the
+// panes' [start,end] extents on this axis. Returns [{ at }] prefix offsets: a pane spanning
+// edges[i]..edges[j] gets left=out[i].at, width=out[j].at-out[i].at.
+function trackOffsets(edges, spans, total, baseInner, min) {
   const offsets = [{ at: 0 }];
   let acc = 0;
   for (let i = 0; i < edges.length - 1; i += 1) {
-    const span = edges[i + 1] - edges[i];
-    acc += Math.max((span / total) * baseInner, min);
+    const a = edges[i];
+    const b = edges[i + 1];
+    const prop = ((b - a) / total) * baseInner;
+    const covered = spans.some(([s, e]) => s <= a && e >= b);
+    acc += covered ? Math.max(prop, min) : prop;
     offsets.push({ at: acc });
   }
   return offsets;
@@ -57,8 +64,10 @@ export function paneLayout(panes, opts = {}) {
 
   const xs = uniqSorted(panes.flatMap((p) => [p.left, p.left + p.width]));
   const ys = uniqSorted(panes.flatMap((p) => [p.top, p.top + p.height]));
-  const xOff = trackOffsets(xs, totalCols, baseInnerW, MIN_W);
-  const yOff = trackOffsets(ys, totalRows, baseInnerH, MIN_H);
+  const xSpans = panes.map((p) => [p.left, p.left + p.width]);
+  const ySpans = panes.map((p) => [p.top, p.top + p.height]);
+  const xOff = trackOffsets(xs, xSpans, totalCols, baseInnerW, MIN_W);
+  const yOff = trackOffsets(ys, ySpans, totalRows, baseInnerH, MIN_H);
   const innerW = xOff[xOff.length - 1].at;
   const innerH = yOff[yOff.length - 1].at;
 
