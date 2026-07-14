@@ -268,6 +268,11 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     let lastCur = ''; // last frame's cursor key (row,col,vis) — a cursor-only move must still repaint
     let curInfo = null; // last frame's cursor {row,col,vis}, placed by placeCursor() after sizing settles
     let seedRows = 0; // rows in the last seed (trimmed capture) — cur.row counts up from its bottom
+    // The last seed's RAW (un-padded) content, so fit() can re-pad it for the FINAL row count. The seed's
+    // bottom-pad is computed against term.rows AT SEED TIME (the pre-fit default); fit then grows the grid
+    // to fill the container, and without re-padding the short content would sit stranded mid-grid while the
+    // cursor is placed at the grown bottom (the "new window, short content, cursor at bottom" bug).
+    let lastSeed = null; // { seed, contentRows, alt }
     let lastHash = null; // last frame's server hash, echoed as ?since= so an unchanged screen returns 204
     let idleSince = Date.now(); // timestamp of the last change/activity → drives the adaptive cadence
     setPaused(false);
@@ -367,6 +372,29 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       });
     };
 
+    // Re-pad the current normal-screen seed for the CURRENT term.rows and re-write it, so short content
+    // stays bottom-aligned after fit() changes the grid height. The seed's pad was computed against the
+    // row count at SEED time; growing the grid afterwards (fit runs after the first seed) would otherwise
+    // leave the content mid-grid with the cursor at the grown bottom — until a later repaint re-padded it
+    // ("type to fix"). No-op when the pad already matches, or on alt-screen (it owns its own layout).
+    // Returns a promise that resolves once the re-write has applied (or immediately when nothing changed),
+    // so fit can reveal only AFTER the corrected frame lands (no mid-grid flash).
+    const reframeForRows = () => {
+      if (disposed || !lastSeed || lastSeed.alt) return Promise.resolve();
+      const { seed, contentRows } = lastSeed;
+      const pad = contentRows < term.rows ? bottomPadRows(contentRows, term.rows) : 0;
+      if (contentRows + pad === seedRows) return Promise.resolve(); // pad already fits the grid → nothing to do
+      const framed = pad ? ('\n'.repeat(pad) + seed) : seed;
+      seedRows = framed.split('\n').length;
+      return new Promise((res) => term.write('\x1b[?25l\x1b[0m\x1b[2J\x1b[3J\x1b[H' + framed, () => {
+        if (!disposed) {
+          term.scrollToBottom();
+          try { refreshDocDecorations(term); } catch { /* cosmetic */ } // content shifted → rescan underlines
+        }
+        res();
+      }));
+    };
+
     const fit = (pass = 0) => {
       if (disposed || !elRef.current || !term.rows) return;
       // Fit to the container's ACTUAL on-screen height, not clientHeight. App translateY(-inset) lifts the
@@ -414,12 +442,14 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
           term.resize(term.cols, want);
           term.scrollToBottom();
           if (pass < 4) requestAnimationFrame(() => fit(pass + 1));
-          else { placeCursor(); reveal(); } // last pass → grid settled: place cursor + reveal
+          // last pass → grid settled: re-pad short content for the FINAL row count, THEN cursor + reveal
+          else reframeForRows().then(() => { if (!disposed) { placeCursor(); reveal(); } });
         });
         return;
       }
-      placeCursor(); // grid settled → safe to put the cursor on Claude's input cell
-      reveal();      // …and unhide the now-complete frame (first paint only; idempotent after)
+      // grid already matched the container (no resize) — reframe is a no-op here, but stays correct if the
+      // seed had been padded for a different count. Place the cursor + unhide the now-complete frame.
+      reframeForRows().then(() => { if (!disposed) { placeCursor(); reveal(); } });
     };
     const scheduleFit = () => requestAnimationFrame(() => fit(0));
     fitRef.current = scheduleFit; // let the imperative font controls trigger a re-fit
@@ -1012,6 +1042,9 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
         // it hidden) at Claude's real cell.
         const seed = prepareSeed(hist.ansi);
         const contentRows = seed ? seed.split('\n').length : 0;
+        // Remember the RAW content so a later fit() (which changes term.rows AFTER this seed) can re-pad it
+        // for the final grid height — otherwise short content stays padded for the pre-fit rows (see reframeForRows).
+        lastSeed = { seed, contentRows, alt: hist.alt };
         // Normal screen with content shorter than the grid: bottom-align it so the last row (the live
         // prompt) sits at the grid bottom (just above the keyboard/dock), not stranded at the top with
         // blank below. Alt-screen keeps its own layout (cursor-centering handles it), so skip there.
