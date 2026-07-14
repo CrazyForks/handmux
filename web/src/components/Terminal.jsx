@@ -412,7 +412,9 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     const drawLocate = () => {
       disposeLocate();
       const cur = curInfo;
-      if (disposed || !locateOnRef.current || !cur) return;
+      // Only on a full-screen app (where the 定位 toggle lives). On the main screen the highlight is cleared
+      // and stays cleared — switching back to Claude mustn't leave the caret-row band behind.
+      if (disposed || !locateOnRef.current || !altScreenRef.current || !cur) return;
       const b = term.buffer.active;
       const line = (seedRows - 1) - (cur.row | 0);
       const marker = term.registerMarker(line - (b.baseY + b.cursorY));
