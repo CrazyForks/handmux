@@ -13,6 +13,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   push 订阅与预览的持久化都改为原子写。`/states` 轮询与文件监听并发时不再交错去重状态导致重复推送。
 
 ### Fixed
+- `handmux setup` 在「连接 → 切换隧道类型」时崩溃（`ReferenceError: TUNNEL_KEYS is not defined`）：
+  `setupModel.js` 里的 `TUNNEL_KEYS` 未导出、`setupWizard.js` 引用了却没导入。现已导出并导入。
 - 补上收件箱在普通授权模式下一种场景漏掉的状态变更：你**回应权限弹窗后**该会话会停留在「需要你」。原因是
   这几种回应都不产生可监听的 hook——授权普通工具（Bash/Edit 等）不触发我们监听的 PostToolUse，手动拒绝或按
   ESC 中断则不发任何 hook，于是收件箱收不到「已回应」的信号。现在服务端改用会话 transcript 的写入对账：弹窗

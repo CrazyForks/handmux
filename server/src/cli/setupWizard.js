@@ -24,6 +24,7 @@ import {
   cfConfigYaml, parseTunnelCreate, findTunnelId,
   mergeConfig, answersFromConfig, summarizeConnection,
   validatePort, validateHost, validateNonEmpty, validateContact, validateToken,
+  TUNNEL_KEYS,
 } from './setupModel.js';
 export {
   cfConfigYaml, parseTunnelCreate, findTunnelId,

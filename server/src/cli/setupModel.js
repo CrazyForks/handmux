@@ -50,7 +50,7 @@ const WIZARD_KEYS = [
 ];
 
 // The tunnel-specific keys, cleared whenever the tunnel changes so a switch never carries a stale field.
-const TUNNEL_KEYS = ['sshHost', 'remotePort', 'sshJump', 'cfHostname', 'cfTunnelName', 'publicUrl', 'authtoken', 'cpolarRegion'];
+export const TUNNEL_KEYS = ['sshHost', 'remotePort', 'sshJump', 'cfHostname', 'cfTunnelName', 'publicUrl', 'authtoken', 'cpolarRegion'];
 
 // Wizard answers → the config fragment the user actually set (omit empty optional fields).
 export function configFromAnswers(a) {
