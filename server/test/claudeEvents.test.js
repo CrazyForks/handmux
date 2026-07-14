@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { tmpHome } from './tmphome.js';
-import { classifyEvent, createClaudeEvents } from '../src/claudeEvents.js';
+import { classifyEvent, createClaudeEvents, permissionResolved, resolvedPermissionKind } from '../src/claudeEvents.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -44,6 +44,36 @@ describe('classifyEvent', () => {
   });
 });
 
+describe('permissionResolved (transcript grew past the permission event ⇒ user answered/ESC-ed)', () => {
+  const r = { ts: 10_000 };
+  it('pending: transcript frozen at/near the event ts → not resolved', () => {
+    expect(permissionResolved(r, 10_000)).toBe(false); // no growth
+    expect(permissionResolved(r, 9_000)).toBe(false);  // notification fired after the tool_use write
+    expect(permissionResolved(r, 11_000)).toBe(false); // within the guard (near-simultaneous permreq)
+  });
+  it('resolved: transcript grew well past the event ts → true', () => {
+    expect(permissionResolved(r, 12_000)).toBe(true);
+  });
+  it('unreadable transcript (null mtime) → not resolved (keep 需要你)', () => {
+    expect(permissionResolved(r, null)).toBe(false);
+    expect(permissionResolved(r, undefined)).toBe(false);
+  });
+});
+
+describe('resolvedPermissionKind (transcript last line: interrupt vs resume)', () => {
+  it('an ESC interrupt marker → null (neutral, turn ended)', () => {
+    expect(resolvedPermissionKind(JSON.stringify({ type: 'user', message: { content: '[Request interrupted by user]' } }))).toBeNull();
+    expect(resolvedPermissionKind(JSON.stringify({ message: { content: '[Request interrupted by user for tool use]' } }))).toBeNull();
+  });
+  it('a tool_result / continuation → working (approve or deny → 进行中)', () => {
+    expect(resolvedPermissionKind(JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result' }] } }))).toEqual({ kind: 'working', msg: '' });
+  });
+  it('an unparseable/absent tail → working (clear the stale 需要你, show active)', () => {
+    expect(resolvedPermissionKind(null)).toEqual({ kind: 'working', msg: '' });
+    expect(resolvedPermissionKind('{ truncated…')).toEqual({ kind: 'working', msg: '' });
+  });
+});
+
 // Write a { pane: {ts,src,host,payload} } state file like the hook does, into a fresh temp path.
 function stateFile(panes) {
   const file = path.join(tmpHome('cstate-'), 'claude-state.json');
@@ -80,6 +110,30 @@ describe('createClaudeEvents getStates (reads the hook state file)', () => {
     const commands = { listLivePanes: async () => liveAll(['%7']) };
     const ev = createClaudeEvents({ commands, push, file });
     expect((await ev.getStates())['%7']).toMatchObject({ session: 'proj', kind: 'working', msg: '已答：Red' });
+  });
+
+  const permPane = () => stateFile({ '%1': rec('notify', { notification_type: 'permission_prompt', message: 'allow Bash?', transcript_path: '/t.jsonl' }, 10_000) });
+
+  it('a still-pending permission shows 需要你 (transcript frozen at the event ts)', async () => {
+    const commands = { listLivePanes: async () => liveAll(['%1']) };
+    const ev = createClaudeEvents({ commands, push, file: permPane(), statMtime: () => 10_000, readTail: () => null }); // no growth
+    expect((await ev.getStates())['%1']).toMatchObject({ kind: 'permission', msg: 'allow Bash?' });
+  });
+
+  it('after you answer (yes / deny-with-feedback) the pane returns to 进行中', async () => {
+    const commands = { listLivePanes: async () => liveAll(['%1']) };
+    const tail = JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result' }] } });
+    // now() close to the event ts so the resumed 进行中 isn't swept by WORKING_TTL (rec.ts is the permission
+    // event time; in production that's recent).
+    const ev = createClaudeEvents({ commands, push, file: permPane(), statMtime: () => 20_000, readTail: () => tail, now: () => 40_000 });
+    expect((await ev.getStates())['%1']).toMatchObject({ session: 'proj', kind: 'working' });
+  });
+
+  it('after you ESC-interrupt the prompt the pane clears → neutral present (no chip)', async () => {
+    const commands = { listLivePanes: async () => liveAll(['%1']) };
+    const tail = JSON.stringify({ type: 'user', message: { content: '[Request interrupted by user for tool use]' } });
+    const ev = createClaudeEvents({ commands, push, file: permPane(), statMtime: () => 20_000, readTail: () => tail });
+    expect((await ev.getStates())['%1']).toMatchObject({ session: 'proj', agent: 'claude', kind: null });
   });
 
   it('an ended pane leaves the ACTIVITY roster (kind:null so the inbox skips it) but stays present while its agent process runs — the /clear case: SessionEnd drops the entry though claude is still alive', async () => {

@@ -39,6 +39,55 @@ function pushKey(view, ts) { return view === 'done' ? `done:${ts}` : view; }
 // its next event, and a new prompt resets the clock.
 const WORKING_TTL_MS = 2 * 60 * 60 * 1000;
 
+// A pane latched in `permission` (需要你) has NO hook event to close it when the user resolves the prompt:
+// approving a normal tool (Bash/Edit/…) doesn't hit our PostToolUse matcher (only AskUserQuestion|ExitPlanMode
+// do), and DENYING or ESC-interrupting fires no hook at all (verified across all hook events). So the prompt
+// would read 需要你 until the turn's eventual Stop — or FOREVER after an ESC, which never Stops. Detect the
+// resolution out-of-band: while the prompt is pending Claude is blocked and appends nothing to its session
+// transcript, so the transcript's mtime sits at (or before) the permission event's ts; the instant the user
+// resolves it — approve → tool_result, deny → denial result, ESC → a `[Request interrupted by user]` line —
+// the transcript grows and its mtime jumps past it. mtime beyond the event ts (+ a guard for the near-
+// simultaneous permreq/tool-write case) ⇒ resolved ⇒ drop the stale 需要你 (the pane falls back to neutral
+// process-presence). The guard must clear the gap between the tool_use write and the permreq/notification
+// firing; a real resolution always lands well beyond it (the user takes seconds to answer).
+const PERM_RESOLVED_GUARD_MS = 1500;
+
+// Read a transcript file's mtime in ms, or null if it's missing/unreadable (→ can't tell, keep 需要你).
+function defaultStatMtime(p) { try { return fs.statSync(p).mtimeMs; } catch { return null; } }
+
+// Read the LAST complete JSON line of a (possibly multi-MB) transcript, or null if unreadable. Reads only a
+// bounded tail so cost is one small read regardless of transcript size; a last line longer than the window
+// won't parse cleanly, but the only line we care to recognise (the interrupt marker) is tiny.
+function defaultReadTail(p) {
+  try {
+    const fd = fs.openSync(p, 'r');
+    try {
+      const size = fs.fstatSync(fd).size;
+      const len = Math.min(size, 65536);
+      const buf = Buffer.alloc(len);
+      fs.readSync(fd, buf, 0, len, size - len);
+      const lines = buf.toString('utf8').split('\n').filter((l) => l.trim());
+      return lines.length ? lines[lines.length - 1] : null;
+    } finally { fs.closeSync(fd); }
+  } catch { return null; }
+}
+
+// Pure: has the user resolved the permission prompt recorded by `rec`, judged by its transcript mtime?
+// True only once the transcript has grown past the event ts by more than the guard. Exported for testing.
+export function permissionResolved(rec, mtimeMs, guard = PERM_RESOLVED_GUARD_MS) {
+  return typeof mtimeMs === 'number' && mtimeMs > (rec.ts || 0) + guard;
+}
+
+// Pure: once resolved, the transcript's last line tells a RESUME from an INTERRUPT. Approving (yes) or
+// denying-with-feedback appends a tool_result / Claude's next message → Claude is working again → 进行中.
+// Pressing ESC appends a `[Request interrupted by user…]` marker → the turn ended, back to idle → drop the
+// pane to neutral (null). An unparseable/absent tail is treated as a resume (clears the stale 需要你 and
+// shows active — a truncated huge last line is a big tool_result, never the tiny interrupt marker).
+export function resolvedPermissionKind(lastLine) {
+  if (lastLine && /Request interrupted by user/.test(lastLine)) return null; // ESC → neutral
+  return { kind: 'working', msg: '' };                                       // approve / deny → 进行中
+}
+
 // Truncate a Claude message to a notification-friendly one-liner.
 function summarize(msg) {
   const oneLine = (msg || '').replace(/\s+/g, ' ').trim();
@@ -60,7 +109,7 @@ function readStateFile(file) {
 //   file: the hook-maintained JSON state file (DEFAULT_STATE_FILE).
 // The hook is the sole writer; the server reads the file fresh on every getStates and on every file
 // change (the watcher, for push). No persisted state of our own — the file IS the persistence.
-export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, now = () => Date.now() } = {}) {
+export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, now = () => Date.now(), statMtime = defaultStatMtime, readTail = defaultReadTail } = {}) {
   const lastPushed = {}; // pane → 'needs' | 'done' | null  (in-process push-transition dedup, by display view)
   // The dedup above is in-process ONLY: a restart (e.g. ./deploy.sh) wipes it while the hook's state
   // file on disk keeps every pane's latest 需要你/已完成. Without priming, the first read after boot
@@ -107,7 +156,14 @@ export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, 
     const out = {};
     for (const [pane, rec] of Object.entries(recorded)) {
       const agent = getAgent(rec && rec.agent);
-      const c = rec && typeof rec.src === 'string' ? agent.classify(rec.src, rec.payload || {}) : null;
+      let c = rec && typeof rec.src === 'string' ? agent.classify(rec.src, rec.payload || {}) : null;
+      // A 需要你 the user already resolved leaves no closing hook (see PERM_RESOLVED_GUARD_MS). statMtime
+      // gates the cheap "still pending" path; only once the transcript has grown past the event do we pay the
+      // bounded tail read to tell a RESUME (approve/deny → 进行中) from an INTERRUPT (ESC → neutral present).
+      if (c && c.kind === 'permission') {
+        const tp = rec.payload && rec.payload.transcript_path;
+        if (tp && permissionResolved(rec, statMtime(tp))) c = resolvedPermissionKind(readTail(tp));
+      }
       const lp = live ? live.get(pane) : null;
       // Dropped when tmux says the pane is gone or no longer running THIS agent (hard kill / crash /
       // Ctrl-C-out with no clean-exit event). A pane keyed by a legacy entry (no agent field) → Claude.
