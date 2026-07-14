@@ -241,8 +241,9 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
   display: flex; flex-direction: column; gap: 3px; align-items: flex-start; justify-content: flex-start;
   padding: 7px 8px; text-align: left;
   background: rgba(255, 255, 255, 0.045); border: 1px solid rgba(255, 255, 255, 0.10);
-  transition: transform .12s ease, background .15s ease, border-color .15s ease; }
+  transition: transform .12s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease; }
 .pane-map-cell:active .pmc-surf { transform: scale(.97); }
+.pane-map-cell .pmc-seq, .pane-map-cell .pmc-cmd { transition: color .18s ease; }
 /* Current pane: solid iOS-blue tile with white content — reads at a glance among the muted tiles. */
 .pane-map-cell.is-current .pmc-surf { background: var(--blue); border-color: rgba(255,255,255,.25);
   box-shadow: 0 2px 10px rgba(10, 132, 255, .4); }
@@ -254,6 +255,13 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .pane-map-cell.is-picking .pmc-seq { color: rgba(255,255,255,.95); }
 .pane-map-cell.is-picking .pmc-cmd { color: #fff; }
 @keyframes pmc-pick { 0% { transform: scale(1); } 45% { transform: scale(1.09); } 100% { transform: scale(1); } }
+/* Handoff: the outgoing current tile releases its blue back to the muted idle look as the picked tile
+   lights up — the accent visibly moves from A to B rather than two tiles being blue at once. Overrides
+   .is-current, so it must follow it; the shared .pmc-surf transitions carry the fade. */
+.pane-map-cell.is-current.is-releasing .pmc-surf { background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(255, 255, 255, 0.10); box-shadow: none; }
+.pane-map-cell.is-current.is-releasing .pmc-seq { color: #9aa0aa; }
+.pane-map-cell.is-current.is-releasing .pmc-cmd { color: var(--ink, #e6e6e6); }
 .pane-map-cell .pmc-row { display: flex; align-items: center; gap: 5px; max-width: 100%; }
 .pane-map-cell .pmc-seq { font-size: 11px; font-weight: 700; line-height: 1; letter-spacing: .02em;
   color: #9aa0aa; font-variant-numeric: tabular-nums; }

@@ -225,11 +225,13 @@ describe('WindowBar', () => {
     const cells = container.querySelectorAll('.pane-map-cell');
     fire(cells[1], 'click');
     // brief selection feedback first: the tile flashes and the switch is NOT yet committed
-    expect(container.querySelectorAll('.pane-map-cell')[1].className).toContain('is-picking');
+    const flashing = container.querySelectorAll('.pane-map-cell');
+    expect(flashing[1].className).toContain('is-picking');      // B lights up
+    expect(flashing[0].className).toContain('is-releasing');    // A (the outgoing current) hands off its blue
     expect(onSelectPane).not.toHaveBeenCalled();
     expect(container.querySelector('.pane-map')).not.toBeNull(); // still open during the flash
     // after the flash the switch lands and the map closes
-    act(() => vi.advanceTimersByTime(200));
+    act(() => vi.advanceTimersByTime(250));
     expect(onSelectPane).toHaveBeenCalledWith('%2');
     expect(container.querySelector('.pane-map')).toBe(null);
   });

@@ -32,7 +32,7 @@ function WindowTab({ window: win, active, agent, onSelect, onManage }) {
 // current pane is pre-selected (✓), so opening it is just "confirm or switch".
 // A picked tile flashes to the selected state for this long before the switch lands + the map closes,
 // so you SEE which pane you chose (an instant close gives no feedback that anything happened).
-const PICK_MS = 170;
+const PICK_MS = 200;
 
 function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, onManage, onSelectPane }) {
   const [open, setOpen] = useState(false);
@@ -121,6 +121,8 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
               const fit = cellFit(c, MAP_W, MAP_H); // '' | 'flat' | 'narrow' | 'tiny' — degrades cramped cells
               const cmd = c.command || c.id;
               const cur = c.id === currentPaneId;
+              // The outgoing current tile releases its blue as another tile is picked — a color handoff.
+              const releasing = cur && picking && picking !== currentPaneId;
               return (
                 <button
                   type="button"
@@ -128,7 +130,7 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
                   role="option"
                   aria-selected={cur}
                   aria-label={cmd}
-                  className={`pane-map-cell${cur ? ' is-current' : ''}${fit ? ` is-${fit}` : ''}${picking === c.id ? ' is-picking' : ''}`}
+                  className={`pane-map-cell${cur ? ' is-current' : ''}${releasing ? ' is-releasing' : ''}${fit ? ` is-${fit}` : ''}${picking === c.id ? ' is-picking' : ''}`}
                   style={{ left: `${c.left}%`, top: `${c.top}%`, width: `${c.width}%`, height: `${c.height}%` }}
                   onClick={() => choose(c.id)}
                 >
