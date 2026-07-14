@@ -71,6 +71,22 @@ describe('paneLayout', () => {
     expect(w).toBeCloseTo(MAP_W + (30 - 23.4));   // grew right by the shortfall only
   });
 
+  it('a full-height pane crossing the next column\'s border does NOT open a min-sized gap there', () => {
+    // The screenshot bug: left pane spans the whole height; the right column splits into top/bottom with
+    // a 1-row border between them. That border row is "covered" by the left pane, but it is still a seam.
+    const cols = [
+      { id: '%1', active: false, command: 'claude', left: 0,  top: 0,  width: 40, height: 24 }, // full height
+      { id: '%2', active: false, command: 'claude', left: 41, top: 0,  width: 39, height: 12 }, // right-top
+      { id: '%3', active: true,  command: 'zsh',    left: 41, top: 13, width: 39, height: 11 }, // right-bottom
+    ];
+    const { h, cells } = paneLayout(cols);
+    const top = cells[1];
+    const bot = cells[2];
+    const gap = bot.top - (top.top + top.height); // the border seam between right-top and right-bottom
+    expect(gap).toBeLessThan(10);   // a hairline, NOT the 24px min
+    expect(h).toBe(MAP_H);          // and the map is not inflated by a phantom track
+  });
+
   it('returns null when geometry is missing or degenerate', () => {
     expect(paneLayout([{ id: '%1', command: 'zsh' }])).toBe(null);
     expect(paneLayout([{ id: '%1', left: 0, top: 0, width: 0, height: 0 }])).toBe(null);

@@ -30,13 +30,14 @@ export function hasGeometry(panes) {
 const uniqSorted = (nums) => [...new Set(nums)].sort((a, b) => a - b);
 
 // Turn the split lines along one axis into pixel track sizes: each track is proportional to its cell
-// span of the base length. A track that a PANE actually occupies is padded up to `min` when too small
-// (so the axis total grows by exactly that shortfall — additive, not a scale). A track that NO pane
-// covers is a BORDER SEAM (tmux separates panes by a 1-cell border, e.g. a half-split is left=0 w=40,
-// right=41 w=39 with col 40 the seam) — it must stay at its hairline proportional size, never bumped to
-// `min`, or a phantom ~min gap would shove the neighbour across and overflow the map. `spans` are the
-// panes' [start,end] extents on this axis. Returns [{ at }] prefix offsets: a pane spanning
-// edges[i]..edges[j] gets left=out[i].at, width=out[j].at-out[i].at.
+// span of the base length, and a too-small track is padded up to `min` (so the axis total grows by
+// exactly that shortfall — additive, not a scale). The one exception is a BORDER SEAM: tmux separates
+// panes with a 1-cell border, so a track that is ≤1 cell AND is not itself a whole pane's extent is a
+// seam. It must stay at its hairline proportional size, never bumped to `min`. Coverage is NOT the test
+// — a full-height pane in one column crosses the horizontal border between two panes in the NEXT column,
+// so a "covered" seam is still a seam; only the 1-cell width tells them apart. `spans` are the panes'
+// [start,end] extents on this axis. Returns [{ at }] prefix offsets: a pane spanning edges[i]..edges[j]
+// gets left=out[i].at, width=out[j].at-out[i].at.
 function trackOffsets(edges, spans, total, baseInner, min) {
   const offsets = [{ at: 0 }];
   let acc = 0;
@@ -44,8 +45,9 @@ function trackOffsets(edges, spans, total, baseInner, min) {
     const a = edges[i];
     const b = edges[i + 1];
     const prop = ((b - a) / total) * baseInner;
-    const covered = spans.some(([s, e]) => s <= a && e >= b);
-    acc += covered ? Math.max(prop, min) : prop;
+    const isPane = spans.some(([s, e]) => s === a && e === b); // a pane exactly fills this track
+    const seam = b - a <= 1 && !isPane; // a 1-cell tmux border, not a real (thin) pane
+    acc += seam ? prop : Math.max(prop, min);
     offsets.push({ at: acc });
   }
   return offsets;
