@@ -30,8 +30,31 @@ function WindowTab({ window: win, active, agent, onSelect, onManage }) {
 // Active window with >1 pane: the tab carries the current pane inline and taps open the pane menu.
 // Long-press = manage the window. The menu reuses Dropdown's .dd-menu / .dd-option visuals; the
 // current pane is pre-selected (✓), so opening it is just "confirm or switch".
+// A picked tile flashes to the selected state for this long before the switch lands + the map closes,
+// so you SEE which pane you chose (an instant close gives no feedback that anything happened).
+const PICK_MS = 170;
+
 function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, onManage, onSelectPane }) {
   const [open, setOpen] = useState(false);
+  // Id of the tile mid-selection (drives the .is-picking flash) until the switch commits.
+  const [picking, setPicking] = useState(null);
+  const pickTimer = useRef(null);
+  useEffect(() => () => clearTimeout(pickTimer.current), []);
+  // Tap a tile: give a nudge of haptic (Android; iOS Safari has no web haptic → silently ignored),
+  // flash the tile selected, then commit the switch. Under reduced-motion, skip the flash and switch now.
+  const choose = (id) => {
+    try { navigator.vibrate?.(10); } catch { /* unsupported */ }
+    const reduce = typeof window !== 'undefined' && window.matchMedia
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) { onSelectPane(id); setOpen(false); return; }
+    setPicking(id);
+    clearTimeout(pickTimer.current);
+    pickTimer.current = setTimeout(() => {
+      setPicking(null);
+      setOpen(false);
+      onSelectPane(id);
+    }, PICK_MS);
+  };
   // The menu is position:fixed (anchored by measured rect), not absolute: its anchor sits inside the
   // horizontally-scrolling .windowbar-scroll, whose overflow would otherwise CLIP a normal dropdown
   // and make it invisible (you'd see only the caret flip). Fixed escapes that clip; we keep it pinned
@@ -105,9 +128,9 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
                   role="option"
                   aria-selected={cur}
                   aria-label={cmd}
-                  className={`pane-map-cell${cur ? ' is-current' : ''}${fit ? ` is-${fit}` : ''}`}
+                  className={`pane-map-cell${cur ? ' is-current' : ''}${fit ? ` is-${fit}` : ''}${picking === c.id ? ' is-picking' : ''}`}
                   style={{ left: `${c.left}%`, top: `${c.top}%`, width: `${c.width}%`, height: `${c.height}%` }}
-                  onClick={() => { onSelectPane(c.id); setOpen(false); }}
+                  onClick={() => choose(c.id)}
                 >
                   <span className="pmc-surf">
                     {fit === 'narrow' || fit === 'tiny' ? (

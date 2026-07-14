@@ -217,14 +217,21 @@ describe('WindowBar', () => {
     expect(cells[1].textContent).toContain('node');
   });
 
-  it('map cell tap selects that pane and closes the map', () => {
+  it('map cell tap flashes the chosen tile, then commits the switch and closes the map', () => {
+    vi.useFakeTimers();
     const onSelectPane = vi.fn();
     render({ ...base, panes: geomPanes, onSelectPane });
     openPaneMenu();
     const cells = container.querySelectorAll('.pane-map-cell');
     fire(cells[1], 'click');
+    // brief selection feedback first: the tile flashes and the switch is NOT yet committed
+    expect(container.querySelectorAll('.pane-map-cell')[1].className).toContain('is-picking');
+    expect(onSelectPane).not.toHaveBeenCalled();
+    expect(container.querySelector('.pane-map')).not.toBeNull(); // still open during the flash
+    // after the flash the switch lands and the map closes
+    act(() => vi.advanceTimersByTime(200));
     expect(onSelectPane).toHaveBeenCalledWith('%2');
-    expect(container.querySelector('.pane-map')).toBe(null); // closed
+    expect(container.querySelector('.pane-map')).toBe(null);
   });
 
   it('falls back to the flat list when panes lack geometry', () => {
