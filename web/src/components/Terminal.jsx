@@ -94,6 +94,9 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
   // The effect's scheduleFit, surfaced so the font controls (below) can re-fit the row count
   // after changing the size from outside the effect scope.
   const fitRef = useRef(null);
+  // One-shot flag for the pager's "适配高度" button: the next fit() sizes the font so the whole pane fills
+  // the screen (see the fit-to-fill block in fit()). Set here, consumed in effect scope.
+  const fitScreenPendingRef = useRef(false);
   // wake() lets outside input (sends/keys, via App) snap the poll loop back to the live cadence and
   // poll immediately. Bridged through a ref like fitRef so the imperative handle can reach effect scope.
   const wakeRef = useRef(null);
@@ -422,6 +425,18 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       // on-screen slice instead of the full container (whose top is clipped off-screen with the keyboard up).
       elRef.current.parentElement?.style.setProperty('--vis-h', `${avail}px`);
       const cellH = curH / term.rows;
+
+      // "适配高度" (pager button): size the font so the WHOLE pane (paneRows) fills the visible height —
+      // grows OR shrinks (unlike the auto-shrink below, which only shrinks) and pins the result as a manual
+      // size, so a full-screen app shows all its rows on one screen with no scrollback (⇒ cursor always
+      // addressable). One-shot: consumed here, then the recursive pass re-fits the row count to the new size.
+      if (fitScreenPendingRef.current && paneRows && pass < 4) {
+        fitScreenPendingRef.current = false;
+        const cur = term.options.fontSize || 14;
+        const target = Math.max(8, Math.min(40, Math.round(cur * avail / (paneRows * cellH))));
+        fontRef.current = target; setFont(target); // pin manual + persist so auto-shrink won't fight it
+        if (target !== cur) { term.options.fontSize = target; requestAnimationFrame(() => fit(pass + 1)); return; }
+      }
 
       // Auto font-shrink only when the keyboard is down. Keyboard up keeps the font and just drops rows
       // (→ scrollback), so text stays readable and the app becomes a scrollable window instead of tinier.
@@ -1309,6 +1324,19 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
           // the focused input (same keepFocus trick as the dock buttons). onClick still fires.
           onPointerDown={(e) => { if (shouldKeepKeyboard(document.activeElement) && e.cancelable) e.preventDefault(); }}
         >
+          <button
+            type="button"
+            className="term-pager-btn"
+            aria-label="适配高度"
+            title="适配高度"
+            onClick={() => { fitScreenPendingRef.current = true; fitRef.current?.(); }}
+          >
+            <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+              <path d="M5 4.5h14M5 19.5h14" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M12 8.5v7M9.8 10.8L12 8.5l2.2 2.3M9.8 13.2L12 15.5l2.2-2.3" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <span className="term-pager-div" aria-hidden="true" />
           <button type="button" className="term-pager-btn" aria-label="上翻页" onClick={() => pageScroll('up')}>
             <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
               <path d="M6 14.5l6-6 6 6" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
