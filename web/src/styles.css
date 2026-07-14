@@ -236,7 +236,7 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 /* The visible tile surface, inset from the cell box so tiles read as separate window thumbnails. A
    too-small pane is already padded to a legible minimum by the layout (paneLayout grows the map), so
    the surface just fills its cell — no CSS min needed. */
-.pane-map-cell .pmc-surf { position: absolute; inset: 2px; border-radius: 7px; overflow: hidden;
+.pane-map-cell .pmc-surf { position: absolute; inset: 3px; border-radius: 8px; overflow: hidden;
   display: flex; flex-direction: column; gap: 3px; align-items: flex-start; justify-content: flex-start;
   padding: 7px 8px; text-align: left;
   background: rgba(255, 255, 255, 0.045); border: 1px solid rgba(255, 255, 255, 0.10);

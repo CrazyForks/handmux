@@ -11,7 +11,7 @@ export const MAP_W = 248;
 export const MAP_H = 158;
 // Inner gutter between tiles and the map's frosted edge. Baked into each cell's left/top by the
 // COMPONENT (CSS `padding` can't inset absolutely-positioned children), while w/h include it both sides.
-export const MAP_PAD = 4;
+export const MAP_PAD = 6;
 // A tmux pane border is 1 cell; that shows as a thin fixed seam between tiles, not an equal track.
 const SEAM = 2;
 // Below these rendered pixel sizes a cell can't legibly show its command, so content degrades:

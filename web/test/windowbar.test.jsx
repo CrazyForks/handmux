@@ -210,12 +210,12 @@ describe('WindowBar', () => {
     openPaneMenu();
     const cells = container.querySelectorAll('.pane-map-cell');
     expect(cells.length).toBe(2);
-    // two equal side-by-side panes → each 120px wide ((40/80)*(248-8)); cells are offset by the 4px
-    // gutter, so the left one sits at 4px and the right one at 4+120=124px (no blank at the edges).
-    expect(cells[0].style.left).toBe('4px');
-    expect(cells[0].style.top).toBe('4px');
+    // two equal side-by-side panes → each 118px wide ((248-12)/2); cells are offset by the 6px gutter,
+    // so the left one sits at 6px and the right one at 6+118=124px (no blank at the edges).
+    expect(cells[0].style.left).toBe('6px');
+    expect(cells[0].style.top).toBe('6px');
     expect(cells[1].style.left).toBe('124px');
-    expect(cells[1].style.width).toBe('120px');
+    expect(cells[1].style.width).toBe('118px');
     expect(cells[0].textContent).toContain('zsh');
     expect(cells[1].textContent).toContain('node');
   });

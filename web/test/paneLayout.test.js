@@ -32,19 +32,19 @@ describe('paneLayout (equal-division schematic)', () => {
   it('a left/right split → two EQUAL columns, with a hairline border seam between them', () => {
     const { cells } = paneLayout(hsplit);
     expect(cells.map((c) => c.id)).toEqual(['%1', '%2']);
-    expect(cells[0].width).toBeCloseTo(119); // (240 - 1 seam*2) / 2 columns
-    expect(cells[1].width).toBeCloseTo(119); // equal — real 40 vs 39 cells is ignored
+    expect(cells[0].width).toBeCloseTo(117); // (236 - 1 seam*2) / 2 columns
+    expect(cells[1].width).toBeCloseTo(117); // equal — real 40 vs 39 cells is ignored
     expect(cells[1].left - (cells[0].left + cells[0].width)).toBeCloseTo(2); // the 2px seam, not a big gap
-    expect(cells[0].height).toBeCloseTo(150); // both full height (150-8... = MAP_H-8)
+    expect(cells[0].height).toBeCloseTo(146); // both full height (MAP_H - 2*MAP_PAD)
   });
 
   it('2x2 grid → four EQUAL quarter tiles', () => {
     const { cells } = paneLayout(grid);
     expect(cells).toHaveLength(4);
-    expect(cells.every((c) => Math.abs(c.width - 120) < 0.5 && Math.abs(c.height - 75) < 0.5)).toBe(true);
+    expect(cells.every((c) => Math.abs(c.width - 118) < 0.5 && Math.abs(c.height - 73) < 0.5)).toBe(true);
     expect(cells[3]).toMatchObject({ command: 'd', seq: 3 });
-    expect(cells[3].left).toBeCloseTo(120);
-    expect(cells[3].top).toBeCloseTo(75);
+    expect(cells[3].left).toBeCloseTo(118);
+    expect(cells[3].top).toBeCloseTo(73);
   });
 
   it('ignores real cell ratios: a lopsided 90/10 stack renders as two EQUAL rows', () => {
@@ -53,8 +53,8 @@ describe('paneLayout (equal-division schematic)', () => {
       { id: '%2', active: false, command: 'zsh', left: 0, top: 90, width: 80, height: 10 },
     ];
     const { cells } = paneLayout(stack);
-    expect(cells[0].height).toBeCloseTo(75); // not 135 — equal division, real 90:10 discarded
-    expect(cells[1].height).toBeCloseTo(75);
+    expect(cells[0].height).toBeCloseTo(73); // not 131 — equal division, real 90:10 discarded
+    expect(cells[1].height).toBeCloseTo(73);
   });
 
   it('the screenshot layout: full-height left + right column split → right tiles are EQUAL, left is full', () => {
@@ -66,9 +66,9 @@ describe('paneLayout (equal-division schematic)', () => {
     const { w, h, cells } = paneLayout(cols);
     expect({ w, h }).toMatchObject({ w: MAP_W, h: MAP_H }); // no growth
     const [left, rTop, rBot] = cells;
-    expect(left.height).toBeCloseTo(150);   // left spans full height
-    expect(rTop.height).toBeCloseTo(74);    // right-top == right-bottom, though real is 12 vs 11... and
-    expect(rBot.height).toBeCloseTo(74);    // even a 51-vs-11 real split would render equal here
+    expect(left.height).toBeCloseTo(146);   // left spans full height
+    expect(rTop.height).toBeCloseTo(72);    // right-top == right-bottom, though real is 12 vs 11... and
+    expect(rBot.height).toBeCloseTo(72);    // even a 51-vs-11 real split would render equal here
     expect(rBot.top - (rTop.top + rTop.height)).toBeCloseTo(2); // hairline seam, not the old 24px gap
   });
 
