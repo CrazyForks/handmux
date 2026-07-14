@@ -14,6 +14,7 @@ import { usePushToTalk } from '../voice/usePushToTalk.js';
 import { useAsrAvailable } from '../voice/useAsrAvailable.js';
 import { useScreenWakeLock } from '../hooks/useScreenWakeLock.js';
 import { useBackButton } from '../hooks/useBackButton.js';
+import { softKeyboardUp } from '../hooks/useKeyboardInset.js';
 import { t } from '../i18n';
 import { MODIFIERS, modActive, consumeMods, withMods } from '../keybarKeys.js';
 
@@ -431,8 +432,7 @@ function BottomDock({
     const vv = window.visualViewport;
     if (!vv) return undefined;
     const reconcile = () => {
-      const overlap = window.innerHeight - vv.height; // keyboard height (offsetTop-immune), 0 when down
-      if (overlap > 120) { kbdWasUpRef.current = true; return; }
+      if (softKeyboardUp()) { kbdWasUpRef.current = true; return; } // height-based, offsetTop-immune
       if (!kbdWasUpRef.current) return; // opening, or already down — nothing to reconcile
       kbdWasUpRef.current = false;
       const active = document.activeElement;

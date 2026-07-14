@@ -11,6 +11,7 @@ import { backoffDelay } from '../backoff.js';
 import { idleDelay } from '../cadence.js';
 import { flingStep, shouldFling } from '../momentum.js';
 import { initialConnection, nextConnection } from '../connection.js';
+import { softKeyboardUp } from '../hooks/useKeyboardInset.js';
 import { scanDocLinks, docLinksOnLine } from '../docDecorations.js';
 import { fitRows, bottomPadRows, scrollDecision, cursorBufferLine, followTarget } from '../terminalViewport.js';
 import { ensureBundledFonts } from '../bundledFonts.js';
@@ -213,12 +214,18 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     // you tapped (which focuses it); sending keys did nothing, because ?25h alone can't draw on a
     // never-focused renderer. Verified in headless Chrome: never-focused → no cursor; focus()+blur() once →
     // the ?25h block renders and survives the blur. So prime the renderer here with one focus/blur. This
-    // effect only re-runs on a real pane change (dep [pane]), always via a nav tap that already blurred the
-    // composer — never mid-typing — so it can't steal the soft keyboard. Restore prior focus as insurance.
+    // effect re-runs on every pane change (dep [pane]) via a nav tap. term.focus() lands on xterm's real
+    // hidden textarea; on iOS a focus() still inside that tap's gesture RE-SUMMONS the soft keyboard for a
+    // frame before blur() drops it — the "input box pops out then retracts on window switch" jitter (the
+    // whole app rides translateY(-inset) with the keyboard). So skip the prime while the keyboard is up
+    // (you're mid-compose): the cursor primes on your next terminal tap instead. Keyboard-down navigation
+    // — the common case — is unchanged. Restore prior focus as insurance.
     const prevFocus = document.activeElement;
-    term.focus();
-    term.blur();
-    if (prevFocus && prevFocus !== document.body && typeof prevFocus.focus === 'function') prevFocus.focus();
+    if (!softKeyboardUp()) {
+      term.focus();
+      term.blur();
+      if (prevFocus && prevFocus !== document.body && typeof prevFocus.focus === 'function') prevFocus.focus();
+    }
     // Make doc paths TAPPABLE. xterm decorations (the underline below) are visual-only — they sit
     // under the event-capturing .xterm-viewport and never receive taps — so clicks go through the
     // link provider instead, which hooks xterm's own hit-testing and fires through the viewport.
