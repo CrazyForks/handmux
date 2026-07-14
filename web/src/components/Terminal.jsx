@@ -1073,7 +1073,9 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
         // idle/accepting input), drop the force so a LATER app-driven hide can hide it normally.
         if (hist.cur && hist.cur.vis) forceCursorRef.current = false;
         if (keepPosition) term.scrollToLine(Math.max(0, buf().length - anchorFromBottom));
-        else if (altScreenRef.current) term.scrollToTop(); // full-screen app → default to its first line
+        // A full-screen app opens on its FIRST line (firstSeed only); after that, reaching the bottom follows
+        // new output like any live pane — NOT a yank back to the top on every at-bottom repaint.
+        else if (altScreenRef.current && firstSeed) term.scrollToTop();
         else term.scrollToBottom();
         // Alt-screen cursor-follow (keyboard up): a cursor MOVE re-arms follow; then recenter only if the
         // cursor left the visible window — so manual scrolling that keeps it visible stays put, typing
