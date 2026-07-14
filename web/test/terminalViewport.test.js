@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  fitRows, scrollDecision, centerTarget, bottomTarget, cursorBufferLine, bottomPadRows, followTarget,
+  fitRows, scrollDecision, topTarget, bottomTarget, cursorBufferLine, bottomPadRows, followTarget,
 } from '../src/terminalViewport.js';
 
 describe('fitRows', () => {
@@ -22,12 +22,11 @@ describe('scrollDecision', () => {
   });
 });
 
-describe('centerTarget', () => {
-  it('centers the cursor line, clamped to [0, baseY]', () => {
-    expect(centerTarget(50, 20, 100)).toBe(40); // 50 - 10
-    expect(centerTarget(5, 20, 100)).toBe(0);   // clamp low
-    expect(centerTarget(99, 20, 100)).toBe(89);
-    expect(centerTarget(200, 20, 100)).toBe(100); // clamp high
+describe('topTarget', () => {
+  it('puts the cursor on the first visible row, clamped to [0, baseY]', () => {
+    expect(topTarget(50, 100)).toBe(50);
+    expect(topTarget(-3, 100)).toBe(0);   // clamp low
+    expect(topTarget(200, 100)).toBe(100); // clamp high
   });
 });
 
@@ -47,20 +46,20 @@ describe('bottomPadRows', () => {
   });
 });
 
-describe('followTarget', () => {
+describe('followTarget (scroll into view, nearest edge)', () => {
   const base = { visibleRows: 20, baseY: 100 };
   it('null when not armed', () => {
     expect(followTarget({ cursorLine: 90, viewportY: 0, armed: false, ...base })).toBe(null);
   });
-  it('null when cursor already in the visible window', () => {
+  it('null when the cursor is still in the visible window', () => {
     expect(followTarget({ cursorLine: 10, viewportY: 0, armed: true, ...base })).toBe(null);
+    expect(followTarget({ cursorLine: 70, viewportY: 60, armed: true, ...base })).toBe(null);
   });
-  it('bottom-aligns the cursor when armed and out of view (last visible row = cursor)', () => {
+  it('below the window → bottom-align (last visible row = cursor)', () => {
     expect(followTarget({ cursorLine: 90, viewportY: 0, armed: true, ...base })).toBe(71); // 90 - 20 + 1
   });
-  it('clamps the bottom-align target to [0, baseY]', () => {
-    expect(followTarget({ cursorLine: 5, viewportY: 60, armed: true, ...base })).toBe(0);   // above view → clamp low
-    expect(followTarget({ cursorLine: 200, viewportY: 0, armed: true, ...base })).toBe(100); // clamp high
+  it('above the window → top-align (first visible row = cursor)', () => {
+    expect(followTarget({ cursorLine: 5, viewportY: 60, armed: true, ...base })).toBe(5);
   });
 });
 

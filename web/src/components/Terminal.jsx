@@ -471,12 +471,13 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
         term.write(`\x1b[?25l\x1b[${term.rows};1H`, () => {
           if (disposed) return;
           term.resize(term.cols, want);
-          // Full-screen app: keyboard DOWN → show its first line (top); keyboard UP → you're editing, so keep
-          // the cursor in view by bottom-aligning it (only when it's off-screen), i.e. the caret sits on the
-          // last row just above the keyboard with its context above. Normal screen → bottom-align.
+          // Full-screen app: reference is the FIRST line (scrollToTop). With the keyboard UP the visible slice
+          // shrinks from the bottom, so a cursor now below the fold gets pulled onto the last visible row
+          // (bottom-align via followTarget from viewportY=0); a cursor still in the top slice stays put — i.e.
+          // opening the keyboard shows the first line and only scrolls if it must, to keep the caret visible.
           if (altScreenRef.current) {
-            if (insetRef.current === 0) term.scrollToTop();
-            else {
+            term.scrollToTop();
+            if (insetRef.current > 0) {
               const cl = cursorBufferLine(curInfo, seedRows);
               const ct = cl == null ? null : followTarget({ cursorLine: cl, viewportY: buf().viewportY, visibleRows: term.rows, baseY: buf().baseY, armed: true });
               if (ct != null) term.scrollToLine(ct);

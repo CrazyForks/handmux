@@ -16,14 +16,12 @@ export function scrollDecision(viewportY, baseY, dir) {
   return viewportY < baseY ? 'internal' : 'forward';
 }
 
-// scrollToLine target that centers `cursorLine` in a `visibleRows`-tall window, clamped to [0, baseY].
-export function centerTarget(cursorLine, visibleRows, baseY) {
-  return clamp(cursorLine - Math.floor(visibleRows / 2), 0, baseY);
+// scrollToLine target that puts `cursorLine` on the FIRST (top) visible row, clamped to [0, baseY].
+export function topTarget(cursorLine, baseY) {
+  return clamp(cursorLine, 0, baseY);
 }
 
-// scrollToLine target that puts `cursorLine` on the BOTTOM visible row, clamped to [0, baseY]. With the
-// keyboard up you're editing, so the cursor sits on the last row (just above the keyboard) with its context
-// above it — matching a native terminal, which keeps the caret at the bottom.
+// scrollToLine target that puts `cursorLine` on the BOTTOM visible row, clamped to [0, baseY].
 export function bottomTarget(cursorLine, visibleRows, baseY) {
   return clamp(cursorLine - visibleRows + 1, 0, baseY);
 }
@@ -39,12 +37,12 @@ export function bottomPadRows(contentRows, gridRows) {
   return Math.max(0, gridRows - contentRows);
 }
 
-// Follow-the-cursor scrollToLine target, or null to stay put. Only scrolls when armed AND the cursor has
-// left the visible window — so manual scrolling that keeps the cursor visible stays put, and the cursor is
-// never lost once armed. When it does scroll, it BOTTOM-aligns the cursor (see bottomTarget).
+// Follow-the-cursor scrollToLine target, or null to stay put — the editor "scroll into view" rule: scroll
+// the minimum to the NEAREST edge the cursor left by. Above the window → put it on the first row (top-align);
+// below → on the last row (bottom-align); still in view → don't move. Only acts when armed.
 export function followTarget({ cursorLine, viewportY, visibleRows, baseY, armed }) {
   if (!armed) return null;
-  const inView = cursorLine >= viewportY && cursorLine < viewportY + visibleRows;
-  if (inView) return null;
-  return bottomTarget(cursorLine, visibleRows, baseY);
+  if (cursorLine < viewportY) return topTarget(cursorLine, baseY);                 // above → first row = cursor
+  if (cursorLine >= viewportY + visibleRows) return bottomTarget(cursorLine, visibleRows, baseY); // below → last row = cursor
+  return null; // in view → stay
 }
