@@ -84,6 +84,10 @@ export const deleteWindow = (id) =>
   req(`/api/windows?window=${encodeURIComponent(id)}`, { method: 'DELETE' });
 export const swapWindows = (a, b) =>
   req('/api/windows/swap', { method: 'POST', body: JSON.stringify({ a, b }) });
+export const splitPane = (pane, dir) =>
+  req('/api/panes/split', { method: 'POST', body: JSON.stringify({ pane, dir }) });
+export const closePane = (pane) =>
+  req(`/api/panes?pane=${encodeURIComponent(pane)}`, { method: 'DELETE' });
 export const createDir = (dir, name) =>
   req('/api/dir', { method: 'POST', body: JSON.stringify({ dir, name }) });
 
