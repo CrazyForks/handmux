@@ -4,6 +4,14 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Added
+- 键盘弹起时终端不再把顶部内容顶出屏外：网格按键盘上方的真实高度重排，主屏短内容贴键盘上沿显示；全屏应用（vim/less/htop 等）可在内部上下滚动、到顶/底才翻页，展开键盘时自动把光标带到视野中央并跟随、手动滚动时让位。
+
+### Changed
+- 全屏应用手指滑动触发上下键更灵敏（每 12px 一格）。
+- 预览注册表改为内存单写者模型（原先每次操作重读并回写 JSON，GET 时的过期清理可能与并发注册竞争而丢条目）；
+  push 订阅与预览的持久化都改为原子写。`/states` 轮询与文件监听并发时不再交错去重状态导致重复推送。
+
 ### Fixed
 - 新开窗口、内容较短时不再"内容停在屏幕中间、光标却在最底"，要打一个字才对齐：根因是首帧按 xterm 默认行数
   （24）算的底部留白，紧接着 fit 把网格长大到填满屏幕却没重算留白，于是短内容被留白顶在中部、光标按长大后的
@@ -12,15 +20,12 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
   （`floor(scrollTop/行高)`），而行高是小数、浏览器把 scrollTop 存成整数，反推偶尔少一行——于是每帧重绘就掉一行
   （只在滚了一点、且是活跃刷新的 pane 上出现，空闲页不重绘所以不漂）。日常直播刷新改回用 xterm 的整数行号锚定
   （零漂移），像素反推只保留给上滑拉历史那条（fling 可能停在半行，仍需对齐渲染行以免「拉取后高一行」）。
+- 光标不点屏幕也能显示了：根因是 xterm 在终端从未被聚焦前根本不渲染光标（连失焦 block 样式也不画），而我们的网格只读、从不聚焦，所以之前必须点一下（点击会聚焦终端）才看得到光标。现在终端创建时用一次 focus/blur 激活渲染器，之后光标随 tmux 状态正常显示。此外，发键/发指令后即使 Claude 正在工作（光标本被隐藏）也会点亮光标并保持到它重新空闲，操作时始终看得到光标在哪。
 - 启动**动态端口预览**后现在会像静态预览一样自动弹出预览面板：此前从设置里启动动态预览，面板会一闪而过又收回（要手动点顶栏预览图标才打开）——根因是关闭设置面板时其返回键守卫会 `history.back()` 发出一个 popstate，而预览面板几乎同帧打开、监听器刚挂上就把这个「返回」当成用户按了返回而自关（静态因为在网络请求前就早早关了设置、那个 popstate 早已消散才侥幸不中招）。现在动态路径把开面板推迟到设置的返回 popstate 之后，面板监听器挂在干净的历史栈上。
+- 会话重命名撞到已有名称时正确提示「名称已存在」，不再显示通用的「重命名失败」：底层网络封装此前丢掉了服务端的 409 状态码，改为结构化的 `ApiError`（保留 `status`）后，重名场景能被识别并给出准确文案。
 - `handmux stop`（及 `restart`）在 supervisor 已崩溃/被强杀时不再遗留孤儿的 server/tunnel 子进程：停止时
   若发现 supervisor 已死但状态文件仍在，会先回收记录在案的子进程再清理状态（此前正是「stop 后 cloudflared
   仍在跑」的成因）。`state.json` 改为原子写（临时文件 + rename），并发读不再读到写了一半的内容而误判为「未运行」。
-- 预览注册表改为内存单写者模型（原先每次操作重读并回写 JSON，GET 时的过期清理可能与并发注册竞争而丢条目）；
-  push 订阅与预览的持久化都改为原子写。`/states` 轮询与文件监听并发时不再交错去重状态导致重复推送。
-- 键盘弹起时终端不再把顶部内容顶出屏外：网格按键盘上方的真实高度重排，主屏短内容贴键盘上沿显示；全屏应用（vim/less/htop 等）可在内部上下滚动、到顶/底才翻页，展开键盘时自动把光标带到视野中央并跟随、手动滚动时让位。
-- 光标不点屏幕也能显示了：根因是 xterm 在终端从未被聚焦前根本不渲染光标（连失焦 block 样式也不画），而我们的网格只读、从不聚焦，所以之前必须点一下（点击会聚焦终端）才看得到光标。现在终端创建时用一次 focus/blur 激活渲染器，之后光标随 tmux 状态正常显示。此外，发键/发指令后即使 Claude 正在工作（光标本被隐藏）也会点亮光标并保持到它重新空闲，操作时始终看得到光标在哪。
-- 全屏应用手指滑动触发上下键更灵敏（每 12px 一格）。
 - `handmux update` on a Homebrew (tap) install no longer runs `npm i -g` over itself — that planted a
   second, conflicting copy Homebrew couldn't see or upgrade. It now detects the brew install and points you
   at `brew upgrade handmux`; the "upgrade available" notice shows the matching command per source.
