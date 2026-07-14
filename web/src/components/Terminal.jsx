@@ -97,6 +97,9 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
   // One-shot flag for the pager's "适配高度" button: the next fit() sizes the font so the whole pane fills
   // the screen (see the fit-to-fill block in fit()). Set here, consumed in effect scope.
   const fitScreenPendingRef = useRef(false);
+  // One-shot flag: the keyboard just collapsed → the next fit keeps the cursor in view (scroll-into-view)
+  // instead of jumping to the first line, so you don't lose your editing spot. Set in the inset effect.
+  const collapseKeepCursorRef = useRef(false);
   // wake() lets outside input (sends/keys, via App) snap the poll loop back to the live cadence and
   // poll immediately. Bridged through a ref like fitRef so the imperative handle can reach effect scope.
   const wakeRef = useRef(null);
@@ -157,6 +160,8 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     // Keyboard just opened on a full-screen app → arm cursor-follow so a later cursor move keeps the caret
     // in view; the refit itself bottom-aligns the cursor now (see the alt-screen branch in fit()).
     if (inset > 0 && prev === 0) followArmedRef.current = true;
+    // Keyboard just collapsed → the refit keeps the cursor in view instead of jumping to the first line.
+    if (inset === 0 && prev > 0) collapseKeepCursorRef.current = true;
     fitRef.current?.();
     if (inset === 0) followArmedRef.current = false; // keyboard closed → stop following
   }, [inset]);
@@ -363,21 +368,21 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     const disposeCursorDeco = () => {
       if (cursorDecoRef.current) { cursorDecoRef.current.deco.dispose(); cursorDecoRef.current.marker.dispose(); cursorDecoRef.current = null; }
     };
-    // xterm's own cursor lives in the ACTIVE screen (the bottom term.rows lines); CUP can't address a line
-    // in scrollback, so when a full-screen app is taller than the grid and its cursor sits in the scrolled-
-    // off top (cur.row ≥ term.rows), cursorSeq would clamp it to the active-screen top — the wrong row. In
-    // that case hide the native cursor and draw the cursor as a DECORATION anchored to its TRUE buffer line
-    // (same registerMarker trick as the doc-path underlines), so it renders at the right cell even in
-    // scrollback and scrolls with the content. Otherwise use the native cursor (blinks, correct in-screen).
+    // xterm renders its native cursor ONLY while the viewport sits at the live bottom (ydisp === ybase). For
+    // a full-screen app whose caret we scrolled into a shorter window — bottom/top-aligned with rows still
+    // off-screen below, or a caret up in scrollback — the viewport is scrolled up (viewportY < baseY) and the
+    // native cursor is hidden, so it would vanish until the next repaint. In that case draw the cursor as a
+    // DECORATION anchored to its TRUE buffer line (same registerMarker trick as the doc-path underlines): it
+    // renders at the right cell at any scroll offset. At the live bottom, use the native cursor (it blinks).
     const placeCursor = () => {
       if (disposed) return;
       const cur = curInfo;
-      const inScrollback = cur && (cur.vis || forceCursorRef.current) && seedRows > term.rows && (cur.row | 0) >= term.rows;
-      if (!inScrollback) { disposeCursorDeco(); term.write(cursorSeq(cur, term.rows, seedRows, forceCursorRef.current)); return; }
+      const b = term.buffer.active;
+      const useDeco = cur && (cur.vis || forceCursorRef.current) && altScreenRef.current && b.viewportY < b.baseY;
+      if (!useDeco) { disposeCursorDeco(); term.write(cursorSeq(cur, term.rows, seedRows, forceCursorRef.current)); return; }
       term.write('\x1b[?25l'); // hide native — the decoration is the cursor now
       disposeCursorDeco();
       const line = (seedRows - 1) - (cur.row | 0); // true buffer line, counted up from the seed's bottom
-      const b = term.buffer.active;
       const marker = term.registerMarker(line - (b.baseY + b.cursorY));
       if (!marker) return;
       const deco = term.registerDecoration({ marker, x: Math.max(0, cur.col | 0), width: 1 });
@@ -471,17 +476,21 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
         term.write(`\x1b[?25l\x1b[${term.rows};1H`, () => {
           if (disposed) return;
           term.resize(term.cols, want);
-          // Full-screen app: reference is the FIRST line (scrollToTop). With the keyboard UP the visible slice
-          // shrinks from the bottom, so a cursor now below the fold gets pulled onto the last visible row
-          // (bottom-align via followTarget from viewportY=0); a cursor still in the top slice stays put — i.e.
-          // opening the keyboard shows the first line and only scrolls if it must, to keep the caret visible.
+          // Full-screen app scroll after a resize:
+          //  • keyboard UP → first-line reference, then bottom-align the cursor if it fell below the fold
+          //    (opening the keyboard shows the first line, scrolling only if it must to keep the caret shown);
+          //  • just COLLAPSED → keep the cursor in view (scroll-into-view) so closing the keyboard doesn't
+          //    lose your editing spot;
+          //  • otherwise (first entry / other) → the first line.
           if (altScreenRef.current) {
-            term.scrollToTop();
-            if (insetRef.current > 0) {
-              const cl = cursorBufferLine(curInfo, seedRows);
+            const cl = cursorBufferLine(curInfo, seedRows);
+            const follow = () => {
               const ct = cl == null ? null : followTarget({ cursorLine: cl, viewportY: buf().viewportY, visibleRows: term.rows, baseY: buf().baseY, armed: true });
               if (ct != null) term.scrollToLine(ct);
-            }
+            };
+            if (insetRef.current > 0) { term.scrollToTop(); follow(); }
+            else if (collapseKeepCursorRef.current) { collapseKeepCursorRef.current = false; follow(); }
+            else term.scrollToTop();
           } else term.scrollToBottom();
           if (pass < 4) requestAnimationFrame(() => fit(pass + 1));
           // last pass → grid settled: re-pad short content for the FINAL row count, THEN cursor + reveal
