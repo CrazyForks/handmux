@@ -1306,6 +1306,11 @@ button.cmd-text { background: none; border: none; text-align: left; }
    the text fully legible through the tint. */
 .doc-deco { background: rgba(108,180,255,0.20); border-radius: 2px; box-sizing: border-box; }
 
+/* Decoration-drawn cursor for a full-screen app whose cursor sits in scrollback (xterm's native cursor
+   can't be placed there — see placeCursor). A white block with mix-blend-mode:difference inverts the cell
+   underneath, so it reads as a reverse-video cursor block on any theme without hiding the character. */
+.cursor-deco { background: #fff; mix-blend-mode: difference; pointer-events: none; }
+
 .doc-toast {
   position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
   z-index: 60; max-width: 86vw;

@@ -50,6 +50,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
   // how the loop reaches outside state via fitRef/wakeRef). Tapping a path does NOT open it directly
   // — it hands the path + tap coords to App, which shows a confirm popover (anti-误触).
   const decosRef = useRef([]);
+  const cursorDecoRef = useRef(null); // decoration-drawn cursor for a full-screen app whose cursor is in scrollback (CUP can't reach it)
   const onDocLinkTapRef = useRef(onDocLinkTap);
   onDocLinkTapRef.current = onDocLinkTap;
   // The doc-path wash is an opt-in visual cue (Settings toggle, default off) — paths stay tappable
@@ -354,7 +355,31 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     //     captured scrollback, so a smaller font simply shows more lines.
     // Put xterm's own cursor on Claude's input cell (or hide it), AFTER the grid is sized + scrolled —
     // never inside the seed. Absolute from the viewport bottom, so it's correct at any row count.
-    const placeCursor = () => { if (!disposed) term.write(cursorSeq(curInfo, term.rows, seedRows, forceCursorRef.current)); };
+    const disposeCursorDeco = () => {
+      if (cursorDecoRef.current) { cursorDecoRef.current.deco.dispose(); cursorDecoRef.current.marker.dispose(); cursorDecoRef.current = null; }
+    };
+    // xterm's own cursor lives in the ACTIVE screen (the bottom term.rows lines); CUP can't address a line
+    // in scrollback, so when a full-screen app is taller than the grid and its cursor sits in the scrolled-
+    // off top (cur.row ≥ term.rows), cursorSeq would clamp it to the active-screen top — the wrong row. In
+    // that case hide the native cursor and draw the cursor as a DECORATION anchored to its TRUE buffer line
+    // (same registerMarker trick as the doc-path underlines), so it renders at the right cell even in
+    // scrollback and scrolls with the content. Otherwise use the native cursor (blinks, correct in-screen).
+    const placeCursor = () => {
+      if (disposed) return;
+      const cur = curInfo;
+      const inScrollback = cur && (cur.vis || forceCursorRef.current) && seedRows > term.rows && (cur.row | 0) >= term.rows;
+      if (!inScrollback) { disposeCursorDeco(); term.write(cursorSeq(cur, term.rows, seedRows, forceCursorRef.current)); return; }
+      term.write('\x1b[?25l'); // hide native — the decoration is the cursor now
+      disposeCursorDeco();
+      const line = (seedRows - 1) - (cur.row | 0); // true buffer line, counted up from the seed's bottom
+      const b = term.buffer.active;
+      const marker = term.registerMarker(line - (b.baseY + b.cursorY));
+      if (!marker) return;
+      const deco = term.registerDecoration({ marker, x: Math.max(0, cur.col | 0), width: 1 });
+      if (!deco) { marker.dispose(); return; }
+      deco.onRender((el) => { el.classList.add('cursor-deco'); });
+      cursorDecoRef.current = { deco, marker };
+    };
 
     // Re-pad the current normal-screen seed for the CURRENT term.rows and re-write it, so short content
     // stays bottom-aligned after fit() changes the grid height. The seed's pad was computed against the
@@ -1200,6 +1225,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       linkProvider.dispose();
       for (const { deco, marker } of decosRef.current) { deco.dispose(); marker.dispose(); }
       decosRef.current = [];
+      disposeCursorDeco();
       term.dispose();
       termRef.current = null;
     };
