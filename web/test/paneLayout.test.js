@@ -27,22 +27,22 @@ describe('paneLayout', () => {
   it('a real border-separated half split stays at base size — the 1-col seam is NOT bumped to the min', () => {
     const { w, h, cells } = paneLayout(hsplit);
     // The seam must NOT inflate to MIN_W and shove the right pane across / overflow the map.
-    expect(w).toBe(MAP_W); // 117 (left) + 2.925 (seam, proportional) + 114.075 (right) + 14 pad = 248
+    expect(w).toBe(MAP_W); // 120 (left) + 3 (seam, proportional) + 117 (right) + 8 gutter = 248
     expect(h).toBe(MAP_H);
     expect(cells.map((c) => c.id)).toEqual(['%1', '%2']);
     expect(cells[0]).toMatchObject({ left: 0, top: 0, seq: 0, active: true });
-    expect(cells[0].width).toBeCloseTo(117);   // (40/80) * 234
-    expect(cells[1].left).toBeCloseTo(119.925); // 117 + 2.925 seam — a hairline, not a 30px gap
-    expect(cells[1].width).toBeCloseTo(114.075); // (39/80) * 234
-    expect(cells[0].height).toBeCloseTo(144);   // full height (158-14)
+    expect(cells[0].width).toBeCloseTo(120);   // (40/80) * 240
+    expect(cells[1].left).toBeCloseTo(123);    // 120 + 3 seam — a hairline, not a 30px gap
+    expect(cells[1].width).toBeCloseTo(117);   // (39/80) * 240
+    expect(cells[0].height).toBeCloseTo(150);  // full height (158-8)
   });
 
   it('2x2 grid → four equal quarter tiles with the right labels', () => {
     const { cells } = paneLayout(grid);
     expect(cells).toHaveLength(4);
     expect(cells[3]).toMatchObject({ command: 'd', seq: 3 });
-    expect(cells[3].left).toBeCloseTo(117);
-    expect(cells[3].top).toBeCloseTo(72); // (12/24) * 144
+    expect(cells[3].left).toBeCloseTo(120);
+    expect(cells[3].top).toBeCloseTo(75); // (12/24) * 150
   });
 
   it('a too-SHORT tile is padded to the minimum, growing the map DOWN by exactly the shortfall — siblings unchanged', () => {
@@ -51,13 +51,13 @@ describe('paneLayout', () => {
       { id: '%2', active: false, command: 'zsh', left: 0, top: 90, width: 80, height: 10 },
     ];
     const { h, cells } = paneLayout(stack);
-    // bottom would be (10/100)*144 = 14.4px → bumped to the 24px floor
+    // bottom would be (10/100)*150 = 15px → bumped to the 24px floor
     expect(cells[1].height).toBeCloseTo(24);
     // top keeps its exact proportional pixels — it is NOT shrunk to make room
-    expect(cells[0].height).toBeCloseTo(129.6); // (90/100)*144
-    // the whole map grew by the shortfall (24 - 14.4 = 9.6), not by scaling
-    expect(h).toBeCloseTo(MAP_H + (24 - 14.4));
-    expect(cells[1].top).toBeCloseTo(129.6); // sits right below the untouched top tile
+    expect(cells[0].height).toBeCloseTo(135); // (90/100)*150
+    // the whole map grew by the shortfall (24 - 15 = 9), not by scaling
+    expect(h).toBeCloseTo(MAP_H + (24 - 15));
+    expect(cells[1].top).toBeCloseTo(135); // sits right below the untouched top tile
   });
 
   it('a too-THIN tile is padded to the minimum, growing the map RIGHT — siblings unchanged', () => {
@@ -66,9 +66,9 @@ describe('paneLayout', () => {
       { id: '%2', active: false, command: 'htop', left: 90, top: 0, width: 10, height: 24 },
     ];
     const { w, cells } = paneLayout(sidebar);
-    expect(cells[1].width).toBeCloseTo(30);       // (10/100)*234 = 23.4 → 30 floor
-    expect(cells[0].width).toBeCloseTo(210.6);    // (90/100)*234, untouched
-    expect(w).toBeCloseTo(MAP_W + (30 - 23.4));   // grew right by the shortfall only
+    expect(cells[1].width).toBeCloseTo(30);     // (10/100)*240 = 24 → 30 floor
+    expect(cells[0].width).toBeCloseTo(216);    // (90/100)*240, untouched
+    expect(w).toBeCloseTo(MAP_W + (30 - 24));   // grew right by the shortfall only
   });
 
   it('a full-height pane crossing the next column\'s border does NOT open a min-sized gap there', () => {

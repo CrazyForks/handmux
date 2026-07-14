@@ -122,7 +122,7 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
       </button>
       {open && pos && (
         hasGeometry(panes) ? (
-          <div className="pane-map wt-menu" role="listbox" style={{ top: pos.top, left: pos.left, width: mapW, height: mapH }}>
+          <div className="pane-map" role="listbox" style={{ top: pos.top, left: pos.left, width: mapW, height: mapH }}>
             {layout.cells.map((c) => {
               const fit = cellFit(c); // '' | 'flat' | 'narrow' | 'tiny' — degrades cramped cells
               const cmd = c.command || c.id;
