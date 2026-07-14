@@ -234,6 +234,33 @@ describe('WindowBar', () => {
     expect(container.querySelectorAll('.dd-option').length).toBe(2);
   });
 
+  it('degrades a very narrow tile to seq-only so its command is not squished in unreadably', () => {
+    // wide main + thin sidebar: the sidebar cell is too narrow to show its command legibly.
+    const narrowLayout = [
+      { id: '%1', active: true,  command: 'vim',  left: 0,  top: 0, width: 66, height: 24 },
+      { id: '%2', active: false, command: 'htop', left: 66, top: 0, width: 14, height: 24 },
+    ];
+    render({ ...base, panes: narrowLayout, currentPaneId: '%1' });
+    openPaneMenu();
+    const cells = container.querySelectorAll('.pane-map-cell');
+    expect(cells[1].className).toContain('is-narrow');
+    expect(cells[1].textContent).not.toContain('htop'); // command dropped in the cramped cell
+    expect(cells[1].textContent).toContain('②');        // but the seq badge keeps it identifiable
+    expect(cells[0].textContent).toContain('vim');       // the roomy cell still shows its command
+  });
+
+  it('clamps the map inside the viewport when the tab sits near the right edge', () => {
+    render({ ...base, panes: geomPanes });
+    // pin the trigger's anchor rect to the right edge; jsdom innerWidth is 1024, MAP_W 248, MARGIN 8.
+    const rootEl = container.querySelector('.wt-dd');
+    rootEl.getBoundingClientRect = () => ({ left: 1000, right: 1080, top: 40, bottom: 64, width: 80, height: 24 });
+    openPaneMenu();
+    const map = container.querySelector('.pane-map');
+    // left is pulled back so the whole 248px box stays on-screen (not left: 1000px → off the right).
+    expect(parseFloat(map.style.left)).toBe(window.innerWidth - 248 - 8);
+    expect(parseFloat(map.style.left) + 248).toBeLessThanOrEqual(window.innerWidth - 8);
+  });
+
   it('a short tap on a tab still selects (no long-press)', () => {
     vi.useFakeTimers();
     const onManageWindow = vi.fn();

@@ -218,24 +218,46 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .wt-menu .dd-option-label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .wt-menu .dd-pane-seq { flex: none; opacity: .55; font-variant-numeric: tabular-nums; }
 .wt-menu .dd-pane-cmd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Proportional layout map: reproduces the real tmux split. .pane-map declares its OWN frosted-glass
-   shell (background/blur/border/radius/shadow) and reuses .wt-menu only for its fixed positioning;
-   cells are absolutely placed inside it by percentage (from paneLayout.js paneRects), one per pane. */
-.pane-map { width: 220px; aspect-ratio: 16 / 10; padding: 0; overflow: hidden; z-index: 30;
-  background: rgba(28, 30, 34, 0.72);
+/* Proportional layout map: a frosted popover that reproduces the real tmux split as tappable window
+   tiles. .pane-map declares its OWN frosted-glass shell and reuses .wt-menu only for fixed
+   positioning; MAP_W/MAP_H (paneLayout.js) mirror this box's px size (used for viewport clamping and
+   cell-fit classification). Each .pane-map-cell is absolutely placed by percentage (paneRects); its
+   inner .pmc-surf insets to leave a gutter between tiles (real-window-thumbnail look), and cramped
+   cells get .is-flat/.is-narrow/.is-tiny to degrade content without changing proportions. */
+.pane-map { width: 248px; height: 158px; padding: 7px; overflow: hidden; z-index: 30;
+  background: rgba(24, 26, 30, 0.78);
   -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4);
-  border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  border: 1px solid rgba(255,255,255,0.14); border-radius: 14px;
+  box-shadow: 0 12px 34px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.05);
   transform-origin: top; animation: dd-pop .12s ease; }
-.pane-map-cell { position: absolute; display: flex; flex-direction: column; gap: 2px;
-  align-items: flex-start; justify-content: flex-start; overflow: hidden; padding: 4px 5px;
-  border: 1px solid rgba(128, 128, 128, 0.35); background: rgba(128, 128, 128, 0.10);
-  color: inherit; font: inherit; text-align: left; box-sizing: border-box; }
-.pane-map-cell.is-current { background: rgba(122, 180, 245, 0.22); border-color: rgba(122, 180, 245, 0.85); }
-.pane-map-cell .pmc-seq { font-variant-numeric: tabular-nums; opacity: 0.75; }
-.pane-map-cell .pmc-cmd { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.pane-map-cell { position: absolute; padding: 0; border: 0; background: none; color: inherit;
+  font: inherit; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+/* The visible tile surface, inset from the cell box so tiles read as separate window thumbnails. */
+.pane-map-cell .pmc-surf { position: absolute; inset: 3px; border-radius: 8px; overflow: hidden;
+  display: flex; flex-direction: column; gap: 3px; align-items: flex-start; justify-content: flex-start;
+  padding: 7px 8px; text-align: left;
+  background: rgba(255, 255, 255, 0.045); border: 1px solid rgba(255, 255, 255, 0.10);
+  transition: transform .12s ease, background .15s ease, border-color .15s ease; }
+.pane-map-cell:active .pmc-surf { transform: scale(.97); }
+/* Current pane: solid iOS-blue tile with white content — reads at a glance among the muted tiles. */
+.pane-map-cell.is-current .pmc-surf { background: var(--blue); border-color: rgba(255,255,255,.25);
+  box-shadow: 0 2px 10px rgba(10, 132, 255, .4); }
+.pane-map-cell .pmc-row { display: flex; align-items: center; gap: 5px; max-width: 100%; }
+.pane-map-cell .pmc-seq { font-size: 11px; font-weight: 700; line-height: 1; letter-spacing: .02em;
+  color: #9aa0aa; font-variant-numeric: tabular-nums; }
+.pane-map-cell.is-current .pmc-seq { color: rgba(255,255,255,.9); }
+.pane-map-cell .pmc-cmd { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; line-height: 1.25; color: var(--ink, #e6e6e6); }
+.pane-map-cell.is-current .pmc-cmd { color: #fff; }
+.pane-map-cell .pmc-row .agent-mark { width: 13px; height: 13px; margin: 0; }
+/* Adaptive content by rendered tile size (classes from paneLayout.js cellFit): */
+.pane-map-cell.is-flat   .pmc-surf { flex-direction: row; align-items: center; gap: 6px; padding: 0 8px; }
+.pane-map-cell.is-narrow .pmc-surf { align-items: center; justify-content: center; padding: 4px 2px; }
+.pane-map-cell.is-narrow .pmc-seq { font-size: 12px; }
+.pane-map-cell.is-tiny   .pmc-surf { align-items: center; justify-content: center; padding: 0; gap: 0; }
 @media (prefers-reduced-motion: reduce) {
-  .pane-map, .pane-map-cell { transition: none; animation: none; }
+  .pane-map { animation: none; }
+  .pane-map-cell .pmc-surf { transition: none; }
 }
 .terminal-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 /* Width follows the real pane: the terminal renders at its natural cols width and the

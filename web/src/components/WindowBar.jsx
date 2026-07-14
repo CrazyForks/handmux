@@ -8,7 +8,7 @@
 import { useRef, useLayoutEffect, useState, useEffect } from 'react';
 import { useLongPress } from '../hooks/useLongPress.js';
 import { AgentMark } from './icons.jsx';
-import { paneRects, hasGeometry } from '../paneLayout.js';
+import { paneRects, hasGeometry, cellFit, MAP_W, MAP_H } from '../paneLayout.js';
 import { t } from '../i18n';
 
 const CIRCLED = '①②③④⑤⑥⑦⑧⑨';
@@ -38,9 +38,22 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
   // under the tab by recomputing on scroll/resize.
   const [pos, setPos] = useState(null);
   const rootRef = useRef(null);
+  // Anchor under the tab, then CLAMP inside the viewport so a tab near the right/bottom edge can't
+  // push the fixed-position popover off-screen: pin its right edge in when it would overflow right,
+  // and flip it above the tab when it would overflow the bottom. MARGIN keeps it off the very edge.
   const place = () => {
     const r = rootRef.current?.getBoundingClientRect();
-    if (r) setPos({ top: r.bottom + 6, left: r.left });
+    if (!r) return;
+    const MARGIN = 8;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const left = Math.max(MARGIN, Math.min(r.left, vw - MAP_W - MARGIN));
+    let top = r.bottom + 6;
+    if (top + MAP_H + MARGIN > vh) {
+      const above = r.top - 6 - MAP_H;
+      top = above >= MARGIN ? above : Math.max(MARGIN, vh - MAP_H - MARGIN);
+    }
+    setPos({ top, left });
   };
   const lp = useLongPress(() => onManage(win), {
     onClick: () => { if (!open) place(); setOpen((o) => !o); },
@@ -81,21 +94,42 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
       {open && pos && (
         hasGeometry(panes) ? (
           <div className="pane-map wt-menu" role="listbox" style={{ top: pos.top, left: pos.left }}>
-            {paneRects(panes).map((c) => (
-              <button
-                type="button"
-                key={c.id}
-                role="option"
-                aria-selected={c.id === currentPaneId}
-                className={`pane-map-cell${c.id === currentPaneId ? ' is-current' : ''}`}
-                style={{ left: `${c.left}%`, top: `${c.top}%`, width: `${c.width}%`, height: `${c.height}%` }}
-                onClick={() => { onSelectPane(c.id); setOpen(false); }}
-              >
-                <span className="pmc-seq" aria-hidden="true">{seq(c.seq)}</span>
-                {paneAgents[c.id] && <AgentMark agent={paneAgents[c.id]} />}
-                <span className="pmc-cmd">{c.command || c.id}</span>
-              </button>
-            ))}
+            {paneRects(panes).map((c) => {
+              const fit = cellFit(c, MAP_W, MAP_H); // '' | 'flat' | 'narrow' | 'tiny' — degrades cramped cells
+              const cmd = c.command || c.id;
+              const cur = c.id === currentPaneId;
+              return (
+                <button
+                  type="button"
+                  key={c.id}
+                  role="option"
+                  aria-selected={cur}
+                  aria-label={cmd}
+                  className={`pane-map-cell${cur ? ' is-current' : ''}${fit ? ` is-${fit}` : ''}`}
+                  style={{ left: `${c.left}%`, top: `${c.top}%`, width: `${c.width}%`, height: `${c.height}%` }}
+                  onClick={() => { onSelectPane(c.id); setOpen(false); }}
+                >
+                  <span className="pmc-surf">
+                    {fit === 'narrow' || fit === 'tiny' ? (
+                      <span className="pmc-seq" aria-hidden="true">{seq(c.seq)}</span>
+                    ) : fit === 'flat' ? (
+                      <>
+                        <span className="pmc-seq" aria-hidden="true">{seq(c.seq)}</span>
+                        <span className="pmc-cmd">{cmd}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="pmc-row">
+                          <span className="pmc-seq" aria-hidden="true">{seq(c.seq)}</span>
+                          {paneAgents[c.id] && <AgentMark agent={paneAgents[c.id]} />}
+                        </span>
+                        <span className="pmc-cmd">{cmd}</span>
+                      </>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         ) : (
           <div className="dd-menu wt-menu" role="listbox" style={{ top: pos.top, left: pos.left }}>

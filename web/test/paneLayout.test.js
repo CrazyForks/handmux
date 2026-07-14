@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasGeometry, paneRects } from '../src/paneLayout.js';
+import { hasGeometry, paneRects, cellFit, MAP_W, MAP_H } from '../src/paneLayout.js';
 
 const vsplit = [ // top / bottom, 80x24 window split in half vertically
   { id: '%1', active: true,  command: 'zsh',  left: 0, top: 0,  width: 80, height: 12 },
@@ -49,5 +49,27 @@ describe('paneRects', () => {
   });
   it('returns [] when panes have zero-size bounding box', () => {
     expect(paneRects([{ id: '%1', active: true, command: 'zsh', left: 0, top: 0, width: 0, height: 0 }])).toEqual([]);
+  });
+});
+
+describe('cellFit', () => {
+  // percentages of the default MAP_W x MAP_H box (inner area after MAP_PAD): a roomy cell shows
+  // full content; cramped ones degrade so the command never renders in a space too small to read.
+  it('full content when the cell is roomy in both dimensions', () => {
+    expect(cellFit({ width: 50, height: 100 })).toBe('');
+  });
+  it("'flat' when the cell is short (can't stack seq over command)", () => {
+    expect(cellFit({ width: 100, height: 15 })).toBe('flat');
+  });
+  it("'narrow' when the cell is thin (command can't fit horizontally)", () => {
+    expect(cellFit({ width: 15, height: 100 })).toBe('narrow');
+  });
+  it("'tiny' when the cell is both thin and short", () => {
+    expect(cellFit({ width: 15, height: 15 })).toBe('tiny');
+  });
+  it('classifies against a caller-supplied map size', () => {
+    // a full-height cell that is roomy in a wide box becomes narrow in a tiny one
+    expect(cellFit({ width: 40, height: 100 }, MAP_W, MAP_H)).toBe('');
+    expect(cellFit({ width: 40, height: 100 }, 100, 60)).toBe('narrow');
   });
 });
