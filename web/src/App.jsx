@@ -296,7 +296,7 @@ export default function App() {
         await renameSession(t.id, newName);
       } catch (e) {
         if (e instanceof UnauthorizedError) { onAuthFail(); throw e; }
-        if (/\b409\b/.test(e.message)) throw new Error(t('app.nameExists')); // req() puts the status in the message
+        if (e.status === 409) throw new Error(t('app.nameExists')); // ApiError carries the status precisely
         throw new Error(t('app.renameFailed'));
       }
       setBound(renameBoundSession(t.name, newName));

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { getHistory, createSession, createWindow, renameSession, renameWindow, deleteWindow, swapWindows, createDir, UnauthorizedError, fetchDoc, fetchDir, signAsr } from '../src/api.js';
+import { getHistory, createSession, createWindow, renameSession, renameWindow, deleteWindow, swapWindows, createDir, UnauthorizedError, ApiError, fetchDoc, fetchDir, signAsr } from '../src/api.js';
 import { createPreview, getPreviews, deletePreview, previewUrl, fetchImageUrl } from '../src/api.js';
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
@@ -27,6 +27,23 @@ describe('api request timeout', () => {
   it('still maps 401 to UnauthorizedError', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonRes(401, { error: 'unauthorized' })));
     await expect(getHistory('%1')).rejects.toBeInstanceOf(UnauthorizedError);
+  });
+
+  it('a non-2xx error carries the status + server token as structured fields (message stays the token)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonRes(409, { error: 'exists' })));
+    const err = await renameSession('$1', 'taken').catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.status).toBe(409);
+    expect(err.serverError).toBe('exists');
+    expect(err.message).toBe('exists'); // backward-compatible message
+  });
+
+  it('a non-2xx with no json body still carries the status (serverError null)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ status: 500, ok: false, json: async () => { throw new Error('no body'); } })));
+    const err = await deleteWindow('@1').catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.status).toBe(500);
+    expect(err.serverError).toBeNull();
   });
 
   it('treats a 204 response as an unchanged sentinel (never parses the body)', async () => {

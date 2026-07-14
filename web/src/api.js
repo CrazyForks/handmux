@@ -4,6 +4,18 @@ import { t } from './i18n';
 
 export class UnauthorizedError extends Error {}
 
+// A non-2xx API response. Carries the HTTP `status` and the server's short `{error}` token (`serverError`,
+// e.g. 'exists' / 'too large' / 'type not allowed') as structured fields so callers can branch precisely
+// instead of regex-parsing the message. `.message` stays backward-compatible (the token when present, else
+// "path -> status"), so existing `e.message` readers keep working — this is purely additive.
+export class ApiError extends Error {
+  constructor(message, status, serverError) {
+    super(message);
+    this.status = status;
+    this.serverError = serverError ?? null;
+  }
+}
+
 async function req(path, opts = {}) {
   const token = getToken();
   const { timeoutMs, ...rest } = opts;
@@ -19,10 +31,12 @@ async function req(path, opts = {}) {
     const res = await fetch(path, { cache: 'no-store', ...rest, headers, signal: controller?.signal });
     if (res.status === 401) throw new UnauthorizedError();
     if (!res.ok) {
-      // Surface the server's {error} message (e.g. "port not listening") so callers can show why.
-      let msg = `${path} -> ${res.status}`;
-      try { const body = await res.json(); if (body?.error) msg = body.error; } catch { /* not json */ }
-      throw new Error(msg);
+      // Surface the server's {error} token (e.g. "port not listening") so callers can show why, and carry
+      // the status + token as structured fields on the thrown ApiError (callers branch on e.status /
+      // e.serverError instead of parsing the message).
+      let serverError = null;
+      try { const body = await res.json(); if (body?.error) serverError = body.error; } catch { /* not json */ }
+      throw new ApiError(serverError || `${path} -> ${res.status}`, res.status, serverError);
     }
     if (res.status === 204) return { unchanged: true }; // conditional poll: server says nothing changed
     return await res.json();
