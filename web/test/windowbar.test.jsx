@@ -210,9 +210,9 @@ describe('WindowBar', () => {
     openPaneMenu();
     const cells = container.querySelectorAll('.pane-map-cell');
     expect(cells.length).toBe(2);
-    // right-hand pane sits at 50% left, half width (from paneRects)
-    expect(cells[1].style.left).toBe('50%');
-    expect(cells[1].style.width).toBe('50%');
+    // two equal side-by-side panes → each 117px wide ((40/80)*(248-14)); the right one starts at 117px
+    expect(cells[1].style.left).toBe('117px');
+    expect(cells[1].style.width).toBe('117px');
     expect(cells[0].textContent).toContain('zsh');
     expect(cells[1].textContent).toContain('node');
   });

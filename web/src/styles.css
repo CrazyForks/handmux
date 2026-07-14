@@ -224,7 +224,7 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
    cell-fit classification). Each .pane-map-cell is absolutely placed by percentage (paneRects); its
    inner .pmc-surf insets to leave a gutter between tiles (real-window-thumbnail look), and cramped
    cells get .is-flat/.is-narrow/.is-tiny to degrade content without changing proportions. */
-.pane-map { width: 248px; height: 158px; padding: 7px; overflow: hidden; z-index: 30;
+.pane-map { padding: 7px; overflow: hidden; z-index: 30; /* width/height set inline (grows for tiny tiles) */
   background: rgba(24, 26, 30, 0.78);
   -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4);
   border: 1px solid rgba(255,255,255,0.14); border-radius: 14px;
@@ -232,12 +232,10 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
   transform-origin: top; animation: dd-pop .12s ease; }
 .pane-map-cell { position: absolute; padding: 0; border: 0; background: none; color: inherit;
   font: inherit; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-/* The visible tile surface, inset from the cell box so tiles read as separate window thumbnails.
-   min-width/height give an extreme sliver a legible, tappable floor (it then grows slightly past its
-   cell into a neighbour — a fine trade-off only the rare very-fine split ever hits; normal tiles are
-   larger than the floor so it never binds). */
-.pane-map-cell .pmc-surf { position: absolute; inset: 3px; min-width: 24px; min-height: 18px;
-  border-radius: 8px; overflow: hidden;
+/* The visible tile surface, inset from the cell box so tiles read as separate window thumbnails. A
+   too-small pane is already padded to a legible minimum by the layout (paneLayout grows the map), so
+   the surface just fills its cell — no CSS min needed. */
+.pane-map-cell .pmc-surf { position: absolute; inset: 3px; border-radius: 8px; overflow: hidden;
   display: flex; flex-direction: column; gap: 3px; align-items: flex-start; justify-content: flex-start;
   padding: 7px 8px; text-align: left;
   background: rgba(255, 255, 255, 0.045); border: 1px solid rgba(255, 255, 255, 0.10);

@@ -8,7 +8,7 @@
 import { useRef, useLayoutEffect, useState, useEffect } from 'react';
 import { useLongPress } from '../hooks/useLongPress.js';
 import { AgentMark } from './icons.jsx';
-import { paneRects, hasGeometry, cellFit, MAP_W, MAP_H } from '../paneLayout.js';
+import { paneLayout, hasGeometry, cellFit, MAP_W, MAP_H } from '../paneLayout.js';
 import { t } from '../i18n';
 
 const CIRCLED = '①②③④⑤⑥⑦⑧⑨';
@@ -61,6 +61,12 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
   // under the tab by recomputing on scroll/resize.
   const [pos, setPos] = useState(null);
   const rootRef = useRef(null);
+  // The pixel-accurate mosaic (null → no geometry → flat-list fallback). Its own size can grow a little
+  // past the base box when a tiny pane is padded to a minimum, so the viewport clamp below uses the
+  // real dims, not the base constants.
+  const layout = hasGeometry(panes) ? paneLayout(panes) : null;
+  const mapW = layout ? layout.w : MAP_W;
+  const mapH = layout ? layout.h : MAP_H;
   // Anchor under the tab, then CLAMP inside the viewport so a tab near the right/bottom edge can't
   // push the fixed-position popover off-screen: pin its right edge in when it would overflow right,
   // and flip it above the tab when it would overflow the bottom. MARGIN keeps it off the very edge.
@@ -70,11 +76,11 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
     const MARGIN = 8;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const left = Math.max(MARGIN, Math.min(r.left, vw - MAP_W - MARGIN));
+    const left = Math.max(MARGIN, Math.min(r.left, vw - mapW - MARGIN));
     let top = r.bottom + 6;
-    if (top + MAP_H + MARGIN > vh) {
-      const above = r.top - 6 - MAP_H;
-      top = above >= MARGIN ? above : Math.max(MARGIN, vh - MAP_H - MARGIN);
+    if (top + mapH + MARGIN > vh) {
+      const above = r.top - 6 - mapH;
+      top = above >= MARGIN ? above : Math.max(MARGIN, vh - mapH - MARGIN);
     }
     setPos({ top, left });
   };
@@ -116,9 +122,9 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
       </button>
       {open && pos && (
         hasGeometry(panes) ? (
-          <div className="pane-map wt-menu" role="listbox" style={{ top: pos.top, left: pos.left }}>
-            {paneRects(panes).map((c) => {
-              const fit = cellFit(c, MAP_W, MAP_H); // '' | 'flat' | 'narrow' | 'tiny' — degrades cramped cells
+          <div className="pane-map wt-menu" role="listbox" style={{ top: pos.top, left: pos.left, width: mapW, height: mapH }}>
+            {layout.cells.map((c) => {
+              const fit = cellFit(c); // '' | 'flat' | 'narrow' | 'tiny' — degrades cramped cells
               const cmd = c.command || c.id;
               const cur = c.id === currentPaneId;
               // The outgoing current tile releases its blue as another tile is picked — a color handoff.
@@ -131,7 +137,7 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
                   aria-selected={cur}
                   aria-label={cmd}
                   className={`pane-map-cell${cur ? ' is-current' : ''}${releasing ? ' is-releasing' : ''}${fit ? ` is-${fit}` : ''}${picking === c.id ? ' is-picking' : ''}`}
-                  style={{ left: `${c.left}%`, top: `${c.top}%`, width: `${c.width}%`, height: `${c.height}%` }}
+                  style={{ left: `${c.left}px`, top: `${c.top}px`, width: `${c.width}px`, height: `${c.height}px` }}
                   onClick={() => choose(c.id)}
                 >
                   <span className="pmc-surf">
