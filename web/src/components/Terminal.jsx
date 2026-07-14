@@ -25,6 +25,28 @@ const MAX_LINES = 5000; // backend cap on capture depth
 const LIVE_SCROLL_SLACK = 15; // scrolled up within this many lines of the bottom still counts as "live"
                               // (keep polling + follow new output); scroll up further to browse/pause
 
+// Prime xterm's cursor renderer so the read-only 'block' cursor shows without a tap — xterm won't draw it
+// until the terminal is focused ONCE (focus()+blur() leaves the ?25h block rendered). This runs on EVERY
+// pane-switch remount, so the two steps below are ONE atomic call ON PURPOSE — never split them:
+//   1) neuter xterm's hidden helper textarea (inputmode=none / readOnly) so a focus can't summon the mobile
+//      keyboard, THEN 2) focus/blur to prime. Doing (2) before (1) — focusing a still-live input — is exactly
+//      what let rapid window-switching race the tap's user-activation and pop the Android keyboard by itself,
+//      stuck open. The neuter must precede any focus, so it lives here, welded to the prime, not 30 lines away.
+// Restores prior focus as insurance (the prime must never leave focus parked on the terminal).
+function primeCursorRenderer(term, hostEl) {
+  const ta = hostEl?.querySelector('.xterm-helper-textarea');
+  if (ta) {
+    ta.readOnly = true;
+    ta.tabIndex = -1;
+    ta.setAttribute('inputmode', 'none');
+    ta.setAttribute('aria-hidden', 'true');
+  }
+  const prevFocus = document.activeElement;
+  term.focus();
+  term.blur();
+  if (prevFocus && prevFocus !== document.body && typeof prevFocus.focus === 'function') prevFocus.focus();
+}
+
 // Pane view backed by capture-pane snapshots (tmux's already-rendered grid — no cursor
 // seam). While at the bottom we cheaply repaint a short tail every second. Scrolling up
 // pauses the refresh; reaching the top pulls a deeper history slice and keeps the content
@@ -208,29 +230,9 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     });
     term.open(elRef.current);
     termRef.current = term;
-    // Read-only display: neuter xterm's hidden helper textarea BEFORE anything can focus it. On Android a
-    // focus() on a NOT-yet-neutered textarea summons the soft keyboard — and the cursor prime just below
-    // focuses it on EVERY pane-switch remount. With the neutering placed after the prime (as it was), rapid
-    // window-switching would occasionally race the switch tap's user-activation and pop the keyboard by
-    // itself, stuck open. inputmode=none + readOnly make a focus keyboard-inert, yet it still fires xterm's
-    // focus handler, so the cursor prime below keeps working.
-    const ta = elRef.current.querySelector('.xterm-helper-textarea');
-    if (ta) {
-      ta.readOnly = true;
-      ta.tabIndex = -1;
-      ta.setAttribute('inputmode', 'none');
-      ta.setAttribute('aria-hidden', 'true');
-    }
-    // xterm never renders the cursor — not even the INACTIVE 'block' style — until the terminal has been
-    // focused at least ONCE. This grid is read-only and never gets focus, so the cursor was invisible until
-    // you tapped (which focuses it); sending keys did nothing, because ?25h alone can't draw on a
-    // never-focused renderer. Verified in headless Chrome: never-focused → no cursor; focus()+blur() once →
-    // the ?25h block renders and survives the blur. Prime the renderer with one focus/blur (the textarea is
-    // now keyboard-inert, above), then restore prior focus as insurance.
-    const prevFocus = document.activeElement;
-    term.focus();
-    term.blur();
-    if (prevFocus && prevFocus !== document.body && typeof prevFocus.focus === 'function') prevFocus.focus();
+    // Neuter-then-prime, atomically (see primeCursorRenderer): makes the read-only cursor render without a
+    // tap, while guaranteeing the prime's focus can never summon the mobile keyboard.
+    primeCursorRenderer(term, elRef.current);
     // Make doc paths TAPPABLE. xterm decorations (the underline below) are visual-only — they sit
     // under the event-capturing .xterm-viewport and never receive taps — so clicks go through the
     // link provider instead, which hooks xterm's own hit-testing and fires through the viewport.
