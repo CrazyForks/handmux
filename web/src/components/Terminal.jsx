@@ -152,9 +152,11 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
   // the inset change. This is the ONLY inset-driven refit; the ResizeObserver stays grow-only (no typing
   // flash), and fit() keeps the font while shrinking rows (see the insetRef.current checks in fit()).
   useEffect(() => {
+    const prev = insetRef.current;
     insetRef.current = inset;
-    // Refit for the new viewport. A full-screen app defaults to its FIRST line (fit scrolls alt-screen to
-    // top, not bottom), so opening the keyboard reveals the top of the app rather than snapping to its end.
+    // Keyboard just opened on a full-screen app → arm cursor-follow so a later cursor move keeps the caret
+    // in view; the refit itself bottom-aligns the cursor now (see the alt-screen branch in fit()).
+    if (inset > 0 && prev === 0) followArmedRef.current = true;
     fitRef.current?.();
     if (inset === 0) followArmedRef.current = false; // keyboard closed → stop following
   }, [inset]);
@@ -432,8 +434,13 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       // addressable). One-shot: consumed here, then the recursive pass re-fits the row count to the new size.
       if (fitScreenPendingRef.current && paneRows && pass < 4) {
         fitScreenPendingRef.current = false;
+        // Size against the FULL keyboard-down height (container clientHeight, unchanged by the keyboard),
+        // NOT the current visible slice `avail` — otherwise tapping it with the keyboard UP would cram
+        // paneRows into the small area above the keyboard and shrink the font far more than needed. The
+        // goal is "fits when the keyboard is down"; keyboard-up just shows a scrollable window of that.
+        const fullH = elRef.current.clientHeight || avail;
         const cur = term.options.fontSize || 14;
-        const target = Math.max(8, Math.min(40, Math.round(cur * avail / (paneRows * cellH))));
+        const target = Math.max(8, Math.min(40, Math.round(cur * fullH / (paneRows * cellH))));
         fontRef.current = target; setFont(target); // pin manual + persist so auto-shrink won't fight it
         if (target !== cur) { term.options.fontSize = target; requestAnimationFrame(() => fit(pass + 1)); return; }
       }
@@ -464,8 +471,17 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
         term.write(`\x1b[?25l\x1b[${term.rows};1H`, () => {
           if (disposed) return;
           term.resize(term.cols, want);
-          // Full-screen app (shrunk under the keyboard) → show its FIRST line; normal screen → bottom-align.
-          if (altScreenRef.current) term.scrollToTop(); else term.scrollToBottom();
+          // Full-screen app: keyboard DOWN → show its first line (top); keyboard UP → you're editing, so keep
+          // the cursor in view by bottom-aligning it (only when it's off-screen), i.e. the caret sits on the
+          // last row just above the keyboard with its context above. Normal screen → bottom-align.
+          if (altScreenRef.current) {
+            if (insetRef.current === 0) term.scrollToTop();
+            else {
+              const cl = cursorBufferLine(curInfo, seedRows);
+              const ct = cl == null ? null : followTarget({ cursorLine: cl, viewportY: buf().viewportY, visibleRows: term.rows, baseY: buf().baseY, armed: true });
+              if (ct != null) term.scrollToLine(ct);
+            }
+          } else term.scrollToBottom();
           if (pass < 4) requestAnimationFrame(() => fit(pass + 1));
           // last pass → grid settled: re-pad short content for the FINAL row count, THEN cursor + reveal
           else reframeForRows().then(() => { if (!disposed) { placeCursor(); reveal(); } });

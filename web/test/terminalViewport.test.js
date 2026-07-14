@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  fitRows, scrollDecision, centerTarget, cursorBufferLine, bottomPadRows, followTarget,
+  fitRows, scrollDecision, centerTarget, bottomTarget, cursorBufferLine, bottomPadRows, followTarget,
 } from '../src/terminalViewport.js';
 
 describe('fitRows', () => {
@@ -55,7 +55,19 @@ describe('followTarget', () => {
   it('null when cursor already in the visible window', () => {
     expect(followTarget({ cursorLine: 10, viewportY: 0, armed: true, ...base })).toBe(null);
   });
-  it('recenters when armed and cursor is out of view', () => {
-    expect(followTarget({ cursorLine: 90, viewportY: 0, armed: true, ...base })).toBe(80);
+  it('bottom-aligns the cursor when armed and out of view (last visible row = cursor)', () => {
+    expect(followTarget({ cursorLine: 90, viewportY: 0, armed: true, ...base })).toBe(71); // 90 - 20 + 1
+  });
+  it('clamps the bottom-align target to [0, baseY]', () => {
+    expect(followTarget({ cursorLine: 5, viewportY: 60, armed: true, ...base })).toBe(0);   // above view → clamp low
+    expect(followTarget({ cursorLine: 200, viewportY: 0, armed: true, ...base })).toBe(100); // clamp high
+  });
+});
+
+describe('bottomTarget', () => {
+  it('puts the cursor on the bottom visible row, clamped to [0, baseY]', () => {
+    expect(bottomTarget(90, 20, 100)).toBe(71); // 90 - 20 + 1
+    expect(bottomTarget(5, 20, 100)).toBe(0);   // clamp low
+    expect(bottomTarget(200, 20, 100)).toBe(100); // clamp high
   });
 });

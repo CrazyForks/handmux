@@ -21,6 +21,13 @@ export function centerTarget(cursorLine, visibleRows, baseY) {
   return clamp(cursorLine - Math.floor(visibleRows / 2), 0, baseY);
 }
 
+// scrollToLine target that puts `cursorLine` on the BOTTOM visible row, clamped to [0, baseY]. With the
+// keyboard up you're editing, so the cursor sits on the last row (just above the keyboard) with its context
+// above it — matching a native terminal, which keeps the caret at the bottom.
+export function bottomTarget(cursorLine, visibleRows, baseY) {
+  return clamp(cursorLine - visibleRows + 1, 0, baseY);
+}
+
 // Absolute buffer line of the cursor. cur.row counts UP from the content's bottom row (see cursorSeq).
 export function cursorBufferLine(cur, seedRows) {
   if (!cur || !cur.vis) return null;
@@ -32,12 +39,12 @@ export function bottomPadRows(contentRows, gridRows) {
   return Math.max(0, gridRows - contentRows);
 }
 
-// Follow-the-cursor scrollToLine target, or null to stay put. Only recenters when armed AND the cursor
-// has left the visible window — so manual scrolling that keeps the cursor visible stays put, and the
-// cursor is never lost once armed.
+// Follow-the-cursor scrollToLine target, or null to stay put. Only scrolls when armed AND the cursor has
+// left the visible window — so manual scrolling that keeps the cursor visible stays put, and the cursor is
+// never lost once armed. When it does scroll, it BOTTOM-aligns the cursor (see bottomTarget).
 export function followTarget({ cursorLine, viewportY, visibleRows, baseY, armed }) {
   if (!armed) return null;
   const inView = cursorLine >= viewportY && cursorLine < viewportY + visibleRows;
   if (inView) return null;
-  return centerTarget(cursorLine, visibleRows, baseY);
+  return bottomTarget(cursorLine, visibleRows, baseY);
 }
