@@ -4,6 +4,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Added
+- 多窗格选择器改为按真实 tmux 分屏布局排列的比例地图：原先只是把当前窗口的窗格拉成一个扁平下拉列表，看不出谁在屏幕的哪个位置；现在按每个窗格的真实行列坐标（`list-panes` 新增 `pane_left`/`pane_top`）等比例画成一张分屏缩略图，每格显示序号、命令名与 Agent 图标，点某格即切换到查看该窗格（切换行为不变，仍是纯客户端重定向、不动 PC）。地图用原生 iOS 毛玻璃浮层、当前窗格淡蓝高亮；tmux 版本过老取不到坐标时自动回落原扁平列表。
+
 ## [0.15.0] - 2026-07-14
 
 ### Added
