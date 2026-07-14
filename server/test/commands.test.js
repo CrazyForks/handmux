@@ -59,6 +59,30 @@ describe('tmux commands (integration)', () => {
     expect(panes[0].cwd.startsWith('/')).toBe(true);
   });
 
+  it('listPanes includes each pane left/top so a split can be reconstructed', async () => {
+    if (!hasTmux) return;
+    const s = (await listSessions()).find((x) => x.name === SES);
+    const w0 = (await listWindows(s.id))[0];
+    const anchor = (await listPanes(w0.id))[0].id;
+    try {
+      // -h = side-by-side, so the second pane starts at a non-zero left.
+      await execFile('tmux', ['split-window', '-h', '-d', '-t', anchor]);
+      const panes = await listPanes(w0.id);
+      expect(panes.length).toBe(2);
+      for (const p of panes) {
+        expect(Number.isInteger(p.left)).toBe(true);
+        expect(Number.isInteger(p.top)).toBe(true);
+      }
+      // one pane hugs the left edge, the other is pushed right
+      expect(Math.min(...panes.map((p) => p.left))).toBe(0);
+      expect(Math.max(...panes.map((p) => p.left))).toBeGreaterThan(0);
+    } finally {
+      // kill every pane we added, leaving the window single-pane for other tests
+      const extra = (await listPanes(w0.id)).filter((p) => p.id !== anchor);
+      for (const p of extra) { try { await execFile('tmux', ['kill-pane', '-t', p.id]); } catch {} }
+    }
+  });
+
   it('captures history and round-trips send-keys', async () => {
     if (!hasTmux) return;
     const s = (await listSessions()).find((x) => x.name === SES);

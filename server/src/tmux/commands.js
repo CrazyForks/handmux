@@ -51,10 +51,10 @@ export async function listWindows(sessionId) {
 }
 
 export async function listPanes(windowId) {
-  const out = await runTmux(['list-panes', '-t', windowId, '-F', '#{pane_id}\t#{pane_active}\t#{pane_width}\t#{pane_height}\t#{pane_current_command}\t#{pane_current_path}']);
+  const out = await runTmux(['list-panes', '-t', windowId, '-F', '#{pane_id}\t#{pane_active}\t#{pane_width}\t#{pane_height}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_left}\t#{pane_top}']);
   return lines(out).map((l) => {
-    const [id, active, width, height, command, cwd] = l.split('\t');
-    return { id, active: active === '1', width: Number(width), height: Number(height), command, cwd };
+    const [id, active, width, height, command, cwd, left, top] = l.split('\t');
+    return { id, active: active === '1', width: Number(width), height: Number(height), command, cwd, left: Number(left), top: Number(top) };
   });
 }
 
