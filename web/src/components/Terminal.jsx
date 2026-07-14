@@ -51,6 +51,9 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
   // — it hands the path + tap coords to App, which shows a confirm popover (anti-误触).
   const decosRef = useRef([]);
   const cursorDecoRef = useRef(null); // decoration-drawn cursor for a full-screen app whose cursor is in scrollback (CUP can't reach it)
+  const locateDecoRef = useRef(null); // full-row background highlight on the cursor's line (the 定位 toggle)
+  const locateOnRef = useRef(false);  // is the 定位 line-highlight toggle on? (read inside effect scope)
+  const locateRef = useRef(null);     // effect-scope redraw of the locate highlight, so the toggle button can apply it now
   const onDocLinkTapRef = useRef(onDocLinkTap);
   onDocLinkTapRef.current = onDocLinkTap;
   // The doc-path wash is an opt-in visual cue (Settings toggle, default off) — paths stay tappable
@@ -80,6 +83,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
   const altScreenRef = useRef(false);
   const mouseAwareRef = useRef(false);
   const [altScreen, setAltScreen] = useState(false);
+  const [locateOn, setLocateOn] = useState(false); // 定位: highlight the cursor's row (full-screen pager toggle)
   // cols×rows·font readout flashed on ⊟/⊞ then hidden — a self-contained component-scope cluster.
   const { dbg, dbgVisible, flash } = useFlash(termRef);
   // History-mode banner text (历史模式 · 行 viewportY/baseY): non-empty only while browsing outside
@@ -100,6 +104,10 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
   // One-shot flag: the keyboard just collapsed → the next fit keeps the cursor in view (scroll-into-view)
   // instead of jumping to the first line, so you don't lose your editing spot. Set in the inset effect.
   const collapseKeepCursorRef = useRef(false);
+  // The last measured keyboard-DOWN visible height (the real usable area, dock excluded). "适配高度" sizes
+  // the font against THIS so it fills the screen exactly — clientHeight over-counts (it includes the strip
+  // under the bottom dock), which sized the font ~2 rows too big.
+  const fullAvailRef = useRef(0);
   // wake() lets outside input (sends/keys, via App) snap the poll loop back to the live cadence and
   // poll immediately. Bridged through a ref like fitRef so the imperative handle can reach effect scope.
   const wakeRef = useRef(null);
@@ -379,17 +387,39 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       const cur = curInfo;
       const b = term.buffer.active;
       const useDeco = cur && (cur.vis || forceCursorRef.current) && altScreenRef.current && b.viewportY < b.baseY;
-      if (!useDeco) { disposeCursorDeco(); term.write(cursorSeq(cur, term.rows, seedRows, forceCursorRef.current)); return; }
+      if (!useDeco) { disposeCursorDeco(); term.write(cursorSeq(cur, term.rows, seedRows, forceCursorRef.current)); drawLocate(); return; }
       term.write('\x1b[?25l'); // hide native — the decoration is the cursor now
       disposeCursorDeco();
       const line = (seedRows - 1) - (cur.row | 0); // true buffer line, counted up from the seed's bottom
       const marker = term.registerMarker(line - (b.baseY + b.cursorY));
-      if (!marker) return;
+      if (!marker) { drawLocate(); return; }
       const deco = term.registerDecoration({ marker, x: Math.max(0, cur.col | 0), width: 1 });
-      if (!deco) { marker.dispose(); return; }
+      if (!deco) { marker.dispose(); drawLocate(); return; }
       deco.onRender((el) => { el.classList.add('cursor-deco'); });
       cursorDecoRef.current = { deco, marker };
+      drawLocate();
     };
+
+    // 定位 toggle: a full-row background highlight on the cursor's line, redrawn each placeCursor so it
+    // tracks the cursor. A decoration anchored to the true buffer line (like the cursor decoration), full
+    // width. Off → dispose. Bridged via locateRef so the toggle button applies it immediately.
+    const disposeLocate = () => {
+      if (locateDecoRef.current) { locateDecoRef.current.deco.dispose(); locateDecoRef.current.marker.dispose(); locateDecoRef.current = null; }
+    };
+    const drawLocate = () => {
+      disposeLocate();
+      const cur = curInfo;
+      if (disposed || !locateOnRef.current || !cur) return;
+      const b = term.buffer.active;
+      const line = (seedRows - 1) - (cur.row | 0);
+      const marker = term.registerMarker(line - (b.baseY + b.cursorY));
+      if (!marker) return;
+      const deco = term.registerDecoration({ marker, x: 0, width: term.cols });
+      if (!deco) { marker.dispose(); return; }
+      deco.onRender((el) => { el.classList.add('locate-deco'); });
+      locateDecoRef.current = { deco, marker };
+    };
+    locateRef.current = drawLocate;
 
     // Re-pad the current normal-screen seed for the CURRENT term.rows and re-write it, so short content
     // stays bottom-aligned after fit() changes the grid height. The seed's pad was computed against the
@@ -431,6 +461,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       // Publish the visible height so absolutely-positioned overlays (pager, top banner) anchor to the
       // on-screen slice instead of the full container (whose top is clipped off-screen with the keyboard up).
       elRef.current.parentElement?.style.setProperty('--vis-h', `${avail}px`);
+      if (insetRef.current === 0) fullAvailRef.current = avail; // remember the real keyboard-down usable height
       const cellH = curH / term.rows;
 
       // "适配高度" (pager button): size the font so the WHOLE pane (paneRows) fills the visible height —
@@ -439,11 +470,10 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       // addressable). One-shot: consumed here, then the recursive pass re-fits the row count to the new size.
       if (fitScreenPendingRef.current && paneRows && pass < 4) {
         fitScreenPendingRef.current = false;
-        // Size against the FULL keyboard-down height (container clientHeight, unchanged by the keyboard),
-        // NOT the current visible slice `avail` — otherwise tapping it with the keyboard UP would cram
-        // paneRows into the small area above the keyboard and shrink the font far more than needed. The
-        // goal is "fits when the keyboard is down"; keyboard-up just shows a scrollable window of that.
-        const fullH = elRef.current.clientHeight || avail;
+        // Size against the real keyboard-DOWN usable height (fullAvailRef), NOT the current slice `avail`
+        // (which is tiny with the keyboard up → font far too small) and NOT clientHeight (which over-counts
+        // the strip under the dock → font ~2 rows too big). The goal is "fills the screen keyboard-down".
+        const fullH = fullAvailRef.current || avail;
         const cur = term.options.fontSize || 14;
         const target = Math.max(8, Math.min(40, Math.round(cur * fullH / (paneRows * cellH))));
         fontRef.current = target; setFont(target); // pin manual + persist so auto-shrink won't fight it
@@ -1269,6 +1299,8 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       for (const { deco, marker } of decosRef.current) { deco.dispose(); marker.dispose(); }
       decosRef.current = [];
       disposeCursorDeco();
+      disposeLocate();
+      locateRef.current = null;
       term.dispose();
       termRef.current = null;
     };
@@ -1304,6 +1336,10 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     try { await sendKeys(pane, [dir === 'up' ? 'PageUp' : 'PageDown']); wakeRef.current?.(); }
     catch { /* transient (offline/timeout) — the button can just be tapped again */ }
   };
+
+  // 定位 toggle: turn the cursor-line highlight on/off and apply it right away (locateRef redraws it).
+  const toggleLocate = () => { const v = !locateOn; setLocateOn(v); locateOnRef.current = v; locateRef.current?.(); };
+  const fitScreen = () => { fitScreenPendingRef.current = true; fitRef.current?.(); };
 
   // Copy the live selection, then drop the highlight + bubble. navigator.clipboard only exists in
   // a secure context (https/localhost); over plain http we fall back to a throwaway textarea +
@@ -1350,30 +1386,34 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
           // the focused input (same keepFocus trick as the dock buttons). onClick still fires.
           onPointerDown={(e) => { if (shouldKeepKeyboard(document.activeElement) && e.cancelable) e.preventDefault(); }}
         >
-          <button
-            type="button"
-            className="term-pager-btn"
-            aria-label="适配高度"
-            title="适配高度"
-            onClick={() => { fitScreenPendingRef.current = true; fitRef.current?.(); }}
-          >
-            <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
-              <path d="M5 4.5h14M5 19.5h14" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M12 8.5v7M9.8 10.8L12 8.5l2.2 2.3M9.8 13.2L12 15.5l2.2-2.3" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <span className="term-pager-div" aria-hidden="true" />
-          <button type="button" className="term-pager-btn" aria-label="上翻页" onClick={() => pageScroll('up')}>
-            <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
-              <path d="M6 14.5l6-6 6 6" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <span className="term-pager-div" aria-hidden="true" />
-          <button type="button" className="term-pager-btn" aria-label="下翻页" onClick={() => pageScroll('down')}>
-            <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
-              <path d="M6 9.5l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
+          <div className="term-pager-grp">
+            <button type="button" className="term-pager-btn" aria-label="上翻页" onClick={() => pageScroll('up')}>
+              <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+                <path d="M6 14.5l6-6 6 6" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <span className="term-pager-div" aria-hidden="true" />
+            <button type="button" className="term-pager-btn" aria-label="下翻页" onClick={() => pageScroll('down')}>
+              <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+                <path d="M6 9.5l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
+          <div className="term-pager-grp">
+            <button type="button" className="term-pager-btn" aria-label="适配高度" title="适配高度" onClick={fitScreen}>
+              <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+                <path d="M5 4.5h14M5 19.5h14" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M12 8.5v7M9.8 10.8L12 8.5l2.2 2.3M9.8 13.2L12 15.5l2.2-2.3" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <span className="term-pager-div" aria-hidden="true" />
+            <button type="button" className="term-pager-btn" aria-label="定位光标行" title="定位光标行" aria-pressed={locateOn} onClick={toggleLocate}>
+              <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+                <path d="M5 7h14M5 17h14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" opacity="0.7" />
+                <rect x="4" y="10.5" width="16" height="3" rx="1.5" fill="currentColor" />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
       {selUI && (() => {

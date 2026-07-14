@@ -314,10 +314,16 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
    subtle so it defers to the content; ~42pt targets; clear of the safe area. */
 .term-pager {
   /* Center in the VISIBLE slice (--vis-h), not the full container — its top is clipped with the keyboard
-     up. calc(100% - --vis-h/2) is the visible middle; falls back to 50% when the var is unset. */
+     up. calc(100% - --vis-h/2) is the visible middle; falls back to 50% when the var is unset. Now a
+     column of two separate capsules (page up/down · fit+locate) with a gap between them. */
   position: absolute; z-index: 6; right: calc(10px + env(safe-area-inset-right));
   top: calc(100% - var(--vis-h, 100%) / 2);
-  transform: translateY(-50%); display: flex; flex-direction: column; align-items: stretch;
+  transform: translateY(-50%); display: flex; flex-direction: column; align-items: stretch; gap: 10px;
+}
+/* One frosted-glass capsule with a hairline divider (an iOS-style stacked control) — subtle so it defers
+   to the content; ~42pt targets. */
+.term-pager-grp {
+  display: flex; flex-direction: column; align-items: stretch;
   border-radius: 21px; overflow: hidden;
   background: rgba(28,30,34,0.52);
   -webkit-backdrop-filter: blur(16px) saturate(1.4); backdrop-filter: blur(16px) saturate(1.4);
@@ -331,6 +337,9 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
   transition: background .12s ease;
 }
 .term-pager-btn:active { background: rgba(255,255,255,0.14); }
+.term-pager-btn[aria-pressed="true"] { background: rgba(122,180,245,0.30); color: #cfe4ff; } /* 定位 on */
+/* 定位: full-row background highlight on the cursor's line (a decoration overlay over the text). */
+.locate-deco { background: rgba(122,180,245,0.16); }
 .term-pager-div { height: 0.5px; background: rgba(255,255,255,0.13); margin: 0 9px; }
 @media (prefers-reduced-motion: reduce) { .term-pager-btn { transition: none; } }
 /* Auto-growing command field: one line by default (a touch taller for an easier tap target), grows
