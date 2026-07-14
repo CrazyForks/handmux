@@ -224,7 +224,7 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
    cell-fit classification). Each .pane-map-cell is absolutely placed by percentage (paneRects); its
    inner .pmc-surf insets to leave a gutter between tiles (real-window-thumbnail look), and cramped
    cells get .is-flat/.is-narrow/.is-tiny to degrade content without changing proportions. */
-.pane-map { padding: 7px; overflow: hidden; z-index: 30; /* width/height set inline (grows for tiny tiles) */
+.pane-map { overflow: hidden; z-index: 30; /* width/height set inline; the 7px gutter is baked into cell coords */
   background: rgba(24, 26, 30, 0.78);
   -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4);
   border: 1px solid rgba(255,255,255,0.14); border-radius: 14px;

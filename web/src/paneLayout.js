@@ -6,7 +6,10 @@
 // (see paneLayout) — never scaled — so it can't run away on a lopsided split.
 export const MAP_W = 248;
 export const MAP_H = 158;
-const MAP_PAD = 7;
+// Inner gutter between the tiles and the map's frosted edge. Baked into each cell's left/top by the
+// COMPONENT (CSS `padding` can't inset absolutely-positioned children — they anchor to the padding box
+// edge), while the map's w/h already include it on both sides.
+export const MAP_PAD = 7;
 // Below these rendered pixel sizes a cell can't legibly show its command, so content degrades:
 // too NARROW → seq only; too FLAT (short) → seq + command on one row; both → seq only.
 const NARROW_PX = 52;

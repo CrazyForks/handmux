@@ -8,7 +8,7 @@
 import { useRef, useLayoutEffect, useState, useEffect } from 'react';
 import { useLongPress } from '../hooks/useLongPress.js';
 import { AgentMark } from './icons.jsx';
-import { paneLayout, hasGeometry, cellFit, MAP_W, MAP_H } from '../paneLayout.js';
+import { paneLayout, hasGeometry, cellFit, MAP_W, MAP_H, MAP_PAD } from '../paneLayout.js';
 import { t } from '../i18n';
 
 const CIRCLED = '①②③④⑤⑥⑦⑧⑨';
@@ -137,7 +137,7 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
                   aria-selected={cur}
                   aria-label={cmd}
                   className={`pane-map-cell${cur ? ' is-current' : ''}${releasing ? ' is-releasing' : ''}${fit ? ` is-${fit}` : ''}${picking === c.id ? ' is-picking' : ''}`}
-                  style={{ left: `${c.left}px`, top: `${c.top}px`, width: `${c.width}px`, height: `${c.height}px` }}
+                  style={{ left: `${c.left + MAP_PAD}px`, top: `${c.top + MAP_PAD}px`, width: `${c.width}px`, height: `${c.height}px` }}
                   onClick={() => choose(c.id)}
                 >
                   <span className="pmc-surf">
