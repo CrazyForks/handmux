@@ -6,6 +6,7 @@ import {
   listSessions, listWindows, listPanes, listPaneIds, capturePane, paneInfo, paneLocation, sendText, sendEnter,
   resizeWindow, restoreWindowSize, newSession, paneCurrentPath, newWindow,
   renameSession, renameWindow, sessionWindowCount, killWindow, swapWindows, wheelSeq,
+  splitPane, windowPaneCount, killPane,
 } from '../src/tmux/commands.js';
 
 const execFile = promisify(_execFile);
@@ -322,6 +323,37 @@ describe('swapWindows (integration)', () => {
       if (a) { try { await execFile('tmux', ['kill-window', '-t', a]); } catch {} }
       if (b) { try { await execFile('tmux', ['kill-window', '-t', b]); } catch {} }
     }
+  });
+});
+
+describe('splitPane / windowPaneCount / killPane (integration)', () => {
+  it('splits a pane, counts panes, then kills the new pane', async () => {
+    if (!hasTmux) return;
+    const wid = await newWindow(SES, null, 'split-tmp');
+    const [base] = await listPaneIds(wid);
+    expect(await windowPaneCount(base)).toBe(1);
+
+    const right = await splitPane(base, 'h'); // left|right
+    expect(isPaneId(right)).toBe(true);
+    expect(right).not.toBe(base);
+    expect(await windowPaneCount(base)).toBe(2);
+
+    const bottom = await splitPane(base, 'v'); // top/bottom of the base pane
+    expect(await windowPaneCount(base)).toBe(3);
+
+    await killPane(bottom);
+    expect(await windowPaneCount(base)).toBe(2);
+    await killWindow(wid);
+  });
+
+  it('splitPane -c opens the new pane in the given cwd', async () => {
+    if (!hasTmux) return;
+    const wid = await newWindow(SES, null, 'split-cwd');
+    const [base] = await listPaneIds(wid);
+    const tmpPath = process.platform === 'darwin' ? '/private/tmp' : '/tmp';
+    const p = await splitPane(base, 'h', tmpPath);
+    expect(await paneCurrentPath(p)).toBe(tmpPath);
+    await killWindow(wid);
   });
 });
 

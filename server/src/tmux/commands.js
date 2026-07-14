@@ -60,8 +60,15 @@ export async function listPanes(windowId) {
 
 // All live pane ids across every session — used to reconcile the in-memory Claude paneState against
 // reality. A hard-killed pane fires no hook, so its last state would otherwise linger as a ghost.
-export async function listPaneIds() {
-  return lines(await runTmux(['list-panes', '-a', '-F', '#{pane_id}']));
+// If a target is provided (window id or session id), list only panes in that target.
+export async function listPaneIds(target) {
+  const args = ['list-panes', '-F', '#{pane_id}'];
+  if (target) {
+    args.push('-t', target);
+  } else {
+    args.push('-a');
+  }
+  return lines(await runTmux(args));
 }
 
 // Every live pane across all sessions WITH its foreground command AND its tmux location, in ONE call.
@@ -253,6 +260,27 @@ export async function renameWindow(id, name) {
 export async function sessionWindowCount(id) {
   const out = await runTmux(['display-message', '-p', '-t', id, '#{session_windows}']);
   return Number(out.trim());
+}
+
+// Split a pane into two. -d: don't move the PC's active pane (the phone navigates to the new pane
+// itself, client-side). dir 'h' → left|right (`-h`), 'v' → top/bottom (`-v`). -c: the new pane's
+// start dir (the target pane's cwd), omitted when falsy. -P -F prints the new pane id.
+export async function splitPane(paneId, dir, cwd) {
+  const flag = dir === 'v' ? '-v' : '-h';
+  const args = ['split-window', '-d', flag, '-t', paneId, '-P', '-F', '#{pane_id}'];
+  if (cwd) args.push('-c', cwd);
+  return (await runTmux(args)).trim(); // e.g. "%91"
+}
+
+// Panes in the window that owns this pane — the kill guard refuses to kill the last one (killing it
+// would take the window, and if it's the last window, the whole session).
+export async function windowPaneCount(paneId) {
+  const out = await runTmux(['display-message', '-p', '-t', paneId, '#{window_panes}']);
+  return Number(out.trim());
+}
+
+export async function killPane(paneId) {
+  await runTmux(['kill-pane', '-t', paneId]);
 }
 
 export async function killWindow(id) {
