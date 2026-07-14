@@ -14,7 +14,7 @@ import { LATEST_RELEASE } from './changelog.js';
 import {
   getSessions, getWindows, getPanes, resizeWindow, resizePane, getWindowLayout,
   restoreWindowSize, sendKeys, sendText, createWindow,
-  renameSession, renameWindow, deleteWindow, swapWindows, fetchDoc, fetchImageUrl, UnauthorizedError,
+  renameSession, renameWindow, deleteWindow, swapWindows, fetchDoc, fetchImageUrl,
   getStates, getOrphans, takeoverOrphan,
   getServerVersion,
 } from './api.js';
@@ -27,6 +27,7 @@ import { isImageName } from './mime.js';
 import { useDocTabs } from './hooks/useDocTabs.js';
 import { usePreviews } from './hooks/usePreviews.js';
 import { usePollingLoop } from './hooks/usePollingLoop.js';
+import { authHandled } from './authGuard.js';
 
 import Drawer from './components/Drawer.jsx';
 import WindowBar from './components/WindowBar.jsx';
@@ -107,6 +108,9 @@ export default function App() {
   const savedLayoutRef = useRef(null); // window_layout captured before our first resize, for ↺
 
   const onAuthFail = useCallback(() => setNeedToken(true), []);
+  // Shared catch prelude: bounce to the token prompt on an auth failure, and report whether it WAS one so
+  // each handler keeps its own non-auth control flow (swallow / return / rethrow). See authGuard.js.
+  const handledAuth = useCallback((e) => authHandled(e, onAuthFail), [onAuthFail]);
 
   // The in-app preview subsystem (registry state, active-preview derivation, start/stop/renew/open),
   // extracted verbatim into a hook — it coordinates with Settings' history entry via settingsOpen.
@@ -168,14 +172,14 @@ export default function App() {
     const paneId = current?.paneId;
     if (!paneId) return;
     try { await sendKeys(paneId, [name]); termRef.current?.wake?.(); } // input landed → poll for output now
-    catch (e) { if (e instanceof UnauthorizedError) onAuthFail(); }
+    catch (e) { handledAuth(e); }
   }, [current, onAuthFail]);
 
   const sendChar = useCallback(async (ch) => {
     const paneId = current?.paneId;
     if (!paneId) return;
     try { await sendText(paneId, ch, false); termRef.current?.wake?.(); }
-    catch (e) { if (e instanceof UnauthorizedError) onAuthFail(); }
+    catch (e) { handledAuth(e); }
   }, [current, onAuthFail]);
 
   // ⊟/⊞ : purely resize the tmux window's columns by COL_STEP (resize-window). Font is NOT
@@ -203,7 +207,7 @@ export default function App() {
       if (current.panes && current.panes.length > 1) await resizePane(current.paneId, cols);
       else await resizeWindow(windowId, cols);
     } catch (e) {
-      if (e instanceof UnauthorizedError) onAuthFail();
+      handledAuth(e);
     }
   }, [current, onAuthFail]);
 
@@ -216,7 +220,7 @@ export default function App() {
     try {
       await restoreWindowSize(windowId, layout);
     } catch (e) {
-      if (e instanceof UnauthorizedError) onAuthFail();
+      handledAuth(e);
     }
   }, [current, onAuthFail]);
 
@@ -254,7 +258,7 @@ export default function App() {
       tmuxColsRef.current = panes.find((p) => p.id === paneId)?.width ?? null;
       savedLayoutRef.current = null;
     } catch (e) {
-      if (e instanceof UnauthorizedError) onAuthFail();
+      handledAuth(e);
     }
   }, [current, onAuthFail]);
 
@@ -279,7 +283,7 @@ export default function App() {
       setNewWinOpen(false);
       termRef.current?.wake?.();
     } catch (e) {
-      if (e instanceof UnauthorizedError) { onAuthFail(); return; }
+      if (handledAuth(e)) return;
       throw e; // let the modal re-enable its button on a generic failure
     }
   }, [current, onAuthFail]);
@@ -296,7 +300,7 @@ export default function App() {
       try {
         await renameSession(t.id, newName);
       } catch (e) {
-        if (e instanceof UnauthorizedError) { onAuthFail(); throw e; }
+        if (handledAuth(e)) throw e;
         if (e.status === 409) throw new Error(t('app.nameExists')); // ApiError carries the status precisely
         throw new Error(t('app.renameFailed'));
       }
@@ -309,7 +313,7 @@ export default function App() {
       try {
         await renameWindow(t.id, newName);
       } catch (e) {
-        if (e instanceof UnauthorizedError) { onAuthFail(); throw e; }
+        if (handledAuth(e)) throw e;
         throw new Error(t('app.renameFailed'));
       }
       // Ideas are keyed by window NAME (id falls back when unnamed) — carry them to the new name.
@@ -334,7 +338,7 @@ export default function App() {
     try {
       await deleteWindow(w.id);
     } catch (e) {
-      if (e instanceof UnauthorizedError) { onAuthFail(); return; }
+      if (handledAuth(e)) return;
       window.alert(t('app.deleteFailed'));
       setManageWindow(null);
       return;
@@ -380,7 +384,7 @@ export default function App() {
         ? { ...c, windows, window: windows.find((x) => x.id === c.window.id) || c.window } : c));
       setManageWindow(windows.find((x) => x.id === w.id) || null); // refresh in place (or close if gone)
     } catch (e) {
-      if (e instanceof UnauthorizedError) { onAuthFail(); setManageWindow(null); return; }
+      if (handledAuth(e)) { setManageWindow(null); return; }
       window.alert(t('app.moveFailed'));
       setManageWindow(null);
     }
@@ -399,7 +403,7 @@ export default function App() {
       if (!session) { window.alert(t('app.sessionGone', { name })); return; }
       if (await openSession(session)) setDrawerOpen(false);
     } catch (e) {
-      if (e instanceof UnauthorizedError) onAuthFail();
+      handledAuth(e);
     }
   }, [openSession, onAuthFail]);
 
@@ -413,7 +417,7 @@ export default function App() {
       if (!session) { window.alert(t('app.sessionGone', { name: row.session })); return; }
       setDrawerOpen(false);
       await openSession(session, { window: row.window, pane: row.pane });
-    } catch (e) { if (e instanceof UnauthorizedError) onAuthFail(); }
+    } catch (e) { handledAuth(e); }
   }, [openSession, onAuthFail]);
 
   // Take over an orphan (claude running outside tmux): the server spawns `claude --resume` in the chosen
@@ -430,7 +434,7 @@ export default function App() {
     setInboxOpen(false);
     try {
       if (out.name) { setDrawerOpen(false); await openSession({ id: out.session, name: out.name }, { window: out.window, pane: out.pane }); }
-    } catch (e) { if (e instanceof UnauthorizedError) onAuthFail(); }
+    } catch (e) { handledAuth(e); }
     try { setOrphans(await getOrphans()); } catch { /* refresh best-effort */ }
   }, [takeoverTarget, openSession, onAuthFail]);
 
@@ -525,7 +529,7 @@ export default function App() {
         const sessions = await getSessions();
         const s = sessions.find((x) => x.name === session);
         if (s) { setDrawerOpen(false); await openSession(s, { window, pane }); }
-      } catch (e) { if (e instanceof UnauthorizedError) onAuthFail(); }
+      } catch (e) { handledAuth(e); }
     };
     const onMsg = (e) => { const d = e.data; if (d && d.type === 'navigate') go(d); };
     const onHash = () => { const r = readRoute(); if (r.session && (r.window || r.pane)) go(r); };
@@ -711,7 +715,7 @@ export default function App() {
         if (!session) session = alive[0];
         if (!cancelled) await openSession(session, target);
       } catch (e) {
-        if (e instanceof UnauthorizedError) setNeedToken(true);
+        handledAuth(e); // onAuthFail === setNeedToken(true)
       } finally {
         if (!cancelled) setBooting(false);
       }
