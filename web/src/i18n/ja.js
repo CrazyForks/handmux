@@ -56,7 +56,6 @@ export default {
   // bind / actionsheet / dirpicker
   'bind.title': 'セッションを紐付け',
   'bind.sessionName': 'セッション名',
-  'bind.namePlaceholder': '新しいセッション名',
   'bind.pickSession': '紐付けるセッションを選択',
   'bind.newSession': '＋ 新規セッション',
   'bind.alreadyExists': 'このセッションは既に存在します',

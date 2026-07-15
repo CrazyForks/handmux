@@ -108,7 +108,7 @@ export default function BindSession({ open, onClose, onBound, bound, onAuthFail,
                   ref={inputRef}
                   className="bind-input"
                   value={name}
-                  placeholder={t('bind.namePlaceholder')}
+                  placeholder={t('bind.invalidName')}
                   onChange={(e) => { setName(e.target.value); setError(''); }}
                   onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
                 />
