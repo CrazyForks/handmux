@@ -263,8 +263,10 @@ export default function App() {
       remember({ sessionId: current.session.id, windowId: window.id, paneId });
       tmuxColsRef.current = panes.find((p) => p.id === paneId)?.width ?? null;
       savedLayoutRef.current = null;
+      return paneId; // callers (管理分屏) need the now-current pane to open its manage sheet
     } catch (e) {
       handledAuth(e);
+      return null;
     }
   }, [current, onAuthFail]);
 
@@ -544,13 +546,16 @@ export default function App() {
     }
   }, [current, onAuthFail]);
 
-  // "管理分屏" on a multi-pane window's manage sheet → jump to the split map. If that window isn't the
-  // open one, switch to it first (only the active window renders a map), then ask its PaneTab to open.
+  // "管理分屏" on a multi-pane window's manage sheet → open the split map AND its pane-manage sheet on the
+  // current pane, so you land straight in "manage the split" (tap another tile to re-target). If that
+  // window isn't the open one, switch to it first (only the active window renders a map).
   const manageSplit = useCallback(async (win) => {
     if (!win) return;
     setManageWindow(null);
-    if (win.id !== current?.window?.id) await selectWindow(win);
+    let paneId = current?.paneId;
+    if (win.id !== current?.window?.id) paneId = await selectWindow(win);
     setOpenMapFor(win.id);
+    if (paneId) setManagePane(paneId);
   }, [current, selectWindow]);
 
   // Reload the recent (send) history whenever the open session OR window changes — history is
