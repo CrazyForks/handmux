@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { readSessionHash, writeSessionHash, readRoute, buildDeepLink } from '../src/hashRoute.js';
+import { readSessionHash, writeSessionHash, readRoute, buildDeepLink, buildInboxLink } from '../src/hashRoute.js';
 
 beforeEach(() => {
   history.replaceState(null, '', location.pathname); // clear hash
 });
+
+const setHash = (h) => { window.location.hash = h; };
 
 describe('hashRoute', () => {
   it('returns empty string when there is no hash', () => {
@@ -42,7 +44,7 @@ describe('hashRoute deep link', () => {
 
   it('parses a three-level deep link, decoding each segment', () => {
     history.replaceState(null, '', buildDeepLink({ session: 'my proj', window: '@5', pane: '%4' }));
-    expect(readRoute()).toEqual({ session: 'my proj', window: '@5', pane: '%4' });
+    expect(readRoute()).toEqual({ session: 'my proj', window: '@5', pane: '%4', inbox: false, inboxId: null });
   });
 
   it('buildDeepLink encodes pane ids (the % must survive)', () => {
@@ -52,11 +54,38 @@ describe('hashRoute deep link', () => {
 
   it('falls back to the legacy #<name> form (window/pane null)', () => {
     history.replaceState(null, '', '#legacy-name');
-    expect(readRoute()).toEqual({ session: 'legacy-name', window: null, pane: null });
+    expect(readRoute()).toEqual({ session: 'legacy-name', window: null, pane: null, inbox: false, inboxId: null });
   });
 
   it('empty hash → all null', () => {
     history.replaceState(null, '', '#');
-    expect(readRoute()).toEqual({ session: null, window: null, pane: null });
+    expect(readRoute()).toEqual({ session: null, window: null, pane: null, inbox: false, inboxId: null });
+  });
+});
+
+describe('readRoute inbox', () => {
+  beforeEach(() => setHash(''));
+  it('parses #/inbox (list)', () => {
+    setHash('#/inbox');
+    const r = readRoute();
+    expect(r.inbox).toBe(true);
+    expect(r.inboxId).toBe(null);
+    expect(r.session).toBe(null);
+  });
+  it('parses #/inbox/<id> (detail)', () => {
+    setHash('#/inbox/abc123');
+    const r = readRoute();
+    expect(r.inbox).toBe(true);
+    expect(r.inboxId).toBe('abc123');
+  });
+  it('does not treat a normal session hash as inbox', () => {
+    setHash('#mysession');
+    const r = readRoute();
+    expect(r.inbox).toBe(false);
+    expect(r.session).toBe('mysession');
+  });
+  it('buildInboxLink encodes the id', () => {
+    expect(buildInboxLink('a/b')).toBe('#/inbox/a%2Fb');
+    expect(buildInboxLink()).toBe('#/inbox');
   });
 });

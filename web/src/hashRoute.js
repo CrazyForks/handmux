@@ -25,13 +25,20 @@ const dec = (x) => { try { return decodeURIComponent(x); } catch { return x; } }
 
 export function readRoute() {
   const raw = location.hash.replace(/^#/, '');
+  const inboxM = raw.match(/^\/inbox(?:\/(.*))?$/);
+  if (inboxM) return { session: null, window: null, pane: null, inbox: true, inboxId: inboxM[1] ? dec(inboxM[1]) : null };
   const m = raw.match(/^\/s\/([^/]*)\/w\/([^/]*)\/p\/(.*)$/);
-  if (m) return { session: dec(m[1]), window: dec(m[2]), pane: dec(m[3]) };
+  if (m) return { session: dec(m[1]), window: dec(m[2]), pane: dec(m[3]), inbox: false, inboxId: null };
   const session = dec(raw);
-  return { session: session || null, window: null, pane: null };
+  return { session: session || null, window: null, pane: null, inbox: false, inboxId: null };
 }
 
 export function buildDeepLink({ session, window, pane }) {
   const e = encodeURIComponent;
   return `#/s/${e(session)}/w/${e(window)}/p/${e(pane)}`;
+}
+
+// Inbox route: `#/inbox` (list) or `#/inbox/<id>` (detail), id URL-encoded.
+export function buildInboxLink(id) {
+  return id ? `#/inbox/${encodeURIComponent(id)}` : '#/inbox';
 }
