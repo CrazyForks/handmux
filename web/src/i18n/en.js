@@ -59,6 +59,8 @@ export default {
   'bind.sessionName': 'Session name',
   'bind.pickSession': 'Choose a session to bind',
   'bind.newSession': '＋ New session',
+  'bind.modeNew': 'New',
+  'bind.modeExisting': 'Existing',
   'bind.alreadyExists': 'Session already exists',
   'bind.bind': 'Bind',
   'bind.checking': 'Checking…',

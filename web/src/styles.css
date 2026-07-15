@@ -1488,6 +1488,13 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .drawer-orphan-state.busy { background: var(--blue); color: #fff; }
 .drawer-orphan-time { flex: none; font-size: 11px; color: #888; }
 .drawer-orphan-msg { flex: 1; min-width: 0; font-size: 11px; color: #9aa0a6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Bind: new-vs-existing as an iOS segmented control — reads as a single pick-one MODE, so "新建会话"
+   can't be mistaken for a fire-now button (it just reveals the create form; the bottom button acts). */
+.bind-mode { display: flex; gap: 4px; background: #23252b; border: 1px solid #33353a; border-radius: 10px; padding: 3px; }
+.bind-mode .seg { flex: 1; padding: 9px 10px; border: none; border-radius: 7px; background: transparent; color: #aeb2ba; font-size: 14px; touch-action: manipulation; }
+.bind-mode .seg[aria-pressed="true"] { background: var(--blue); color: #fff; }
+.bind-mode .seg:disabled { opacity: .4; }
+
 /* Takeover sheet: target picker (fontbtn group, aria-pressed = selected) + kill toggle. */
 .orphan-targets { display: flex; flex-wrap: wrap; gap: 6px; }
 .orphan-targets .fontbtn[aria-pressed="true"] { background: var(--blue); color: #fff; border-color: var(--blue); }

@@ -15,6 +15,7 @@ const NEW_NAME_RE = /^[A-Za-z0-9-]{1,16}$/;
 // A "＋ new" entry flips the card into create mode: name + start dir + startup command, then create+open.
 export default function BindSession({ open, onClose, onBound, bound, onAuthFail, inset = 0 }) {
   const [sessions, setSessions] = useState([]);
+  const [mode, setMode] = useState('new'); // 'new' (create) | 'existing' (bind a running one) — the top segmented control
   const [target, setTarget] = useState(null); // null = nothing picked · 'new' · existing session name
   const [name, setName] = useState('');        // new-session name (create mode)
   const [error, setError] = useState('');
@@ -26,9 +27,16 @@ export default function BindSession({ open, onClose, onBound, bound, onAuthFail,
 
   useEffect(() => {
     if (!open) return;
-    setTarget(null); setName(''); setError(''); setBusy(false); setCwd(null); setPickerOpen(false);
+    setName(''); setError(''); setBusy(false); setCwd(null); setPickerOpen(false);
+    setMode('new'); setTarget('new'); // provisional; flips to "existing" below if there are bindable sessions
     getSessions()
-      .then((s) => setSessions(Array.isArray(s) ? s : []))
+      .then((s) => {
+        const list = Array.isArray(s) ? s : [];
+        setSessions(list);
+        // Default to picking an existing session when there is one to bind (that's the common case);
+        // fall back to create mode only when nothing is bindable.
+        if (list.some((x) => !bound.includes(x.name))) { setMode('existing'); setTarget(null); }
+      })
       .catch((e) => { if (e instanceof UnauthorizedError) onAuthFail?.(); else setError(t('bind.checkFailed')); });
   }, [open]);
 
@@ -83,24 +91,41 @@ export default function BindSession({ open, onClose, onBound, bound, onAuthFail,
         </div>
         <div className="settings-section">
           <div className="opt">
-            <div className="settings-label">{t('bind.pickSession')}</div>
-            <div className="orphan-targets">
-              <button className="fontbtn" aria-pressed={target === 'new'} onClick={() => { setTarget('new'); setError(''); }}>
-                {t('bind.newSession')}
+            {/* New-vs-existing is a genuine either/or MODE, so it's a segmented control — not a row of
+                pills that each read like a fire-now action ("＋ New session" used to look tappable-to-create). */}
+            <div className="bind-mode" role="tablist" aria-label={t('bind.pickSession')}>
+              <button
+                className="seg" role="tab" aria-pressed={mode === 'new'}
+                onClick={() => { setMode('new'); setTarget('new'); setError(''); }}
+              >
+                {t('bind.modeNew')}
               </button>
-              {avail.map((s) => (
-                <button
-                  key={s.id || s.name}
-                  className="fontbtn"
-                  aria-pressed={target === s.name}
-                  onClick={() => { setTarget(s.name); setError(''); }}
-                >
-                  {s.name}
-                </button>
-              ))}
+              <button
+                className="seg" role="tab" aria-pressed={mode === 'existing'} disabled={!avail.length}
+                onClick={() => { setMode('existing'); setTarget(null); setError(''); }}
+              >
+                {t('bind.modeExisting')}
+              </button>
             </div>
           </div>
-          {target === 'new' && (
+          {mode === 'existing' && (
+            <div className="opt">
+              <div className="settings-label">{t('bind.pickSession')}</div>
+              <div className="orphan-targets">
+                {avail.map((s) => (
+                  <button
+                    key={s.id || s.name}
+                    className="fontbtn"
+                    aria-pressed={target === s.name}
+                    onClick={() => { setTarget(s.name); setError(''); }}
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {mode === 'new' && (
             <>
               <div className="opt">
                 <div className="settings-label">{t('bind.sessionName')}</div>

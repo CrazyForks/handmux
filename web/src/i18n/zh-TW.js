@@ -58,6 +58,8 @@ export default {
   'bind.sessionName': '工作階段名稱',
   'bind.pickSession': '選擇要綁定的工作階段',
   'bind.newSession': '＋ 新增工作階段',
+  'bind.modeNew': '新增工作階段',
+  'bind.modeExisting': '既有工作階段',
   'bind.alreadyExists': '此工作階段已存在',
   'bind.bind': '綁定',
   'bind.checking': '驗證中…',

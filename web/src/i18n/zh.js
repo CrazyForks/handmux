@@ -58,6 +58,8 @@ export default {
   'bind.sessionName': '会话名称',
   'bind.pickSession': '选择要绑定的会话',
   'bind.newSession': '＋ 新建会话',
+  'bind.modeNew': '新建会话',
+  'bind.modeExisting': '已有会话',
   'bind.alreadyExists': '该会话已存在',
   'bind.bind': '绑定',
   'bind.checking': '校验中…',

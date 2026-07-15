@@ -58,6 +58,8 @@ export default {
   'bind.sessionName': 'セッション名',
   'bind.pickSession': '紐付けるセッションを選択',
   'bind.newSession': '＋ 新規セッション',
+  'bind.modeNew': '新規作成',
+  'bind.modeExisting': '既存を選択',
   'bind.alreadyExists': 'このセッションは既に存在します',
   'bind.bind': '紐付け',
   'bind.checking': '確認中…',
