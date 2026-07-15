@@ -1577,8 +1577,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .push-inbox-unread .push-inbox-row-title::before { content: '•'; color: var(--blue); margin-right: 6px; }
 .push-inbox-row-body { color: #9fb0c0; font-size: 13px; word-break: break-word; margin-top: 3px; }
 .push-inbox-row-time { color: #6b7a89; font-size: 11px; font-variant-numeric: tabular-nums; margin-top: 5px; }
-.push-inbox-del { flex: 0 0 auto; width: 44px; background: none; border: none; border-left: 1px solid #1d2630;
-  color: #6b7a89; font-size: 13px; }
+.push-inbox-del { flex: 0 0 auto; width: 44px; background: none; border: none; color: #6b7a89; font-size: 13px; }
 .push-inbox-empty { color: #6b7a89; padding: 48px 20px; text-align: center; font-size: 14px; }
 
 .push-inbox-detail { padding: 18px 16px; overflow-y: auto; -webkit-overflow-scrolling: touch; }

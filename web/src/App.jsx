@@ -113,6 +113,7 @@ export default function App() {
   const [readIds, setReadIds] = useState(getReadInboxIds);      // ids already opened (per-device)
   const [notifInboxOpen, setNotifInboxOpen] = useState(false);  // full-screen inbox list page
   const [notifDetailId, setNotifDetailId] = useState(null);     // open message detail (null = list only)
+  const [pendingNotifDetail, setPendingNotifDetail] = useState(null); // deep-link: drill here once the list is open
   // Manual-push inbox open/close/detail/delete — declared this early (ahead of the SW-message and
   // boot deep-link effects further down, and the useBackButton group right below) so nothing references
   // them before their const initializer runs (TDZ).
@@ -136,13 +137,24 @@ export default function App() {
     const fallback = setTimeout(open, 300);
     setSettingsOpen(false); // → Settings' useBackButton cleanup → history.back() → popstate → open()
   };
+  // Multi-level Back for the inbox, mirroring GitPanel/FileManager (see the comment on their useBackButton
+  // group): we MIRROR the nav depth into browser history — one entry for the open list, one more for a drill
+  // into a message detail. Back pops one entry → the popstate handler (below) pops one level; at the base
+  // (list) Back closes the panel. CRITICAL: the popstate handler only READS state + decrements the counter —
+  // it NEVER pushState()s, because some Android WebViews DROP a pushState made inside a popstate handler,
+  // unbalancing history so the next Back exits the app (the exact bug the naive re-push approach hit). Every
+  // level change (row tap drills, on-screen ‹, hardware Back) flows through history push/back → the one handler.
+  const notifDepthRef = useRef(0);
+  const notifDetailRef = useRef(null); notifDetailRef.current = notifDetailId;
+  const pushNotifHist = () => { window.history.pushState({ overlay: true }, ''); notifDepthRef.current += 1; };
   const openNotifDetail = (id) => {
+    pushNotifHist();                 // drill entry (a click handler — safe to pushState here)
     setNotifDetailId(id);
     addReadInboxId(id);
     setReadIds(getReadInboxIds());
   };
-  const closeNotifDetail = () => setNotifDetailId(null);
-  const closeNotifInbox = () => { setNotifDetailId(null); setNotifInboxOpen(false); };
+  const closeNotifDetail = () => window.history.back(); // route the ‹ through Back → the popstate handler
+  const closeNotifInbox = () => { setNotifDetailId(null); setNotifInboxOpen(false); }; // ⌄ collapse → cleanup unwinds
   const deleteNotifItem = async (id) => {
     setNotifItems((cur) => cur.filter((n) => n.id !== id)); // optimistic
     await deleteNotification(id);
@@ -208,15 +220,31 @@ export default function App() {
     if (renameTarget) setRenameTarget(null); else setManageWindow(null);
   });
   useBackButton(!!managePane, () => setManagePane(null));
-  // ONE back-guard for the whole inbox (list + detail are one overlay level in history). A detail opens
-  // WITHOUT its own history entry; Back from a detail closes it and synchronously re-pushes an entry so the
-  // list stays backed (Back again then closes the page). Two separate useBackButton calls would both fire on
-  // one popstate and eject the whole inbox — this mirrors the codebase's combined-guard convention
-  // (settingsOpen||changelogOpen). pushState (not history.back) inside the handler avoids any async-pop race.
-  useBackButton(notifInboxOpen, () => {
-    if (notifDetailId) { setNotifDetailId(null); window.history.pushState({ overlay: true }, ''); }
-    else setNotifInboxOpen(false);
-  });
+  // Inbox multi-level Back (GitPanel pattern — see notifDepthRef above): push the base entry on open, pop one
+  // level per Back, close at the base. The handler NEVER pushState()s (Android-WebView-safe). Close-by-button
+  // (⌄) sets notifInboxOpen=false → the cleanup unwinds any entries we still own so history stays balanced.
+  useEffect(() => {
+    if (!notifInboxOpen) return undefined;
+    pushNotifHist();                          // base entry for the open list
+    const onPop = () => {
+      notifDepthRef.current = Math.max(0, notifDepthRef.current - 1); // the Back already consumed one entry
+      if (notifDetailRef.current) { setNotifDetailId(null); return; } // drill → back to the list
+      setNotifInboxOpen(false);               // base consumed at the list → leave the panel
+    };
+    window.addEventListener('popstate', onPop);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      if (notifDepthRef.current > 0) { window.history.go(-notifDepthRef.current); notifDepthRef.current = 0; }
+    };
+  }, [notifInboxOpen]); // eslint-disable-line react-hooks/exhaustive-deps -- refs/handlers are stable-by-ref
+  // Deep-link (SW postMessage / cold boot) targets a specific message: once the list is open (base entry
+  // pushed above), drill into it — so history is base-then-drill in order (Back: detail→list→close).
+  useEffect(() => {
+    if (notifInboxOpen && pendingNotifDetail) {
+      openNotifDetail(pendingNotifDetail);
+      setPendingNotifDetail(null);
+    }
+  }, [notifInboxOpen, pendingNotifDetail]); // eslint-disable-line react-hooks/exhaustive-deps
   // Root double-back-to-exit: on the main page (a pane is showing, all the overlays above push their own
   // entries first), the first Back only surfaces a hint — a second within the window actually exits. The
   // hook toggles the hint (show on arm, hide when the window lapses), so its visibility IS the arm window —
@@ -702,7 +730,7 @@ export default function App() {
       const d = e.data;
       if (!d) return;
       if (d.type === 'navigate') go(d);
-      else if (d.type === 'navigate-inbox' && d.id) { setNotifInboxOpen(true); openNotifDetail(d.id); }
+      else if (d.type === 'navigate-inbox' && d.id) { setNotifInboxOpen(true); setPendingNotifDetail(d.id); }
     };
     const onHash = () => { const r = readRoute(); if (r.session && (r.window || r.pane)) go(r); };
     navigator.serviceWorker.addEventListener('message', onMsg);
@@ -720,7 +748,7 @@ export default function App() {
     const r = readRoute();
     if (r.inbox) {
       setNotifInboxOpen(true);
-      if (r.inboxId) openNotifDetail(r.inboxId);
+      if (r.inboxId) setPendingNotifDetail(r.inboxId);
       history.replaceState(history.state, '', '#');
     }
   }, [needToken]); // eslint-disable-line react-hooks/exhaustive-deps -- launch-time deep-link, run once
@@ -975,7 +1003,9 @@ export default function App() {
   const updateDot = !!updateInfo?.updateAvailable && updateInfo.latest !== verSeen;
   const readSet = new Set(readIds);
   const notifUnread = notifItems.some((n) => !readSet.has(n.id));
-  const gearDot = changelogUnread || updateDot || notifUnread;
+  // notifUnread is surfaced on the 通知记录 row inside Settings (not the gear) — the gear dot is only for
+  // changelog/update news, so a script notification doesn't light the top-right of the whole app.
+  const gearDot = changelogUnread || updateDot;
   const openSettings = () => {
     setSettingsOpen(true);
     if (updateInfo?.latest) { setVersionSeen(updateInfo.latest); setVerSeen(updateInfo.latest); } // acknowledge → clears updateDot
