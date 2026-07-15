@@ -8,7 +8,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { getDriver } from './drivers.js';
-import { writeState, clearState, claudeStatePath, pushStorePath, previewStorePath } from './state.js';
+import { writeState, clearState, claudeStatePath, pushStorePath, previewStorePath, notificationsStorePath } from './state.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SERVER = path.resolve(here, '../server.js');
@@ -84,6 +84,7 @@ export function supervise(cfg, { home, log = console } = {}) {
       CLAUDE_STATE_FILE: claudeStatePath(home),
       PUSH_STORE: pushStorePath(home),
       PREVIEW_STORE: previewStorePath(home),
+      NOTIF_STORE: notificationsStorePath(home),
     };
     if (cfg.previewDomain) env.HANDMUX_PREVIEW_DOMAIN = cfg.previewDomain;
     if (cfg.name) env.HANDMUX_APP_NAME = cfg.name;
