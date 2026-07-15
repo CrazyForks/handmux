@@ -1555,3 +1555,16 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .push-script-hint { margin: 6px 0 0; color: var(--muted, #8a8a8e); font-size: 13px; line-height: 1.4; }
 .push-script-note { margin: 4px 0 0; padding: 10px 12px; border-radius: 8px;
   background: rgba(120,120,128,0.12); color: var(--muted, #8a8a8e); font-size: 12px; line-height: 1.55; }
+
+/* PushInboxSheet — notification inbox, reuses the push-script-sheet shell. Prefixed push-inbox-* (not
+   inbox-*) because .inbox-row/.inbox-empty/etc already belong to the unrelated pane-status Inbox
+   (src/components/Inbox.jsx) — reusing those names would silently clobber that component's styling. */
+.push-inbox-list { list-style: none; margin: 0; padding: 0; }
+.push-inbox-row { display: flex; align-items: flex-start; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--hairline, rgba(128,128,128,.2)); }
+.push-inbox-main { flex: 1; min-width: 0; }
+.push-inbox-row-title { font-weight: 600; }
+.push-inbox-row-body { opacity: .85; word-break: break-word; }
+.push-inbox-row-time { font-size: .8em; opacity: .5; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.push-inbox-del { background: none; border: none; opacity: .4; font-size: 1rem; padding: 4px 8px; min-width: 44px; min-height: 44px; }
+.push-inbox-empty { opacity: .5; }
+.push-inbox-markread { margin-top: 12px; width: 100%; }

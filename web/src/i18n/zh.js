@@ -453,4 +453,11 @@ export default {
   'scriptPush.opt_tag': '--tag <标签> —— 相同 tag 会覆盖上一条推送，而不是堆叠。',
   'scriptPush.opt_url': '--url <路径> —— 点击通知时打开这个路径。',
   'scriptPush.reliability': '注意：Web 推送经手机系统（FCM/APNs）中转，属尽力而为——省电模式、离线或厂商策略都可能延迟或丢弃它，并不保证实时送达。对送达强依赖的场景，请改用专门的 IM（微信 / Telegram bot 等）。',
+  'pushInbox.title': '通知记录',
+  'pushInbox.empty': '还没有脚本通知',
+  'pushInbox.markRead': '标记已读',
+  'pushInbox.delete': '删除',
+  'pushInbox.justNow': '刚刚',
+  'pushInbox.minutesAgo': '{n}分钟前',
+  'pushInbox.hoursAgo': '{n}小时前',
 };
