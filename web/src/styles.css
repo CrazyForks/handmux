@@ -1577,11 +1577,12 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .push-inbox-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; flex: 1; }
 .push-inbox-row { display: flex; align-items: stretch; border-bottom: 1px solid #1d2630; }
 .push-inbox-main { flex: 1; min-width: 0; text-align: left; background: none; border: none; color: #e6edf3; padding: 12px 14px; }
-.push-inbox-row-title { font-weight: 500; font-size: 14px; }
+.push-inbox-row-top { display: flex; align-items: baseline; gap: 8px; }
+.push-inbox-row-title { flex: 1; min-width: 0; font-weight: 500; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .push-inbox-unread .push-inbox-row-title { font-weight: 700; }
 .push-inbox-unread .push-inbox-row-title::before { content: '•'; color: var(--blue); margin-right: 6px; }
 .push-inbox-row-body { color: #9fb0c0; font-size: 13px; word-break: break-word; margin-top: 3px; }
-.push-inbox-row-time { color: #6b7a89; font-size: 11px; font-variant-numeric: tabular-nums; margin-top: 5px; }
+.push-inbox-row-time { flex: 0 0 auto; color: #6b7a89; font-size: 11px; font-variant-numeric: tabular-nums; }
 .push-inbox-del { flex: 0 0 auto; width: 44px; background: none; border: none; color: #6b7a89; font-size: 13px; }
 .push-inbox-empty { color: #6b7a89; padding: 48px 20px; text-align: center; font-size: 14px; }
 

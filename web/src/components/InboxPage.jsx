@@ -58,9 +58,11 @@ export default function InboxPage({ open, detailId, items, readIds = [], onOpenD
             {items.map((n) => (
               <li key={n.id} className={`push-inbox-row${readSet.has(n.id) ? '' : ' push-inbox-unread'}`}>
                 <button className="push-inbox-main" onClick={() => onOpenDetail(n.id)}>
-                  <div className="push-inbox-row-title">{n.title}</div>
+                  <div className="push-inbox-row-top">
+                    <span className="push-inbox-row-title">{n.title}</span>
+                    <span className="push-inbox-row-time">{ago(n.ts)}</span>
+                  </div>
                   <div className="push-inbox-row-body">{n.body}</div>
-                  <div className="push-inbox-row-time">{ago(n.ts)}</div>
                 </button>
                 <button className="push-inbox-del" onClick={() => onDelete(n.id)} aria-label={t('pushInbox.delete')}>✕</button>
               </li>
