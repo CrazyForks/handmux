@@ -1003,9 +1003,7 @@ export default function App() {
   const updateDot = !!updateInfo?.updateAvailable && updateInfo.latest !== verSeen;
   const readSet = new Set(readIds);
   const notifUnread = notifItems.some((n) => !readSet.has(n.id));
-  // notifUnread is surfaced on the 通知记录 row inside Settings (not the gear) — the gear dot is only for
-  // changelog/update news, so a script notification doesn't light the top-right of the whole app.
-  const gearDot = changelogUnread || updateDot;
+  const gearDot = changelogUnread || updateDot || notifUnread;
   const openSettings = () => {
     setSettingsOpen(true);
     if (updateInfo?.latest) { setVersionSeen(updateInfo.latest); setVerSeen(updateInfo.latest); } // acknowledge → clears updateDot

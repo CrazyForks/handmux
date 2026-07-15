@@ -225,7 +225,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
             <button className="fontbtn" onClick={openScriptPush} disabled={!pushSupported()}>{t('settings.script_push_open')}</button>
             <button className="fontbtn push-inbox-entry" onClick={onOpenInbox}>
               {t('pushInbox.title')}
-              {notifUnread && <span className="topbar-dot" aria-hidden="true" />}
+              {notifUnread && <span className="push-inbox-entry-dot" aria-hidden="true" />}
             </button>
           </div>
           <div className="settings-hint">{t('settings.script_push_hint')}</div>
