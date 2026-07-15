@@ -127,6 +127,11 @@ export function markInboxSeen(pane, ts) {
 export const getInboxReadTs = () => { const v = localStorage.getItem(INBOX_READ_TS_KEY); return v == null ? null : Number(v); };
 export const setInboxReadTs = (ts) => localStorage.setItem(INBOX_READ_TS_KEY, String(ts));
 
+// Manual-push inbox read-state: high-water mark (a server-ts) — notifications with ts <= this are "read".
+const NOTIF_READ_TS_KEY = 'tw_notif_read_ts';
+export const getNotifReadTs = () => { const v = localStorage.getItem(NOTIF_READ_TS_KEY); return v == null ? 0 : Number(v); };
+export const setNotifReadTs = (ts) => localStorage.setItem(NOTIF_READ_TS_KEY, String(ts));
+
 // Last-browsed directory per window (file sheet). Keyed by window id so each window reopens where you
 // left off; absent (a window's first open) → the caller falls back to the pane's cwd. Absolute path.
 export const getBrowseDir = (windowId) => (windowId ? readMap(BROWSE_DIR_KEY)[windowId] ?? null : null);

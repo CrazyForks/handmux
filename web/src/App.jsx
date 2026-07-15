@@ -8,6 +8,7 @@ import {
   getInboxSeen, markInboxSeen, getInboxReadTs, setInboxReadTs,
   renameWindowIdeas, getChangelogSeen, setChangelogSeen,
   getVersionSeen, setVersionSeen,
+  getNotifReadTs, setNotifReadTs,
   getPreviewDir, getIdeas,
 } from './storage.js';
 import { LATEST_RELEASE } from './changelog.js';
@@ -23,7 +24,8 @@ import { runSplitPane, runClosePane } from './paneActions.js';
 import PreviewSheet from './components/PreviewSheet.jsx';
 import { inboxRows, topView, maxTs } from './inbox.js';
 import { moveTarget } from './windowOrder.js';
-import { reportBound, clearPaneNotification } from './push.js';
+import { reportBound, clearPaneNotification, getNotifications } from './push.js';
+import PushInboxSheet from './components/PushInboxSheet.jsx';
 import { isAbsolute, joinPath } from './docPath.js';
 import { isImageName } from './mime.js';
 import { useDocTabs } from './hooks/useDocTabs.js';
@@ -107,6 +109,9 @@ export default function App() {
   const [verSeen, setVerSeen] = useState(getVersionSeen); // npm "latest" already acknowledged by opening Settings
   const [seen, setSeen] = useState(getInboxSeen); // pane → last-viewed ts (inbox read state)
   const [readTs, setReadTs] = useState(getInboxReadTs); // server-ts high-water mark for done history (null=unset)
+  const [notifReadTs, setNotifReadTsState] = useState(getNotifReadTs); // read high-water for manual-push inbox
+  const [notifLatestTs, setNotifLatestTs] = useState(0);               // newest stored notification ts
+  const [inboxSheetOpen, setInboxSheetOpen] = useState(false);
   const termRef = useRef(null);
   const dockRef = useRef(null); // imperative handle into BottomDock — idea panel fills its input box
   const tmuxColsRef = useRef(null); // target col count, so taps accumulate (term.cols lags ~1s)
@@ -659,6 +664,20 @@ export default function App() {
     };
   }, [needToken, openSession, onAuthFail]);
 
+  // Poll the manual-push inbox's newest ts for the gear's unread dot: once on mount and whenever the tab
+  // returns to the foreground. Manual pushes are low-frequency, so no live polling (YAGNI).
+  useEffect(() => {
+    if (needToken) return;
+    let alive = true;
+    const refresh = () => getNotifications().then((list) => {
+      if (alive && list.length) setNotifLatestTs(list[0].ts); // newest-first
+    });
+    refresh();
+    const onVis = () => { if (document.visibilityState === 'visible') refresh(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { alive = false; document.removeEventListener('visibilitychange', onVis); };
+  }, [needToken]);
+
   // Record a just-sent command into this WINDOW's recent history (deduped + capped in storage).
   const onCommandSent = useCallback((cmd) => {
     termRef.current?.wake?.(); // a dock send/fill landed → wake the poll loop (covers BottomDock too)
@@ -890,7 +909,8 @@ export default function App() {
   // and, after upgrading+reloading, the unread changelog it brought. `updateDot` stays off once the user has
   // opened Settings for this `latest` (verSeen), even if they don't upgrade — it relights only on a newer release.
   const updateDot = !!updateInfo?.updateAvailable && updateInfo.latest !== verSeen;
-  const gearDot = changelogUnread || updateDot;
+  const notifUnread = notifLatestTs > notifReadTs;
+  const gearDot = changelogUnread || updateDot || notifUnread;
   const openSettings = () => {
     setSettingsOpen(true);
     if (updateInfo?.latest) { setVersionSeen(updateInfo.latest); setVerSeen(updateInfo.latest); } // acknowledge → clears updateDot
@@ -900,6 +920,11 @@ export default function App() {
     setChangelogOpen(true);
     setChangelogSeen(LATEST_RELEASE); setClSeen(LATEST_RELEASE); // opening clears the unread dot
   };
+  const markInboxRead = (maxTs) => {
+    const ts = maxTs ?? notifLatestTs;
+    if (ts) { setNotifReadTs(ts); setNotifReadTsState(ts); }
+  };
+  const openInbox = () => { setSettingsOpen(false); setInboxSheetOpen(true); };
 
   return (
     // When the soft keyboard opens, slide the WHOLE app up by the keyboard height so it moves
@@ -954,6 +979,8 @@ export default function App() {
         onColRestore={tmuxRestore}
         onOpenChangelog={openChangelog}
         changelogUnread={changelogUnread}
+        notifUnread={notifUnread}
+        onOpenInbox={openInbox}
         updateInfo={updateInfo}
         activePreview={activePreview}
         pane={current?.paneId}
@@ -966,6 +993,7 @@ export default function App() {
         onStop={stopPreview}
       />
       <Changelog open={changelogOpen} onClose={() => setChangelogOpen(false)} />
+      <PushInboxSheet open={inboxSheetOpen} onClose={() => setInboxSheetOpen(false)} onAllRead={markInboxRead} />
       <Drawer
         open={drawerOpen}
         currentSessionName={current?.session?.name}

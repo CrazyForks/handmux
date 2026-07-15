@@ -11,6 +11,7 @@ import { t, getLangCode, setLang, AVAILABLE } from '../i18n';
 // font-size control. Font reads/writes the live terminal through termRef — the same persisted
 // size the two-finger pinch drives — so the modal and the gesture stay in sync.
 export default function Settings({ open, onClose, termRef, onColAdjust, onColRestore, onOpenChangelog, changelogUnread,
+  notifUnread = false, onOpenInbox,
   updateInfo = null,
   activePreview = null, pane = null, lastPreviewDir = null, dynamicEnabled = false,
   getColCount = null,
@@ -222,6 +223,10 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
           <div className="settings-label">{t('settings.script_push')}</div>
           <div className="settings-btns">
             <button className="fontbtn" onClick={openScriptPush} disabled={!pushSupported()}>{t('settings.script_push_open')}</button>
+            <button className="fontbtn push-inbox-entry" onClick={onOpenInbox}>
+              {t('pushInbox.title')}
+              {notifUnread && <span className="topbar-dot" aria-hidden="true" />}
+            </button>
           </div>
           <div className="settings-hint">{t('settings.script_push_hint')}</div>
         </div>
