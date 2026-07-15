@@ -395,4 +395,8 @@ export default {
   'pushInbox.justNow': '剛剛',
   'pushInbox.minutesAgo': '{n}分鐘前',
   'pushInbox.hoursAgo': '{n}小時前',
+  'pushInbox.detailTitle': '通知詳情',
+  'pushInbox.openUrl': '打開連結',
+  'pushInbox.expired': '這條訊息已過期',
+  'pushInbox.back': '返回',
 };
