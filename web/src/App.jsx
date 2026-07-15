@@ -1082,6 +1082,7 @@ export default function App() {
             onNewWindow={() => setNewWinOpen(true)}
             onManageWindow={(w) => setManageWindow(w)}
             onManagePane={(paneId) => setManagePane(paneId)}
+            paneSheetOpen={!!managePane}
             trackWindowId={manageWindow?.id}
           />
           {current.paneId && (

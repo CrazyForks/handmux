@@ -268,6 +268,24 @@ describe('WindowBar', () => {
     expect(container.querySelector('.pane-map')).not.toBeNull(); // map still open after the switch
   });
 
+  it('an outside tap closes the pane map', () => {
+    render({ ...base, panes: geomPanes });
+    openPaneMenu();
+    expect(container.querySelector('.pane-map')).not.toBeNull();
+    fire(document.body, 'pointerdown');
+    expect(container.querySelector('.pane-map')).toBeNull();
+  });
+
+  it('keeps the map open on an outside tap while a pane-manage sheet is open (so split/close can live-refresh it)', () => {
+    // The split/close sheet renders on <body>; tapping its actions is "outside" the tab. With the sheet
+    // flagged open the map must NOT self-close, so after the operation it re-renders to the new layout.
+    render({ ...base, panes: geomPanes, paneSheetOpen: true });
+    openPaneMenu();
+    expect(container.querySelector('.pane-map')).not.toBeNull();
+    fire(document.body, 'pointerdown'); // e.g. tapping 左右分屏 / 关闭此格 on the body-rendered sheet
+    expect(container.querySelector('.pane-map')).not.toBeNull();
+  });
+
   it('falls back to the flat list when panes lack geometry', () => {
     render({ ...base, panes }); // fixture panes have no left/top
     openPaneMenu();

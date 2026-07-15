@@ -72,7 +72,7 @@ function PaneMapCell({ cell, cur, releasing, picking, agent, onChoose, onManage 
   );
 }
 
-function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, onManage, onManagePane, onSelectPane }) {
+function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, onManage, onManagePane, onSelectPane, paneSheetOpen = false }) {
   const [open, setOpen] = useState(false);
   // Id of the tile mid-selection (drives the .is-picking flash) until the switch commits.
   const [picking, setPicking] = useState(null);
@@ -126,9 +126,17 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
   });
 
   // Close on an outside tap (capture phase, beats other handlers); reposition while open — same as Dropdown.
+  // EXCEPT while a pane-manage sheet is open (split/close): that sheet renders on <body>, so tapping its
+  // actions/backdrop is "outside" this tab and would slam the map shut BEFORE the split/close even runs —
+  // and the whole point is to keep the map open so it live-refreshes to the new layout and re-highlights
+  // the pane now on screen. So suppress the outside-close entirely while the sheet is up; the sheet owns
+  // its own dismissal, and normal outside-close resumes once it closes.
   useEffect(() => {
     if (!open) return undefined;
-    const onDocDown = (e) => { if (!rootRef.current?.contains(e.target)) setOpen(false); };
+    const onDocDown = (e) => {
+      if (paneSheetOpen) return;
+      if (!rootRef.current?.contains(e.target)) setOpen(false);
+    };
     const reflow = () => place();
     document.addEventListener('pointerdown', onDocDown, true);
     window.addEventListener('scroll', reflow, true);
@@ -138,7 +146,7 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
       window.removeEventListener('scroll', reflow, true);
       window.removeEventListener('resize', reflow);
     };
-  }, [open]);
+  }, [open, paneSheetOpen]);
 
   const idx = Math.max(0, panes.findIndex((p) => p.id === currentPaneId));
   const cur = panes[idx];
@@ -204,7 +212,7 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
 
 export default function WindowBar({
   windows, windowAgents = {}, paneAgents = {}, currentAgent, currentWindowId, panes, currentPaneId, onSelectWindow, onSelectPane, onNewWindow, onManageWindow,
-  onManagePane, trackWindowId,
+  onManagePane, paneSheetOpen = false, trackWindowId,
 }) {
   const scrollRef = useRef(null);
   // While a window is being managed (its long-press menu open), keep its tab in view as the order
@@ -233,6 +241,7 @@ export default function WindowBar({
                 onManage={onManageWindow}
                 onManagePane={onManagePane}
                 onSelectPane={onSelectPane}
+                paneSheetOpen={paneSheetOpen}
               />
             );
           }
