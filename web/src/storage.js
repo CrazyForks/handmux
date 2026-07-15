@@ -132,6 +132,22 @@ const NOTIF_READ_TS_KEY = 'tw_notif_read_ts';
 export const getNotifReadTs = () => { const v = localStorage.getItem(NOTIF_READ_TS_KEY); return v == null ? 0 : Number(v); };
 export const setNotifReadTs = (ts) => localStorage.setItem(NOTIF_READ_TS_KEY, String(ts));
 
+// Per-message inbox read-state: id-based set (replaces ts high-water mark).
+const NOTIF_READ_IDS_KEY = 'tw_notif_read_ids'; // ids of manual-push notifications already opened (per-device)
+export const getReadInboxIds = () => {
+  try { const v = JSON.parse(localStorage.getItem(NOTIF_READ_IDS_KEY) || '[]'); return Array.isArray(v) ? v : []; }
+  catch { return []; }
+};
+export const addReadInboxId = (id) => {
+  const cur = getReadInboxIds();
+  if (!cur.includes(id)) localStorage.setItem(NOTIF_READ_IDS_KEY, JSON.stringify([...cur, id]));
+};
+export const pruneReadInboxIds = (currentIds) => {
+  const keep = getReadInboxIds().filter((id) => currentIds.includes(id));
+  localStorage.setItem(NOTIF_READ_IDS_KEY, JSON.stringify(keep));
+  return keep;
+};
+
 // Last-browsed directory per window (file sheet). Keyed by window id so each window reopens where you
 // left off; absent (a window's first open) → the caller falls back to the pane's cwd. Absolute path.
 export const getBrowseDir = (windowId) => (windowId ? readMap(BROWSE_DIR_KEY)[windowId] ?? null : null);
