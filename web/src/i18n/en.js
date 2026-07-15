@@ -32,7 +32,6 @@ export default {
 
   // rename / newwindow / startup
   'rename.new_name': 'New name',
-  'rename.name_placeholder': 'Short name',
   'rename.name_rule': 'Letters, digits, hyphens only (≤16)',
   'rename.failed': 'Rename failed, please retry',
   'rename.saving': 'Saving…',

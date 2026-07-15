@@ -49,7 +49,7 @@ export default function RenameModal({ open, title, currentName = '', onClose, on
             ref={inputRef}
             className="bind-input"
             value={name}
-            placeholder={t('rename.name_placeholder')}
+            placeholder={t('rename.name_rule')}
             onChange={(e) => { setName(e.target.value); setError(''); }}
             onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
           />

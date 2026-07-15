@@ -31,7 +31,6 @@ export default {
 
   // rename / newwindow / startup
   'rename.new_name': '新しい名前',
-  'rename.name_placeholder': '短い名前',
   'rename.name_rule': '英数字とハイフンのみ（≤16文字）',
   'rename.failed': '名前の変更に失敗しました。再試行してください',
   'rename.saving': '保存中…',

@@ -31,7 +31,6 @@ export default {
 
   // rename / newwindow / startup
   'rename.new_name': '新名称',
-  'rename.name_placeholder': '短名字',
   'rename.name_rule': '只能用字母、数字、横线(≤16)',
   'rename.failed': '重命名失败,请重试',
   'rename.saving': '保存中…',

@@ -31,7 +31,6 @@ export default {
 
   // rename / newwindow / startup
   'rename.new_name': '새 이름',
-  'rename.name_placeholder': '짧은 이름',
   'rename.name_rule': '영문자, 숫자, 하이픈만 사용 가능（≤16자）',
   'rename.failed': '이름 변경에 실패했습니다. 다시 시도하세요',
   'rename.saving': '저장 중…',
