@@ -8,7 +8,7 @@ import {
   getInboxSeen, markInboxSeen, getInboxReadTs, setInboxReadTs,
   renameWindowIdeas, getChangelogSeen, setChangelogSeen,
   getVersionSeen, setVersionSeen,
-  getNotifReadTs, setNotifReadTs,
+  getReadInboxIds, addReadInboxId, pruneReadInboxIds,
   getPreviewDir, getIdeas,
 } from './storage.js';
 import { LATEST_RELEASE } from './changelog.js';
@@ -24,8 +24,8 @@ import { runSplitPane, runClosePane } from './paneActions.js';
 import PreviewSheet from './components/PreviewSheet.jsx';
 import { inboxRows, topView, maxTs } from './inbox.js';
 import { moveTarget } from './windowOrder.js';
-import { reportBound, clearPaneNotification, getNotifications } from './push.js';
-import PushInboxSheet from './components/PushInboxSheet.jsx';
+import { reportBound, clearPaneNotification, getNotifications, deleteNotification } from './push.js';
+import InboxPage from './components/InboxPage.jsx';
 import { isAbsolute, joinPath } from './docPath.js';
 import { isImageName } from './mime.js';
 import { useDocTabs } from './hooks/useDocTabs.js';
@@ -61,7 +61,7 @@ import { usePageScrollLock } from './hooks/usePageScrollLock.js';
 import { useLongPress } from './hooks/useLongPress.js';
 import { useBackButton } from './hooks/useBackButton.js';
 import { useExitConfirm } from './hooks/useExitConfirm.js';
-import { readRoute, writeSessionHash } from './hashRoute.js';
+import { readRoute, writeSessionHash, buildInboxLink } from './hashRoute.js';
 import { hasShareFlag, takeSharedFile, clearShareFlag } from './shareIntake.js';
 
 const COL_STEP = 10; // columns added/removed per ⊟/⊞ tap
@@ -109,9 +109,25 @@ export default function App() {
   const [verSeen, setVerSeen] = useState(getVersionSeen); // npm "latest" already acknowledged by opening Settings
   const [seen, setSeen] = useState(getInboxSeen); // pane → last-viewed ts (inbox read state)
   const [readTs, setReadTs] = useState(getInboxReadTs); // server-ts high-water mark for done history (null=unset)
-  const [notifReadTs, setNotifReadTsState] = useState(getNotifReadTs); // read high-water for manual-push inbox
-  const [notifLatestTs, setNotifLatestTs] = useState(0);               // newest stored notification ts
-  const [inboxSheetOpen, setInboxSheetOpen] = useState(false);
+  const [notifItems, setNotifItems] = useState([]);            // manual-push inbox records (newest-first)
+  const [readIds, setReadIds] = useState(getReadInboxIds);      // ids already opened (per-device)
+  const [notifInboxOpen, setNotifInboxOpen] = useState(false);  // full-screen inbox list page
+  const [notifDetailId, setNotifDetailId] = useState(null);     // open message detail (null = list only)
+  // Manual-push inbox open/close/detail/delete — declared this early (ahead of the SW-message and
+  // boot deep-link effects further down, and the useBackButton group right below) so nothing references
+  // them before their const initializer runs (TDZ).
+  const openNotifInbox = () => { setSettingsOpen(false); setNotifInboxOpen(true); };
+  const openNotifDetail = (id) => {
+    setNotifDetailId(id);
+    addReadInboxId(id);
+    setReadIds(getReadInboxIds());
+  };
+  const closeNotifDetail = () => setNotifDetailId(null);
+  const closeNotifInbox = () => { setNotifDetailId(null); setNotifInboxOpen(false); };
+  const deleteNotifItem = async (id) => {
+    setNotifItems((cur) => cur.filter((n) => n.id !== id)); // optimistic
+    await deleteNotification(id);
+  };
   const termRef = useRef(null);
   const dockRef = useRef(null); // imperative handle into BottomDock — idea panel fills its input box
   const tmuxColsRef = useRef(null); // target col count, so taps accumulate (term.cols lags ~1s)
@@ -173,6 +189,8 @@ export default function App() {
     if (renameTarget) setRenameTarget(null); else setManageWindow(null);
   });
   useBackButton(!!managePane, () => setManagePane(null));
+  useBackButton(notifInboxOpen, closeNotifInbox);
+  useBackButton(!!notifDetailId, closeNotifDetail);
   // Root double-back-to-exit: on the main page (a pane is showing, all the overlays above push their own
   // entries first), the first Back only surfaces a hint — a second within the window actually exits. The
   // hook toggles the hint (show on arm, hide when the window lapses), so its visibility IS the arm window —
@@ -654,7 +672,12 @@ export default function App() {
         if (s) { setDrawerOpen(false); await openSession(s, { window, pane }); }
       } catch (e) { handledAuth(e); }
     };
-    const onMsg = (e) => { const d = e.data; if (d && d.type === 'navigate') go(d); };
+    const onMsg = (e) => {
+      const d = e.data;
+      if (!d) return;
+      if (d.type === 'navigate') go(d);
+      else if (d.type === 'navigate-inbox' && d.id) { setNotifInboxOpen(true); openNotifDetail(d.id); }
+    };
     const onHash = () => { const r = readRoute(); if (r.session && (r.window || r.pane)) go(r); };
     navigator.serviceWorker.addEventListener('message', onMsg);
     window.addEventListener('hashchange', onHash);
@@ -664,22 +687,34 @@ export default function App() {
     };
   }, [needToken, openSession, onAuthFail]);
 
-  // Track the manual-push inbox's newest ts for the gear's unread dot: on mount, whenever the tab returns
-  // to the foreground, and each time the inbox sheet closes (so a delete/mark-read inside it reconciles the
-  // dot immediately instead of waiting for the next foreground). Manual pushes are low-frequency, so no
-  // live polling (YAGNI). Always write the newest ts — 0 when the list is empty — so deleting the last (or
-  // the newest) notification clears the dot rather than leaving a stale higher ts behind.
+  // Cold-launch deep-link: a notification tap opened `/#/inbox/<id>`. Open the page+detail, mark read, then
+  // clean the hash (replaceState) so the back-button/exit-guard state machines aren't left on an inbox URL.
+  useEffect(() => {
+    if (needToken) return;
+    const r = readRoute();
+    if (r.inbox) {
+      setNotifInboxOpen(true);
+      if (r.inboxId) openNotifDetail(r.inboxId);
+      history.replaceState(history.state, '', '#');
+    }
+  }, [needToken]); // eslint-disable-line react-hooks/exhaustive-deps -- launch-time deep-link, run once
+
+  // Fetch the manual-push inbox: on mount, on foreground, and each time the inbox page opens/closes (so a
+  // delete/open-detail reconciles). Manual pushes are low-frequency → no live polling. Prune the read-id
+  // set to ids still present so it can't grow unbounded.
   useEffect(() => {
     if (needToken) return;
     let alive = true;
     const refresh = () => getNotifications().then((list) => {
-      if (alive) setNotifLatestTs(list.length ? list[0].ts : 0); // newest-first, 0 when empty
+      if (!alive) return;
+      setNotifItems(list);
+      setReadIds(pruneReadInboxIds(list.map((n) => n.id)));
     });
     refresh();
     const onVis = () => { if (document.visibilityState === 'visible') refresh(); };
     document.addEventListener('visibilitychange', onVis);
     return () => { alive = false; document.removeEventListener('visibilitychange', onVis); };
-  }, [needToken, inboxSheetOpen]);
+  }, [needToken, notifInboxOpen]);
 
   // Record a just-sent command into this WINDOW's recent history (deduped + capped in storage).
   const onCommandSent = useCallback((cmd) => {
@@ -912,7 +947,8 @@ export default function App() {
   // and, after upgrading+reloading, the unread changelog it brought. `updateDot` stays off once the user has
   // opened Settings for this `latest` (verSeen), even if they don't upgrade — it relights only on a newer release.
   const updateDot = !!updateInfo?.updateAvailable && updateInfo.latest !== verSeen;
-  const notifUnread = notifLatestTs > notifReadTs;
+  const readSet = new Set(readIds);
+  const notifUnread = notifItems.some((n) => !readSet.has(n.id));
   const gearDot = changelogUnread || updateDot || notifUnread;
   const openSettings = () => {
     setSettingsOpen(true);
@@ -923,11 +959,6 @@ export default function App() {
     setChangelogOpen(true);
     setChangelogSeen(LATEST_RELEASE); setClSeen(LATEST_RELEASE); // opening clears the unread dot
   };
-  const markInboxRead = (maxTs) => {
-    const ts = maxTs ?? notifLatestTs;
-    if (ts) { setNotifReadTs(ts); setNotifReadTsState(ts); }
-  };
-  const openInbox = () => { setSettingsOpen(false); setInboxSheetOpen(true); };
 
   return (
     // When the soft keyboard opens, slide the WHOLE app up by the keyboard height so it moves
@@ -983,7 +1014,7 @@ export default function App() {
         onOpenChangelog={openChangelog}
         changelogUnread={changelogUnread}
         notifUnread={notifUnread}
-        onOpenInbox={openInbox}
+        onOpenInbox={openNotifInbox}
         updateInfo={updateInfo}
         activePreview={activePreview}
         pane={current?.paneId}
@@ -996,7 +1027,16 @@ export default function App() {
         onStop={stopPreview}
       />
       <Changelog open={changelogOpen} onClose={() => setChangelogOpen(false)} />
-      <PushInboxSheet open={inboxSheetOpen} onClose={() => setInboxSheetOpen(false)} onAllRead={markInboxRead} />
+      <InboxPage
+        open={notifInboxOpen}
+        detailId={notifDetailId}
+        items={notifItems}
+        readIds={readIds}
+        onOpenDetail={openNotifDetail}
+        onCloseDetail={closeNotifDetail}
+        onClose={closeNotifInbox}
+        onDelete={deleteNotifItem}
+      />
       <Drawer
         open={drawerOpen}
         currentSessionName={current?.session?.name}

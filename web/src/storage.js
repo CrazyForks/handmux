@@ -127,11 +127,6 @@ export function markInboxSeen(pane, ts) {
 export const getInboxReadTs = () => { const v = localStorage.getItem(INBOX_READ_TS_KEY); return v == null ? null : Number(v); };
 export const setInboxReadTs = (ts) => localStorage.setItem(INBOX_READ_TS_KEY, String(ts));
 
-// Manual-push inbox read-state: high-water mark (a server-ts) — notifications with ts <= this are "read".
-const NOTIF_READ_TS_KEY = 'tw_notif_read_ts';
-export const getNotifReadTs = () => { const v = localStorage.getItem(NOTIF_READ_TS_KEY); return v == null ? 0 : Number(v); };
-export const setNotifReadTs = (ts) => localStorage.setItem(NOTIF_READ_TS_KEY, String(ts));
-
 // Per-message inbox read-state: id-based set (replaces ts high-water mark).
 const NOTIF_READ_IDS_KEY = 'tw_notif_read_ids'; // ids of manual-push notifications already opened (per-device)
 export const getReadInboxIds = () => {
