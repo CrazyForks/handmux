@@ -12,7 +12,7 @@ describe('scanDocLinks', () => {
     const links = scanDocLinks(t);
     const base = t.buffer.active.baseY;
     // 'see ' 占 4 列起、'/h/docs/a.md' 长 12
-    expect(links).toEqual([{ y: base + 1, x: 4, width: 12, path: '/h/docs/a.md' }]);
+    expect(links).toEqual([{ y: base + 1, x: 4, width: 12, kind: 'doc', path: '/h/docs/a.md' }]);
     t.dispose();
   });
 
@@ -24,8 +24,8 @@ describe('scanDocLinks', () => {
     const base = t.buffer.active.baseY;
     const path = '/aa/bb/cc/dd/ee/report.md';
     expect(links).toEqual([
-      { y: base + 0, x: 5, width: 15, path }, // cols 5..19 on the first row
-      { y: base + 1, x: 0, width: 10, path }, // the remaining 10 chars on the wrapped row
+      { y: base + 0, x: 5, width: 15, kind: 'doc', path }, // cols 5..19 on the first row
+      { y: base + 1, x: 0, width: 10, kind: 'doc', path }, // the remaining 10 chars on the wrapped row
     ]);
     // every segment carries the full path, and the widths sum to the path length
     expect(links.reduce((a, s) => a + s.width, 0)).toBe(path.length);
@@ -37,7 +37,7 @@ describe('scanDocLinks', () => {
     await write(t, '看 报告.md done'); // 看(2 cols) + space + 报告(4 cols) + .md
     const base = t.buffer.active.baseY;
     // '报告.md' starts at col 3 ('看 ' = 3 cols) and spans 7 cells (报报告告..md = 2+2+1+1+1)
-    expect(scanDocLinks(t)).toEqual([{ y: base, x: 3, width: 7, path: '报告.md' }]);
+    expect(scanDocLinks(t)).toEqual([{ y: base, x: 3, width: 7, kind: 'doc', path: '报告.md' }]);
     t.dispose();
   });
 
@@ -124,7 +124,7 @@ describe('docLinksOnLine', () => {
     await write(t, 'row0\r\nsee /h/docs/a.md now\r\nrow2');
     // 'see ' is cols 1-4, '/h/docs/a.md' (12 chars) is cols 5-16 on buffer line 2.
     expect(docLinksOnLine(t, 2)).toEqual([
-      { range: { start: { x: 5, y: 2 }, end: { x: 16, y: 2 } }, path: '/h/docs/a.md' },
+      { range: { start: { x: 5, y: 2 }, end: { x: 16, y: 2 } }, kind: 'doc', path: '/h/docs/a.md' },
     ]);
     expect(docLinksOnLine(t, 1)).toEqual([]); // no link on line 1
     t.dispose();
@@ -133,7 +133,7 @@ describe('docLinksOnLine', () => {
   it('reports a wrapped path with a multi-row range from EITHER of its rows', async () => {
     const t = new Terminal({ cols: 20, rows: 5, allowProposedApi: true, scrollback: 100 });
     await write(t, 'open /aa/bb/cc/dd/ee/report.md ok');
-    const expected = [{ range: { start: { x: 6, y: 1 }, end: { x: 10, y: 2 } }, path: '/aa/bb/cc/dd/ee/report.md' }];
+    const expected = [{ range: { start: { x: 6, y: 1 }, end: { x: 10, y: 2 } }, kind: 'doc', path: '/aa/bb/cc/dd/ee/report.md' }];
     expect(docLinksOnLine(t, 1)).toEqual(expected); // querying the first row
     expect(docLinksOnLine(t, 2)).toEqual(expected); // querying the wrapped continuation row
     t.dispose();
@@ -144,7 +144,7 @@ describe('docLinksOnLine', () => {
     await write(t, '看 报告.md done');
     // 1-based inclusive cells: '报告.md' is cols 4..10 on buffer line 1
     expect(docLinksOnLine(t, 1)).toEqual([
-      { range: { start: { x: 4, y: 1 }, end: { x: 10, y: 1 } }, path: '报告.md' },
+      { range: { start: { x: 4, y: 1 }, end: { x: 10, y: 1 } }, kind: 'doc', path: '报告.md' },
     ]);
     t.dispose();
   });

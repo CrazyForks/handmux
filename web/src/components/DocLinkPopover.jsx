@@ -10,8 +10,12 @@ const GAP = 12;     // vertical gap between the tap point and the card
 // the raw tap {x,y} and clamp the card's OWN measured box fully inside the viewport — centering on x
 // alone overflowed off the right edge (the buttons became unreachable). Below the tap by default;
 // flips above when it would run off the bottom. Hidden until measured so it never flashes mispositioned.
-export default function DocLinkPopover({ path, x, y, onOpen, onClose }) {
-  const name = path.split('/').filter(Boolean).pop() || path;
+//
+// Also serves the loopback-URL "开启代理并预览" confirm, via the optional overrides: `icon`, `name`
+// (title line), `openLabel` (confirm button text), `note` (a grey explainer line — used when the proxy
+// is unavailable), and `disabled` (hide the confirm button, leaving only Cancel). Same positioning.
+export default function DocLinkPopover({ path, x, y, onOpen, onClose, icon, name: nameProp, openLabel, note, disabled = false }) {
+  const name = nameProp ?? (path.split('/').filter(Boolean).pop() || path);
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
 
@@ -37,11 +41,12 @@ export default function DocLinkPopover({ path, x, y, onOpen, onClose }) {
         style={pos ? { left: pos.left, top: pos.top } : { left: 0, top: 0, visibility: 'hidden' }}
         role="dialog" aria-label={t('doclink.title')}
       >
-        <div className="doclink-name"><FolderIcon />{name}</div>
+        <div className="doclink-name">{icon ?? <FolderIcon />}{name}</div>
         <div className="doclink-path">{path}</div>
+        {note && <div className="doclink-note">{note}</div>}
         <div className="doclink-actions">
           <button className="doclink-cancel" onClick={onClose}>{t('common.cancel')}</button>
-          <button className="doclink-open" onClick={() => onOpen(path)}>{t('common.open')}</button>
+          {!disabled && <button className="doclink-open" onClick={() => onOpen(path)}>{openLabel ?? t('common.open')}</button>}
         </div>
       </div>
     </>

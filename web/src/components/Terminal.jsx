@@ -240,11 +240,11 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     const linkProvider = term.registerLinkProvider({
       provideLinks(lineNo, cb) {
         if (!onDocLinkTapRef.current) { cb(undefined); return; }
-        const links = docLinksOnLine(term, lineNo).map(({ range, path }) => ({
-          range,
-          text: path,
+        const links = docLinksOnLine(term, lineNo).map((lk) => ({
+          range: lk.range,
+          text: lk.raw ?? lk.path,
           decorations: { pointerCursor: true, underline: false }, // underline is the persistent decoration
-          activate: (e) => onDocLinkTapRef.current?.(path, e?.clientX ?? 0, e?.clientY ?? 0),
+          activate: (e) => onDocLinkTapRef.current?.(lk, e?.clientX ?? 0, e?.clientY ?? 0),
         }));
         cb(links.length ? links : undefined);
       },

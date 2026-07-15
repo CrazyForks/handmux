@@ -117,6 +117,10 @@ export default {
   'idea.fillInput': '填入输入框',
   'idea.send': '发送',
   'doclink.title': '打开文件',
+  'localurl.title': '开启代理并预览',
+  'localurl.open': '开启代理',
+  'localurl.disabled': '动态预览未开启——在设置里配置预览域名后可代理本机端口。',
+  'localurl.notListening': '端口 :{port} 没有服务在监听。',
   'changelog.title': '新功能',
 
   // preview / imageviewer / mic

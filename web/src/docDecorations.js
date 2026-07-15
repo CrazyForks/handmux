@@ -1,4 +1,21 @@
 import { findDocLinks } from './docPath.js';
+import { findLocalUrls } from './localUrl.js';
+
+// Merge the two kinds of tappable spans on ONE logical line: loopback URLs (kind:'url') and doc paths
+// (kind:'doc'). URLs win — a doc-path match that OVERLAPS a URL span is dropped, because `:` is a
+// doc-path delimiter, so `localhost:3000/foo.html` would otherwise also surface a spurious `3000/foo.html`
+// doc link. Returns start/end (char offsets into `text`) + a small payload the tap handler routes on:
+//   url → { port, urlPath, raw };  doc → {}  (its path is text.slice(start,end), same as before).
+function findAllLinks(text) {
+  const urls = findLocalUrls(text);
+  const links = urls.map((u) => ({ start: u.start, end: u.end, kind: 'url', port: u.port, urlPath: u.path, raw: u.raw }));
+  for (const d of findDocLinks(text)) {
+    if (urls.some((u) => d.start < u.end && d.end > u.start)) continue; // inside a URL → not a doc path
+    links.push({ start: d.start, end: d.end, kind: 'doc' });
+  }
+  links.sort((a, b) => a.start - b.start);
+  return links;
+}
 
 // Is row `r` filled right up to its last column (i.e. it was folded by width, not ended early)?
 //   - a glyph in the final column → filled;
@@ -102,7 +119,7 @@ export function scanDocLinks(term) {
   while (y < bottom) {
     if (!buf.getLine(y)) { y++; continue; }
     const { text, cells } = readLogicalLine(buf, y, cols);
-    for (const { start, end } of findDocLinks(text)) {
+    for (const { start, end, kind } of findAllLinks(text)) {
       let i = start;
       while (i < end) {
         const row = cells[i].row;
@@ -111,7 +128,7 @@ export function scanDocLinks(term) {
         const xStart = cells[i].col;
         const lastCell = cells[j - 1];
         const xEnd = lastCell.col + lastCell.w; // exclusive end column
-        if (row >= top && row < bottom) out.push({ y: row, x: xStart, width: xEnd - xStart, path: text.slice(start, end) });
+        if (row >= top && row < bottom) out.push({ y: row, x: xStart, width: xEnd - xStart, kind, path: text.slice(start, end) });
         i = j;
       }
     }
@@ -131,13 +148,15 @@ export function docLinksOnLine(term, bufferLineNumber) {
   if (idx < 0 || idx >= buf.length) return [];
   const { text, cells } = readLogicalLine(buf, idx, cols);
   const out = [];
-  for (const { start, end } of findDocLinks(text)) {
+  for (const { start, end, kind, port, urlPath, raw } of findAllLinks(text)) {
     const s = cells[start];
     const e = cells[end - 1];
     if (idx < s.row || idx > e.row) continue; // this link isn't on the queried line
     out.push({
       range: { start: { x: s.col + 1, y: s.row + 1 }, end: { x: e.col + e.w, y: e.row + 1 } },
+      kind,
       path: text.slice(start, end),
+      port, urlPath, raw, // present only for kind:'url'
     });
   }
   return out;

@@ -214,9 +214,16 @@ export function fetchImageUrl(path, sinceMtime = null) {
 
 // Preview registry. previewUrl carries the token so a raw browser navigation can set the preview
 // cookie. Static → same-origin /preview path; dynamic → the wildcard subdomain (needs `domain`).
-export const previewUrl = (entry, domain) => {
+export const previewUrl = (entry, domain, path = '/') => {
   const t = encodeURIComponent(getToken() ?? '');
-  if (entry?.kind === 'dynamic') return `https://${encodeURIComponent(entry.name)}.${domain}/?token=${t}`;
+  if (entry?.kind === 'dynamic') {
+    // `path` is a proxied deep link (e.g. '/admin?tab=1' from a tapped terminal URL); append the token
+    // with the right separator so a path that already carries a query keeps it. Static previews own their
+    // own routing under /preview/<name>/, so they ignore `path`.
+    const p = path && path.startsWith('/') ? path : '/';
+    const sep = p.includes('?') ? '&' : '?';
+    return `https://${encodeURIComponent(entry.name)}.${domain}${p}${sep}token=${t}`;
+  }
   return `/preview/${encodeURIComponent(entry?.name)}/?token=${t}`;
 };
 // opts = { dir } (static) | { port } (dynamic).

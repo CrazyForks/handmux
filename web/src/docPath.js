@@ -6,7 +6,7 @@
 //   `…` — Claude Code's own truncation ellipsis (`… overview.md…`);
 //   `:` — a label/line-number separator with no space (`参考:docs/plan.md`, `file.md:12`);
 //   `│` — box-drawing border, so a path never fuses across a framed panel's `│ … │` padding.
-const DELIMS = "\\s'\"`()\\[\\]<>,;，。、；：！？（）【】《》「」“”‘’*…:│";
+export const DELIMS = "\\s'\"`()\\[\\]<>,;，。、；：！？（）【】《》「」“”‘’*…:│";
 // Openable extensions: in-app docs (md/html/text) AND images the viewer shows inline. A terminal path
 // ending in any of these is a tappable link; onOpenDoc routes it to the doc reader or the image viewer
 // by extension. These two lists MUST mirror the server's classifiers (docPath.js `EXT` keys and `IMG_EXT`)

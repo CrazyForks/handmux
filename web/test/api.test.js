@@ -205,6 +205,16 @@ describe('previews api', () => {
     expect(previewUrl({ name: 'app', kind: 'dynamic' }, 'preview.example.com'))
       .toBe('https://app.preview.example.com/?token=tok123');
   });
+  it('previewUrl threads a deep-link path into a dynamic url', () => {
+    vi.stubGlobal('localStorage', { getItem: () => 'tok123' });
+    expect(previewUrl({ name: 'app', kind: 'dynamic' }, 'preview.example.com', '/admin/login'))
+      .toBe('https://app.preview.example.com/admin/login?token=tok123');
+  });
+  it('previewUrl appends token with & when the path already has a query', () => {
+    vi.stubGlobal('localStorage', { getItem: () => 'tok123' });
+    expect(previewUrl({ name: 'app', kind: 'dynamic' }, 'preview.example.com', '/x?tab=1'))
+      .toBe('https://app.preview.example.com/x?tab=1&token=tok123');
+  });
   it('createPreview POSTs {name,dir} for a static start', async () => {
     const fetch = vi.fn(async () => jsonRes(200, { name: 'foo', kind: 'static', url: '/preview/foo/?token=x', expiresAt: 9 }));
     vi.stubGlobal('fetch', fetch);

@@ -13,6 +13,11 @@ export function usePreviews(current, { settingsOpen, setSettingsOpen }) {
   const [previewDomain, setPreviewDomain] = useState(null);
   const [dynamicEnabled, setDynamicEnabled] = useState(false);
   const [previewSheetOpen, setPreviewSheetOpen] = useState(false); // in-app preview sheet visible
+  // The preview the sheet is CURRENTLY showing. null → the window default (activePreview); non-null → an
+  // ad-hoc dynamic preview opened from a tapped terminal URL (its own port + deep-link path), which is NOT
+  // the window default (URL previews are named `<window>-<port>` so several can coexist). Decouples the
+  // sheet's target from the per-window activePreview so a tapped URL can display without clobbering it.
+  const [openTarget, setOpenTarget] = useState(null); // { name, kind:'dynamic', port, path, expiresAt } | null
 
   const refreshPreviews = useCallback(async () => {
     try {
@@ -31,10 +36,18 @@ export function usePreviews(current, { settingsOpen, setSettingsOpen }) {
   const activePreview = previews.find((p) => p.name === curPreviewName && p.expiresAt > Date.now()) || null;
   const activeExpiresAt = activePreview?.expiresAt ?? null;
 
-  // Reset the sheet's open flag once there's no active preview, so a later fresh preview doesn't
-  // pop the sheet open on its own (the flag would otherwise stay true from a previous session).
-  const hasActivePreview = !!activePreview;
-  useEffect(() => { if (!hasActivePreview) setPreviewSheetOpen(false); }, [hasActivePreview]);
+  // What the sheet renders: the ad-hoc URL preview if one is open, else the window default.
+  const shownPreview = openTarget || activePreview;
+  const shownPath = openTarget?.path || '/';
+
+  // A URL preview belongs to the window it was tapped in; drop it when the active window changes so it
+  // can't linger over an unrelated window (activePreview is already window-scoped by name).
+  useEffect(() => { setOpenTarget(null); }, [curPreviewName]);
+
+  // Reset the sheet's open flag once there's nothing to show, so a later fresh preview doesn't pop the
+  // sheet open on its own (the flag would otherwise stay true from a previous session).
+  const hasShown = !!shownPreview;
+  useEffect(() => { if (!hasShown) setPreviewSheetOpen(false); }, [hasShown]);
 
   // Auto-clear the topbar icon when this preview's TTL elapses (refetch drops the expired entry).
   useEffect(() => {
@@ -49,6 +62,7 @@ export function usePreviews(current, { settingsOpen, setSettingsOpen }) {
   // closing Settings' cleanup `history.back()` pop the sheet's just-pushed entry, whose fresh popstate
   // listener then fires → the sheet flashes open and immediately closes back to the main page.
   const openPreviewSheet = useCallback(() => {
+    setOpenTarget(null); // opening the window default → clear any ad-hoc URL target
     if (settingsOpen) {
       setSettingsOpen(false);
       requestAnimationFrame(() => setPreviewSheetOpen(true));
@@ -71,6 +85,7 @@ export function usePreviews(current, { settingsOpen, setSettingsOpen }) {
   const startDynamicPreview = useCallback(async (port) => {
     if (!curPreviewName) return;
     await createPreview(curPreviewName, { port }); // throws on failure → Settings keeps its inline error, stays open
+    setOpenTarget(null); // window default → not an ad-hoc URL target
     await refreshPreviews();
     // Auto-open the sheet — but NOT in the same frame we close Settings. Settings' useBackButton pops its
     // history entry on close (history.back() → an async popstate); if the sheet opened immediately its
@@ -94,21 +109,45 @@ export function usePreviews(current, { settingsOpen, setSettingsOpen }) {
     setSettingsOpen(false); // → Settings' useBackButton cleanup → history.back() → popstate → openSheet()
   }, [curPreviewName, refreshPreviews, setSettingsOpen]);
 
-  const stopPreview = useCallback(async () => {
+  // Open a tapped loopback URL through a dynamic-preview reverse-proxy: register `<window>-<port>` (so
+  // several ports coexist), then show it in the sheet at the URL's deep-link `path`. Throws on failure
+  // (e.g. the port isn't listening) so the caller can surface why — mirrors startDynamicPreview.
+  const startUrlPreview = useCallback(async ({ port, path }) => {
     if (!curPreviewName) return;
-    try { await deletePreview(curPreviewName); await refreshPreviews(); } catch { /* ignore */ }
+    const name = `${curPreviewName}-${port}`;
+    const res = await createPreview(name, { port }); // throws on failure
+    await refreshPreviews();
+    setOpenTarget({ name, kind: 'dynamic', port, path: path || '/', expiresAt: res?.expiresAt });
+    setPreviewSheetOpen(true);
   }, [curPreviewName, refreshPreviews]);
+
+  // stop/renew act on whatever the sheet is showing — the ad-hoc URL preview if open, else the window default.
+  const stopPreview = useCallback(async () => {
+    const target = openTarget || activePreview;
+    if (!target) return;
+    try {
+      await deletePreview(target.name);
+      if (openTarget && openTarget.name === target.name) setOpenTarget(null);
+      await refreshPreviews();
+    } catch { /* ignore */ }
+  }, [openTarget, activePreview?.name, refreshPreviews]);
   const renewPreview = useCallback(async () => {
-    if (!activePreview) return;
-    const opts = activePreview.kind === 'dynamic' ? { port: activePreview.port } : { dir: activePreview.dir };
-    try { await createPreview(activePreview.name, opts); await refreshPreviews(); } catch { /* ignore */ }
-  }, [activePreview?.name, activePreview?.kind, activePreview?.dir, activePreview?.port, refreshPreviews]);
+    const target = openTarget || activePreview;
+    if (!target) return;
+    const opts = target.kind === 'dynamic' ? { port: target.port } : { dir: target.dir };
+    try {
+      const res = await createPreview(target.name, opts);
+      if (openTarget && openTarget.name === target.name) setOpenTarget((t) => (t ? { ...t, expiresAt: res?.expiresAt } : t));
+      await refreshPreviews();
+    } catch { /* ignore */ }
+  }, [openTarget, activePreview?.name, activePreview?.kind, activePreview?.dir, activePreview?.port, refreshPreviews]);
 
   return {
     previews, previewDomain, dynamicEnabled,
     previewSheetOpen, setPreviewSheetOpen,
     activePreview, curPreviewName,
+    shownPreview, shownPath,
     refreshPreviews, openPreviewSheet,
-    startPreview, startDynamicPreview, stopPreview, renewPreview,
+    startPreview, startDynamicPreview, startUrlPreview, stopPreview, renewPreview,
   };
 }

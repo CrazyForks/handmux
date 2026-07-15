@@ -18,7 +18,7 @@ const PC_MAX_ZOOM = 6; // multiplier over fit-to-width
 // PC view emulates a 1280-wide desktop page and scales the WHOLE page with the + / − buttons (100% =
 // fit-to-width). The iframe stays fully interactive: it scrolls its own content, takes input, and the
 // + / − buttons resize the whole page — so one mode covers slide + zoom + type.
-export default function PreviewSheet({ open, name, kind = 'static', domain = null, port, dir, expiresAt, onRenew, onStop, onMinimize }) {
+export default function PreviewSheet({ open, name, kind = 'static', domain = null, port, dir, expiresAt, initialPath = '/', onRenew, onStop, onMinimize }) {
   const [popOpen, setPopOpen] = useState(false); // the time chip's 续期/停止 popover
   const [device, setDevice] = useState('mobile'); // 'mobile' (device width) | 'pc' (emulate desktop)
   const [zoom, setZoom] = useState(1);            // PC zoom multiplier over fit-to-width (1 = 适应宽度)
@@ -97,10 +97,10 @@ export default function PreviewSheet({ open, name, kind = 'static', domain = nul
       <div className={`file-body preview-body ${pc ? 'pc' : ''}`} ref={bodyRef}>
         {name && pc ? (
           <div className="preview-scaler" style={scalerStyle}>
-            <iframe ref={frameRef} className="preview-frame" title={t('preview.iframeTitle')} style={frameStyle} src={previewUrl({ name, kind }, domain)} />
+            <iframe ref={frameRef} className="preview-frame" title={t('preview.iframeTitle')} style={frameStyle} src={previewUrl({ name, kind }, domain, initialPath)} />
           </div>
         ) : name ? (
-          <iframe ref={frameRef} className="preview-frame" title={t('preview.iframeTitle')} src={previewUrl({ name, kind }, domain)} />
+          <iframe ref={frameRef} className="preview-frame" title={t('preview.iframeTitle')} src={previewUrl({ name, kind }, domain, initialPath)} />
         ) : null}
       </div>
       {pc && (

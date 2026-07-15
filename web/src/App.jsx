@@ -90,6 +90,7 @@ export default function App() {
   const [docToast, setDocToast] = useState(null); // transient error toast for absolute-path doc failures
   const [exitHint, setExitHint] = useState(false); // "press Back again to exit" hint (double-back guard)
   const [docLinkPrompt, setDocLinkPrompt] = useState(null); // { path, x, y } confirm popover for a tapped terminal path
+  const [localUrlPrompt, setLocalUrlPrompt] = useState(null); // { port, path, raw, x, y } for a tapped loopback URL
   const docTabs = useDocTabs(); // file-viewer tab state, kept across sheet open/close
   const [bound, setBound] = useState(getBoundSessions); // session names pinned on this device
   const [favorites, setFavorites] = useState(getFavorites); // global favorite commands
@@ -175,8 +176,8 @@ export default function App() {
   // extracted verbatim into a hook — it coordinates with Settings' history entry via settingsOpen.
   const {
     previewDomain, dynamicEnabled, previewSheetOpen, setPreviewSheetOpen,
-    activePreview, openPreviewSheet,
-    startPreview, startDynamicPreview, stopPreview, renewPreview,
+    activePreview, shownPreview, shownPath, openPreviewSheet,
+    startPreview, startDynamicPreview, startUrlPreview, stopPreview, renewPreview,
   } = usePreviews(current, { settingsOpen, setSettingsOpen });
 
   // Update check: once per app launch (not polled), ask the server whether the installed CLI is behind the
@@ -916,10 +917,30 @@ export default function App() {
     setTimeout(() => setBasePrompt(null), 0);
   };
 
-  // A tapped terminal path doesn't open straight away (anti-误触): pop a confirm card near the tap.
+  // A tapped terminal link doesn't act straight away (anti-误触): pop a confirm card near the tap. The
+  // link carries its kind — a doc path opens the reader/image viewer; a loopback URL asks to 开启代理并预览.
   // Pass the raw tap point — DocLinkPopover clamps its own measured box inside the viewport.
-  const onDocLinkTap = (path, cx, cy) => setDocLinkPrompt({ path, x: cx, y: cy });
+  const onDocLinkTap = (link, cx, cy) => {
+    if (link?.kind === 'url') setLocalUrlPrompt({ port: link.port, path: link.urlPath, raw: link.raw, x: cx, y: cy });
+    else setDocLinkPrompt({ path: link?.path ?? link, x: cx, y: cy });
+  };
   const confirmDocLink = (path) => { setDocLinkPrompt(null); onOpenDoc(path); };
+
+  // Confirm a loopback-URL tap → register a dynamic-preview reverse-proxy to that local port and open it
+  // at the URL's path. On failure (port not listening), keep the popover and swap in the reason.
+  const [localUrlError, setLocalUrlError] = useState(null);
+  const confirmLocalUrl = async () => {
+    const p = localUrlPrompt;
+    if (!p) return;
+    try {
+      await startUrlPreview({ port: p.port, path: p.path });
+      setLocalUrlPrompt(null);
+      setLocalUrlError(null);
+    } catch {
+      setLocalUrlError(t('localurl.notListening', { port: p.port }));
+    }
+  };
+  const closeLocalUrl = () => { setLocalUrlPrompt(null); setLocalUrlError(null); };
 
   // Auto-dismiss the doc toast after a few seconds (also dismissible by tap).
   useEffect(() => {
@@ -1036,8 +1057,9 @@ export default function App() {
       <header className="topbar">
         <button className="hamburger" onClick={() => setDrawerOpen(true)}>☰</button>
         <span className="session-name" {...sessionNameLongPress}>{current?.session?.name ?? '—'}</span>
-        {/* Leftmost of the right-hand icon group; steady green signals a live preview. */}
-        {activePreview && (
+        {/* Leftmost of the right-hand icon group; steady green signals a live preview (window default OR a
+            tapped-URL proxy preview). Reopens whatever the sheet last showed — setPreviewSheetOpen keeps openTarget. */}
+        {shownPreview && (
           <button className="topbar-icon preview-live" onClick={() => setPreviewSheetOpen(true)}
             aria-label={t('app.preview')} title={t('app.openPreview')}><MonitorIcon /></button>
         )}
@@ -1235,13 +1257,14 @@ export default function App() {
       <AddToHome />
       {/* Auto-closes when there's no active preview (stopped/expired); 收起 just slides it down. */}
       <PreviewSheet
-        open={previewSheetOpen && !!activePreview}
-        name={activePreview?.name}
-        kind={activePreview?.kind}
+        open={previewSheetOpen && !!shownPreview}
+        name={shownPreview?.name}
+        kind={shownPreview?.kind}
         domain={previewDomain}
-        port={activePreview?.port}
-        dir={activePreview?.dir}
-        expiresAt={activePreview?.expiresAt}
+        port={shownPreview?.port}
+        dir={shownPreview?.dir}
+        expiresAt={shownPreview?.expiresAt}
+        initialPath={shownPath}
         onRenew={renewPreview}
         onStop={stopPreview}
         onMinimize={() => setPreviewSheetOpen(false)}
@@ -1259,6 +1282,20 @@ export default function App() {
           y={docLinkPrompt.y}
           onOpen={confirmDocLink}
           onClose={() => setDocLinkPrompt(null)}
+        />
+      )}
+      {localUrlPrompt && (
+        <DocLinkPopover
+          icon={<MonitorIcon />}
+          name={t('localurl.title')}
+          path={localUrlPrompt.raw}
+          openLabel={t('localurl.open')}
+          note={localUrlError ?? (dynamicEnabled ? undefined : t('localurl.disabled'))}
+          disabled={!dynamicEnabled}
+          x={localUrlPrompt.x}
+          y={localUrlPrompt.y}
+          onOpen={confirmLocalUrl}
+          onClose={closeLocalUrl}
         />
       )}
       <IdeaPanel

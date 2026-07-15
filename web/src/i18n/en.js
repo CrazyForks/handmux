@@ -118,6 +118,10 @@ export default {
   'idea.fillInput': 'Fill into input',
   'idea.send': 'Send',
   'doclink.title': 'Open file',
+  'localurl.title': 'Proxy & preview',
+  'localurl.open': 'Enable proxy',
+  'localurl.disabled': 'Dynamic preview is off — set a preview domain in Settings to proxy local ports.',
+  'localurl.notListening': 'Nothing is listening on :{port}.',
   'changelog.title': "What's new",
 
   // preview / imageviewer / mic
