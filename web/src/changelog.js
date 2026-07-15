@@ -11,6 +11,26 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.16.0',
+    date: '2026-07-15',
+    highlight: {
+      zh: '分屏布局地图 · 手机也能建/删窗格',
+      en: 'Split-layout map · create & close panes from the phone',
+    },
+    items: {
+      zh: [
+        '有多个窗格的窗口,选择器不再是一条干巴巴的下拉列表,而是照着你屏幕上真实的分屏样子画出来:每一格对应一个窗格,标着序号、正在跑的命令和 Agent 图标,一眼就看出谁在左谁在右、谁在上谁在下,点一下就切过去看那一格。',
+        '现在手机上就能直接分屏和关窗格了:长按地图里的某一格,就能把它「左右分屏」或「上下分屏」,也能「关闭」;还没分屏的窗口在它的菜单里也能分,已经分屏的窗口菜单里点「管理分屏」直接进地图。分好之后自动就落在新的那格里,地图也一直开着,随时能接着分或关。',
+        '绑定会话的弹窗更清楚了:「新建会话」和「选已有会话」分成两个明确的选项,不会再让人以为点一下「新建」就直接把会话建出来。',
+      ],
+      en: [
+        'For a window with several panes, the picker is no longer a plain dropdown — it’s drawn to match the way your screen is actually split: each tile is one pane, labelled with its number, the command it’s running, and its agent, so you can tell at a glance which pane is where. Tap a tile to jump to that pane.',
+        'You can now split and close panes right from the phone: long-press a tile in the map to Split it left/right or top/bottom, or Close it; a window that isn’t split yet can be split from its menu, and a split window has a “Manage split” entry that opens the map. After a split you’re dropped into the new pane, and the map stays open so you can keep splitting or closing.',
+        'The bind-session dialog is clearer: “New session” and “Pick an existing session” are now two distinct choices, so tapping “New” no longer looks like it creates a session on the spot.',
+      ],
+    },
+  },
+  {
     version: '0.15.0',
     date: '2026-07-14',
     highlight: {
