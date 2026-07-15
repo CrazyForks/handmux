@@ -131,19 +131,24 @@ export async function clearPaneNotification(pane) {
   } catch { /* best effort */ }
 }
 
-// Manual-push inbox: list stored notifications (newest first), or delete one. Best-effort — a failed
-// fetch returns an empty list / false so the sheet just shows the empty state.
+// Per-device inbox: resolve THIS device's pushKey (its subscription identity) and scope the fetch to it. A
+// device that never subscribed has no pushKey → no inbox. Best-effort — failures yield []/false so the page
+// just shows the empty state.
 export async function getNotifications() {
+  const key = await getScriptPushKey();
+  if (!key) return [];
   try {
-    const r = await fetch('/api/notifications', { headers: authHeaders(), cache: 'no-store' });
+    const r = await fetch(`/api/notifications?device=${encodeURIComponent(key)}`, { headers: authHeaders(), cache: 'no-store' });
     if (!r.ok) return [];
     return (await r.json()).items || [];
   } catch { return []; }
 }
 
 export async function deleteNotification(id) {
+  const key = await getScriptPushKey();
+  if (!key) return false;
   try {
-    const r = await fetch(`/api/notifications/${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders() });
+    const r = await fetch(`/api/notifications/${encodeURIComponent(id)}?device=${encodeURIComponent(key)}`, { method: 'DELETE', headers: authHeaders() });
     if (!r.ok) return false;
     return (await r.json()).ok === true;
   } catch { return false; }
