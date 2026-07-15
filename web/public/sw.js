@@ -101,18 +101,22 @@ self.addEventListener('notificationclick', (event) => {
   // client: url would be '/', and navigating an app sitting at '/#/s/…' to '/' is a same-document
   // navigation that pushes a spurious history entry above the app (Back then needs an extra press —
   // reads as "a nested page opened"). Just focus it. openWindow still needs a concrete url below.
-  const hasTarget = !!(d.url || d.session);
-  const url = d.url
-    ? d.url
-    : d.session
-      ? `/#/s/${e(d.session)}/w/${e(d.window || '')}/p/${e(d.pane || '')}`
-      : '/';
+  const hasTarget = !!(d.inboxId || d.url || d.session);
+  const url = d.inboxId
+    ? `/#/inbox/${e(d.inboxId)}`
+    : d.url
+      ? d.url
+      : d.session
+        ? `/#/s/${e(d.session)}/w/${e(d.window || '')}/p/${e(d.pane || '')}`
+        : '/';
   event.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const open = all.find((c) => 'focus' in c);
     if (open) {
       await open.focus();
       if (!hasTarget) return; // no deep-link → focus alone, never push a history entry
+
+      if (d.inboxId) { open.postMessage({ type: 'navigate-inbox', id: d.inboxId }); return; }
 
       // A session deep-link opens IN PLACE via postMessage (the app switches sessions and writes the hash
       // with replaceState). We deliberately do NOT navigate() an already-open client for this: a
