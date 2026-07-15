@@ -460,4 +460,8 @@ export default {
   'pushInbox.justNow': '刚刚',
   'pushInbox.minutesAgo': '{n}分钟前',
   'pushInbox.hoursAgo': '{n}小时前',
+  'pushInbox.detailTitle': '通知详情',
+  'pushInbox.openUrl': '打开链接',
+  'pushInbox.expired': '这条消息已过期',
+  'pushInbox.back': '返回',
 };

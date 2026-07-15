@@ -461,4 +461,8 @@ export default {
   'pushInbox.justNow': 'just now',
   'pushInbox.minutesAgo': '{n} min ago',
   'pushInbox.hoursAgo': '{n} h ago',
+  'pushInbox.detailTitle': 'Notification',
+  'pushInbox.openUrl': 'Open link',
+  'pushInbox.expired': 'This message has expired',
+  'pushInbox.back': 'Back',
 };

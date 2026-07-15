@@ -1568,3 +1568,33 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .push-inbox-del { background: none; border: none; opacity: .4; font-size: 1rem; padding: 4px 8px; min-width: 44px; min-height: 44px; }
 .push-inbox-empty { opacity: .5; }
 .push-inbox-markread { margin-top: 12px; width: 100%; }
+
+/* InboxPage — full-screen v2 inbox (list + per-message detail layered above it). Supersedes the
+   PushInboxSheet rules above for the shared .push-inbox-list/.row/.main/.row-title/.row-body/.row-time/
+   .del/.empty selectors (later in source order wins); PushInboxSheet itself is untouched until it's
+   removed in a later task. */
+.push-inbox-screen {
+  position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column;
+  background: var(--bg, #000); color: var(--fg, #fff);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.push-inbox-detail-screen { z-index: 41; }
+.push-inbox-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--hairline, rgba(128,128,128,.2)); }
+.push-inbox-back { background: none; border: none; font-size: 1.6rem; line-height: 1; color: inherit; min-width: 44px; min-height: 44px; }
+.push-inbox-head-title { font-weight: 600; font-size: 1.05rem; }
+.push-inbox-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
+.push-inbox-row { display: flex; align-items: flex-start; border-bottom: 1px solid var(--hairline, rgba(128,128,128,.2)); }
+.push-inbox-main { flex: 1; min-width: 0; text-align: left; background: none; border: none; color: inherit; padding: 12px; }
+.push-inbox-row-title { font-weight: 500; }
+.push-inbox-unread .push-inbox-row-title { font-weight: 700; }
+.push-inbox-unread .push-inbox-row-title::before { content: '•'; color: #0a84ff; margin-right: 6px; }
+.push-inbox-row-body { opacity: .8; word-break: break-word; margin-top: 2px; }
+.push-inbox-row-time { font-size: .8em; opacity: .5; font-variant-numeric: tabular-nums; margin-top: 4px; }
+.push-inbox-del { background: none; border: none; opacity: .4; font-size: 1rem; min-width: 44px; min-height: 44px; color: inherit; }
+.push-inbox-empty { opacity: .5; padding: 40px 16px; text-align: center; }
+.push-inbox-detail-body { padding: 16px; overflow-y: auto; }
+.push-inbox-detail-title { font-weight: 700; font-size: 1.2rem; }
+.push-inbox-detail-time { font-size: .85em; opacity: .5; font-variant-numeric: tabular-nums; margin: 4px 0 16px; }
+.push-inbox-detail-text { white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
+.push-inbox-openurl { display: inline-block; margin-top: 20px; text-decoration: none; }
+.push-inbox-detail-del { display: block; margin-top: 24px; }
