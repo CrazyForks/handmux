@@ -268,6 +268,33 @@ describe('WindowBar', () => {
     expect(container.querySelector('.pane-map')).not.toBeNull(); // map still open after the switch
   });
 
+  it('with the pane-manage sheet open, tapping another tile re-points the sheet at it (and still switches)', () => {
+    vi.useFakeTimers();
+    const onSelectPane = vi.fn();
+    const onManagePane = vi.fn();
+    // sheet is open (paneSheetOpen) targeting the current pane; tap the OTHER tile
+    render({ ...base, panes: geomPanes, paneSheetOpen: true, onSelectPane, onManagePane });
+    openPaneMenu();
+    const cells = container.querySelectorAll('.pane-map-cell');
+    fire(cells[1], 'click');
+    // the sheet re-targets to the tapped pane IMMEDIATELY (no flash delay)
+    expect(onManagePane).toHaveBeenCalledWith('%2');
+    // and the view still switches after the flash, as a normal tap does
+    act(() => vi.advanceTimersByTime(250));
+    expect(onSelectPane).toHaveBeenCalledWith('%2');
+  });
+
+  it('with no sheet open, tapping a tile does NOT re-target any sheet (only switches)', () => {
+    vi.useFakeTimers();
+    const onManagePane = vi.fn();
+    render({ ...base, panes: geomPanes, onManagePane });
+    openPaneMenu();
+    const cells = container.querySelectorAll('.pane-map-cell');
+    fire(cells[1], 'click');
+    act(() => vi.advanceTimersByTime(250));
+    expect(onManagePane).not.toHaveBeenCalled();
+  });
+
   it('an outside tap closes the pane map', () => {
     render({ ...base, panes: geomPanes });
     openPaneMenu();

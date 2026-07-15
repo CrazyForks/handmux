@@ -82,6 +82,9 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
   // flash the tile selected, then commit the switch. Under reduced-motion, skip the flash and switch now.
   const choose = (id) => {
     try { navigator.vibrate?.(10); } catch { /* unsupported */ }
+    // If the pane-manage sheet is already open, tapping another tile re-points that sheet at the tapped
+    // pane too — its title and its split/close target follow your selection, not just the viewed pane.
+    if (paneSheetOpen) onManagePane?.(id);
     const reduce = typeof window !== 'undefined' && window.matchMedia
       && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (reduce) { onSelectPane(id); return; } // map stays open — outside tap closes it
