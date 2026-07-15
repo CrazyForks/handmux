@@ -96,6 +96,12 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const d = event.notification.data || {};
   const e = encodeURIComponent;
+  // A deep-link target is present only for a session push or an explicit `--url`. A plain manual push
+  // (`handmux push <title> <body>`) has neither → hasTarget=false, and we must NOT navigate an open
+  // client: url would be '/', and navigating an app sitting at '/#/s/…' to '/' is a same-document
+  // navigation that pushes a spurious history entry above the app (Back then needs an extra press —
+  // reads as "a nested page opened"). Just focus it. openWindow still needs a concrete url below.
+  const hasTarget = !!(d.url || d.session);
   const url = d.url
     ? d.url
     : d.session
@@ -106,6 +112,8 @@ self.addEventListener('notificationclick', (event) => {
     const open = all.find((c) => 'focus' in c);
     if (open) {
       await open.focus();
+      if (!hasTarget) return; // no deep-link → focus alone, never push a history entry
+
       // A session deep-link opens IN PLACE via postMessage (the app switches sessions and writes the hash
       // with replaceState). We deliberately do NOT navigate() an already-open client for this: a
       // same-document navigation pushes a spurious history entry ABOVE the app, so Back then needed an
