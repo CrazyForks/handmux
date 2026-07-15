@@ -65,7 +65,8 @@ export function pushRoutes({ push, notifications }) {
     // Record FIRST so the notification tap can deep-link to this exact message's detail page. `--url`
     // is stored on the record (surfaced in the detail), NOT used as the tap target.
     if (notifications) {
-      const rec = notifications.record({ title, body, tag: payload.tag, url });
+      const targetKeys = push.resolveTargetKeys({ devices: hasDevices ? devices : null, sessions: hasSessions ? sessions : null });
+      const rec = notifications.record(targetKeys, { title, body, tag: payload.tag, url });
       payload.data = { inboxId: rec.id };
     }
     try {

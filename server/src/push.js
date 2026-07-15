@@ -129,6 +129,17 @@ export const sendToDevices = (keys, payload, opts = {}) =>
 export const sendToSessions = (sessions, payload, opts = {}) =>
   deliver(subs.filter((s) => s.boundSessions.some((x) => sessions.includes(x))), payload, opts);
 
+// The pushKeys a given scope resolves to (mirrors sendToDevices/sendToSessions/sendToAll targeting) — used
+// by the inbox to write a record into exactly the devices a manual push is delivered to.
+export const resolveTargetKeys = ({ devices, sessions } = {}) => {
+  const pick = (devices && devices.length)
+    ? subs.filter((s) => devices.includes(s.pushKey))
+    : (sessions && sessions.length)
+      ? subs.filter((s) => s.boundSessions.some((x) => sessions.includes(x)))
+      : subs;
+  return [...new Set(pick.map((s) => s.pushKey).filter(Boolean))];
+};
+
 // Back-compat: the /push/subscribe welcome still pushes to a single just-added subscription.
 export async function sendToOne(sub, payload, opts = {}) {
   const rec = subs.find((s) => s.subscription.endpoint === sub.endpoint)

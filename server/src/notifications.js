@@ -1,39 +1,51 @@
-// Manual-push inbox: persist each `handmux push` notification so the phone can review history.
-// Module singleton mirroring push.js — records live in memory (source of truth), flushed whole on
-// each mutation. Store path comes from NOTIF_STORE (the CLI injects ~/.handmux/notifications.json;
-// NEVER the package-internal server/data default, which a global reinstall wipes). Ring-buffered to
-// the most recent CAP entries so the file can't grow without bound.
+// Per-device manual-push inbox: each subscribed device gets its own file `<NOTIF_DIR>/<pushKey>.json`, so a
+// `--device`/`--session`-scoped push only lands in the targeted devices' inboxes (delete/read are naturally
+// per-device too). NOTIF_DIR is injected by the CLI (~/.handmux/notifications) — NEVER the package-internal
+// default, which a global reinstall wipes. Low-frequency, so each op is a plain read-modify-write of one
+// device file (no in-memory state). The same push shares one record id across its target devices so a
+// notification tap's inboxId resolves on whichever device opens it.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import { readJsonArray, writeJsonAtomic } from './jsonStore.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const STORE = process.env.NOTIF_STORE || path.resolve(here, '../data/notifications.json');
+const DIR = process.env.NOTIF_DIR || path.resolve(here, '../data/notifications');
 const CAP = 100;
-
-// Stored oldest→newest in memory; list() reverses for the client.
-let items = readJsonArray(STORE).filter((n) => n && typeof n.title === 'string');
-const persist = () => writeJsonAtomic(STORE, items);
 const genId = () => crypto.randomBytes(9).toString('base64url');
 
-export function record({ title, body, tag, url } = {}) {
+// pushKey is base64url already; sanitize anyway so a hostile value can't escape DIR. Empty → null (skip).
+function fileFor(key) {
+  const safe = String(key || '').replace(/[^A-Za-z0-9_-]/g, '');
+  return safe ? path.join(DIR, `${safe}.json`) : null;
+}
+const load = (file) => readJsonArray(file).filter((n) => n && typeof n.title === 'string');
+
+export function record(pushKeys, { title, body, tag, url } = {}) {
   const rec = { id: genId(), ts: Date.now(), title: String(title ?? ''), body: String(body ?? '') };
   if (tag) rec.tag = String(tag);
   if (url) rec.url = String(url);
-  items.push(rec);
-  if (items.length > CAP) items = items.slice(items.length - CAP);
-  persist();
+  for (const key of pushKeys || []) {
+    const file = fileFor(key);
+    if (!file) continue;
+    const items = load(file);
+    items.push(rec);
+    writeJsonAtomic(file, items.length > CAP ? items.slice(items.length - CAP) : items);
+  }
   return rec;
 }
 
-export function list() { return items.slice().reverse(); }
-
-export function remove(id) {
-  const before = items.length;
-  items = items.filter((n) => n.id !== id);
-  if (items.length !== before) { persist(); return true; }
-  return false;
+export function list(pushKey) {
+  const file = fileFor(pushKey);
+  return file ? load(file).reverse() : [];
 }
 
-export function count() { return items.length; }
+export function remove(pushKey, id) {
+  const file = fileFor(pushKey);
+  if (!file) return false;
+  const items = load(file);
+  const kept = items.filter((n) => n.id !== id);
+  if (kept.length === items.length) return false;
+  writeJsonAtomic(file, kept);
+  return true;
+}

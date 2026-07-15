@@ -6,11 +6,13 @@ export function notificationRoutes({ notifications }) {
   const r = express.Router();
 
   r.get('/notifications', (req, res) => {
-    res.json({ items: notifications.list() });
+    const device = req.query.device;
+    res.json({ items: typeof device === 'string' && device ? notifications.list(device) : [] });
   });
 
   r.delete('/notifications/:id', (req, res) => {
-    res.json({ ok: notifications.remove(req.params.id) });
+    const device = req.query.device;
+    res.json({ ok: typeof device === 'string' && device ? notifications.remove(device, req.params.id) : false });
   });
 
   return r;

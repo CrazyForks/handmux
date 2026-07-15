@@ -20,7 +20,7 @@ export function claudeStatePath(home) { return path.join(pocketHome(home), 'clau
 // PREVIEW_STORE for the server child.
 export function pushStorePath(home) { return path.join(pocketHome(home), 'push-subs.json'); }
 export function previewStorePath(home) { return path.join(pocketHome(home), 'previews.json'); }
-export function notificationsStorePath(home) { return path.join(pocketHome(home), 'notifications.json'); }
+export function notificationsDirPath(home) { return path.join(pocketHome(home), 'notifications'); }
 
 export function readState(home) {
   try { return JSON.parse(fs.readFileSync(statePath(home), 'utf8')); } catch { return null; }

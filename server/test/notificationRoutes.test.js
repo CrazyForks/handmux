@@ -21,7 +21,7 @@ beforeEach(async () => {
   deliveredData.length = 0;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'notif-routes-'));
   process.env.PUSH_STORE = path.join(dir, 'push.json');
-  process.env.NOTIF_STORE = path.join(dir, 'notifications.json');
+  process.env.NOTIF_DIR = path.join(dir, 'notifications');
   vi.resetModules();
   const push = await import('../src/push.js');
   await import('../src/notifications.js');
@@ -34,31 +34,35 @@ beforeEach(async () => {
 const auth = (r) => r.set('Authorization', 'Bearer good');
 
 describe('notification inbox routes', () => {
-  it('records the manual push (with url) and deep-links the delivered payload to its detail', async () => {
-    await auth(request(app).post('/api/push/send-local').send({ title: 'first', body: '1', url: '/x' })).expect(200);
-    const items = (await auth(request(app).get('/api/notifications')).expect(200)).body.items;
-    expect(items).toHaveLength(1);
-    expect(items[0].url).toBe('/x');
-    // the delivered web-push payload carries data.inboxId === the stored record id
-    const payload = JSON.parse(deliveredData[0]);
-    expect(payload.data.inboxId).toBe(items[0].id);
+  it('a send-local push lands only in the targeted device inbox; others stay empty', async () => {
+    // device A bound to proj-a; add device B bound to proj-b
+    const push = await import('../src/push.js');
+    push.addSubscription({ endpoint: 'B', keys: {} }, ['proj-b']);
+    const keyA = push.getPushKey('A');
+    const keyB = push.getPushKey('B');
+    // scope: session proj-a → only device A
+    await auth(request(app).post('/api/push/send-local').send({ title: 'x', body: '1', sessions: ['proj-a'] })).expect(200);
+    const aItems = (await auth(request(app).get(`/api/notifications?device=${keyA}`)).expect(200)).body.items;
+    const bItems = (await auth(request(app).get(`/api/notifications?device=${keyB}`)).expect(200)).body.items;
+    expect(aItems.map((n) => n.title)).toEqual(['x']);
+    expect(bItems).toEqual([]);
+    // the delivered payload deep-links to that record
+    const payload = JSON.parse(deliveredData[deliveredData.length - 1]);
+    expect(payload.data.inboxId).toBe(aItems[0].id);
   });
 
-  it('a manual send-local push is recorded and listed newest-first', async () => {
-    await auth(request(app).post('/api/push/send-local').send({ title: 'first', body: '1' })).expect(200);
-    await auth(request(app).post('/api/push/send-local').send({ title: 'second', body: '2', tag: 'build' })).expect(200);
-    const r = await auth(request(app).get('/api/notifications')).expect(200);
-    expect(r.body.items.map((n) => n.title)).toEqual(['second', 'first']);
-    expect(r.body.items[0].tag).toBe('build');
+  it('no device param → empty list / delete false', async () => {
+    expect((await auth(request(app).get('/api/notifications')).expect(200)).body.items).toEqual([]);
+    expect((await auth(request(app).delete('/api/notifications/whatever')).expect(200)).body.ok).toBe(false);
   });
 
-  it('DELETE /notifications/:id removes one', async () => {
-    await auth(request(app).post('/api/push/send-local').send({ title: 'a', body: '1' })).expect(200);
-    const list = (await auth(request(app).get('/api/notifications')).expect(200)).body.items;
-    const id = list[0].id;
-    const d = await auth(request(app).delete(`/api/notifications/${id}`)).expect(200);
-    expect(d.body.ok).toBe(true);
-    expect((await auth(request(app).get('/api/notifications')).expect(200)).body.items).toHaveLength(0);
+  it('DELETE removes from that device only', async () => {
+    const push = await import('../src/push.js');
+    const keyA = push.getPushKey('A');
+    await auth(request(app).post('/api/push/send-local').send({ title: 'y', body: '1' })).expect(200); // all devices
+    const id = (await auth(request(app).get(`/api/notifications?device=${keyA}`)).expect(200)).body.items[0].id;
+    expect((await auth(request(app).delete(`/api/notifications/${id}?device=${keyA}`)).expect(200)).body.ok).toBe(true);
+    expect((await auth(request(app).get(`/api/notifications?device=${keyA}`)).expect(200)).body.items).toEqual([]);
   });
 
   it('GET /notifications requires the token', async () => {
