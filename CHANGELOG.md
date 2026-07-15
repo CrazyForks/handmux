@@ -4,6 +4,12 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Added
+- 通知收件箱：脚本推送（`handmux push`）的通知现在会存到服务端（`~/.handmux/notifications.json`，保留最近 100 条），在设置 →「通知记录」里可翻看历史、逐条删除、一键标记已读；有未读时设置齿轮亮红点。只记手动脚本推送，不含自动的会话状态提醒。
+
+### Fixed
+- 点开手动脚本推送的通知不再多开一层页面：无深链目标（没带 `--session`/`--url`）时，Service Worker 只把已打开的 app 拉到前台，不再导航到 `/`（那会在历史栈里压一条多余的记录，返回要多按一次）。
+
 ## [0.16.0] - 2026-07-15
 
 ### Changed
