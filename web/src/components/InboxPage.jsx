@@ -1,5 +1,8 @@
+import { createPortal } from 'react-dom';
 import { t } from '../i18n';
+import { ChevronDownIcon } from './icons.jsx';
 
+// Relative time, compact (jsdom-safe, no Intl.RelativeTimeFormat): "刚刚" / "5分钟前" / a date.
 function ago(ts) {
   const d = Math.max(0, Date.now() - ts);
   const m = Math.floor(d / 60000);
@@ -10,43 +13,45 @@ function ago(ts) {
   return new Date(ts).toLocaleDateString();
 }
 
-// Full-screen manual-push inbox. Two levels driven by props: the list (open) and, layered above it,
-// a single-message detail (detailId). App owns the back-button history entries (useBackButton) and the
-// read-state — opening a detail is what marks that message read, via App's onOpenDetail.
+// Full-screen manual-push inbox. Uses the app's shared full-screen sheet shell (.file-sheet slide-up +
+// portal-on-<body> + .file-tabs header), exactly like GitPanel/FileManager/PreviewSheet — NOT a bespoke
+// overlay. List and detail are ONE sheet: opening a message swaps the header (‹ back + title) and body
+// (matches App's single back-guard: detail→list→close). App owns state/read/delete; this is presentational.
+// Classes stay push-inbox-* (not inbox-*) — .inbox-* belongs to the unrelated pane-status Inbox.
 export default function InboxPage({ open, detailId, items, readIds = [], onOpenDetail, onCloseDetail, onClose, onDelete }) {
-  if (!open) return null;
   const readSet = new Set(readIds);
+  const inDetail = detailId != null;
+  const detail = inDetail ? items.find((x) => x.id === detailId) : null;
 
-  const detail = detailId != null ? (
-    <div className="push-inbox-screen push-inbox-detail-screen" role="dialog" aria-label={t('pushInbox.detailTitle')}>
-      <div className="push-inbox-head">
-        <button className="push-inbox-back" onClick={onCloseDetail} aria-label={t('pushInbox.back')}>‹</button>
-        <span className="push-inbox-head-title">{t('pushInbox.detailTitle')}</span>
-      </div>
-      {(() => {
-        const n = items.find((x) => x.id === detailId);
-        if (!n) return <p className="push-inbox-empty">{t('pushInbox.expired')}</p>;
-        return (
-          <div className="push-inbox-detail-body">
-            <div className="push-inbox-detail-title">{n.title}</div>
-            <div className="push-inbox-detail-time">{ago(n.ts)}</div>
-            <div className="push-inbox-detail-text">{n.body}</div>
-            {n.url && <a className="fontbtn push-inbox-openurl" href={n.url}>{t('pushInbox.openUrl')}</a>}
-            <button className="fontbtn push-inbox-detail-del" onClick={() => { onDelete(n.id); onCloseDetail(); }}>{t('pushInbox.delete')}</button>
+  return createPortal(
+    <div className={`file-sheet push-inbox-sheet ${open ? 'open' : ''}`} aria-hidden={!open}
+      role="dialog" aria-label={t('pushInbox.title')}>
+      <div className="file-tabs push-inbox-head">
+        {inDetail ? (
+          <div className="push-inbox-drill-head">
+            <button className="push-inbox-back" aria-label={t('pushInbox.back')} title={t('pushInbox.back')} onClick={onCloseDetail}>‹</button>
+            <span className="push-inbox-head-title">{t('pushInbox.detailTitle')}</span>
           </div>
-        );
-      })()}
-    </div>
-  ) : null;
+        ) : (
+          <span className="push-inbox-head-title push-inbox-list-title">{t('pushInbox.title')}</span>
+        )}
+        <button className="file-min" aria-label={t('common.close')} title={t('common.close')} onClick={onClose}><ChevronDownIcon /></button>
+      </div>
 
-  return (
-    <>
-      <div className="push-inbox-screen" role="dialog" aria-label={t('pushInbox.title')}>
-        <div className="push-inbox-head">
-          <button className="push-inbox-back" onClick={onClose} aria-label={t('pushInbox.back')}>‹</button>
-          <span className="push-inbox-head-title">{t('pushInbox.title')}</span>
-        </div>
-        {detailId == null && (items.length === 0 ? (
+      <div className="push-inbox-body">
+        {inDetail ? (
+          detail ? (
+            <div className="push-inbox-detail">
+              <div className="push-inbox-detail-title">{detail.title}</div>
+              <div className="push-inbox-detail-time">{ago(detail.ts)}</div>
+              <div className="push-inbox-detail-text">{detail.body}</div>
+              {detail.url && <a className="fontbtn push-inbox-openurl" href={detail.url}>{t('pushInbox.openUrl')}</a>}
+              <button className="fontbtn push-inbox-detail-del" onClick={() => { onDelete(detail.id); onCloseDetail(); }}>{t('pushInbox.delete')}</button>
+            </div>
+          ) : (
+            <p className="push-inbox-empty">{t('pushInbox.expired')}</p>
+          )
+        ) : items.length === 0 ? (
           <p className="push-inbox-empty">{t('pushInbox.empty')}</p>
         ) : (
           <ul className="push-inbox-list">
@@ -61,9 +66,9 @@ export default function InboxPage({ open, detailId, items, readIds = [], onOpenD
               </li>
             ))}
           </ul>
-        ))}
+        )}
       </div>
-      {detail}
-    </>
+    </div>,
+    document.body,
   );
 }
