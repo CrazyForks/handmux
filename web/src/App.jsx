@@ -664,19 +664,22 @@ export default function App() {
     };
   }, [needToken, openSession, onAuthFail]);
 
-  // Poll the manual-push inbox's newest ts for the gear's unread dot: once on mount and whenever the tab
-  // returns to the foreground. Manual pushes are low-frequency, so no live polling (YAGNI).
+  // Track the manual-push inbox's newest ts for the gear's unread dot: on mount, whenever the tab returns
+  // to the foreground, and each time the inbox sheet closes (so a delete/mark-read inside it reconciles the
+  // dot immediately instead of waiting for the next foreground). Manual pushes are low-frequency, so no
+  // live polling (YAGNI). Always write the newest ts — 0 when the list is empty — so deleting the last (or
+  // the newest) notification clears the dot rather than leaving a stale higher ts behind.
   useEffect(() => {
     if (needToken) return;
     let alive = true;
     const refresh = () => getNotifications().then((list) => {
-      if (alive && list.length) setNotifLatestTs(list[0].ts); // newest-first
+      if (alive) setNotifLatestTs(list.length ? list[0].ts : 0); // newest-first, 0 when empty
     });
     refresh();
     const onVis = () => { if (document.visibilityState === 'visible') refresh(); };
     document.addEventListener('visibilitychange', onVis);
     return () => { alive = false; document.removeEventListener('visibilitychange', onVis); };
-  }, [needToken]);
+  }, [needToken, inboxSheetOpen]);
 
   // Record a just-sent command into this WINDOW's recent history (deduped + capped in storage).
   const onCommandSent = useCallback((cmd) => {
