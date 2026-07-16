@@ -66,10 +66,15 @@ export default function ChatView({ pane, kind }) {
 
   // "Working" indicators (Task 13): state cues, not token streaming — data is polled every 1.5s.
   const last = messages.length ? messages[messages.length - 1] : null;
-  const lastIsRunningTool = last?.type === 'tool' && last.tool.result === null;
-  const toolRunning = lastIsRunningTool && kind === 'working';
-  const showTyping = kind !== 'done' && kind !== 'permission'
-    && (kind === 'working' || last?.role === 'user') && !lastIsRunningTool;
+  const lastIsRunningTool = last?.type === 'tool' && last.tool.result === null && kind === 'working';
+  const toolRunning = lastIsRunningTool;
+  // kind is a slow (5s) poll while messages is fast (1.5s) — right after a send, kind can still read stale
+  // 'done'. A trailing USER message means "reply is coming" regardless of that staleness (bridges the gap);
+  // a trailing assistant/tool message only shows typing while actively 'working'. A running tool wins either way.
+  const showTyping = !lastIsRunningTool && (
+    last?.role === 'user' ? kind !== 'permission'
+      : kind === 'working'
+  );
 
   const scrollRef = useRef(null);
   const stickBottomRef = useRef(true); // was the user near the bottom just before this render's messages changed?
@@ -135,7 +140,7 @@ export default function ChatView({ pane, kind }) {
       return;
     }
     if (stickBottomRef.current) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+  }, [messages, showTyping]);
 
   // First mount / pane switch: land at the bottom immediately (no animation to fight).
   useEffect(() => {

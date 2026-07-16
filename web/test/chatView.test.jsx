@@ -134,14 +134,41 @@ describe('ChatView', () => {
     }
   });
 
-  it('shows the typing indicator while working with a trailing user message, hides it when done', async () => {
+  it('shows the typing indicator while working with a trailing user message, hides it when done (trailing assistant message)', async () => {
+    vi.useFakeTimers();
+    try {
+      const spy = vi.spyOn(api, 'fetchTranscript');
+      spy.mockResolvedValue({
+        messages: [{ k: 0, i: 0, role: 'user', type: 'text', text: 'hi' }],
+        hash: 'h1', hasMore: false, firstSeq: 0,
+      });
+      const { container, rerender } = render(<ChatView pane="%0" kind="working" />);
+      await act(async () => { await Promise.resolve(); });
+      expect(container.querySelector('.chat-typing')).toBeTruthy();
+
+      // kind flips to 'done' AND the trailing message becomes an assistant reply — the normal end-of-turn case.
+      spy.mockResolvedValue({
+        messages: [
+          { k: 0, i: 0, role: 'user', type: 'text', text: 'hi' },
+          { k: 1, i: 1, role: 'assistant', type: 'text', text: 'reply' },
+        ],
+        hash: 'h2', hasMore: false, firstSeq: 0,
+      });
+      rerender(<ChatView pane="%0" kind="done" />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+
+      expect(screen.queryByText('reply')).toBeTruthy();
+      expect(container.querySelector('.chat-typing')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a trailing user message with stale kind="done" still shows typing (bridges the post-send gap before the slow states poll catches up)', async () => {
     mockTranscript([{ k: 0, i: 0, role: 'user', type: 'text', text: 'hi' }]);
-    const { container, rerender } = render(<ChatView pane="%0" kind="working" />);
+    const { container } = render(<ChatView pane="%0" kind="done" />);
     await screen.findByText('hi');
     expect(container.querySelector('.chat-typing')).toBeTruthy();
-
-    rerender(<ChatView pane="%0" kind="done" />);
-    await waitFor(() => expect(container.querySelector('.chat-typing')).toBeNull());
   });
 
   it('a running tool (result:null, last, working) shows a running marker and suppresses the typing bubble; clears once result arrives', async () => {
