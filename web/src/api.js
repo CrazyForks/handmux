@@ -56,6 +56,12 @@ export const getWindows = (session) => req(`/api/windows?session=${encodeURIComp
 export const getPanes = (window) => req(`/api/panes?window=${encodeURIComponent(window)}`);
 export const getHistory = (pane, lines = 1500, since) =>
   req(`/api/history?pane=${encodeURIComponent(pane)}&lines=${lines}${since ? `&since=${since}` : ''}`, { timeoutMs: 8000 });
+// The 对话 lens's transcript: same req()-based conditional-poll convention as getHistory (8s timeout,
+// ?since=<hash>), but translates the 204 { unchanged: true } into a plain null — a simpler "keep last"
+// contract for useTranscript's polling consumer.
+export const fetchTranscript = (pane, since) =>
+  req(`/api/transcript?pane=${encodeURIComponent(pane)}${since ? `&since=${encodeURIComponent(since)}` : ''}`, { timeoutMs: 8000 })
+    .then((r) => (r.unchanged ? null : r));
 export const sendText = (pane, text, enter = true) =>
   req('/api/send', { method: 'POST', body: JSON.stringify({ pane, text, enter }) });
 export const sendKeys = (pane, keys) =>
