@@ -37,6 +37,8 @@ import Drawer from './components/Drawer.jsx';
 import WindowBar from './components/WindowBar.jsx';
 import Terminal from './components/Terminal.jsx';
 import BottomDock from './components/BottomDock.jsx';
+import LensSwitch from './components/LensSwitch.jsx';
+import ChatView from './components/ChatView.jsx';
 import TokenPrompt from './components/TokenPrompt.jsx';
 import Settings from './components/Settings.jsx';
 import UsagePage from './components/UsagePage.jsx';
@@ -98,6 +100,10 @@ export default function App() {
   const [current, setCurrent] = useState(null); // { session, windows, window, panes, paneId }
   const [booting, setBooting] = useState(true);
   const [states, setStates] = useState({}); // pane → {session,window,kind,…} from /api/states
+  const [lens, setLens] = useState('terminal'); // 'terminal' | 'chat' — per-pane, remembered in localStorage
+  useEffect(() => {
+    setLens(localStorage.getItem('tw_lens_' + current?.paneId) || 'terminal');
+  }, [current?.paneId]);
   const [orphans, setOrphans] = useState([]); // claude sessions running outside tmux (/api/orphans)
   const [takeoverTarget, setTakeoverTarget] = useState(null); // orphan being taken over (opens the sheet)
   const [inboxOpen, setInboxOpen] = useState(false); // inbox dropdown open
@@ -1332,17 +1338,23 @@ export default function App() {
             openMapFor={openMapFor}
             onMapOpened={() => setOpenMapFor(null)}
             trackWindowId={manageWindow?.id}
+            lens={lens}
+            onLensChange={(v) => { setLens(v); localStorage.setItem('tw_lens_' + current.paneId, v); }}
           />
           {current.paneId && (
-            <Terminal
-              ref={termRef}
-              key={current.paneId}
-              pane={current.paneId}
-              inset={inset}
-              onAuthFail={onAuthFail}
-              onDocLinkTap={onDocLinkTap}
-              onTap={() => dockRef.current?.hideKeyboard()}
-            />
+            !!states[current.paneId]?.agent && lens === 'chat' ? (
+              <ChatView pane={current.paneId} kind={states[current.paneId]?.kind} />
+            ) : (
+              <Terminal
+                ref={termRef}
+                key={current.paneId}
+                pane={current.paneId}
+                inset={inset}
+                onAuthFail={onAuthFail}
+                onDocLinkTap={onDocLinkTap}
+                onTap={() => dockRef.current?.hideKeyboard()}
+              />
+            )
           )}
           <BottomDock
             ref={dockRef}
