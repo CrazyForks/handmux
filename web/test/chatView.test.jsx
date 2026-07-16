@@ -134,6 +134,46 @@ describe('ChatView', () => {
     }
   });
 
+  it('shows the typing indicator while working with a trailing user message, hides it when done', async () => {
+    mockTranscript([{ k: 0, i: 0, role: 'user', type: 'text', text: 'hi' }]);
+    const { container, rerender } = render(<ChatView pane="%0" kind="working" />);
+    await screen.findByText('hi');
+    expect(container.querySelector('.chat-typing')).toBeTruthy();
+
+    rerender(<ChatView pane="%0" kind="done" />);
+    await waitFor(() => expect(container.querySelector('.chat-typing')).toBeNull());
+  });
+
+  it('a running tool (result:null, last, working) shows a running marker and suppresses the typing bubble; clears once result arrives', async () => {
+    vi.useFakeTimers();
+    try {
+      const spy = vi.spyOn(api, 'fetchTranscript');
+      spy.mockResolvedValueOnce({
+        messages: [{ k: 0, i: 0, role: 'assistant', type: 'tool', tool: { name: 'Bash', input: { command: 'ls' }, result: null, isError: false } }],
+        hash: 'h1', hasMore: false, firstSeq: 0,
+      });
+      const { container } = render(<ChatView pane="%0" kind="working" />);
+      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await Promise.resolve(); });
+
+      expect(screen.queryByText(/运行中/)).toBeTruthy();
+      expect(container.querySelector('.chat-typing')).toBeNull();
+      const chip = container.querySelector('.chat-tool');
+      expect(chip.className).toContain('chat-tool-running');
+
+      spy.mockResolvedValueOnce({
+        messages: [{ k: 0, i: 0, role: 'assistant', type: 'tool', tool: { name: 'Bash', input: { command: 'ls' }, result: 'ok', isError: false } }],
+        hash: 'h2', hasMore: false, firstSeq: 0,
+      });
+      await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+
+      expect(screen.queryByText(/运行中/)).toBeNull();
+      expect(container.querySelector('.chat-tool').className).not.toContain('chat-tool-running');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // Regression for the priority-ordering bug: a loadOlder() prepend in flight must NOT consume the
   // "new trailing user message" signal — lastMaxKRef must stay stale through the pendingPrepend-branch
   // run so the run that eventually applies the prepend still recognizes the user message as new and

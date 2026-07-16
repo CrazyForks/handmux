@@ -19,21 +19,33 @@ function toolSummary(tool) {
   return `🔧 ${n}`;
 }
 
-function ToolChip({ tool }) {
+// Three-dot pulse, reused by both the typing bubble and the running-tool head prefix.
+function TypingDots() {
+  return (
+    <span className="chat-typing-dots">
+      <span className="chat-typing-dot" />
+      <span className="chat-typing-dot" />
+      <span className="chat-typing-dot" />
+    </span>
+  );
+}
+
+function ToolChip({ tool, running }) {
   const [open, setOpen] = useState(false);
   const headClass = 'chat-tool-head' + (open ? ' chat-tool-head-open' : '');
   return (
-    <div className={'chat-tool' + (tool.isError ? ' chat-tool-err' : '')}>
+    <div className={'chat-tool' + (tool.isError ? ' chat-tool-err' : '') + (running ? ' chat-tool-running' : '')}>
       <button type="button" className={headClass} onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        {toolSummary(tool)}
+        {running && <TypingDots />}
+        {toolSummary(tool)}{running ? ' · 运行中' : ''}
       </button>
       {open && tool.result != null && <pre className="chat-tool-body">{tool.result}</pre>}
     </div>
   );
 }
 
-function Bubble({ m }) {
-  if (m.type === 'tool') return <ToolChip tool={m.tool} />;
+function Bubble({ m, running }) {
+  if (m.type === 'tool') return <ToolChip tool={m.tool} running={running} />;
   if (m.type === 'thinking') return <div className="chat-thinking">{m.text}</div>;
   // Assistant text gets markdown (tables/code/etc render properly); user text stays plain — it's what the
   // user typed, not content to be re-interpreted. Same marked→DOMPurify pipeline as DocView.jsx.
@@ -51,6 +63,13 @@ export default function ChatView({ pane, kind }) {
   const { messages, hasMoreOlder, loadOlder, loadingOlder } = useTranscript(pane, true);
   const gate = pendingGate(messages, kind);
   const isPlanGate = kind === 'permission' && !gate; // permission 但被 pendingGate 排除（如 ExitPlanMode）
+
+  // "Working" indicators (Task 13): state cues, not token streaming — data is polled every 1.5s.
+  const last = messages.length ? messages[messages.length - 1] : null;
+  const lastIsRunningTool = last?.type === 'tool' && last.tool.result === null;
+  const toolRunning = lastIsRunningTool && kind === 'working';
+  const showTyping = kind !== 'done' && kind !== 'permission'
+    && (kind === 'working' || last?.role === 'user') && !lastIsRunningTool;
 
   const scrollRef = useRef(null);
   const stickBottomRef = useRef(true); // was the user near the bottom just before this render's messages changed?
@@ -131,7 +150,14 @@ export default function ChatView({ pane, kind }) {
     <div className="chat-view">
       <div className="chat-scroll" ref={scrollRef} onScroll={onScroll}>
         {messages.length === 0 && <div className="chat-empty">还没有对话内容</div>}
-        {messages.map((m, idx) => <Bubble key={(m.k ?? m.i) + ':' + idx} m={m} />)}
+        {messages.map((m, idx) => (
+          <Bubble key={(m.k ?? m.i) + ':' + idx} m={m} running={toolRunning && idx === messages.length - 1} />
+        ))}
+        {showTyping && (
+          <div className="chat-typing" aria-hidden="true">
+            <TypingDots />
+          </div>
+        )}
       </div>
 
       {!atBottom && (
