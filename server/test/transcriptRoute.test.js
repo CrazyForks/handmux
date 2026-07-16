@@ -32,7 +32,7 @@ describe('GET /api/transcript', () => {
     const cwd = path.join(os.tmpdir(), 'chatlens-fixture-' + process.pid);
     const file = fixtureSession(cwd);
     const app = express();
-    app.use(transcriptRoutes({ commands: { paneCwd: async () => cwd } }));
+    app.use(transcriptRoutes({ commands: { paneCurrentPath: async () => cwd } }));
     try {
       const { status, body } = await call(app, '/transcript?pane=%25' + '0');
       expect(status).toBe(200);
@@ -43,7 +43,7 @@ describe('GET /api/transcript', () => {
 
   it('400 on bad pane id', async () => {
     const app = express();
-    app.use(transcriptRoutes({ commands: { paneCwd: async () => '/x' } }));
+    app.use(transcriptRoutes({ commands: { paneCurrentPath: async () => '/x' } }));
     const { status } = await call(app, '/transcript?pane=notapane');
     expect(status).toBe(400);
   });

@@ -15,7 +15,7 @@ export function transcriptRoutes({ commands }) {
   r.get('/transcript', async (req, res, next) => {
     if (!isPaneId(req.query.pane)) return res.status(400).json({ error: 'bad pane id' });
     try {
-      const cwd = await commands.paneCwd(req.query.pane);
+      const cwd = await commands.paneCurrentPath(req.query.pane);
       const dir = projectsDir();
       const resolved = await resolveEncodedDirSession(dir, cwd);
       if (!resolved.sessionId) return res.json({ messages: [], hash: '', session: null });

@@ -4,8 +4,9 @@
 // (one button per option). ExitPlanMode (plan approval) is intentionally NOT handled here — the ChatView
 // tells the user to switch to the terminal for it.
 //
-// KEY PROTOCOL (verified against live Claude Code in Task 3 — REPLACE the sequences below with the
-// observed truth if they differ):
+// KEY PROTOCOL (HYPOTHESIS, NOT YET verified against live Claude Code — device-acceptance verification
+// was deferred, not performed. REPLACE the sequences below with the observed truth once confirmed on a
+// real device, if they differ):
 //   允许        → ['Enter']            (❯ defaults to the first "Yes" option)
 //   拒绝        → ['Escape']
 //   选第 i 项   → i×['Down'] then ['Enter']   (0-based i; the list starts on option 0)

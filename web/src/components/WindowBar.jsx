@@ -228,7 +228,7 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
 export default function WindowBar({
   windows, windowAgents = {}, paneAgents = {}, currentAgent, currentWindowId, panes, currentPaneId, onSelectWindow, onSelectPane, onNewWindow, onManageWindow,
   onManagePane, paneSheetOpen = false, openMapFor = null, onMapOpened, trackWindowId,
-  lens, onLensChange,
+  lens = 'terminal', onLensChange = () => {},
 }) {
   const scrollRef = useRef(null);
   // While a window is being managed (its long-press menu open), keep its tab in view as the order

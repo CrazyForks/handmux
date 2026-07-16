@@ -28,6 +28,9 @@ export function parseTranscript(lines) {
       : Array.isArray(m.content) ? m.content : [];
     for (const it of items) {
       if (!it || typeof it !== 'object') continue;
+      // .trim() here is a truthiness guard only (dropping whitespace-only text items to avoid empty
+      // bubbles) — the pushed `it.text` below is the untrimmed original, so real text's internal/
+      // leading/trailing whitespace is preserved verbatim.
       if (it.type === 'text' && it.text && it.text.trim()) {
         msgs.push({ i, role, type: 'text', text: it.text });
       } else if (it.type === 'thinking' && it.thinking) {
