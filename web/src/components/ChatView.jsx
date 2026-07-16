@@ -2,7 +2,9 @@
 // The 对话 lens: a read-projection of the pane's Claude session as IM bubbles + two-type gate cards
 // (permission / AskUserQuestion). NO input of its own — text is typed in the existing BottomDock composer
 // (which stays mounted below in chat lens). Gate buttons write via the SAME send-keys the terminal uses.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import { useTranscript } from '../hooks/useTranscript.js';
 import { pendingGate } from '../chatGate.js';
 import { sendKeys } from '../api.js';
@@ -32,19 +34,63 @@ function ToolChip({ tool }) {
 function Bubble({ m }) {
   if (m.type === 'tool') return <ToolChip tool={m.tool} />;
   if (m.type === 'thinking') return <div className="chat-thinking">{m.text}</div>;
-  return <div className={'chat-bubble ' + (m.role === 'user' ? 'chat-me' : 'chat-them')}>{m.text}</div>;
+  // Assistant text gets markdown (tables/code/etc render properly); user text stays plain — it's what the
+  // user typed, not content to be re-interpreted. Same marked→DOMPurify pipeline as DocView.jsx.
+  if (m.role !== 'user') {
+    const html = DOMPurify.sanitize(marked.parse(m.text || ''));
+    return <div className="chat-bubble chat-them chat-md" dangerouslySetInnerHTML={{ __html: html }} />;
+  }
+  return <div className="chat-bubble chat-me">{m.text}</div>;
 }
 
+const NEAR_BOTTOM_PX = 40;
+const NEAR_TOP_PX = 80;
+
 export default function ChatView({ pane, kind }) {
-  const messages = useTranscript(pane, true);
+  const { messages, hasMoreOlder, loadOlder, loadingOlder } = useTranscript(pane, true);
   const gate = pendingGate(messages, kind);
   const isPlanGate = kind === 'permission' && !gate; // permission 但被 pendingGate 排除（如 ExitPlanMode）
 
+  const scrollRef = useRef(null);
+  const stickBottomRef = useRef(true); // was the user near the bottom just before this render's messages changed?
+  const prevScrollHeightRef = useRef(null); // captured just before a loadOlder() prepend, to preserve scroll position
+
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+    if (el.scrollTop < NEAR_TOP_PX && hasMoreOlder && !loadingOlder) {
+      prevScrollHeightRef.current = el.scrollHeight;
+      loadOlder();
+    }
+  };
+
+  // Default view is pinned to the bottom (newest), like a normal chat. After messages change: if the user
+  // was near the bottom, stick to it; if a loadOlder() prepend just landed (prevScrollHeightRef set),
+  // restore the visual position instead so the view doesn't jump.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (prevScrollHeightRef.current != null) {
+      el.scrollTop += el.scrollHeight - prevScrollHeightRef.current;
+      prevScrollHeightRef.current = null;
+      return;
+    }
+    if (stickBottomRef.current) el.scrollTop = el.scrollHeight;
+  }, [messages]);
+
+  // First mount / pane switch: land at the bottom immediately (no animation to fight).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    stickBottomRef.current = true;
+  }, [pane]);
+
   return (
     <div className="chat-view">
-      <div className="chat-scroll">
+      <div className="chat-scroll" ref={scrollRef} onScroll={onScroll}>
         {messages.length === 0 && <div className="chat-empty">还没有对话内容</div>}
-        {messages.map((m, idx) => <Bubble key={m.i + ':' + idx} m={m} />)}
+        {messages.map((m, idx) => <Bubble key={(m.k ?? m.i) + ':' + idx} m={m} />)}
       </div>
 
       {gate && (

@@ -10,14 +10,14 @@ afterEach(cleanup);
 beforeEach(() => { vi.restoreAllMocks(); });
 
 function mockTranscript(messages) {
-  vi.spyOn(api, 'fetchTranscript').mockResolvedValue({ messages, hash: 'h', session: 's' });
+  vi.spyOn(api, 'fetchTranscript').mockResolvedValue({ messages, hash: 'h', session: 's', hasMore: false, firstSeq: messages[0]?.k ?? 0 });
 }
 
 describe('ChatView', () => {
   it('renders user text right and assistant text left', async () => {
     mockTranscript([
-      { i: 0, role: 'user', type: 'text', text: '帮我跑测试' },
-      { i: 1, role: 'assistant', type: 'text', text: '好的' },
+      { k: 0, i: 0, role: 'user', type: 'text', text: '帮我跑测试' },
+      { k: 1, i: 1, role: 'assistant', type: 'text', text: '好的' },
     ]);
     render(<ChatView pane="%0" kind="working" />);
     await screen.findByText('帮我跑测试');
@@ -25,7 +25,7 @@ describe('ChatView', () => {
   });
 
   it('collapses a tool call into a chip with a summary', async () => {
-    mockTranscript([{ i: 0, role: 'assistant', type: 'tool', tool: { name: 'Bash', input: { command: 'ls' }, result: 'a', isError: false } }]);
+    mockTranscript([{ k: 0, i: 0, role: 'assistant', type: 'tool', tool: { name: 'Bash', input: { command: 'ls' }, result: 'a', isError: false } }]);
     render(<ChatView pane="%0" kind="working" />);
     // chip 文案含工具名/动作，不直接铺原始结果
     await screen.findByText(/Bash|运行|命令/);
@@ -33,7 +33,7 @@ describe('ChatView', () => {
   });
 
   it('permission gate renders 允许/拒绝 and taps send the mapped keys', async () => {
-    mockTranscript([{ i: 0, role: 'assistant', type: 'tool', tool: { name: 'Bash', input: { command: 'ls' }, result: null, isError: false } }]);
+    mockTranscript([{ k: 0, i: 0, role: 'assistant', type: 'tool', tool: { name: 'Bash', input: { command: 'ls' }, result: null, isError: false } }]);
     const keys = vi.spyOn(api, 'sendKeys').mockResolvedValue({ ok: true });
     render(<ChatView pane="%0" kind="permission" />);
     const allow = await screen.findByRole('button', { name: '允许' });
@@ -42,9 +42,16 @@ describe('ChatView', () => {
   });
 
   it('ExitPlanMode gate → shows switch-to-terminal hint, no buttons', async () => {
-    mockTranscript([{ i: 0, role: 'assistant', type: 'tool', tool: { name: 'ExitPlanMode', input: { plan: 'x' }, result: null, isError: false } }]);
+    mockTranscript([{ k: 0, i: 0, role: 'assistant', type: 'tool', tool: { name: 'ExitPlanMode', input: { plan: 'x' }, result: null, isError: false } }]);
     render(<ChatView pane="%0" kind="permission" />);
     await screen.findByText(/终端里处理|切.*终端/);
     expect(screen.queryByRole('button', { name: '允许' })).toBeNull();
+  });
+
+  it('renders markdown in an assistant text bubble — a table becomes a real <table>', async () => {
+    const md = '| a | b |\n| - | - |\n| 1 | 2 |\n';
+    mockTranscript([{ k: 0, i: 0, role: 'assistant', type: 'text', text: md }]);
+    const { container } = render(<ChatView pane="%0" kind="working" />);
+    await waitFor(() => expect(container.querySelector('table')).toBeTruthy());
   });
 });
