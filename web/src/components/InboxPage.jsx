@@ -18,10 +18,11 @@ function ago(ts) {
 // overlay. List and detail are ONE sheet: opening a message swaps the header (‹ back + title) and body
 // (matches App's single back-guard: detail→list→close). App owns state/read/delete; this is presentational.
 // Classes stay push-inbox-* (not inbox-*) — .inbox-* belongs to the unrelated pane-status Inbox.
-export default function InboxPage({ open, detailId, items, readIds = [], onOpenDetail, onCloseDetail, onClose, onDelete }) {
+export default function InboxPage({ open, detailId, items, readIds = [], onOpenDetail, onCloseDetail, onClose, onDelete, onMarkAllRead }) {
   const readSet = new Set(readIds);
   const inDetail = detailId != null;
   const detail = inDetail ? items.find((x) => x.id === detailId) : null;
+  const hasUnread = items.some((n) => !readSet.has(n.id));
 
   return createPortal(
     <div className={`file-sheet push-inbox-sheet ${open ? 'open' : ''}`} aria-hidden={!open}
@@ -34,6 +35,9 @@ export default function InboxPage({ open, detailId, items, readIds = [], onOpenD
           </div>
         ) : (
           <span className="push-inbox-head-title push-inbox-list-title">{t('pushInbox.title')}</span>
+        )}
+        {!inDetail && hasUnread && (
+          <button className="push-inbox-markall" onClick={onMarkAllRead}>{t('pushInbox.markAllRead')}</button>
         )}
         <button className="file-min" aria-label={t('common.close')} title={t('common.close')} onClick={onClose}><ChevronDownIcon /></button>
       </div>

@@ -464,4 +464,5 @@ export default {
   'pushInbox.openUrl': 'Open link',
   'pushInbox.expired': 'This message has expired',
   'pushInbox.back': 'Back',
+  'pushInbox.markAllRead': 'Mark all read',
 };

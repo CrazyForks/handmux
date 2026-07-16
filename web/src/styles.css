@@ -1566,6 +1566,9 @@ button.cmd-text { background: none; border: none; text-align: left; }
   background: var(--red); margin-left: 6px; vertical-align: middle; }
 
 .push-inbox-head { align-items: stretch; min-height: 42px; }
+/* 全部已读 — header text action, sits just left of the ⌄ close (.file-min). */
+.push-inbox-markall { flex: 0 0 auto; align-self: stretch; padding: 0 12px; background: transparent; border: none;
+  color: var(--blue); font-size: 13px; white-space: nowrap; }
 .push-inbox-drill-head { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; overflow: hidden; }
 .push-inbox-back { flex: 0 0 auto; width: 40px; align-self: stretch; display: inline-flex; align-items: center; justify-content: center;
   background: transparent; border: none; color: #9fb0c0; font-size: 26px; line-height: 1; }

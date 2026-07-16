@@ -398,4 +398,5 @@ export default {
   'pushInbox.openUrl': '打開連結',
   'pushInbox.expired': '這條訊息已過期',
   'pushInbox.back': '返回',
+  'pushInbox.markAllRead': '全部已讀',
 };

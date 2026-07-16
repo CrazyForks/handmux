@@ -155,6 +155,7 @@ export default function App() {
   };
   const closeNotifDetail = () => window.history.back(); // route the ‹ through Back → the popstate handler
   const closeNotifInbox = () => { setNotifDetailId(null); setNotifInboxOpen(false); }; // ⌄ collapse → cleanup unwinds
+  const markAllNotifRead = () => { notifItems.forEach((n) => addReadInboxId(n.id)); setReadIds(getReadInboxIds()); };
   const deleteNotifItem = async (id) => {
     setNotifItems((cur) => cur.filter((n) => n.id !== id)); // optimistic
     await deleteNotification(id);
@@ -1090,6 +1091,7 @@ export default function App() {
         onCloseDetail={closeNotifDetail}
         onClose={closeNotifInbox}
         onDelete={deleteNotifItem}
+        onMarkAllRead={markAllNotifRead}
       />
       <Drawer
         open={drawerOpen}

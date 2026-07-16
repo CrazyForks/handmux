@@ -463,4 +463,5 @@ export default {
   'pushInbox.openUrl': '打开链接',
   'pushInbox.expired': '这条消息已过期',
   'pushInbox.back': '返回',
+  'pushInbox.markAllRead': '全部已读',
 };
