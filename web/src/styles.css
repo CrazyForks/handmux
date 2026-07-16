@@ -1624,4 +1624,74 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .push-inbox-detail-time { color: #6b7a89; font-size: 12px; font-variant-numeric: tabular-nums; margin: 5px 0 16px; }
 .push-inbox-detail-text { color: #c9d5e1; white-space: pre-wrap; word-break: break-word; line-height: 1.55; font-size: 14px; }
 .push-inbox-openurl { display: inline-block; margin-top: 22px; text-decoration: none; }
+
+/* ── ChatView (对话镜头) ───────────────────────────────────────────────────
+   Read-projection of the pane's Claude session: bubbles + collapsed tool chips + a gate card pinned
+   above the (always-mounted, separate) BottomDock composer. No input here — see ChatView.jsx header.
+   This app is dark-themed throughout (no light-mode media query anywhere in this file), so these follow
+   the same palette as the rest of the sheet chrome rather than inventing a light variant. */
+.chat-view { display: flex; flex-direction: column; min-height: 0; flex: 1; background: #1a1b1e; }
+.chat-scroll {
+  flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+}
+.chat-empty { margin: auto; color: #777; font-size: 13px; text-align: center; padding: 24px 0; }
+
+.chat-bubble {
+  max-width: 82%; padding: 9px 13px; border-radius: 18px; font-size: 15px; line-height: 1.4;
+  white-space: pre-wrap; word-break: break-word;
+}
+.chat-me { align-self: flex-end; background: var(--blue); color: #fff; border-bottom-right-radius: 5px; }
+.chat-them { align-self: flex-start; background: #33353a; color: #e6e6e6; border-bottom-left-radius: 5px; }
+
+/* Tool chip — collapsed by default; tap expands the raw result inline. Muted so it reads as machinery,
+   not conversation, same register as .chat-thinking but stays tappable (≥44pt target on the head). */
+.chat-tool { align-self: flex-start; max-width: 92%; }
+.chat-tool-head {
+  display: block; width: 100%; min-height: 44px; box-sizing: border-box;
+  padding: 10px 13px; border: none; border-radius: 14px;
+  background: rgba(120,120,128,.16); color: #9fb0c0;
+  font-size: 13px; line-height: 1.4; text-align: left;
+  font-variant-numeric: tabular-nums; touch-action: manipulation;
+  white-space: pre-wrap; word-break: break-word;
+}
+.chat-tool-head:active { background: rgba(120,120,128,.28); }
+.chat-tool-err .chat-tool-head { background: rgba(255,69,58,.14); color: #ff8a80; }
+.chat-tool-body {
+  margin: 4px 0 0; padding: 10px 12px; border-radius: 10px;
+  background: rgba(120,120,128,.10); color: #c9d5e1;
+  font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+  max-height: 240px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+}
+
+/* Thinking — muted, smaller, readable but visually de-emphasized vs. real bubbles. */
+.chat-thinking {
+  align-self: flex-start; max-width: 88%; padding: 6px 12px; color: #7c8794;
+  font-size: 12.5px; font-style: italic; line-height: 1.45; white-space: pre-wrap; word-break: break-word;
+}
+
+/* Gate card — pinned to the end of the bubble stream, just above the composer (never covers it). Mirrors
+   the flat-section look of .settings-toggle rather than a new floating chrome; buttons are ≥44pt. */
+.chat-gate {
+  flex: none; margin: 0 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  padding: 12px 14px; border-radius: 14px;
+  background: #232427; box-shadow: 0 4px 18px rgba(0,0,0,.35);
+}
+.chat-gate-prompt { font-size: 13px; color: #c9d5e1; margin-bottom: 10px; }
+.chat-gate-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.chat-gate-btn {
+  flex: 1; min-width: 44px; min-height: 44px; padding: 0 14px;
+  border: none; border-radius: 10px; background: rgba(120,120,128,.16); color: var(--blue);
+  font-size: 15px; font-weight: 600; touch-action: manipulation;
+}
+.chat-gate-btn:active { background: rgba(120,120,128,.3); }
+.chat-gate-hint {
+  display: flex; align-items: center; color: #9fb0c0; font-size: 13px; line-height: 1.45;
+  background: rgba(120,120,128,.12); box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-tool-head, .chat-gate-btn { transition: none; }
+}
 .push-inbox-detail-del { display: block; margin-top: 24px; }
