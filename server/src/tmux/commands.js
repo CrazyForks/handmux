@@ -113,6 +113,12 @@ export async function paneInfo(paneId) {
   };
 }
 
+// The pane's current working directory (tmux resolves it live). Used to locate the pane's Claude jsonl
+// session under ~/.claude/projects/<encoded-cwd>/. Trimmed of the trailing newline display-message adds.
+export async function paneCwd(paneId) {
+  return (await runTmux(['display-message', '-p', '-t', paneId, '#{pane_current_path}'])).trim();
+}
+
 // Inject mouse-wheel scroll events so a full-screen app on the ALT screen scrolls itself — exactly what a
 // desktop wheel does. dir 'up' scrolls toward earlier content (SGR button 64), 'down' toward later (65);
 // `count` notches go out in ONE send-keys as a repeated escape run. Only meaningful when the app requested
