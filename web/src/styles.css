@@ -1635,7 +1635,18 @@ button.cmd-text { background: none; border: none; text-align: left; }
    above the (always-mounted, separate) BottomDock composer. No input here — see ChatView.jsx header.
    This app is dark-themed throughout (no light-mode media query anywhere in this file), so these follow
    the same palette as the rest of the sheet chrome rather than inventing a light variant. */
-.chat-view { display: flex; flex-direction: column; min-height: 0; flex: 1; background: #1a1b1e; }
+.chat-view { position: relative; display: flex; flex-direction: column; min-height: 0; flex: 1; background: #1a1b1e; }
+/* Jump-to-bottom (Task 11): only shown once scrolled away from the newest message. Floats bottom-right of
+   the bubble stream, above the composer, safe-area aware. Subtle system-style round button, ≥44pt target. */
+.chat-jump-bottom {
+  position: absolute; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  width: 44px; height: 44px; border-radius: 50%; border: none;
+  background: rgba(44,46,50,.92); color: #e6e9ee;
+  font-size: 18px; line-height: 1; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,.4); backdrop-filter: blur(8px);
+  touch-action: manipulation; z-index: 5;
+}
+.chat-jump-bottom:active { background: rgba(60,62,68,.95); }
 .chat-scroll {
   flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
   display: flex; flex-direction: column; gap: 8px;
@@ -1644,11 +1655,16 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .chat-empty { margin: auto; color: #777; font-size: 13px; text-align: center; padding: 24px 0; }
 
 .chat-bubble {
-  max-width: 82%; padding: 9px 13px; border-radius: 18px; font-size: 15px; line-height: 1.4;
+  padding: 9px 13px; border-radius: 18px; font-size: 15px; line-height: 1.4;
   white-space: pre-wrap; word-break: break-word;
 }
-.chat-me { align-self: flex-end; background: var(--blue); color: #fff; border-bottom-right-radius: 5px; }
-.chat-them { align-self: flex-start; background: #33353a; color: #e6e6e6; border-bottom-left-radius: 5px; }
+.chat-me { align-self: flex-end; max-width: 82%; background: var(--blue); color: #fff; border-bottom-right-radius: 5px; }
+/* Assistant replies (Task 11): full-width block, not a narrow bubble — long answers read like a document,
+   not a chat pill. Minimal chrome (no tail, near-flat background) since it now spans the whole lane. */
+.chat-them {
+  align-self: stretch; width: 100%; max-width: 100%; box-sizing: border-box;
+  background: rgba(120,120,128,.10); color: #e6e6e6; border-radius: 12px;
+}
 
 /* Markdown assistant bubbles (Task 10) — same marked→DOMPurify pipeline + palette family as .doc-md, but
    scoped to fit inside a chat bubble: no outer padding (the bubble already has it), tighter line-height,
@@ -1671,21 +1687,26 @@ button.cmd-text { background: none; border: none; text-align: left; }
 /* Tool chip — collapsed by default; tap expands the raw result inline. Muted so it reads as machinery,
    not conversation, same register as .chat-thinking but stays tappable (≥44pt target on the head). */
 .chat-tool { align-self: flex-start; max-width: 92%; }
+/* Collapsed (default): strictly one line — a long Bash command/path ellipsizes rather than wrapping the
+   chip open. Expanded (tapped): un-truncate so the full command/input reads, and the result <pre> shows
+   below (see .chat-tool-body). */
 .chat-tool-head {
-  display: block; width: 100%; min-height: 44px; box-sizing: border-box;
+  display: block; width: 100%; max-width: 100%; min-height: 44px; box-sizing: border-box;
   padding: 10px 13px; border: none; border-radius: 14px;
   background: rgba(120,120,128,.16); color: #9fb0c0;
   font-size: 13px; line-height: 1.4; text-align: left;
   font-variant-numeric: tabular-nums; touch-action: manipulation;
-  white-space: pre-wrap; word-break: break-word;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.chat-tool-head-open { white-space: pre-wrap; word-break: break-word; overflow: visible; text-overflow: clip; }
 .chat-tool-head:active { background: rgba(120,120,128,.28); }
 .chat-tool-err .chat-tool-head { background: rgba(255,69,58,.14); color: #ff8a80; }
 .chat-tool-body {
   margin: 4px 0 0; padding: 10px 12px; border-radius: 10px;
   background: rgba(120,120,128,.10); color: #c9d5e1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
-  max-height: 240px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  max-height: 240px; overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch;
 }
 
 /* Thinking — muted, smaller, readable but visually de-emphasized vs. real bubbles. */
