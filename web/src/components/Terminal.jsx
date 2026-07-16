@@ -12,6 +12,7 @@ import { idleDelay } from '../cadence.js';
 import { flingStep, shouldFling } from '../momentum.js';
 import { initialConnection, nextConnection } from '../connection.js';
 import { scanDocLinks, docLinksOnLine } from '../docDecorations.js';
+import { findLocalUrls } from '../localUrl.js';
 import { fitRows, bottomPadRows, scrollDecision, cursorBufferLine, followTarget } from '../terminalViewport.js';
 import { ensureBundledFonts } from '../bundledFonts.js';
 import { trimCopy, expandToLines, expandToParagraph, cellToPx, selectionCounts } from '../terminalSelection.js';
@@ -227,6 +228,22 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       // won't draw the cursor on a never-focused terminal); thereafter it's shown wherever placeCursor()/
       // cursorSeq puts it (and DECTCEM-hidden when the cursor is hidden and we're not forcing it).
       cursorInactiveStyle: 'block',
+      // OSC 8 hyperlinks (ESC ]8;;URL … ESC ]8;;) are natively clickable in xterm and by default open in
+      // the browser. Some programs print a localhost URL AS an OSC 8 link (not plain text), so xterm's
+      // native handler would win the tap and navigate away — bypassing our loopback-URL proxy-preview. A
+      // custom linkHandler intercepts activation: a loopback URL routes to onDocLinkTap (the same
+      // 「开启代理并预览」flow as a tapped plain-text URL); anything else opens in a new tab as before. The
+      // plain-text case is unaffected — it has no OSC 8 link, so our registerLinkProvider (below) handles it.
+      linkHandler: {
+        activate: (event, text) => {
+          const u = findLocalUrls(text)[0];
+          if (u && onDocLinkTapRef.current) {
+            onDocLinkTapRef.current({ kind: 'url', port: u.port, urlPath: u.path, raw: u.raw, path: u.raw }, event?.clientX ?? 0, event?.clientY ?? 0);
+            return;
+          }
+          try { window.open(text, '_blank', 'noopener,noreferrer'); } catch { /* ignore */ }
+        },
+      },
     });
     term.open(elRef.current);
     termRef.current = term;
