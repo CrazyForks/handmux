@@ -465,4 +465,5 @@ export default {
   'pushInbox.expired': 'This message has expired',
   'pushInbox.back': 'Back',
   'pushInbox.markAllRead': 'Mark all read',
+  'pushInbox.unreadCount': '{n} unread',
 };

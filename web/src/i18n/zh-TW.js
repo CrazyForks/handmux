@@ -399,4 +399,5 @@ export default {
   'pushInbox.expired': '這條訊息已過期',
   'pushInbox.back': '返回',
   'pushInbox.markAllRead': '全部已讀',
+  'pushInbox.unreadCount': '{n} 未讀',
 };

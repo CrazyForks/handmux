@@ -127,7 +127,15 @@ export function markInboxSeen(pane, ts) {
 export const getInboxReadTs = () => { const v = localStorage.getItem(INBOX_READ_TS_KEY); return v == null ? null : Number(v); };
 export const setInboxReadTs = (ts) => localStorage.setItem(INBOX_READ_TS_KEY, String(ts));
 
-// Per-message inbox read-state: id-based set (replaces ts high-water mark).
+// Inbox "new stuff" high-water: the newest notification ts the user has SEEN by opening the inbox page.
+// Drives the top red dot (gear + 通知记录 row) — once you've opened the page, the dot clears even if
+// individual messages inside are still unread; a newer notification relights it. Separate from the
+// per-message read-id set below (which drives the in-page unread count / per-row blue dot).
+const NOTIF_SEEN_TS_KEY = 'tw_notif_seen_ts';
+export const getNotifSeenTs = () => { const v = localStorage.getItem(NOTIF_SEEN_TS_KEY); return v == null ? 0 : Number(v); };
+export const setNotifSeenTs = (ts) => localStorage.setItem(NOTIF_SEEN_TS_KEY, String(ts));
+
+// Per-message inbox read-state: id-based set (in-page unread count / per-row marker).
 const NOTIF_READ_IDS_KEY = 'tw_notif_read_ids'; // ids of manual-push notifications already opened (per-device)
 export const getReadInboxIds = () => {
   try { const v = JSON.parse(localStorage.getItem(NOTIF_READ_IDS_KEY) || '[]'); return Array.isArray(v) ? v : []; }

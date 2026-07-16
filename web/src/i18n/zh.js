@@ -464,4 +464,5 @@ export default {
   'pushInbox.expired': '这条消息已过期',
   'pushInbox.back': '返回',
   'pushInbox.markAllRead': '全部已读',
+  'pushInbox.unreadCount': '{n} 未读',
 };

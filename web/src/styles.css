@@ -1575,6 +1575,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .push-inbox-head-title { display: inline-flex; align-items: center; color: #e6edf3; font-size: 14px; font-weight: 600;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .push-inbox-list-title { flex: 1; min-width: 0; padding: 0 12px; }
+.push-inbox-unread-count { margin-left: 8px; color: #6b7a89; font-size: 12px; font-weight: 400; }
 
 .push-inbox-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .push-inbox-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; flex: 1; }

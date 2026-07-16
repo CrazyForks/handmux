@@ -8,7 +8,7 @@ import {
   getInboxSeen, markInboxSeen, getInboxReadTs, setInboxReadTs,
   renameWindowIdeas, getChangelogSeen, setChangelogSeen,
   getVersionSeen, setVersionSeen,
-  getReadInboxIds, addReadInboxId, pruneReadInboxIds,
+  getReadInboxIds, addReadInboxId, pruneReadInboxIds, getNotifSeenTs, setNotifSeenTs,
   getPreviewDir, getIdeas,
 } from './storage.js';
 import { LATEST_RELEASE } from './changelog.js';
@@ -114,6 +114,7 @@ export default function App() {
   const [notifInboxOpen, setNotifInboxOpen] = useState(false);  // full-screen inbox list page
   const [notifDetailId, setNotifDetailId] = useState(null);     // open message detail (null = list only)
   const [pendingNotifDetail, setPendingNotifDetail] = useState(null); // deep-link: drill here once the list is open
+  const [notifSeenTs, setNotifSeenTsState] = useState(getNotifSeenTs); // newest ts seen by opening the inbox (top-dot high-water)
   // Manual-push inbox open/close/detail/delete — declared this early (ahead of the SW-message and
   // boot deep-link effects further down, and the useBackButton group right below) so nothing references
   // them before their const initializer runs (TDZ).
@@ -246,6 +247,13 @@ export default function App() {
       setPendingNotifDetail(null);
     }
   }, [notifInboxOpen, pendingNotifDetail]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Opening the inbox = "seen": advance the top-dot high-water to the newest ts present (covers items that
+  // load right after open). Clears the gear / 通知记录 dot even if some messages inside stay unread.
+  useEffect(() => {
+    if (notifInboxOpen && notifItems.length && notifItems[0].ts > notifSeenTs) {
+      setNotifSeenTs(notifItems[0].ts); setNotifSeenTsState(notifItems[0].ts);
+    }
+  }, [notifInboxOpen, notifItems, notifSeenTs]);
   // Root double-back-to-exit: on the main page (a pane is showing, all the overlays above push their own
   // entries first), the first Back only surfaces a hint — a second within the window actually exits. The
   // hook toggles the hint (show on arm, hide when the window lapses), so its visibility IS the arm window —
@@ -1003,8 +1011,12 @@ export default function App() {
   // opened Settings for this `latest` (verSeen), even if they don't upgrade — it relights only on a newer release.
   const updateDot = !!updateInfo?.updateAvailable && updateInfo.latest !== verSeen;
   const readSet = new Set(readIds);
-  const notifUnread = notifItems.some((n) => !readSet.has(n.id));
-  const gearDot = changelogUnread || updateDot || notifUnread;
+  const notifUnreadCount = notifItems.filter((n) => !readSet.has(n.id)).length; // per-message → in-page count
+  // Top red dot follows the LATEST-time high-water: it shows only while a notification newer than the last
+  // one you've SEEN (by opening the page) exists. Opening the page clears it even if messages inside are
+  // still unread; a newer push relights it. (Per-message unread lives on the rows / the count, not here.)
+  const hasNewNotif = notifItems.length > 0 && notifItems[0].ts > notifSeenTs; // items are newest-first
+  const gearDot = changelogUnread || updateDot || hasNewNotif;
   const openSettings = () => {
     setSettingsOpen(true);
     if (updateInfo?.latest) { setVersionSeen(updateInfo.latest); setVerSeen(updateInfo.latest); } // acknowledge → clears updateDot
@@ -1068,7 +1080,7 @@ export default function App() {
         onColRestore={tmuxRestore}
         onOpenChangelog={openChangelog}
         changelogUnread={changelogUnread}
-        notifUnread={notifUnread}
+        notifUnread={hasNewNotif}
         onOpenInbox={openNotifInbox}
         updateInfo={updateInfo}
         activePreview={activePreview}
@@ -1092,6 +1104,7 @@ export default function App() {
         onClose={closeNotifInbox}
         onDelete={deleteNotifItem}
         onMarkAllRead={markAllNotifRead}
+        unreadCount={notifUnreadCount}
       />
       <Drawer
         open={drawerOpen}

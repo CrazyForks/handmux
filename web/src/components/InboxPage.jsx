@@ -18,7 +18,7 @@ function ago(ts) {
 // overlay. List and detail are ONE sheet: opening a message swaps the header (‹ back + title) and body
 // (matches App's single back-guard: detail→list→close). App owns state/read/delete; this is presentational.
 // Classes stay push-inbox-* (not inbox-*) — .inbox-* belongs to the unrelated pane-status Inbox.
-export default function InboxPage({ open, detailId, items, readIds = [], onOpenDetail, onCloseDetail, onClose, onDelete, onMarkAllRead }) {
+export default function InboxPage({ open, detailId, items, readIds = [], onOpenDetail, onCloseDetail, onClose, onDelete, onMarkAllRead, unreadCount = 0 }) {
   const readSet = new Set(readIds);
   const inDetail = detailId != null;
   const detail = inDetail ? items.find((x) => x.id === detailId) : null;
@@ -34,7 +34,10 @@ export default function InboxPage({ open, detailId, items, readIds = [], onOpenD
             <span className="push-inbox-head-title">{t('pushInbox.detailTitle')}</span>
           </div>
         ) : (
-          <span className="push-inbox-head-title push-inbox-list-title">{t('pushInbox.title')}</span>
+          <span className="push-inbox-head-title push-inbox-list-title">
+            {t('pushInbox.title')}
+            {unreadCount > 0 && <span className="push-inbox-unread-count">{t('pushInbox.unreadCount').replace('{n}', unreadCount)}</span>}
+          </span>
         )}
         {!inDetail && hasUnread && (
           <button className="push-inbox-markall" onClick={onMarkAllRead}>{t('pushInbox.markAllRead')}</button>
