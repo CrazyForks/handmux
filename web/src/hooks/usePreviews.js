@@ -142,6 +142,18 @@ export function usePreviews(current, { settingsOpen, setSettingsOpen }) {
     } catch { /* ignore */ }
   }, [openTarget, activePreview?.name, activePreview?.kind, activePreview?.dir, activePreview?.port, refreshPreviews]);
 
+  // Keep-alive: while the sheet is OPEN and showing a preview, renew it ~1 min before its TTL expires so
+  // it never dies mid-use. renewPreview bumps expiresAt → shownExpiresAt changes → this effect reschedules,
+  // a self-perpetuating heartbeat. Tied to previewSheetOpen (not just having a preview) on purpose: a
+  // minimized/closed preview stops renewing and expires on its own, so forgotten proxies still get reaped.
+  const shownExpiresAt = shownPreview?.expiresAt ?? null;
+  useEffect(() => {
+    if (!previewSheetOpen || shownExpiresAt == null) return undefined;
+    const delay = Math.max(0, shownExpiresAt - Date.now() - 60_000);
+    const id = setTimeout(() => { renewPreview(); }, delay);
+    return () => clearTimeout(id);
+  }, [previewSheetOpen, shownExpiresAt, renewPreview]);
+
   return {
     previews, previewDomain, dynamicEnabled,
     previewSheetOpen, setPreviewSheetOpen,
