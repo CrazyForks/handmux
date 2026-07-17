@@ -1747,7 +1747,12 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .chat-tool-stat .cts-del { color: #f85149; }
 .chat-tool-head-open { white-space: pre-wrap; word-break: break-word; overflow: visible; text-overflow: clip; }
 .chat-tool-head:active { background: var(--ct-chip-2); }
-.chat-tool-err .chat-tool-head { background: var(--ct-err-bg); color: var(--ct-err-ink); border-color: transparent; }
+/* Outcome mark (✓ success / ✗ failure), pinned right; never shrinks. Fixed green/red read on every tone.
+   The chip itself stays neutral on error — the cross carries the failure, not a whole red box. */
+.chat-tool-status { flex: none; display: inline-flex; align-items: center; }
+.chat-tool-status svg { width: 15px; height: 15px; display: block; }
+.chat-tool-status.ok { color: #3fb950; }
+.chat-tool-status.err { color: #f85149; }
 .chat-tool-body {
   margin: 4px 0 0; padding: 10px 12px; border-radius: 10px;
   background: var(--ct-body); color: var(--ct-ink);
@@ -1900,5 +1905,12 @@ button.cmd-text { background: none; border: none; text-align: left; }
   color: color-mix(in srgb, rgb(var(--rgb)) 58%, #2c2a20);
   border-color: rgba(var(--rgb), .5); background: rgba(var(--rgb), .16);
 }
+/* The mic reuses the dock's .input-mic — a dark circle + light-grey icon tuned for the terminal, which
+   vanishes on the light 暖黄 ground. In the chat composer match it to .cc-attach: transparent, tone-aware
+   icon colour, 32px to align with ＋/send. Listening (.on) keeps the green fill on every tone. */
+.chat-composer .input-mic { width: 32px; height: 32px; background: transparent; color: var(--ct-chip-ink); }
+.chat-composer .input-mic svg { width: 20px; height: 20px; }
+.chat-composer .input-mic:active { background: var(--ct-chip-2); }
+.chat-composer .input-mic.on { color: #fff; background: var(--green); }
 
 .push-inbox-detail-del { display: block; margin-top: 24px; }

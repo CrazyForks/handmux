@@ -12,6 +12,7 @@ import PromptGate from './PromptGate.jsx';
 import { sendKeys } from '../api.js';
 import {
   CommandIcon, FileIcon, FilePenIcon, SearchIcon, GlobeIcon, ListChecksIcon, PuzzleIcon, BotIcon, WrenchIcon,
+  CheckIcon, XIcon,
 } from './icons.jsx';
 
 // One-line summary for a collapsed tool chip. We show what Claude actually DID — run a command, call a
@@ -92,6 +93,15 @@ function ToolBody({ tool }) {
   return null;
 }
 
+// Outcome marker at the end of a finished chip: a green check on success, a red cross on failure. It
+// replaces recolouring the whole box (too heavy) — the tool text/icon stay neutral, only the mark carries
+// the result. Nothing while a tool is still running (the wave shows that) or has no result yet.
+function ToolStatus({ tool }) {
+  if (tool.isError) return <span className="chat-tool-status err" aria-label="失败"><XIcon /></span>;
+  if (tool.result != null) return <span className="chat-tool-status ok" aria-label="成功"><CheckIcon /></span>;
+  return null;
+}
+
 function ToolChip({ tool, running }) {
   const [open, setOpen] = useState(false);
   const headClass = 'chat-tool-head' + (open ? ' chat-tool-head-open' : '');
@@ -101,8 +111,8 @@ function ToolChip({ tool, running }) {
         <span className="chat-tool-ic">{toolIcon(tool.name)}</span>
         <span className="chat-tool-head-text">{toolSummary(tool)}</span>
         <DiffStat diff={tool.diff} />
-        {/* Running: just the wave (no "运行中" label — the pulse already says it's in progress). */}
-        {running && <span className="chat-tool-head-running"><TypingDots /></span>}
+        {/* Running: the wave (the pulse already says in-progress). Done: a ✓/✗ outcome mark. */}
+        {running ? <span className="chat-tool-head-running"><TypingDots /></span> : <ToolStatus tool={tool} />}
       </button>
       {open && <ToolBody tool={tool} />}
     </div>

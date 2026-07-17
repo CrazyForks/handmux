@@ -44,6 +44,17 @@ describe('ChatView', () => {
     expect(screen.queryByText('a')).toBeNull(); // 结果默认折叠
   });
 
+  it('a finished tool shows a ✓ on success and a ✗ on failure (box stays neutral)', async () => {
+    mockTranscript([
+      { k: 0, i: 0, role: 'assistant', type: 'tool', tool: { name: 'Bash', input: { command: 'ls' }, result: 'ok', isError: false } },
+      { k: 1, i: 1, role: 'assistant', type: 'tool', tool: { name: 'Bash', input: { command: 'bad' }, result: 'boom', isError: true } },
+    ]);
+    const { container } = render(<ChatView pane="%0" kind="done" />);
+    await waitFor(() => expect(container.querySelectorAll('.chat-tool').length).toBe(2));
+    expect(container.querySelector('.chat-tool-status.ok')).toBeTruthy();
+    expect(container.querySelector('.chat-tool-status.err')).toBeTruthy();
+  });
+
   it('tool head is collapsed one-line by default; tap expands full command + result', async () => {
     const longCmd = 'echo ' + 'x'.repeat(200);
     mockTranscript([{ k: 0, i: 0, role: 'assistant', type: 'tool', tool: { name: 'Bash', input: { command: longCmd }, result: 'the output', isError: false } }]);
