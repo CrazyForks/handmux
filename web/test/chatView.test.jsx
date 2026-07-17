@@ -210,7 +210,8 @@ describe('ChatView', () => {
       await act(async () => { await Promise.resolve(); });
       await act(async () => { await Promise.resolve(); });
 
-      expect(screen.queryByText(/运行中/)).toBeTruthy();
+      // running marker is the wave (no "运行中" label — the pulse already conveys in-progress)
+      expect(container.querySelector('.chat-tool-head-running .chat-typing-dots')).toBeTruthy();
       expect(container.querySelector('.chat-typing')).toBeNull();
       const chip = container.querySelector('.chat-tool');
       expect(chip.className).toContain('chat-tool-running');
@@ -221,7 +222,7 @@ describe('ChatView', () => {
       });
       await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
 
-      expect(screen.queryByText(/运行中/)).toBeNull();
+      expect(container.querySelector('.chat-tool-head-running')).toBeNull();
       expect(container.querySelector('.chat-tool').className).not.toContain('chat-tool-running');
     } finally {
       vi.useRealTimers();

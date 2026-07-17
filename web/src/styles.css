@@ -1735,6 +1735,10 @@ button.cmd-text { background: none; border: none; text-align: left; }
   font-size: 12px; line-height: 1.25; text-align: left;
   font-variant-numeric: tabular-nums; touch-action: manipulation;
 }
+/* Tool-family icon (app's Lucide set, currentColor) leading the chip — inherits the head's colour so it
+   tracks the chip-ink / running-ink states without a separate rule. Never shrinks. */
+.chat-tool-ic { flex: none; display: inline-flex; align-items: center; }
+.chat-tool-ic svg { width: 15px; height: 15px; display: block; }
 /* +A/−B edit stat, pinned right of the chip's filename. Never shrinks/ellipsizes (the filename does). */
 .chat-tool-stat { flex: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .chat-tool-stat .cts-add { color: #3fb950; }
@@ -1858,24 +1862,27 @@ button.cmd-text { background: none; border: none; text-align: left; }
 /* The card: textarea on top, action row beneath. Buttons never overlay the text (own row) → none of the
    dock's multi/crowd/ghost-hit machinery is needed. Subtle border, faint accent on focus, green while dictating. */
 .cc-card {
-  display: flex; flex-direction: column; gap: 4px;
+  display: flex; flex-direction: column; gap: 0;
   background: var(--ct-field); border: 1px solid var(--ct-field-line); border-radius: 20px;
-  padding: 8px 10px 8px 14px; transition: border-color .15s;
+  padding: 8px 8px 5px 14px; transition: border-color .15s;
 }
 .cc-card:focus-within { border-color: var(--ct-accent); }
 .cc-card.recording { border-color: #34c759; }
-/* 16px font is deliberate — under it iOS zooms the page on focus. max-height caps growth (~6 lines) → scroll. */
+/* 16px font is deliberate — under it iOS zooms the page on focus. max-height caps growth (~6 lines) → scroll.
+   No bottom padding: the action row sits right under the text (a big gap here read as unfinished). */
 .cc-text {
   width: 100%; background: transparent; border: none; outline: none; resize: none;
-  color: var(--ct-ink); font-size: 16px; line-height: 22px; max-height: 132px; padding: 2px 0;
+  color: var(--ct-ink); font-size: 16px; line-height: 22px; max-height: 132px; padding: 2px 0 0;
   font-family: inherit;
 }
 .cc-text::placeholder { color: var(--ct-muted); }
-.cc-actions { display: flex; align-items: center; justify-content: space-between; }
+/* Negative top margin pulls the toolbar up into the button's own internal whitespace (a 32px round button
+   centres a ~18px icon → ~7px of air on top); the row still clears the text and the buttons stay ≥32px. */
+.cc-actions { display: flex; align-items: center; justify-content: space-between; margin-top: -3px; }
 .cc-actions-right { display: flex; align-items: center; gap: 6px; }
 .cc-attach, .cc-send {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px; border: none; border-radius: 999px;
+  width: 32px; height: 32px; border: none; border-radius: 999px;
   touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
 .cc-attach { background: transparent; color: var(--ct-chip-ink); }

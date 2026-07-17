@@ -10,25 +10,42 @@ import { usePendingPrompt } from '../hooks/usePendingPrompt.js';
 import { fallbackGate } from '../chatGate.js';
 import PromptGate from './PromptGate.jsx';
 import { sendKeys } from '../api.js';
+import {
+  CommandIcon, FileIcon, FilePenIcon, SearchIcon, GlobeIcon, ListChecksIcon, PuzzleIcon, BotIcon, WrenchIcon,
+} from './icons.jsx';
 
 // One-line summary for a collapsed tool chip. We show what Claude actually DID — run a command, call a
 // tool, activate a skill, dispatch an Agent — honestly (no laundering into vague phrases); the raw command/
-// path/args stays and the full result opens on tap. Cover the high-frequency tools; generic fallback else.
+// path/args stays and the full result opens on tap. The leading glyph is a real app icon (toolIcon), NOT an
+// emoji, so a tool call reads in the app's own icon language. Cover the high-frequency tools; generic else.
 function toolSummary(tool) {
   const n = tool.name || '工具';
   const inp = tool.input || {};
-  if (n === 'Bash') return `▶ 运行命令: ${inp.command || ''}`.trim();
-  if (n === 'Edit' || n === 'MultiEdit' || n === 'Write') return `✎ ${n === 'Write' ? '写入' : '编辑'} ${inp.file_path || ''}`.trim();
-  if (n === 'Read') return `📄 读取 ${inp.file_path || inp.notebook_path || ''}`.trim();
-  if (n === 'NotebookEdit') return `✎ 编辑 ${inp.notebook_path || ''}`.trim();
-  if (n === 'Grep') return `🔍 搜索 ${inp.pattern || ''}`.trim();
-  if (n === 'Glob') return `🔍 查找文件 ${inp.pattern || ''}`.trim();
-  if (n === 'WebSearch') return `🌐 联网搜索 ${inp.query || ''}`.trim();
-  if (n === 'WebFetch') return `🌐 读取网页 ${inp.url || ''}`.trim();
-  if (n === 'TodoWrite') return '📝 更新待办';
-  if (n === 'Skill') return `🧩 激活技能 ${inp.command || inp.skill || ''}`.trim();
-  if (n === 'Task' || n === 'Agent') return `🤖 调用 Agent${inp.subagent_type ? `(${inp.subagent_type})` : ''}: ${inp.description || ''}`.trim();
-  return `🔧 ${n}`;
+  if (n === 'Bash') return `运行命令 ${inp.command || ''}`.trim();
+  if (n === 'Edit' || n === 'MultiEdit' || n === 'Write') return `${n === 'Write' ? '写入' : '编辑'} ${inp.file_path || ''}`.trim();
+  if (n === 'Read') return `读取 ${inp.file_path || inp.notebook_path || ''}`.trim();
+  if (n === 'NotebookEdit') return `编辑 ${inp.notebook_path || ''}`.trim();
+  if (n === 'Grep') return `搜索 ${inp.pattern || ''}`.trim();
+  if (n === 'Glob') return `查找文件 ${inp.pattern || ''}`.trim();
+  if (n === 'WebSearch') return `联网搜索 ${inp.query || ''}`.trim();
+  if (n === 'WebFetch') return `读取网页 ${inp.url || ''}`.trim();
+  if (n === 'TodoWrite') return '更新待办';
+  if (n === 'Skill') return `激活技能 ${inp.command || inp.skill || ''}`.trim();
+  if (n === 'Task' || n === 'Agent') return `调用 Agent${inp.subagent_type ? `(${inp.subagent_type})` : ''}: ${inp.description || ''}`.trim();
+  return n;
+}
+
+// The app-consistent icon (Lucide, currentColor) for a tool family — mirrors toolSummary's branches.
+function toolIcon(name) {
+  if (name === 'Bash') return <CommandIcon />;
+  if (name === 'Edit' || name === 'MultiEdit' || name === 'Write' || name === 'NotebookEdit') return <FilePenIcon />;
+  if (name === 'Read') return <FileIcon />;
+  if (name === 'Grep' || name === 'Glob') return <SearchIcon />;
+  if (name === 'WebSearch' || name === 'WebFetch') return <GlobeIcon />;
+  if (name === 'TodoWrite') return <ListChecksIcon />;
+  if (name === 'Skill') return <PuzzleIcon />;
+  if (name === 'Task' || name === 'Agent') return <BotIcon />;
+  return <WrenchIcon />;
 }
 
 // Three-dot pulse, reused by both the typing bubble and the running-tool head's trailing indicator.
@@ -81,14 +98,11 @@ function ToolChip({ tool, running }) {
   return (
     <div className={'chat-tool' + (tool.isError ? ' chat-tool-err' : '') + (running ? ' chat-tool-running' : '')}>
       <button type="button" className={headClass} onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <span className="chat-tool-ic">{toolIcon(tool.name)}</span>
         <span className="chat-tool-head-text">{toolSummary(tool)}</span>
         <DiffStat diff={tool.diff} />
-        {running && (
-          <span className="chat-tool-head-running">
-            <TypingDots />
-            运行中
-          </span>
-        )}
+        {/* Running: just the wave (no "运行中" label — the pulse already says it's in progress). */}
+        {running && <span className="chat-tool-head-running"><TypingDots /></span>}
       </button>
       {open && <ToolBody tool={tool} />}
     </div>
