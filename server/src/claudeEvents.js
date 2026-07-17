@@ -251,5 +251,20 @@ export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, 
   }
   function stop() { if (watcher) { watcher.close(); watcher = null; } clearTimeout(deb); }
 
-  return { getStates, start, stop };
+  // The chat lens's pane→session bind: the hook state file records THIS pane's exact session (session_id +
+  // transcript_path), authoritative over the terminal-side cwd→newest-jsonl guess (which collapses distinct
+  // sessions that happen to share a cwd — see transcript.js). Returns null when hooks are off / the pane
+  // isn't a Claude pane / the recorded payload carries no session info, so callers can fall back cleanly.
+  function paneSession(pane) {
+    const rec = readStateFile(file)[pane];
+    const p = rec && rec.payload;
+    if (!p || typeof p !== 'object') return null;
+    const transcriptPath = typeof p.transcript_path === 'string' ? p.transcript_path : null;
+    const sessionId = typeof p.session_id === 'string' ? p.session_id : null;
+    const cwd = typeof p.cwd === 'string' ? p.cwd : null;
+    if (!transcriptPath && !sessionId) return null;
+    return { sessionId, transcriptPath, cwd };
+  }
+
+  return { getStates, start, stop, paneSession };
 }

@@ -34,12 +34,16 @@ function fixtureSession(cwd) {
   return file;
 }
 
+// Stub claudeEvents whose paneSession always returns null — exercises the fallback (cwd→newest) path,
+// same as the pre-Task-14 behavior all the existing tests assert on.
+const noHook = { paneSession: () => null };
+
 describe('GET /api/transcript', () => {
   it('returns normalized messages for a pane', async () => {
     const cwd = path.join(os.tmpdir(), 'chatlens-fixture-' + process.pid);
     const file = fixtureSession(cwd);
     const app = express();
-    app.use(transcriptRoutes({ commands: { paneCurrentPath: async () => cwd } }));
+    app.use(transcriptRoutes({ commands: { paneCurrentPath: async () => cwd }, claudeEvents: noHook }));
     try {
       const { status, body } = await call(app, '/transcript?pane=%25' + '0');
       expect(status).toBe(200);
@@ -49,7 +53,7 @@ describe('GET /api/transcript', () => {
 
   it('400 on bad pane id', async () => {
     const app = express();
-    app.use(transcriptRoutes({ commands: { paneCurrentPath: async () => '/x' } }));
+    app.use(transcriptRoutes({ commands: { paneCurrentPath: async () => '/x' }, claudeEvents: noHook }));
     const { status } = await call(app, '/transcript?pane=notapane');
     expect(status).toBe(400);
   });
@@ -58,7 +62,7 @@ describe('GET /api/transcript', () => {
     const cwd = path.join(os.tmpdir(), 'chatlens-fixture-limit-' + process.pid);
     const file = fixtureSession(cwd);
     const app = express();
-    app.use(transcriptRoutes({ commands: { paneCurrentPath: async () => cwd } }));
+    app.use(transcriptRoutes({ commands: { paneCurrentPath: async () => cwd }, claudeEvents: noHook }));
     try {
       const { status, body } = await call(app, '/transcript?pane=%250');
       expect(status).toBe(200);
@@ -77,7 +81,7 @@ describe('GET /api/transcript', () => {
     const cwd = path.join(os.tmpdir(), 'chatlens-fixture-before-' + process.pid);
     const file = fixtureSession(cwd);
     const app = express();
-    app.use(transcriptRoutes({ commands: { paneCurrentPath: async () => cwd } }));
+    app.use(transcriptRoutes({ commands: { paneCurrentPath: async () => cwd }, claudeEvents: noHook }));
     try {
       const first = await call(app, '/transcript?pane=%250');
       const firstSeq = first.body.firstSeq;
@@ -101,11 +105,56 @@ describe('GET /api/transcript', () => {
     const cwd = path.join(os.tmpdir(), 'chatlens-fixture-hash-' + process.pid);
     const file = fixtureSession(cwd);
     const app = express();
-    app.use(transcriptRoutes({ commands: { paneCurrentPath: async () => cwd } }));
+    app.use(transcriptRoutes({ commands: { paneCurrentPath: async () => cwd }, claudeEvents: noHook }));
     try {
       const first = await call(app, '/transcript?pane=%250');
       const { status } = await call(app, `/transcript?pane=%250&since=${first.body.hash}`);
       expect(status).toBe(204);
+    } finally { fs.rmSync(file, { force: true }); }
+  });
+
+  it('ISOLATION: two panes sharing the same cwd get their OWN sessions via hook transcript_path (regression lock)', async () => {
+    // Two Claude sessions can share a cwd (verified real on this machine) — cwd→newest would collapse
+    // both panes onto the SAME session. The hook state's per-pane transcript_path must keep them apart.
+    const cwd = path.join(os.tmpdir(), 'chatlens-fixture-isolation-' + process.pid);
+    const dir = path.join(os.tmpdir(), 'chatlens-isolation-sessions-' + process.pid);
+    fs.mkdirSync(dir, { recursive: true });
+    const fileA = path.join(dir, 'sess-a.jsonl');
+    const fileB = path.join(dir, 'sess-b.jsonl');
+    fs.writeFileSync(fileA, JSON.stringify({ type: 'user', cwd, message: { role: 'user', content: 'from-A' } }) + '\n');
+    fs.writeFileSync(fileB, JSON.stringify({ type: 'user', cwd, message: { role: 'user', content: 'from-B' } }) + '\n');
+    const claudeEvents = {
+      paneSession: (pane) => {
+        if (pane === '%1') return { sessionId: 'sess-a', transcriptPath: fileA, cwd };
+        if (pane === '%2') return { sessionId: 'sess-b', transcriptPath: fileB, cwd };
+        return null;
+      },
+    };
+    const app = express();
+    app.use(transcriptRoutes({ commands: { paneCurrentPath: async () => cwd }, claudeEvents }));
+    try {
+      const a = await call(app, '/transcript?pane=%251');
+      const b = await call(app, '/transcript?pane=%252');
+      expect(a.status).toBe(200);
+      expect(b.status).toBe(200);
+      expect(a.body.messages.map((m) => m.text)).toContain('from-A');
+      expect(b.body.messages.map((m) => m.text)).toContain('from-B');
+      expect(a.body.session).toBe('sess-a');
+      expect(b.body.session).toBe('sess-b');
+      // The core regression assertion: they must NOT show the same conversation.
+      expect(a.body.messages).not.toEqual(b.body.messages);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('FALLBACK: paneSession returns null → resolves via cwd→newest (existing behavior)', async () => {
+    const cwd = path.join(os.tmpdir(), 'chatlens-fixture-fallback-' + process.pid);
+    const file = fixtureSession(cwd);
+    const app = express();
+    app.use(transcriptRoutes({ commands: { paneCurrentPath: async () => cwd }, claudeEvents: noHook }));
+    try {
+      const { status, body } = await call(app, '/transcript?pane=%25' + '0');
+      expect(status).toBe(200);
+      expect(body.messages.length).toBeGreaterThan(0);
     } finally { fs.rmSync(file, { force: true }); }
   });
 });

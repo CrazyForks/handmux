@@ -18,19 +18,34 @@ import { projectsDir } from '../agents/claude.js';
 import { resolveEncodedDirSession, encodeProjectDir } from '../agents/scanUtils.js';
 import { parseTranscript } from '../transcriptParse.js';
 
-export function transcriptRoutes({ commands }) {
+export function transcriptRoutes({ commands, claudeEvents }) {
   const r = express.Router();
   r.get('/transcript', async (req, res, next) => {
     if (!isPaneId(req.query.pane)) return res.status(400).json({ error: 'bad pane id' });
     const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
     const before = req.query.before != null && req.query.before !== '' ? Number(req.query.before) : null;
     try {
-      const cwd = await commands.paneCurrentPath(req.query.pane);
-      const dir = projectsDir();
-      const resolved = await resolveEncodedDirSession(dir, cwd);
-      const empty = { messages: [], hash: '', session: resolved.sessionId || null, hasMore: false, firstSeq: null };
-      if (!resolved.sessionId) return res.json(empty);
-      const file = path.join(dir, encodeProjectDir(cwd), resolved.sessionId + '.jsonl');
+      // Bind pane→session via the hook state's per-pane transcript_path (authoritative — see claudeEvents
+      // .paneSession) when available; only a pane with no hook state (hooks off / not a Claude pane) falls
+      // back to cwd→newest-jsonl, which can't tell apart two sessions that share a cwd.
+      let file = null;
+      let sessionId = null;
+      const hooked = claudeEvents && claudeEvents.paneSession ? claudeEvents.paneSession(req.query.pane) : null;
+      if (hooked && hooked.transcriptPath) {
+        file = hooked.transcriptPath;
+        sessionId = hooked.sessionId || path.basename(file).replace(/\.jsonl$/, '');
+      }
+      if (!file) {
+        const cwd = await commands.paneCurrentPath(req.query.pane);
+        const dir = projectsDir();
+        const resolved = await resolveEncodedDirSession(dir, cwd);
+        if (resolved.sessionId) {
+          file = path.join(dir, encodeProjectDir(cwd), resolved.sessionId + '.jsonl');
+          sessionId = resolved.sessionId;
+        }
+      }
+      const empty = { messages: [], hash: '', session: sessionId || null, hasMore: false, firstSeq: null };
+      if (!file) return res.json(empty);
       let text;
       try { text = fs.readFileSync(file, 'utf8'); } catch { return res.json(empty); }
       const all = parseTranscript(text.split('\n')).map((m, k) => ({ ...m, k })); // k = stable global ordinal
@@ -41,9 +56,9 @@ export function transcriptRoutes({ commands }) {
       if (before == null) {
         const hash = createHash('sha1').update(JSON.stringify(messages)).digest('hex').slice(0, 16);
         if (req.query.since === hash) return res.status(204).end();
-        return res.json({ messages, hash, session: resolved.sessionId, hasMore, firstSeq });
+        return res.json({ messages, hash, session: sessionId, hasMore, firstSeq });
       }
-      return res.json({ messages, session: resolved.sessionId, hasMore, firstSeq });
+      return res.json({ messages, session: sessionId, hasMore, firstSeq });
     } catch (e) { next(e); }
   });
   return r;
