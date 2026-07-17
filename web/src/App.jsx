@@ -37,6 +37,7 @@ import Drawer from './components/Drawer.jsx';
 import WindowBar from './components/WindowBar.jsx';
 import Terminal from './components/Terminal.jsx';
 import BottomDock from './components/BottomDock.jsx';
+import ChatComposer from './components/ChatComposer.jsx';
 import LensSwitch from './components/LensSwitch.jsx';
 import ChatView from './components/ChatView.jsx';
 import TokenPrompt from './components/TokenPrompt.jsx';
@@ -808,6 +809,10 @@ export default function App() {
   // The current pane's cwd (from /panes), used as the default base when resolving a relative doc path.
   const currentPaneCwd = current?.panes?.find((p) => p.id === current.paneId)?.cwd || null;
 
+  // Chat lens is active only for an agent pane whose lens is set to 'chat'. Drives BOTH swaps: the main
+  // view (ChatView vs Terminal) and the bottom bar (ChatComposer vs the terminal BottomDock).
+  const chatLens = !!current?.paneId && !!states[current.paneId]?.agent && lens === 'chat';
+
   // Fetch + open a doc by ABSOLUTE path: dedupe into a tab, record the recent, reveal the sheet.
   // Throws on fetch failure so callers can decide (prompt for a base dir, or surface inline).
   const openAbsDoc = async (abs) => {
@@ -1342,7 +1347,7 @@ export default function App() {
             onLensChange={(v) => { setLens(v); localStorage.setItem('tw_lens_' + current.paneId, v); }}
           />
           {current.paneId && (
-            !!states[current.paneId]?.agent && lens === 'chat' ? (
+            chatLens ? (
               <ChatView pane={current.paneId} kind={states[current.paneId]?.kind} />
             ) : (
               <Terminal
@@ -1356,22 +1361,34 @@ export default function App() {
               />
             )
           )}
-          <BottomDock
-            ref={dockRef}
-            pane={current.paneId}
-            onAuthFail={onAuthFail}
-            onKey={sendKey}
-            onText={sendChar}
-            cwd={currentPaneCwd}
-            agent={states[current.paneId]?.agent}
-            windowId={current.window?.id}
-            recent={recent}
-            favorites={favorites}
-            onSent={onCommandSent}
-            onToggleFav={toggleFavorite}
-            onRemoveRecent={removeRecentCmd}
-            inset={inset}
-          />
+          {/* Chat lens gets its own modern composer card; the terminal keeps the two-page dock. */}
+          {chatLens ? (
+            <ChatComposer
+              pane={current.paneId}
+              kind={states[current.paneId]?.kind}
+              cwd={currentPaneCwd}
+              onKey={sendKey}
+              onAuthFail={onAuthFail}
+              onSent={onCommandSent}
+            />
+          ) : (
+            <BottomDock
+              ref={dockRef}
+              pane={current.paneId}
+              onAuthFail={onAuthFail}
+              onKey={sendKey}
+              onText={sendChar}
+              cwd={currentPaneCwd}
+              agent={states[current.paneId]?.agent}
+              windowId={current.window?.id}
+              recent={recent}
+              favorites={favorites}
+              onSent={onCommandSent}
+              onToggleFav={toggleFavorite}
+              onRemoveRecent={removeRecentCmd}
+              inset={inset}
+            />
+          )}
         </>
       ) : booting ? (
         <div className="loading">{t('common.loading')}</div>

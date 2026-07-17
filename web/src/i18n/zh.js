@@ -188,6 +188,8 @@ export default {
   'cmd.moveDown': '下移',
   'cmd.empty': '还没有',
   'chat.editTitle': '常用消息',
+  'chat.composer.placeholder': '和 Claude 对话…',
+  'chat.stop': '停止',
   'chat.favs': '常用',
   'chat.tabMsg': '消息',
   'chat.addPlaceholder': '消息 / 斜杠命令…',

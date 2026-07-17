@@ -1775,4 +1775,44 @@ button.cmd-text { background: none; border: none; text-align: left; }
 @media (prefers-reduced-motion: reduce) {
   .chat-tool-head, .chat-gate-btn { transition: none; }
 }
+
+/* 对话-lens composer — a modern AI-agent input CARD shown instead of the terminal dock while the chat lens
+   is active. Column: a horizontal quick-reply chip strip, then the card (textarea over an action row). Rides
+   above the keyboard with the whole .app (translateY(-inset)); the safe-area pad keeps it off the home bar. */
+.chat-composer {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 6px 8px calc(8px + env(safe-area-inset-bottom, 0px)); background: #2a2b2e;
+}
+.cc-quick { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.cc-quick::-webkit-scrollbar { display: none; }
+/* The card: textarea on top, action row beneath. Buttons never overlay the text (own row) → none of the
+   dock's multi/crowd/ghost-hit machinery is needed. Subtle border, faint blue on focus, green while dictating. */
+.cc-card {
+  display: flex; flex-direction: column; gap: 4px;
+  background: #1e2024; border: 1px solid #34363c; border-radius: 20px;
+  padding: 8px 10px 8px 14px; transition: border-color .15s;
+}
+.cc-card:focus-within { border-color: #3a4a63; }
+.cc-card.recording { border-color: #34c759; }
+/* 16px font is deliberate — under it iOS zooms the page on focus. max-height caps growth (~6 lines) → scroll. */
+.cc-text {
+  width: 100%; background: transparent; border: none; outline: none; resize: none;
+  color: #f2f3f5; font-size: 16px; line-height: 22px; max-height: 132px; padding: 2px 0;
+  font-family: inherit;
+}
+.cc-text::placeholder { color: #6b7280; }
+.cc-actions { display: flex; align-items: center; justify-content: space-between; }
+.cc-actions-right { display: flex; align-items: center; gap: 6px; }
+.cc-attach, .cc-send {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border: none; border-radius: 999px;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.cc-attach { background: transparent; color: #9aa4b2; }
+.cc-attach:active { background: #2f3238; }
+.cc-send { background: var(--blue); color: #fff; }
+.cc-send:disabled { background: #3a3d44; color: #6b7280; }
+.cc-send:not(:disabled):active { filter: brightness(1.1); }
+.cc-stop { background: #e5484d; }
+
 .push-inbox-detail-del { display: block; margin-top: 24px; }

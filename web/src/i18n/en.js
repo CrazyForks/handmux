@@ -189,6 +189,8 @@ export default {
   'cmd.moveDown': 'Move down',
   'cmd.empty': 'None yet',
   'chat.editTitle': 'Saved messages',
+  'chat.composer.placeholder': 'Message Claude…',
+  'chat.stop': 'Stop',
   'chat.favs': 'Saved',
   'chat.tabMsg': 'Message',
   'chat.addPlaceholder': 'Message / slash-command…',
