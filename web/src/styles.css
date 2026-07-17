@@ -1644,30 +1644,12 @@ button.cmd-text { background: none; border: none; text-align: left; }
 /* ============================================================================
    对话-lens colour tones. The chat lens is skinned entirely through these --ct-* tokens so the whole
    surface (bubbles, activity chips, gate, composer) recolours from one place and the user can pick a
-   tone in Settings. Default = 深墨 (ink) on `.app`; `data-chat-tone` on `.app` overrides it. Terminal
-   lens + rest of app are untouched (they use --blue etc., not --ct-*). Only `.chat-*`/`.cc-*` consume these.
-   ---- 深墨 ink (default, cool premium dark) ---- */
-.app {
-  --ct-bg:#14161b; --ct-ink:#e9edf3; --ct-muted:#8790a0;
-  --ct-me-bg:linear-gradient(180deg,#2f80ff,#1f6cf0); --ct-me-ink:#fff;
-  --ct-chip:rgba(255,255,255,.055); --ct-chip-2:rgba(255,255,255,.11); --ct-chip-line:rgba(255,255,255,.08);
-  --ct-chip-ink:#aab3c2; --ct-body:rgba(255,255,255,.06);
-  --ct-accent:#4d8bff; --ct-bar:#1c1f26; --ct-field:#0f1115; --ct-field-line:#2b3040;
-  --ct-code-bg:rgba(255,255,255,.05); --ct-line:rgba(255,255,255,.12);
-  --ct-err-bg:rgba(255,69,58,.14); --ct-err-ink:#ff8a80;
-}
-/* ---- 暖白 light (iMessage/微信-familiar) ---- */
-.app[data-chat-tone="light"] {
-  --ct-bg:#f2f3f5; --ct-ink:#10141b; --ct-muted:#7a828f;
-  --ct-me-bg:linear-gradient(180deg,#2f95ff,#0a84ff); --ct-me-ink:#fff;
-  --ct-chip:#ffffff; --ct-chip-2:#e6e9ef; --ct-chip-line:rgba(0,0,0,.08);
-  --ct-chip-ink:#5a6472; --ct-body:#eef0f3;
-  --ct-accent:#0a84ff; --ct-bar:#e7e9ee; --ct-field:#ffffff; --ct-field-line:#d3d7de;
-  --ct-code-bg:#eceef2; --ct-line:rgba(0,0,0,.1);
-  --ct-err-bg:rgba(255,59,48,.1); --ct-err-ink:#c0362f;
-}
-/* ---- 暖夜 dusk (warm dark, amber accent) ---- */
-.app[data-chat-tone="dusk"] {
+   tone in Settings. All three tones are WARM (the brand's amber/gold family, cf. the landing page:
+   olive-black #0a0b09 · cream #ece6d4 · amber #ffb454). Default = 暖夜 (dusk) on `.app`; `data-chat-tone`
+   overrides it. Terminal lens + rest of app are untouched (they use --blue etc.). Only `.chat-*`/`.cc-*`
+   consume these.
+   ---- 暖夜 dusk (DEFAULT — warm brown dark) ---- */
+.app, .app[data-chat-tone="dusk"] {
   --ct-bg:#191410; --ct-ink:#f0e9e2; --ct-muted:#a2938a;
   --ct-me-bg:linear-gradient(180deg,#8b6bff,#7457f0); --ct-me-ink:#fff;
   --ct-chip:rgba(255,255,255,.05); --ct-chip-2:rgba(255,255,255,.1); --ct-chip-line:rgba(255,220,190,.1);
@@ -1675,6 +1657,26 @@ button.cmd-text { background: none; border: none; text-align: left; }
   --ct-accent:#f0a24b; --ct-bar:#241c15; --ct-field:#14100c; --ct-field-line:#3a2f24;
   --ct-code-bg:rgba(255,225,190,.06); --ct-line:rgba(255,220,190,.12);
   --ct-err-bg:rgba(255,120,90,.16); --ct-err-ink:#ff9a80;
+}
+/* ---- 暖金 ink (the LANDING brand: warm olive-black + cream + golden bubble) ---- */
+.app[data-chat-tone="ink"] {
+  --ct-bg:#0e0f0b; --ct-ink:#ece6d4; --ct-muted:#8f8b76;
+  --ct-me-bg:linear-gradient(180deg,#ffbf63,#e89a38); --ct-me-ink:#241d0f;
+  --ct-chip:rgba(255,240,200,.05); --ct-chip-2:rgba(255,240,200,.1); --ct-chip-line:rgba(255,230,180,.1);
+  --ct-chip-ink:#b3ac90; --ct-body:rgba(255,240,200,.05);
+  --ct-accent:#ffb454; --ct-bar:#15160f; --ct-field:#0a0b08; --ct-field-line:#2a2b22;
+  --ct-code-bg:rgba(255,240,200,.06); --ct-line:rgba(255,230,180,.1);
+  --ct-err-bg:rgba(255,120,90,.16); --ct-err-ink:#ff9a80;
+}
+/* ---- 暖黄 light (warm cream paper + golden accent — the only light tone) ---- */
+.app[data-chat-tone="light"] {
+  --ct-bg:#f4efe1; --ct-ink:#2c2a20; --ct-muted:#8a8266;
+  --ct-me-bg:linear-gradient(180deg,#c88a2b,#b5741d); --ct-me-ink:#fff;
+  --ct-chip:#fffdf6; --ct-chip-2:#efe6d2; --ct-chip-line:rgba(90,70,20,.14);
+  --ct-chip-ink:#7c7254; --ct-body:#efe6d2;
+  --ct-accent:#b5741d; --ct-bar:#ece3d0; --ct-field:#fffdf6; --ct-field-line:#ddd1b6;
+  --ct-code-bg:#efe6d2; --ct-line:rgba(90,70,20,.16);
+  --ct-err-bg:rgba(200,60,40,.1); --ct-err-ink:#b23a2b;
 }
 
 .chat-view { position: relative; display: flex; flex-direction: column; min-height: 0; flex: 1; background: var(--ct-bg); }
@@ -1895,8 +1897,8 @@ button.cmd-text { background: none; border: none; text-align: left; }
    (full-luminance green/blue/grey text). On the 暖白 tone that text washes out on white, so darken each
    tint toward ink while keeping its hue. (Dark tones keep the original bright-on-dark chips.) */
 .app[data-chat-tone="light"] .cc-quick .quick-cmd {
-  color: color-mix(in srgb, rgb(var(--rgb)) 60%, #10141b);
-  border-color: rgba(var(--rgb), .55); background: rgba(var(--rgb), .15);
+  color: color-mix(in srgb, rgb(var(--rgb)) 58%, #2c2a20);
+  border-color: rgba(var(--rgb), .5); background: rgba(var(--rgb), .16);
 }
 
 .push-inbox-detail-del { display: block; margin-top: 24px; }

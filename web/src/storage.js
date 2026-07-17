@@ -185,12 +185,13 @@ export const setFont = (n) => localStorage.setItem(FONT_KEY, String(n));
 // Drop the manual size so the terminal returns to height auto-fit.
 export const clearFont = () => localStorage.removeItem(FONT_KEY);
 
-// 对话-lens colour tone — a user preference (default 深墨/ink). Applied as `data-chat-tone` on `.app`,
-// consumed by the `--ct-*` token blocks in styles.css. Unknown/absent → the default tone.
-export const CHAT_TONES = ['ink', 'light', 'dusk'];
+// 对话-lens colour tone — a user preference (default 暖夜/dusk). Applied as `data-chat-tone` on `.app`,
+// consumed by the `--ct-*` token blocks in styles.css. All three tones are warm (see styles.css). Unknown/
+// absent → the default tone.
+export const CHAT_TONES = ['dusk', 'ink', 'light'];
 export const getChatTone = () => {
   const v = localStorage.getItem(CHAT_TONE_KEY);
-  return CHAT_TONES.includes(v) ? v : 'ink';
+  return CHAT_TONES.includes(v) ? v : 'dusk';
 };
 export const setChatTone = (tone) => {
   if (CHAT_TONES.includes(tone)) localStorage.setItem(CHAT_TONE_KEY, tone);

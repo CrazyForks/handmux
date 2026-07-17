@@ -148,7 +148,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
         <div className="settings-section">
           <div className="settings-label">{t('settings.chat_tone')}</div>
           <div className="settings-btns">
-            {['ink', 'light', 'dusk'].map((tn) => (
+            {['dusk', 'ink', 'light'].map((tn) => (
               <button
                 key={tn}
                 className="fontbtn"
