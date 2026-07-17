@@ -32,6 +32,41 @@ describe('parseTranscript', () => {
     expect(msgs[0].tool.isError).toBe(false);
   });
 
+  it('folds structuredPatch into tool.diff (added/removed counts + hunks)', () => {
+    const msgs = parseTranscript([
+      line({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'e1', name: 'Edit', input: { file_path: '/a.js' } }] } }),
+      line({
+        type: 'user',
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'e1', content: 'ok', is_error: false }] },
+        toolUseResult: { structuredPatch: [{ oldStart: 1, newStart: 1, lines: [' ctx', '-gone', '+new', '+more'] }] },
+      }),
+    ]);
+    expect(msgs[0].tool.diff).toEqual({
+      added: 2, removed: 1,
+      hunks: [{ oldStart: 1, newStart: 1, lines: [' ctx', '-gone', '+new', '+more'] }],
+    });
+  });
+
+  it('a create (empty patch) counts every content line as added', () => {
+    const msgs = parseTranscript([
+      line({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'w1', name: 'Write', input: { file_path: '/n.js' } }] } }),
+      line({
+        type: 'user',
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'w1', content: 'created', is_error: false }] },
+        toolUseResult: { type: 'create', content: 'a\nb\nc', structuredPatch: [] },
+      }),
+    ]);
+    expect(msgs[0].tool.diff).toEqual({ added: 3, removed: 0, hunks: null, created: true });
+  });
+
+  it('a non-edit tool (Bash) has no diff', () => {
+    const msgs = parseTranscript([
+      line({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'b1', name: 'Bash', input: { command: 'ls' } }] } }),
+      line({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'b1', content: 'out' }] }, toolUseResult: { stdout: 'out' } }),
+    ]);
+    expect(msgs[0].tool.diff).toBe(null);
+  });
+
   it('internal types and blank/bad lines are skipped', () => {
     const msgs = parseTranscript([
       '', '  ', 'not json',

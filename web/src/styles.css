@@ -1729,13 +1729,16 @@ button.cmd-text { background: none; border: none; text-align: left; }
    chip open. Expanded (tapped): un-truncate so the full command/input reads, and the result <pre> shows
    below (see .chat-tool-body). */
 .chat-tool-head {
-  display: block; width: 100%; max-width: 100%; min-height: 30px; box-sizing: border-box;
+  display: flex; align-items: center; gap: 8px; width: 100%; max-width: 100%; min-height: 30px; box-sizing: border-box;
   padding: 6px 11px; border: 1px solid var(--ct-chip-line); border-radius: 10px;
   background: var(--ct-chip); color: var(--ct-chip-ink);
   font-size: 12px; line-height: 1.25; text-align: left;
   font-variant-numeric: tabular-nums; touch-action: manipulation;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* +A/−B edit stat, pinned right of the chip's filename. Never shrinks/ellipsizes (the filename does). */
+.chat-tool-stat { flex: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.chat-tool-stat .cts-add { color: #3fb950; }
+.chat-tool-stat .cts-del { color: #f85149; }
 .chat-tool-head-open { white-space: pre-wrap; word-break: break-word; overflow: visible; text-overflow: clip; }
 .chat-tool-head:active { background: var(--ct-chip-2); }
 .chat-tool-err .chat-tool-head { background: var(--ct-err-bg); color: var(--ct-err-ink); border-color: transparent; }
@@ -1746,6 +1749,20 @@ button.cmd-text { background: none; border: none; text-align: left; }
   font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
   max-height: 240px; overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch;
 }
+
+/* Coloured diff — the expanded body for a file edit. Rendered from toolUseResult.structuredPatch: each
+   line keeps its git +/-/space prefix, tinted green (added) / red (removed) / muted (context). Neutral ink
+   text on a faint tint so it stays legible across all three tones; hunks separated by a dashed rule. */
+.chat-diff {
+  margin: 4px 0 0; border: 1px solid var(--ct-chip-line); border-radius: 10px; overflow: auto;
+  -webkit-overflow-scrolling: touch; max-height: 300px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5;
+}
+.chat-diff-hunk + .chat-diff-hunk { border-top: 1px dashed var(--ct-chip-line); }
+.chat-diff-line { padding: 0 10px; white-space: pre-wrap; word-break: break-word; color: var(--ct-ink); }
+.chat-diff-line.cd-add { background: rgba(63,185,80,.15); }
+.chat-diff-line.cd-del { background: rgba(248,81,73,.15); }
+.chat-diff-line.cd-ctx { color: var(--ct-muted); }
 
 /* Running tool head — muted running-state tint (still reads as machinery). The head becomes a flex row so
    the command text truncates while the pulse + "运行中" label stay pinned, unclipped, at the line's end. */

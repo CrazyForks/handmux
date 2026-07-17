@@ -58,6 +58,27 @@ describe('ChatView', () => {
     await screen.findByText('the output');
   });
 
+  it('an edited file shows a +A/−B stat and expands to a coloured diff', async () => {
+    mockTranscript([{
+      k: 0, i: 0, role: 'assistant', type: 'tool',
+      tool: {
+        name: 'Edit', input: { file_path: '/a.js' }, result: 'updated', isError: false,
+        diff: { added: 2, removed: 1, hunks: [{ oldStart: 1, newStart: 1, lines: [' keep', '-old', '+new1', '+new2'] }] },
+      },
+    }]);
+    const { container } = render(<ChatView pane="%0" kind="working" />);
+    // stat badge visible while collapsed
+    expect((await screen.findByText('+2'))).toBeTruthy();
+    expect(screen.getByText('−1')).toBeTruthy();
+    expect(container.querySelector('.chat-diff')).toBeNull(); // detail collapsed
+    fireEvent.click(screen.getByRole('button', { name: /a\.js/ }));
+    // coloured diff lines rendered from the hunk
+    await waitFor(() => expect(container.querySelector('.chat-diff')).toBeTruthy());
+    expect(container.querySelector('.cd-add').textContent).toBe('+new1');
+    expect(container.querySelector('.cd-del').textContent).toBe('-old');
+    expect(container.querySelector('.cd-ctx').textContent).toBe(' keep');
+  });
+
   it('permission with no parseable menu → 允许/拒绝 fallback, taps send Enter', async () => {
     mockTranscript([{ k: 0, i: 0, role: 'assistant', type: 'tool', tool: { name: 'Bash', input: { command: 'ls' }, result: null, isError: false } }]);
     vi.spyOn(api, 'getPendingPrompt').mockResolvedValue(null); // menu not scraped → fallback

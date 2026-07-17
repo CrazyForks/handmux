@@ -42,6 +42,39 @@ function TypingDots() {
   );
 }
 
+// +A/−B badge for an edited file, right-aligned in the chip head (like the CLI / other AI coding tools).
+// Omits a zero side. Green add / red del; tabular-nums so the digits don't jitter.
+function DiffStat({ diff }) {
+  if (!diff || (!diff.added && !diff.removed)) return null;
+  return (
+    <span className="chat-tool-stat" aria-label={`增 ${diff.added} 行，删 ${diff.removed} 行`}>
+      {diff.added > 0 && <span className="cts-add">+{diff.added}</span>}
+      {diff.removed > 0 && <span className="cts-del">−{diff.removed}</span>}
+    </span>
+  );
+}
+
+// The expandable detail. For a real edit we render the coloured hunks (the actual before/after lines);
+// for a create there are no hunks → fall back to the raw tool result string (e.g. "created successfully").
+function ToolBody({ tool }) {
+  if (tool.diff && tool.diff.hunks && tool.diff.hunks.length) {
+    return (
+      <div className="chat-diff">
+        {tool.diff.hunks.map((h, hi) => (
+          <div className="chat-diff-hunk" key={hi}>
+            {h.lines.map((ln, li) => {
+              const c = ln[0] === '+' ? 'add' : ln[0] === '-' ? 'del' : 'ctx';
+              return <div className={'chat-diff-line cd-' + c} key={li}>{ln || ' '}</div>;
+            })}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (tool.result != null) return <pre className="chat-tool-body">{tool.result}</pre>;
+  return null;
+}
+
 function ToolChip({ tool, running }) {
   const [open, setOpen] = useState(false);
   const headClass = 'chat-tool-head' + (open ? ' chat-tool-head-open' : '');
@@ -49,6 +82,7 @@ function ToolChip({ tool, running }) {
     <div className={'chat-tool' + (tool.isError ? ' chat-tool-err' : '') + (running ? ' chat-tool-running' : '')}>
       <button type="button" className={headClass} onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <span className="chat-tool-head-text">{toolSummary(tool)}</span>
+        <DiffStat diff={tool.diff} />
         {running && (
           <span className="chat-tool-head-running">
             <TypingDots />
@@ -56,7 +90,7 @@ function ToolChip({ tool, running }) {
           </span>
         )}
       </button>
-      {open && tool.result != null && <pre className="chat-tool-body">{tool.result}</pre>}
+      {open && <ToolBody tool={tool} />}
     </div>
   );
 }

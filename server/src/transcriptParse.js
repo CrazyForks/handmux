@@ -14,6 +14,28 @@
 const KEEP = new Set(['user', 'assistant']);
 const SCAFFOLD_RE = /^\s*<(?:command-name|command-message|command-args|local-command-stdout|local-command-caveat|bash-input|bash-stdout|bash-stderr)>/;
 
+// A file-edit diff from a jsonl line's top-level `toolUseResult`, or null if the tool didn't edit a file.
+// Non-empty structuredPatch → count +/- lines and keep the hunks (for the expandable coloured view). Empty
+// patch but a create → every content line is an addition. Anything else (Bash/Read/…) → null.
+function extractDiff(r) {
+  if (!r || typeof r !== 'object') return null;
+  const patch = Array.isArray(r.structuredPatch) ? r.structuredPatch : null;
+  if (patch && patch.length) {
+    let added = 0, removed = 0;
+    const hunks = [];
+    for (const h of patch) {
+      const lines = Array.isArray(h.lines) ? h.lines : [];
+      for (const ln of lines) { const c = typeof ln === 'string' ? ln[0] : ''; if (c === '+') added++; else if (c === '-') removed++; }
+      hunks.push({ oldStart: h.oldStart, newStart: h.newStart, lines });
+    }
+    return { added, removed, hunks };
+  }
+  if (r.type === 'create' && typeof r.content === 'string') {
+    return { added: r.content ? r.content.split('\n').length : 0, removed: 0, hunks: null, created: true };
+  }
+  return null;
+}
+
 function resultText(content) {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) return content.map((c) => (c && c.type === 'text' ? (c.text || '') : '')).join('');
@@ -63,7 +85,16 @@ export function parseTranscript(lines) {
         msgs.push(tm);
       } else if (it.type === 'tool_result') {
         const tm = it.tool_use_id && byToolId.get(it.tool_use_id);
-        if (tm) { tm.tool.result = resultText(it.content); tm.tool.isError = !!it.is_error; }
+        if (tm) {
+          tm.tool.result = resultText(it.content);
+          tm.tool.isError = !!it.is_error;
+          // Claude Code stores a real per-hunk diff for file edits on the SAME line's top-level
+          // `toolUseResult.structuredPatch` (hunks of {oldStart,newStart,lines[]}, each line prefixed
+          // +/-/space) — the exact data the CLI renders. Fold it into the tool message so the 对话 chip
+          // can show +A/−B and open the coloured diff, instead of the bland "…updated successfully" string.
+          // A file CREATE has an empty patch but `type:'create'` + `content` → treat every line as added.
+          tm.tool.diff = extractDiff(o.toolUseResult);
+        }
       }
     }
     i++;
