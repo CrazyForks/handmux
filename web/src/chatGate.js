@@ -4,12 +4,12 @@
 // (one button per option). ExitPlanMode (plan approval) is intentionally NOT handled here — the ChatView
 // tells the user to switch to the terminal for it.
 //
-// KEY PROTOCOL (HYPOTHESIS, NOT YET verified against live Claude Code — device-acceptance verification
-// was deferred, not performed. REPLACE the sequences below with the observed truth once confirmed on a
-// real device, if they differ):
-//   允许        → ['Enter']            (❯ defaults to the first "Yes" option)
-//   拒绝        → ['Escape']
-//   选第 i 项   → i×['Down'] then ['Enter']   (0-based i; the list starts on option 0)
+// KEY PROTOCOL (VERIFIED against live Claude Code 2026-07-17 by sampling real gates via tmux send-keys):
+//   允许        → ['Enter']            permission menu's ❯ defaults to "1. Yes" — Enter selects it
+//   拒绝        → ['Escape']           both menus footer-document "Esc to cancel"
+//   选第 i 项   → i×['Down'] then ['Enter']   AskUserQuestion footer: "↑/↓ to navigate · Enter to select";
+//                                            the ❯ starts on option 0, so Down×i lands on the i-th option
+//                                            (verified: Down+Enter selected the 2nd option). 0-based i.
 const ALLOW_KEYS = ['Enter'];
 const DENY_KEYS = ['Escape'];
 const optionKeys = (idx) => [...Array(idx).fill('Down'), 'Enter'];
