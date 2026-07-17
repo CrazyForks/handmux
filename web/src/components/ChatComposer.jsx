@@ -29,8 +29,8 @@ const keepFocus = (e) => {
   if (e.cancelable) e.preventDefault();
 };
 
-// Quick-reply chip tint — same buckets as the dock: a slash-command (/compact …) = blue, everything else
-// (好的 / 继续 / 1 / 2 …) = green. Key favs are tinted grey at the call site (they bypass this).
+// Quick-reply chip tint: a slash-command (/compact …) = blue, everything else (好的 / 继续 / 1 / 2 …) =
+// green. Key favs never reach here — they're filtered out of the chat strip.
 const chipTint = (text) => (text.startsWith('/') ? 'cmd' : 'reply');
 
 export default function ChatComposer({ pane, kind, cwd = null, onKey = () => {}, onAuthFail, onSent }) {
@@ -42,10 +42,13 @@ export default function ChatComposer({ pane, kind, cwd = null, onKey = () => {},
   const uploadRef = useRef(null);    // hidden <input type=file>
 
   // The agent quick-reply list (global) drives the chip strip; reload it whenever the ⚙ editor closes so
-  // add/edit/delete/reorder flow straight into the strip (single source of truth: favStore).
+  // add/edit/delete/reorder flow straight into the strip (single source of truth: favStore). KEY favs
+  // (Esc/Tab/⌫) are hidden here — they're terminal keys with no meaning in a chat reply; only reply/cmd
+  // favs show. The stored list is untouched (the terminal dock still shows the keys and the ⚙ edits them).
   const [favs, setFavs] = useState(() => loadFavs('agent'));
   const [editOpen, setEditOpen] = useState(false);
   useEffect(() => { if (!editOpen) setFavs(loadFavs('agent')); }, [editOpen]);
+  const replyFavs = favs.filter((f) => f.kind !== 'key');
 
   // While the agent is working, the send button becomes a STOP that interrupts it (Escape). Any other
   // state (idle / needs-you / done) shows the normal send.
@@ -106,11 +109,11 @@ export default function ChatComposer({ pane, kind, cwd = null, onKey = () => {},
   // Interrupt the working agent — Escape is Claude Code's stop key (same path the terminal ESC uses).
   const stop = () => onKey('Escape');
 
-  // A quick-reply chip: a key fav fires its terminal key; anything else is sent as text + Enter.
-  const runFav = async (f) => {
-    if (f.kind === 'key') { onKey(f.text); return; }
+  // A quick-reply chip (reply or slash-command) is sent as text + Enter. Key favs never reach here — they
+  // are filtered out of the strip above.
+  const runFav = async (text) => {
     if (!pane) return;
-    try { await sendText(pane, f.text, true); onSent?.(f.text); }
+    try { await sendText(pane, text, true); onSent?.(text); }
     catch (err) { if (err instanceof UnauthorizedError) onAuthFail?.(); }
   };
 
@@ -136,11 +139,10 @@ export default function ChatComposer({ pane, kind, cwd = null, onKey = () => {},
     <div className="chat-composer" onPointerDown={keepFocus}>
       {/* Quick-reply chips — tap to send. Reuses the dock's chip styling (.quick-cmd/.qc-*). */}
       <div className="cc-quick quick-scroll">
-        {favs.map((f) => (
-          <button key={f.text} type="button"
-            className={`quick-cmd qc-${f.kind === 'key' ? 'esc' : chipTint(f.text)}`}
-            onClick={() => runFav(f)}>
-            {f.kind === 'key' ? (f.label || f.text) : f.text}</button>
+        {replyFavs.map((f) => (
+          <button key={f.text} type="button" className={`quick-cmd qc-${chipTint(f.text)}`}
+            onClick={() => runFav(f.text)}>
+            {f.text}</button>
         ))}
         <button type="button" className="quick-cmd quick-cmd-add" aria-label={t('chat.editTitle')}
           onClick={() => setEditOpen(true)}><GearIcon /></button>

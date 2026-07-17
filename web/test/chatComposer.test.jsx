@@ -60,12 +60,15 @@ describe('ChatComposer', () => {
     expect(sendText).toHaveBeenCalledWith('%1', '继续', true);
   });
 
-  it('a key-kind quick-reply chip fires its terminal key, not a send', () => {
-    localStorage.setItem('hm_favs6_agent', JSON.stringify([{ kind: 'key', text: 'Escape', label: 'ESC' }]));
-    const onKey = vi.fn();
-    render(<ChatComposer pane="%1" kind="idle" onKey={onKey} />);
-    fireEvent.click(screen.getByRole('button', { name: 'ESC' }));
-    expect(onKey).toHaveBeenCalledWith('Escape');
-    expect(sendText).not.toHaveBeenCalled();
+  it('hides key-type favs (terminal keys) from the chip strip; reply/cmd favs still show', () => {
+    localStorage.setItem('hm_favs6_agent', JSON.stringify([
+      { kind: 'key', text: 'Escape', label: 'ESC' },
+      { kind: 'reply', text: '好的' },
+      { kind: 'cmd', text: '/compact' },
+    ]));
+    render(<ChatComposer pane="%1" kind="idle" />);
+    expect(screen.queryByRole('button', { name: 'ESC' })).toBeNull();
+    expect(screen.getByRole('button', { name: '好的' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '/compact' })).toBeTruthy();
   });
 });
