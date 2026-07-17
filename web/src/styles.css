@@ -1721,7 +1721,9 @@ button.cmd-text { background: none; border: none; text-align: left; }
   font-size: 11px; color: #9fb0c0;
 }
 .chat-tool-running .chat-tool-head-open { display: flex; }
-.chat-tool-running .chat-tool-head-open .chat-tool-head-text { white-space: pre-wrap; word-break: break-word; overflow: visible; text-overflow: clip; }
+/* Expanded head (running OR not): the summary text WRAPS to multiple lines instead of staying one very long
+   ellipsized/overflowing line. (The collapsed .chat-tool-head-text stays nowrap+ellipsis — one clean line.) */
+.chat-tool-head-open .chat-tool-head-text { white-space: pre-wrap; word-break: break-word; overflow: visible; text-overflow: clip; }
 
 /* Typing indicator (Task 13) — a small assistant-side wave of three dots at the end of the message list,
    standing in for "Claude is generating" since we poll state rather than stream tokens. Also reused
