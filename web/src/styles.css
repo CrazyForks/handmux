@@ -1651,7 +1651,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
    ---- 暖夜 dusk (DEFAULT — warm brown dark) ---- */
 .app, .app[data-chat-tone="dusk"] {
   --ct-bg:#191410; --ct-ink:#f0e9e2; --ct-muted:#a2938a;
-  --ct-me-bg:linear-gradient(180deg,#8b6bff,#7457f0); --ct-me-ink:#fff;
+  --ct-me-bg:linear-gradient(180deg,#4c3f31,#40342a); --ct-me-ink:#f3ede5;
   --ct-chip:rgba(255,255,255,.05); --ct-chip-2:rgba(255,255,255,.1); --ct-chip-line:rgba(255,220,190,.1);
   --ct-chip-ink:#c7b6a8; --ct-body:rgba(255,225,190,.05);
   --ct-accent:#f0a24b; --ct-bar:#241c15; --ct-field:#14100c; --ct-field-line:#3a2f24;
@@ -1661,7 +1661,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 /* ---- 暖金 ink (the LANDING brand: warm olive-black + cream + golden bubble) ---- */
 .app[data-chat-tone="ink"] {
   --ct-bg:#0e0f0b; --ct-ink:#ece6d4; --ct-muted:#8f8b76;
-  --ct-me-bg:linear-gradient(180deg,#ffbf63,#e89a38); --ct-me-ink:#241d0f;
+  --ct-me-bg:linear-gradient(180deg,#423f2e,#383527); --ct-me-ink:#ece6d4;
   --ct-chip:rgba(255,240,200,.05); --ct-chip-2:rgba(255,240,200,.1); --ct-chip-line:rgba(255,230,180,.1);
   --ct-chip-ink:#b3ac90; --ct-body:rgba(255,240,200,.05);
   --ct-accent:#ffb454; --ct-bar:#15160f; --ct-field:#0a0b08; --ct-field-line:#2a2b22;
@@ -1671,7 +1671,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 /* ---- 暖黄 light (warm cream paper + golden accent — the only light tone) ---- */
 .app[data-chat-tone="light"] {
   --ct-bg:#f4efe1; --ct-ink:#2c2a20; --ct-muted:#8a8266;
-  --ct-me-bg:linear-gradient(180deg,#c88a2b,#b5741d); --ct-me-ink:#fff;
+  --ct-me-bg:linear-gradient(180deg,#eeddba,#e6d3ae); --ct-me-ink:#3a3320;
   --ct-chip:#fffdf6; --ct-chip-2:#efe6d2; --ct-chip-line:rgba(90,70,20,.14);
   --ct-chip-ink:#7c7254; --ct-body:#efe6d2;
   --ct-accent:#b5741d; --ct-bar:#ece3d0; --ct-field:#fffdf6; --ct-field-line:#ddd1b6;
