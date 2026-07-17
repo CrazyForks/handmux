@@ -42,6 +42,33 @@ describe('parseTranscript', () => {
     expect(msgs.map((m) => m.text)).toEqual(['留']);
   });
 
+  it('drops isMeta and isCompactSummary scaffolding turns', () => {
+    const msgs = parseTranscript([
+      line({ type: 'user', isMeta: true, message: { role: 'user', content: 'Base directory for this skill: /x' } }),
+      line({ type: 'user', isCompactSummary: true, message: { role: 'user', content: 'This session is being continued…' } }),
+      line({ type: 'user', message: { role: 'user', content: '真的问题' } }),
+    ]);
+    expect(msgs.map((m) => m.text)).toEqual(['真的问题']);
+  });
+
+  it('drops slash-command and local-command-stdout user turns by anchored tag', () => {
+    const msgs = parseTranscript([
+      line({ type: 'user', message: { role: 'user', content: '<command-name>/compact</command-name>\n<command-message>compact</command-message>' } }),
+      line({ type: 'user', message: { role: 'user', content: '<local-command-stdout>Compacted</local-command-stdout>' } }),
+      line({ type: 'user', message: { role: 'user', content: '真的问题' } }),
+    ]);
+    expect(msgs.map((m) => m.text)).toEqual(['真的问题']);
+  });
+
+  it('keeps an assistant reply that merely MENTIONS a command tag in prose (no false-positive)', () => {
+    const msgs = parseTranscript([line({
+      type: 'assistant',
+      message: { role: 'assistant', content: [{ type: 'text', text: '脚手架消息(`<command-name>`/`<local-command-stdout>`)本该被隐藏' }] },
+    })]);
+    expect(msgs.length).toBe(1);
+    expect(msgs[0].text).toContain('<command-name>');
+  });
+
   it('tool_result with array content concatenates text parts', () => {
     const msgs = parseTranscript([
       line({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 't2', name: 'Read', input: {} }] } }),
