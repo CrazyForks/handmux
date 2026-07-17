@@ -68,6 +68,10 @@ export const fetchTranscript = (pane, { since, before, limit = 10 } = {}) => {
   if (before != null) url += `&before=${encodeURIComponent(before)}`;
   return req(url, { timeoutMs: 8000 }).then((r) => (r.unchanged ? null : r));
 };
+// The pending interactive prompt (AskUserQuestion / permission menu) scraped off the pane, or null when no
+// gate is up. Polled by the 对话 lens only while a gate is up (kind==='permission').
+export const getPendingPrompt = (pane) =>
+  req(`/api/pending-prompt?pane=${encodeURIComponent(pane)}`, { timeoutMs: 8000 }).then((r) => r.prompt || null);
 export const sendText = (pane, text, enter = true) =>
   req('/api/send', { method: 'POST', body: JSON.stringify({ pane, text, enter }) });
 export const sendKeys = (pane, keys) =>

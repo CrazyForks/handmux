@@ -1348,7 +1348,7 @@ export default function App() {
           />
           {current.paneId && (
             chatLens ? (
-              <ChatView pane={current.paneId} kind={states[current.paneId]?.kind} />
+              <ChatView pane={current.paneId} kind={states[current.paneId]?.kind} onAuthFail={onAuthFail} />
             ) : (
               <Terminal
                 ref={termRef}

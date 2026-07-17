@@ -6,7 +6,9 @@ import { useEffect, useRef, useState } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { useTranscript } from '../hooks/useTranscript.js';
-import { pendingGate } from '../chatGate.js';
+import { usePendingPrompt } from '../hooks/usePendingPrompt.js';
+import { fallbackGate } from '../chatGate.js';
+import PromptGate from './PromptGate.jsx';
 import { sendKeys } from '../api.js';
 
 // One-line summary for a collapsed tool chip. Cover the high-frequency tools; generic fallback otherwise.
@@ -64,10 +66,14 @@ function Bubble({ m, running }) {
 const NEAR_BOTTOM_PX = 40;
 const NEAR_TOP_PX = 80;
 
-export default function ChatView({ pane, kind }) {
+export default function ChatView({ pane, kind, onAuthFail }) {
   const { messages, hasMoreOlder, loadOlder, loadingOlder } = useTranscript(pane, true);
-  const gate = pendingGate(messages, kind);
-  const isPlanGate = kind === 'permission' && !gate; // permission 但被 pendingGate 排除（如 ExitPlanMode）
+  // The gate's options are scraped from the pane's on-screen menu (they're not in the transcript). Poll only
+  // while Claude is blocked (kind==='permission'). If a menu is up → the rich PromptGate; if permission but
+  // the menu couldn't be parsed → the generic 允许/拒绝 fallback so there's always a way to act.
+  const busy = kind === 'permission';
+  const { prompt, refetch } = usePendingPrompt(pane, busy);
+  const fb = !prompt && busy ? fallbackGate() : null;
 
   // "Working" indicators (Task 13): state cues, not token streaming — data is polled every 1.5s.
   const last = messages.length ? messages[messages.length - 1] : null;
@@ -176,17 +182,17 @@ export default function ChatView({ pane, kind }) {
         </button>
       )}
 
-      {gate && (
+      {prompt && <PromptGate pane={pane} prompt={prompt} onAuthFail={onAuthFail} onAct={refetch} />}
+      {fb && (
         <div className="chat-gate">
-          <div className="chat-gate-prompt">{gate.prompt}</div>
+          <div className="chat-gate-prompt">{fb.prompt}</div>
           <div className="chat-gate-actions">
-            {gate.options.map((o, i) => (
+            {fb.options.map((o, i) => (
               <button key={i} type="button" className="chat-gate-btn" onClick={() => sendKeys(pane, o.keys)}>{o.label}</button>
             ))}
           </div>
         </div>
       )}
-      {isPlanGate && <div className="chat-gate chat-gate-hint">这一步需要在终端里处理，点右上「终端」切换。</div>}
     </div>
   );
 }

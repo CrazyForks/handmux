@@ -1759,21 +1759,37 @@ button.cmd-text { background: none; border: none; text-align: left; }
   padding: 12px 14px; border-radius: 14px;
   background: #232427; box-shadow: 0 4px 18px rgba(0,0,0,.35);
 }
-.chat-gate-prompt { font-size: 13px; color: #c9d5e1; margin-bottom: 10px; }
+/* "第 i/N 题" progress for a multi-question AskUserQuestion, above the question. */
+.chat-gate-step { font-size: 11px; font-weight: 600; color: #8a94a4; margin-bottom: 6px; letter-spacing: .02em; }
+.chat-gate-prompt { font-size: 14px; color: #e6ebf1; line-height: 1.4; margin-bottom: 10px; }
+/* Single-select option list — each row is a radio (label + optional grey description). Selected = tinted
+   with a blue ring; the whole row is a ≥44pt tap target. */
+.chat-gate-options { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.chat-gate-opt {
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+  min-height: 44px; padding: 8px 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 10px;
+  background: rgba(120,120,128,.1); color: #e6ebf1; touch-action: manipulation; transition: background .12s, border-color .12s;
+}
+.chat-gate-opt.on { background: rgba(10,132,255,.16); border-color: var(--blue); }
+.chat-gate-opt-label { font-size: 15px; font-weight: 600; }
+.chat-gate-opt-desc { font-size: 12px; color: #97a2b0; line-height: 1.35; }
 .chat-gate-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .chat-gate-btn {
   flex: 1; min-width: 44px; min-height: 44px; padding: 0 14px;
   border: none; border-radius: 10px; background: rgba(120,120,128,.16); color: var(--blue);
   font-size: 15px; font-weight: 600; touch-action: manipulation;
 }
+.chat-gate-btn.primary { background: var(--blue); color: #fff; }
+.chat-gate-btn.primary:disabled { background: #3a3d44; color: #6b7280; }
 .chat-gate-btn:active { background: rgba(120,120,128,.3); }
+.chat-gate-btn.primary:not(:disabled):active { filter: brightness(1.1); }
 .chat-gate-hint {
   display: flex; align-items: center; color: #9fb0c0; font-size: 13px; line-height: 1.45;
   background: rgba(120,120,128,.12); box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chat-tool-head, .chat-gate-btn { transition: none; }
+  .chat-tool-head, .chat-gate-btn, .chat-gate-opt { transition: none; }
 }
 
 /* 对话-lens composer — a modern AI-agent input CARD shown instead of the terminal dock while the chat lens

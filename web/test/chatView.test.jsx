@@ -58,8 +58,9 @@ describe('ChatView', () => {
     await screen.findByText('the output');
   });
 
-  it('permission gate renders 允许/拒绝 and taps send the mapped keys', async () => {
+  it('permission with no parseable menu → 允许/拒绝 fallback, taps send Enter', async () => {
     mockTranscript([{ k: 0, i: 0, role: 'assistant', type: 'tool', tool: { name: 'Bash', input: { command: 'ls' }, result: null, isError: false } }]);
+    vi.spyOn(api, 'getPendingPrompt').mockResolvedValue(null); // menu not scraped → fallback
     const keys = vi.spyOn(api, 'sendKeys').mockResolvedValue({ ok: true });
     render(<ChatView pane="%0" kind="permission" />);
     const allow = await screen.findByRole('button', { name: '允许' });
@@ -67,11 +68,16 @@ describe('ChatView', () => {
     await waitFor(() => expect(keys).toHaveBeenCalledWith('%0', expect.arrayContaining(['Enter'])));
   });
 
-  it('ExitPlanMode gate → shows switch-to-terminal hint, no buttons', async () => {
-    mockTranscript([{ k: 0, i: 0, role: 'assistant', type: 'tool', tool: { name: 'ExitPlanMode', input: { plan: 'x' }, result: null, isError: false } }]);
+  it('a scraped AskUserQuestion renders its real options as a radio list (not 允许/拒绝)', async () => {
+    mockTranscript([{ k: 0, i: 0, role: 'user', type: 'text', text: 'hi' }]);
+    vi.spyOn(api, 'getPendingPrompt').mockResolvedValue({
+      kind: 'question', title: '选个颜色?', cursor: 1,
+      options: [{ n: 1, label: '红色', description: '热情' }, { n: 2, label: '蓝色', description: '沉稳' }],
+    });
     render(<ChatView pane="%0" kind="permission" />);
-    await screen.findByText(/终端里处理|切.*终端/);
-    expect(screen.queryByRole('button', { name: '允许' })).toBeNull();
+    await screen.findByRole('radio', { name: /红色/ });
+    expect(screen.getByText('选个颜色?')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '允许' })).toBeNull(); // rich gate, not the fallback
   });
 
   it('renders markdown in an assistant text bubble — a table becomes a real <table>', async () => {
