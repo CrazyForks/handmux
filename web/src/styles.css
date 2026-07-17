@@ -188,13 +188,17 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .windowbar { display: flex; gap: 8px; align-items: center; padding: 6px 8px; background: #222; }
 .windowbar-scroll { flex: 1; min-width: 0; display: flex; gap: 4px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-x; scrollbar-width: none; }
 .windowbar-scroll::-webkit-scrollbar { display: none; }
-/* [终端模式|对话模式] lens switch — right-aligned in the windowbar row, only rendered for agent panes (its
-   slot claims no space when absent, so the row never reflows). Reuses the shared Dropdown (.dd-*); .lens-dd
-   just trims it down a touch and gives it a faint accent border so it reads as "this dropdown is a view
-   toggle" rather than blending into other dropdowns — subtle, not a different control. */
-.lens-dd { flex: none; }
-.lens-dd .dd-trigger { padding: 6px 10px; border-color: #3a4a63; background: #1e2228; font-size: 12.5px; gap: 6px; }
-.lens-dd .dd-menu { min-width: 108px; left: auto; right: 0; }
+/* 终端⇄对话 lens toggle — a single one-tap button, right-aligned in the windowbar row, only rendered for
+   agent panes (its slot claims no space when absent, so the row never reflows). The swap glyph + faint
+   accent border read "this flips the view"; the label shows the current mode. Sized to sit with .win-tab. */
+.lens-toggle {
+  flex: none; display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 10px; border: 1px solid #3a4a63; border-radius: 8px;
+  background: #1e2228; color: #cdd6e3; font-size: 12.5px; line-height: 1;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.lens-toggle:active { background: #262b33; }
+.lens-toggle svg { opacity: .82; }
 .win-tab { white-space: nowrap; padding: 4px 10px; border: none; border-radius: 8px; background: #33353a; color: #bbb; font-size: 13px; touch-action: manipulation; }
 .win-tab.active { background: var(--blue); color: #fff; }
 .win-new { border: 1px dashed #555; color: #8aa; font-weight: 700; background: transparent; }

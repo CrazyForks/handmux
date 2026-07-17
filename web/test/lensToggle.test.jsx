@@ -6,24 +6,26 @@ import LensSwitch from '../src/components/LensSwitch.jsx';
 // a global afterEach) never registers — without this, DOM from one test leaks into the next.
 afterEach(cleanup);
 
-describe('LensSwitch', () => {
-  it('trigger shows the current lens label', () => {
+describe('LensSwitch (one-tap toggle)', () => {
+  it('shows the current lens label; aria-label names the target action', () => {
     render(<LensSwitch value="terminal" onChange={() => {}} />);
-    expect(screen.getByRole('button', { name: '视图切换' }).textContent).toContain('终端模式');
+    const btn = screen.getByRole('button', { name: '切换到对话模式' });
+    expect(btn.textContent).toContain('终端');
   });
 
-  it('opening the trigger reveals both options; picking one reports the chosen lens', () => {
+  it('tapping while on terminal switches to chat', () => {
     const onChange = vi.fn();
     render(<LensSwitch value="terminal" onChange={onChange} />);
-    fireEvent.click(screen.getByRole('button', { name: '视图切换' }));
-    expect(screen.getByRole('option', { name: '终端模式' })).toBeTruthy();
-    expect(screen.getByRole('option', { name: '对话模式' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('option', { name: '对话模式' }));
+    fireEvent.click(screen.getByRole('button'));
     expect(onChange).toHaveBeenCalledWith('chat');
   });
 
-  it('shows 对话模式 as current when value is chat', () => {
-    render(<LensSwitch value="chat" onChange={() => {}} />);
-    expect(screen.getByRole('button', { name: '视图切换' }).textContent).toContain('对话模式');
+  it('tapping while on chat switches back to terminal', () => {
+    const onChange = vi.fn();
+    render(<LensSwitch value="chat" onChange={onChange} />);
+    const btn = screen.getByRole('button', { name: '切换到终端模式' });
+    expect(btn.textContent).toContain('对话');
+    fireEvent.click(btn);
+    expect(onChange).toHaveBeenCalledWith('terminal');
   });
 });

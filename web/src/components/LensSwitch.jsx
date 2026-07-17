@@ -1,17 +1,32 @@
-import Dropdown from './Dropdown.jsx';
+// Lens switch — a ONE-TAP toggle between 终端 / 对话 (not a dropdown or a segmented pair). Tapping flips
+// the view. The visible label is the CURRENT mode; the swap glyph (two opposed arrows) signals "tap to
+// switch", and the aria-label/title name the ACTION (切换到X模式). Rendered by App ONLY for agent panes.
+const LABEL = { terminal: '终端', chat: '对话' };
 
-// Lens switch — 终端 / 对话. Uses the shared themed Dropdown (project rule: no native <select>), not a
-// segmented button group (that read as two competing buttons rather than one view-mode setting).
-// Rendered by App ONLY for agent panes; a non-agent pane shows no switch at all.
-const OPTIONS = [
-  { value: 'terminal', label: '终端模式' },
-  { value: 'chat', label: '对话模式' },
-];
+// Two stacked horizontal arrows pointing opposite ways — the standard iOS swap icon. currentColor so it
+// inherits the button's text colour in either theme.
+function SwapIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 8h13M13 4l4 4-4 4" />
+      <path d="M20 16H7M11 20l-4-4 4-4" />
+    </svg>
+  );
+}
 
 export default function LensSwitch({ value, onChange }) {
+  const next = value === 'chat' ? 'terminal' : 'chat';
   return (
-    <div className="lens-dd">
-      <Dropdown value={value} options={OPTIONS} onChange={onChange} ariaLabel="视图切换" />
-    </div>
+    <button
+      type="button"
+      className="lens-toggle"
+      onClick={() => onChange(next)}
+      aria-label={`切换到${LABEL[next]}模式`}
+      title={`切换到${LABEL[next]}模式`}
+    >
+      <SwapIcon />
+      <span className="lens-toggle-label">{LABEL[value]}</span>
+    </button>
   );
 }
