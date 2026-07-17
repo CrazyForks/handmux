@@ -10,14 +10,21 @@ import { homedir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { writeJsonAtomic, deployHookScripts, removeHookScripts } from './hookScaffold.js';
 
-// The six events the inbox reads. src is the arg passed to handmux-notify.sh; only PostToolUse is scoped to
+// The seven events the inbox reads. src is the arg passed to handmux-notify.sh; only PostToolUse is scoped to
 // a matcher (the two "需要你" interaction tools) — every other Read/Bash/Edit must NOT wake the hook, or
 // many concurrent Claude panes would each spawn the hook on every tool call. Keep this table in sync with
 // the hook scripts in ../../hooks.
+//   SessionStart binds the pane→session mapping the instant a session begins — critically after /clear, which
+// starts a NEW transcript file. Without it, /clear's SessionEnd(old) drops the pane and nothing rebinds it
+// until the next prompt, so the 对话 lens goes blank / falls back to the ambiguous cwd→newest-jsonl guess.
+// Fires only at session boundaries (startup/clear/resume), never per tool call, so it adds no hot-path load;
+// classified neutral (no push, no roster entry — see agents/claude.js). Base, not version-gated: SessionStart
+// is a long-standing lifecycle hook every supported Claude recognises.
 export const HOOK_EVENTS = [
   { event: 'Stop', src: 'stop' },
   { event: 'Notification', src: 'notify' },
   { event: 'UserPromptSubmit', src: 'prompt' },
+  { event: 'SessionStart', src: 'start' },
   { event: 'SessionEnd', src: 'end' },
   { event: 'PostToolUse', src: 'resume', matcher: 'AskUserQuestion|ExitPlanMode' },
   { event: 'PermissionRequest', src: 'permreq' },
@@ -84,24 +91,27 @@ function alreadyHas(hooks, event) {
     (h) => typeof h.command === 'string' && h.command.includes(HOOK_MARK)));
 }
 
+// Merge one event's hook group into `hooks` (mutates), idempotently — a no-op if one of ours is already
+// registered for that event, so it's safe to call on every install/sync. Shared by mergeHooks and syncHooks.
+function addHook(hooks, e, dest) {
+  if (alreadyHas(hooks, e.event)) return;
+  const groups = hooks[e.event] = [...(hooks[e.event] || [])];
+  groups.push({ matcher: e.matcher || '', hooks: [{ type: 'command', command: `${dest} ${e.src}`, async: true, timeout: 5 }] });
+}
+
 // Pure: return a NEW settings object with our six hooks merged into settings.hooks, idempotently, leaving
 // the user's own hooks and other keys untouched. `dest` is the absolute path to the copied notify script.
 export function mergeHooks(settings, dest, claudeVersion = null) {
   const s = { ...(settings || {}) };
   const hooks = (s.hooks && typeof s.hooks === 'object' && !Array.isArray(s.hooks)) ? { ...s.hooks } : {};
-  const add = (e) => {
-    if (alreadyHas(hooks, e.event)) return;
-    const groups = hooks[e.event] = [...(hooks[e.event] || [])];
-    groups.push({ matcher: e.matcher || '', hooks: [{ type: 'command', command: `${dest} ${e.src}`, async: true, timeout: 5 }] });
-  };
-  for (const e of HOOK_EVENTS) add(e);
+  for (const e of HOOK_EVENTS) addHook(hooks, e, dest);
   // Version-gated ext events: install only when the detected Claude is new enough AND (for a paired event)
   // its clearer is also being installed. Anything that fails the gate is actively PRUNED, so a Claude
   // downgrade after a newer install can't leave an unrecognised event name lingering in settings.json.
   const enabled = new Set();
   for (const e of HOOK_EVENTS_EXT) {
     const ok = claudeVersionAtLeast(claudeVersion, e.minVersion) && (!e.pairWith || enabled.has(e.pairWith));
-    if (ok) { enabled.add(e.event); add(e); } else dropOurHook(hooks, e.event);
+    if (ok) { enabled.add(e.event); addHook(hooks, e, dest); } else dropOurHook(hooks, e.event);
   }
   s.hooks = hooks;
   return s;
@@ -155,6 +165,34 @@ export function installHooks(home = homedir(), { srcDir, stateFile, claudeVersio
   const version = claudeVersion !== undefined ? claudeVersion : detectClaudeVersion();
   writeJsonAtomic(settingsPath(home), mergeHooks(settings, dest, version));
   return { status: 'installed' };
+}
+
+// Keep an ALREADY-installed user's hooks in step with this handmux version on every server start, so a plain
+// `./deploy.sh` (restart) rolls out newly-added lifecycle events (e.g. SessionStart) and refreshed hook
+// scripts — no phone re-enable needed. Two moves: (1) re-deploy the bundled hook scripts (idempotent — picks
+// up a fixed handmux-write.cjs), and (2) add any of our BASE events a prior install predates.
+//
+// Strictly opt-in-preserving: a NO-OP unless our hooks are already present ('installed'). It never enables
+// hooks for a user who hasn't opted in ('absent') and never creates ~/.claude ('no-claude'). BASE events
+// only — it deliberately does NOT touch the version-gated ext events (compact pair / StopFailure): reconciling
+// those needs the Claude version (a null read would PRUNE the ext hooks a user already has), and detecting it
+// means spawning `claude --version` on the hot startup path. So sync stays pure-fs and non-pruning; ext-event
+// rollout stays with the explicit installHooks (phone re-enable) path. settings.json is rewritten only when
+// the merge actually changes it, so a steady state writes nothing.
+export function syncHooks(home = homedir(), { srcDir, stateFile } = {}) {
+  const status = hooksStatus(home);
+  if (status !== 'installed') return { status, changed: false };
+  const hooksDir = path.join(claudeDir(home), 'hooks');
+  deployHookScripts(hooksDir, srcDir, stateFile); // refresh the deployed scripts (idempotent)
+  const dest = path.join(hooksDir, 'handmux-notify.sh');
+  let settings = {};
+  try { settings = JSON.parse(fs.readFileSync(settingsPath(home), 'utf8')); } catch { /* missing/corrupt → {} */ }
+  const hooks = (settings.hooks && typeof settings.hooks === 'object' && !Array.isArray(settings.hooks)) ? { ...settings.hooks } : {};
+  const before = JSON.stringify(hooks);
+  for (const e of HOOK_EVENTS) addHook(hooks, e, dest); // add only MISSING base events; never add/prune ext
+  const changed = JSON.stringify(hooks) !== before;
+  if (changed) writeJsonAtomic(settingsPath(home), { ...settings, hooks });
+  return { status: 'installed', changed };
 }
 
 // Uninstall: strip our hooks from settings.json and remove the copied scripts/env. Best-effort on the file

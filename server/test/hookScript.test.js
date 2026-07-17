@@ -117,6 +117,28 @@ describe('handmux-notify.sh → handmux-write.js', () => {
     expect(obj['%5']).toBeUndefined();
   });
 
+  it('start (SessionStart) binds the pane to the NEW session, recording its transcript_path verbatim', () => {
+    const file = freshFile();
+    const obj = run('start', { TMUX_PANE: '%40' }, '{"source":"clear","session_id":"new-sess","transcript_path":"/p/new-sess.jsonl","cwd":"/x"}', file);
+    expect(obj['%40']).toMatchObject({ src: 'start' });
+    expect(obj['%40'].payload).toMatchObject({ session_id: 'new-sess', transcript_path: '/p/new-sess.jsonl' });
+  });
+
+  it('/clear race: with SessionStart(new) already recorded, a late SessionEnd(old) does NOT wipe the new binding', () => {
+    const file = freshFile();
+    run('start', { TMUX_PANE: '%41' }, '{"source":"clear","session_id":"new","transcript_path":"/p/new.jsonl"}', file); // Start won the async race
+    const obj = run('end', { TMUX_PANE: '%41' }, '{"session_id":"old","reason":"clear"}', file);                        // late end for the OLD session
+    expect(obj['%41']).toMatchObject({ src: 'start' });                 // survived — new binding intact
+    expect(obj['%41'].payload.transcript_path).toBe('/p/new.jsonl');
+  });
+
+  it('SessionEnd for the SAME recorded session still drops the pane (clean exit / normal /clear order)', () => {
+    const file = freshFile();
+    run('prompt', { TMUX_PANE: '%42' }, '{"prompt":"x","session_id":"s1"}', file);
+    const obj = run('end', { TMUX_PANE: '%42' }, '{"session_id":"s1","reason":"prompt_input_exit"}', file);
+    expect(obj['%42']).toBeUndefined();
+  });
+
   it('no pane → does nothing (no file written)', () => {
     const file = freshFile();
     const obj = run('stop', { TMUX_PANE: '', CLAUDE_PANE: '' }, '{}', file);

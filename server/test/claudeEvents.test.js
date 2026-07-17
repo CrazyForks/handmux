@@ -52,6 +52,10 @@ describe('classifyEvent', () => {
     expect(classifyEvent('stopfail', { error: 'boom raw' })).toEqual({ kind: 'error', msg: 'boom raw' });
     expect(classifyEvent('stopfail', {})).toEqual({ kind: 'error', msg: '' }); // unknown shape → bare error
   });
+  it('start → null (SessionStart just (re)binds pane→session; a fresh/cleared session is neutral, not 进行中)', () => {
+    expect(classifyEvent('start', { source: 'clear' })).toBeNull();
+    expect(classifyEvent('start', { source: 'startup' })).toBeNull();
+  });
   it('unknown src → null', () => {
     expect(classifyEvent('whatever', {})).toBeNull();
   });

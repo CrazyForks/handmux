@@ -7,6 +7,8 @@ import { loadToken } from './auth.js';
 import { createApiRouter } from './httpApi.js';
 import { loadUploadExts } from './uploadTypes.js';
 import { createClaudeEvents } from './claudeEvents.js';
+import { syncHooks } from './cli/claudeHooks.js';
+import { claudeStatePath } from './cli/state.js';
 import * as commands from './tmux/commands.js';
 import * as push from './push.js';
 import { cacheControlFor } from './staticCache.js';
@@ -31,6 +33,17 @@ const uploadExts = loadUploadExts();
 // client is polling; getStates reads it fresh on each /states.
 const events = createClaudeEvents({ commands, push });
 events.start();
+
+// Keep an already-opted-in user's Claude hooks in step with this handmux version on restart: newly-added
+// lifecycle events (e.g. SessionStart, which rebinds the 对话 lens after /clear) and a refreshed
+// handmux-write.cjs land via `./deploy.sh` alone — no phone re-enable. A strict no-op unless our hooks are
+// already installed; best-effort and must never block or crash startup (pure fs, no subprocess).
+try {
+  syncHooks(homedir(), {
+    srcDir: path.resolve(here, '../hooks'),
+    stateFile: process.env.CLAUDE_STATE_FILE || claudeStatePath(homedir()),
+  });
+} catch { /* best effort — hook sync never fails startup */ }
 
 // Static-site + dynamic preview. The dynamic side is enabled by HANDMUX_PREVIEW_DOMAIN (the wildcard
 // base domain, e.g. preview.example.com); unset → static only. One registry instance is shared by the

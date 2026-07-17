@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  HOOK_EVENTS, HOOK_EVENTS_EXT, mergeHooks, stripHooks, hooksStatus, installHooks, uninstallHooks,
+  HOOK_EVENTS, HOOK_EVENTS_EXT, mergeHooks, stripHooks, hooksStatus, installHooks, uninstallHooks, syncHooks,
   parseClaudeVersion, claudeVersionAtLeast, detectClaudeVersion,
 } from '../src/cli/claudeHooks.js';
 
@@ -22,11 +22,12 @@ function hasHook(settings, event) {
 }
 
 describe('HOOK_EVENTS', () => {
-  it('declares the six lifecycle events with the right src + matcher', () => {
+  it('declares the seven lifecycle events with the right src + matcher', () => {
     const byEvent = Object.fromEntries(HOOK_EVENTS.map((e) => [e.event, e]));
     expect(byEvent.Stop.src).toBe('stop');
     expect(byEvent.Notification.src).toBe('notify');
     expect(byEvent.UserPromptSubmit.src).toBe('prompt');
+    expect(byEvent.SessionStart.src).toBe('start');
     expect(byEvent.SessionEnd.src).toBe('end');
     expect(byEvent.PostToolUse.src).toBe('resume');
     expect(byEvent.PostToolUse.matcher).toBe('AskUserQuestion|ExitPlanMode');
@@ -37,13 +38,14 @@ describe('HOOK_EVENTS', () => {
 });
 
 describe('mergeHooks', () => {
-  it('registers all six events pointing at the dest script with src args', () => {
+  it('registers all seven events pointing at the dest script with src args', () => {
     const out = mergeHooks({}, DEST);
-    for (const ev of ['Stop', 'Notification', 'UserPromptSubmit', 'SessionEnd', 'PostToolUse', 'PermissionRequest']) {
+    for (const ev of ['Stop', 'Notification', 'UserPromptSubmit', 'SessionStart', 'SessionEnd', 'PostToolUse', 'PermissionRequest']) {
       expect(hasHook(out, ev), ev).toBe(true);
     }
     const cmd = (ev) => out.hooks[ev].flatMap((g) => g.hooks).map((h) => h.command).join(' ');
     expect(cmd('UserPromptSubmit')).toBe(`${DEST} prompt`);
+    expect(cmd('SessionStart')).toBe(`${DEST} start`);
     expect(cmd('PostToolUse')).toBe(`${DEST} resume`);
     expect(out.hooks.PostToolUse[0].matcher).toBe('AskUserQuestion|ExitPlanMode');
     expect(out.hooks.Stop[0].hooks[0]).toMatchObject({ type: 'command', async: true, timeout: 5 });
@@ -119,7 +121,7 @@ describe('mergeHooks — version-gated ext events (compact pair + StopFailure)',
   it('writes NONE of the ext events on an older Claude (pure downgrade)', () => {
     const out = mergeHooks({}, DEST, V('2.1.100'));
     for (const ev of EXT) expect(hasHook(out, ev), ev).toBe(false);
-    expect(hasHook(out, 'Stop')).toBe(true); // the base six are always present
+    expect(hasHook(out, 'Stop')).toBe(true); // the base (non-gated) events are always present
   });
 
   it('fail-closed: a null (undetectable) version writes no ext events', () => {
@@ -223,7 +225,7 @@ describe('installHooks / uninstallHooks (IO)', () => {
     const old = mk();
     installHooks(old, { srcDir: SRC_DIR, stateFile: path.join(old, '.handmux/s.json'), claudeVersion: null });
     expect(hasHook(read(old), 'PostCompact')).toBe(false);
-    expect(hasHook(read(old), 'Stop')).toBe(true); // base six still installed
+    expect(hasHook(read(old), 'Stop')).toBe(true); // base (non-gated) events still installed
   });
 
   it('refuses to install when ~/.claude is absent (returns no-claude, creates nothing)', () => {
@@ -231,5 +233,59 @@ describe('installHooks / uninstallHooks (IO)', () => {
     const res = installHooks(home, { srcDir: SRC_DIR, stateFile: path.join(home, '.handmux/claude-state.json') });
     expect(res.status).toBe('no-claude');
     expect(fs.existsSync(path.join(home, '.claude'))).toBe(false);
+  });
+});
+
+describe('syncHooks (roll newly-added base hooks + refreshed scripts out on restart)', () => {
+  const mk = () => { const h = tmpHome('twsync-'); fs.mkdirSync(path.join(h, '.claude'), { recursive: true }); return h; };
+  const opts = (h) => ({ srcDir: SRC_DIR, stateFile: path.join(h, '.handmux/s.json') });
+  const readSettings = (h) => JSON.parse(fs.readFileSync(path.join(h, '.claude/settings.json'), 'utf8'));
+
+  it('is a no-op when ~/.claude is absent (never creates it)', () => {
+    const h = tmpHome('twsync-');
+    expect(syncHooks(h, opts(h))).toMatchObject({ status: 'no-claude', changed: false });
+    expect(fs.existsSync(path.join(h, '.claude'))).toBe(false);
+  });
+
+  it('is a no-op when our hooks are NOT installed — opt-in preserved, nothing written, no scripts deployed', () => {
+    const h = mk();
+    expect(syncHooks(h, opts(h))).toMatchObject({ status: 'absent', changed: false });
+    expect(fs.existsSync(path.join(h, '.claude/settings.json'))).toBe(false);
+    expect(fs.existsSync(path.join(h, '.claude/hooks/handmux-write.cjs'))).toBe(false);
+  });
+
+  it('adds a newly-defined base event (SessionStart) a prior install predates, WITHOUT pruning ext events', () => {
+    const h = mk();
+    const dest = path.join(h, '.claude/hooks/handmux-notify.sh');
+    const old = mergeHooks({}, dest, V('2.1.207')); // full install…
+    delete old.hooks.SessionStart;                  // …but from before SessionStart existed
+    fs.mkdirSync(path.join(h, '.claude/hooks'), { recursive: true });
+    fs.writeFileSync(path.join(h, '.claude/settings.json'), JSON.stringify(old, null, 2));
+
+    const res = syncHooks(h, opts(h));
+    expect(res).toMatchObject({ status: 'installed', changed: true });
+    const s = readSettings(h);
+    expect(hasHook(s, 'SessionStart')).toBe(true);
+    expect(s.hooks.SessionStart[0].hooks[0].command).toBe(`${dest} start`);
+    expect(hasHook(s, 'PostCompact')).toBe(true);   // ext preserved — sync never strips them
+    expect(hasHook(s, 'StopFailure')).toBe(true);
+  });
+
+  it('is idempotent — a fresh install is already current, and a second sync rewrites nothing', () => {
+    const h = mk();
+    installHooks(h, { srcDir: SRC_DIR, stateFile: path.join(h, '.handmux/s.json'), claudeVersion: V('2.1.207') });
+    expect(syncHooks(h, opts(h)).changed).toBe(false);            // SessionStart already present after install
+    const before = fs.readFileSync(path.join(h, '.claude/settings.json'), 'utf8');
+    expect(syncHooks(h, opts(h)).changed).toBe(false);
+    expect(fs.readFileSync(path.join(h, '.claude/settings.json'), 'utf8')).toBe(before);
+  });
+
+  it('refreshes the deployed hook scripts even when settings are already current (picks up write.cjs fixes)', () => {
+    const h = mk();
+    installHooks(h, { srcDir: SRC_DIR, stateFile: path.join(h, '.handmux/s.json'), claudeVersion: V('2.1.207') });
+    const scriptPath = path.join(h, '.claude/hooks/handmux-write.cjs');
+    fs.writeFileSync(scriptPath, '// stale');                     // deployed script went out of date
+    expect(syncHooks(h, opts(h)).changed).toBe(false);           // settings unchanged…
+    expect(fs.readFileSync(scriptPath, 'utf8')).not.toBe('// stale'); // …but the script was re-copied
   });
 });

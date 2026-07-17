@@ -58,6 +58,10 @@ function resumeMsg(body) {
 //   stop                       → done       (turn finished; carries last message)
 //   prompt                     → working    (UserPromptSubmit; carries the prompt)
 //   end                        → end        (SessionEnd; the pane's claude is gone)
+//   start                      → null       (SessionStart startup/clear/resume: (re)binds pane→session to
+//                                             the NEW transcript_path — the whole point on /clear, which
+//                                             starts a fresh session file. Neutral: a fresh/just-cleared
+//                                             session reads as present, not 进行中, until its first prompt)
 //   notify + idle_prompt       → idle       (waited ~60s; carries the notification message)
 //   notify + permission_prompt → permission (blocked on a permission/选择 gate; carries the message)
 //   resume                     → working    (PostToolUse on AskUserQuestion/ExitPlanMode: the user just
@@ -84,6 +88,7 @@ export function classifyClaude(src, body = {}) {
   if (src === 'compact') return null;                                 // PostCompact: done → clear 压缩中/进行中
   if (src === 'stopfail') return { kind: 'error', msg: stopFailMsg(body) }; // turn died on an API error
   if (src === 'end') return { kind: 'end' };
+  if (src === 'start') return null;                                   // SessionStart: only (re)binds pane→session
   if (src === 'notify') {
     if (body.notification_type === 'idle_prompt') return { kind: 'idle', msg: body.message || '' };
     if (body.notification_type === 'permission_prompt') return { kind: 'permission', msg: body.message || '' };

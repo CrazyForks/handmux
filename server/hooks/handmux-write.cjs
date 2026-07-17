@@ -51,7 +51,13 @@ function update() {
     if (prevSrc === 'prompt' || prevSrc === 'resume') { delete obj[pane]; }
     else return;                                             // resting → drop without writing
   } else if (src === 'end') {
-    delete obj[pane];                                        // SessionEnd (clean exit) → drop the pane
+    // SessionEnd drops the pane on a clean exit. But /clear (and /resume) END the old session AND START a
+    // new one — SessionEnd(old) + SessionStart(new) fire as two async hooks, in either order. A late end for
+    // the OLD session must NOT wipe the NEW session's binding: only drop when what we currently hold IS the
+    // ending session (or neither side carries a session_id to compare — preserve the plain clean-exit drop).
+    const curSid = obj[pane] && obj[pane].payload && obj[pane].payload.session_id;
+    const endSid = payload && payload.session_id;
+    if (!curSid || !endSid || curSid === endSid) delete obj[pane];
   } else if (src === 'resume' && agent === 'codex') {
     // Codex fires PostToolUse on EVERY tool call, so its resume exists purely to un-stick a pane from 需要你
     // back to 进行中 after the user approved a PermissionRequest. Apply it ONLY as that transition — a mid-
