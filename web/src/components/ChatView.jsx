@@ -22,7 +22,7 @@ import {
 function toolSummary(tool) {
   const n = tool.name || '工具';
   const inp = tool.input || {};
-  if (n === 'Bash') return `运行命令 ${inp.command || ''}`.trim();
+  if (n === 'Bash') return `运行 ${inp.command || ''}`.trim();
   if (n === 'Edit' || n === 'MultiEdit' || n === 'Write') return `${n === 'Write' ? '写入' : '编辑'} ${inp.file_path || ''}`.trim();
   if (n === 'Read') return `读取 ${inp.file_path || inp.notebook_path || ''}`.trim();
   if (n === 'NotebookEdit') return `编辑 ${inp.notebook_path || ''}`.trim();
