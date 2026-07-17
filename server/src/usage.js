@@ -11,6 +11,19 @@ import { homedir } from 'node:os';
 import { pocketHome } from './cli/state.js';
 
 export function claudeUsagePath(home = homedir()) { return path.join(pocketHome(home), 'claude-usage.json'); }
+export function claudeContextDir(home = homedir()) { return path.join(pocketHome(home), 'context'); }
+
+// Per-session context-window snapshot the statusLine capturer writes to ~/.handmux/context/<sessionId>.json
+// ({ model, usedPercent, updatedAt }). null if the capturer isn't wired, the session never rendered, or the
+// id is unsafe. Used to show the CURRENT pane's context % (the global claude-usage.json can't — it's one
+// last-writer-wins snapshot across all sessions). sessionId is sanitised to keep the read inside the dir.
+export function readClaudeContext(sessionId, home = homedir()) {
+  if (typeof sessionId !== 'string' || !/^[\w-]+$/.test(sessionId)) return null;
+  try {
+    const snap = JSON.parse(fs.readFileSync(path.join(claudeContextDir(home), `${sessionId}.json`), 'utf8'));
+    return (snap && typeof snap === 'object' && !Array.isArray(snap)) ? snap : null;
+  } catch { return null; }
+}
 export function codexSessionsDir(home = homedir()) { return path.join(home, '.codex', 'sessions'); }
 
 // Claude: read the statusLine snapshot. null if the capturer isn't wired / never populated it.

@@ -33,7 +33,7 @@ import { readState, clearState, isAlive, pocketHome, logPath, configPath, claude
 import { runSetup } from '../src/cli/setupWizard.js';
 import { hooksStatus, installHooks, uninstallHooks } from '../src/cli/claudeHooks.js';
 import { codexHooksStatus, installCodexHooks, uninstallCodexHooks } from '../src/cli/codexHooks.js';
-import { statusLineStatus, installStatusLine, uninstallStatusLine, composeHint } from '../src/cli/statusLine.js';
+import { statusLineStatus, installStatusLine, uninstallStatusLine, composeHint, refreshStatusLineScript } from '../src/cli/statusLine.js';
 import { claudeUsagePath } from '../src/usage.js';
 import { probe } from '../src/cli/probe.js';
 import { notifyUpdate, runUpdateCheck, isBrewInstall, PKG_NAME } from '../src/cli/updateCheck.js';
@@ -395,7 +395,11 @@ async function setupCmd() {
 // quota. No-op when Claude Code isn't installed or ours is already in place.
 async function maybeOfferStatusLine() {
   const st = statusLineStatus(HOME);
-  if (st === 'no-claude' || st === 'ours') return;
+  if (st === 'no-claude') return;
+  // Already ours (plain OR composed into the user's own statusline): don't re-prompt, but silently REFRESH
+  // the capturer script to the bundled version so an npm upgrade reaches the on-disk copy. Settings-safe —
+  // refreshStatusLineScript never rewrites settings.statusLine, so a composed downstream renderer is kept.
+  if (st === 'ours') { refreshStatusLineScript(HOME, { srcDir: HOOKS_SRC }); return; }
   if (st === 'foreign') {
     // Deploy the capturer script (doesn't touch their statusLine) so the compose one-liner is runnable.
     installStatusLine(HOME, { srcDir: HOOKS_SRC, usageFile: claudeUsagePath(HOME) });

@@ -52,6 +52,31 @@ if (file) {
     const tmp = `${file}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(snap));
     fs.renameSync(tmp, file); // atomic: concurrent statuslines (multiple sessions) can't tear the snapshot
+
+    // Per-session context snapshot. The global file above is last-writer-wins across ALL sessions, so it
+    // can't tell the phone which session a given pane is on. Claude's statusLine stdin carries `session_id`,
+    // so we ALSO write a per-session file keyed by it — the server joins pane→session (hook state) → this
+    // file to show the CURRENT pane's context-window %. Its own file per session ⇒ no cross-session race.
+    const sid = typeof j.session_id === 'string' ? j.session_id : null;
+    if (sid && /^[\w-]+$/.test(sid) && snap.context) {
+      const cdir = path.join(path.dirname(file), 'context');
+      fs.mkdirSync(cdir, { recursive: true });
+      const cfile = path.join(cdir, `${sid}.json`);
+      const csnap = { sessionId: sid, model: snap.model, usedPercent: snap.context.usedPercent, updatedAt: snap.updatedAt };
+      const ctmp = `${cfile}.${process.pid}.tmp`;
+      fs.writeFileSync(ctmp, JSON.stringify(csnap));
+      fs.renameSync(ctmp, cfile);
+      // Best-effort prune of stale session files (ended sessions never clean up after themselves) so the
+      // dir can't grow without bound. A day is well past any live session's last statusLine render.
+      try {
+        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+        for (const nm of fs.readdirSync(cdir)) {
+          if (!nm.endsWith('.json')) continue;
+          const fp = path.join(cdir, nm);
+          try { if (fs.statSync(fp).mtimeMs < cutoff) fs.unlinkSync(fp); } catch { /* skip */ }
+        }
+      } catch { /* prune is best-effort */ }
+    }
   } catch { /* best effort — never fail the statusline */ }
 }
 

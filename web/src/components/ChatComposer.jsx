@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { sendText, UnauthorizedError } from '../api.js';
+import { shouldHandOffSlash } from '../slashCommands.js';
 import MicButton from './MicButton.jsx';
 import CmdFavEditor from './CmdFavEditor.jsx';
 import { loadFavs } from '../favStore.js';
 import { getChatDraft, setChatDraft } from '../storage.js';
+import { usePaneContext } from '../hooks/usePaneContext.js';
 import { UPLOAD_ACCEPT } from '../uploadTypes.js';
 import { ArrowUpIcon, StopIcon, PlusIcon, GearIcon } from './icons.jsx';
 import { useUpload } from '../hooks/useUpload.js';
@@ -33,7 +35,7 @@ const keepFocus = (e) => {
 // green. Key favs never reach here — they're filtered out of the chat strip.
 const chipTint = (text) => (text.startsWith('/') ? 'cmd' : 'reply');
 
-export default function ChatComposer({ pane, kind, cwd = null, onKey = () => {}, onAuthFail, onSent }) {
+export default function ChatComposer({ pane, kind, cwd = null, onKey = () => {}, onAuthFail, onSent, onInteractiveSlash }) {
   // Draft persists across an app exit / lens switch (shared store with the dock's chat page — switching
   // lenses carries your half-typed message either way). send/clear set '' → the stored draft clears too.
   const [value, setValue] = useState(() => getChatDraft());
@@ -54,6 +56,14 @@ export default function ChatComposer({ pane, kind, cwd = null, onKey = () => {},
   // While the agent is working, the send button becomes a STOP that interrupts it (Escape). Any other
   // state (idle / needs-you / done) shows the normal send.
   const busy = kind === 'working';
+
+  // Current context-window occupancy for this pane's session (model + used %), shown as a small chip in the
+  // action row. Absent (null %) when the statusLine capturer isn't opted in → the chip simply doesn't render.
+  const ctx = usePaneContext(pane);
+  const ctxModel = ctx.model ? ctx.model.replace(/\s*\(.*\)\s*$/, '').trim() : null; // drop "(1M context)" suffix
+  const ctxPct = ctx.usedPercent;
+  const showCtx = typeof ctxPct === 'number';
+  const ctxWarn = showCtx && ctxPct >= 80; // near auto-compact → amber
 
   // Grow to fit content; CSS max-height caps it (~6 lines) then it scrolls. +2 for the border under
   // box-sizing: border-box. No multi/crowd measuring — the buttons are in a row below, never inline.
@@ -100,6 +110,10 @@ export default function ChatComposer({ pane, kind, cwd = null, onKey = () => {},
     try {
       await sendText(pane, value, true);
       onSent?.(value);
+      // A bare, non-one-shot slash command may have opened a TUI picker that lives only in the terminal (and
+      // the transcript stays silent until the user picks). Hand off to the terminal lens so they can see and
+      // drive it — including unrecognized commands, since a missed picker leaves the phone stuck.
+      if (shouldHandOffSlash(value)) onInteractiveSlash?.(value.trim());
       setValue('');
       requestAnimationFrame(() => autoGrow(ref.current));
     } catch (err) {
@@ -132,8 +146,11 @@ export default function ChatComposer({ pane, kind, cwd = null, onKey = () => {},
   // are filtered out of the strip above.
   const runFav = async (text) => {
     if (!pane) return;
-    try { await sendText(pane, text, true); onSent?.(text); }
-    catch (err) { if (err instanceof UnauthorizedError) onAuthFail?.(); }
+    try {
+      await sendText(pane, text, true);
+      onSent?.(text);
+      if (shouldHandOffSlash(text)) onInteractiveSlash?.(text.trim());
+    } catch (err) { if (err instanceof UnauthorizedError) onAuthFail?.(); }
   };
 
   // After an upload, append the files' absolute paths to the draft (one → the path; many → the shared dir
@@ -186,6 +203,15 @@ export default function ChatComposer({ pane, kind, cwd = null, onKey = () => {},
           <button type="button" className="cc-attach" aria-label={t('dock.attach')}
             onClick={() => uploadRef.current?.click()}><PlusIcon /></button>
           <div className="cc-actions-right">
+            {/* Context-window chip — model + used %, right-aligned just left of mic/send. pointer-events:none
+                so a tap here still focuses the field (tap-to-focus). Rendered only when the capturer supplied
+                a % (else nothing); the model name ellipsizes so it can't shove the buttons. */}
+            {showCtx && (
+              <div className={`cc-ctx${ctxWarn ? ' warn' : ''}`} aria-hidden="true">
+                {ctxModel && <span className="cc-ctx-model">{ctxModel}</span>}
+                <span className="cc-ctx-pct">{Math.round(ctxPct)}%</span>
+              </div>
+            )}
             {micAvailable && <MicButton active={recording} disabled={voice.state === 'requesting'} onToggle={toggleMic} />}
             {busy ? (
               <button type="button" className="cc-send cc-stop" aria-label={t('chat.stop')} onClick={stop}>

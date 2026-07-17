@@ -1450,6 +1450,19 @@ button.cmd-text { background: none; border: none; text-align: left; }
 @keyframes exit-toast-in { from { opacity: 0; transform: translate(-50%, 6px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @media (prefers-reduced-motion: reduce) { .exit-toast { animation: none; } }
 
+/* Slash hand-off hint — shown when sending a bare interactive/unknown command auto-switches to the terminal
+   lens, so the sudden lens change is explained ("已切到终端镜头 · 操作 /model"). Same grey pill as .exit-toast;
+   sits a little higher (clear of the terminal's own controls) and never blocks touches on the pane. */
+.handoff-toast {
+  position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  z-index: 60; max-width: 88vw; text-align: center;
+  background: rgba(30,32,36,.94); color: #e6e9ee; border: 1px solid #3a3d44;
+  padding: 9px 16px; border-radius: 999px; font-size: 13px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.4); pointer-events: none;
+  animation: exit-toast-in .18s ease;
+}
+@media (prefers-reduced-motion: reduce) { .handoff-toast { animation: none; } }
+
 /* Inbox: a topbar tray icon with an unread count badge, opening a dropdown roster of watched panes. */
 .inbox-btn { position: relative; }
 /* Single priority dot in the icon's top-right corner: highest active state across all panes. */
@@ -1648,14 +1661,18 @@ button.cmd-text { background: none; border: none; text-align: left; }
    olive-black #0a0b09 · cream #ece6d4 · amber #ffb454). Default = 暖夜 (dusk) on `.app`; `data-chat-tone`
    overrides it. Terminal lens + rest of app are untouched (they use --blue etc.). Only `.chat-*`/`.cc-*`
    consume these.
-   ---- 暖夜 dusk (DEFAULT — warm brown dark) ---- */
+   ---- 暖夜 dusk (DEFAULT — warm dark) ----
+   Refined palette (对标 Bear/Things/Raycast 暖夜档): the base is a deep warm charcoal with a whisper of
+   red, NOT a muddy brown; ink is a warm white; surfaces are SOLID warm greys that layer by lightness
+   (bg < bar < chip < chip-2) rather than translucent whites (which read cool over a warm ground); a single
+   golden amber is the only accent. */
 .app, .app[data-chat-tone="dusk"] {
-  --ct-bg:#191410; --ct-ink:#f0e9e2; --ct-muted:#a2938a;
-  --ct-me-bg:linear-gradient(180deg,#4c3f31,#40342a); --ct-me-ink:#f3ede5;
-  --ct-chip:rgba(255,255,255,.05); --ct-chip-2:rgba(255,255,255,.1); --ct-chip-line:rgba(255,220,190,.1);
-  --ct-chip-ink:#c7b6a8; --ct-body:rgba(255,225,190,.05);
-  --ct-accent:#f0a24b; --ct-bar:#241c15; --ct-field:#14100c; --ct-field-line:#3a2f24;
-  --ct-code-bg:rgba(255,225,190,.06); --ct-line:rgba(255,220,190,.12);
+  --ct-bg:#151109; --ct-ink:#f6f1e7; --ct-muted:#9f9081;
+  --ct-me-bg:linear-gradient(180deg,#4a3a26,#3b2e20); --ct-me-ink:#f6efe2;
+  --ct-chip:#201a10; --ct-chip-2:#2b2216; --ct-chip-line:#362b1b;
+  --ct-chip-ink:#cbbfae; --ct-body:#1b150d;
+  --ct-accent:#f4a84c; --ct-bar:#1b150c; --ct-field:#120d07; --ct-field-line:#3a2f1e;
+  --ct-code-bg:#0f0b06; --ct-line:#2a2115;
   --ct-err-bg:rgba(255,120,90,.16); --ct-err-ink:#ff9a80;
 }
 /* ---- 暖金 ink (the LANDING brand: warm olive-black + cream + golden bubble) ---- */
@@ -1688,8 +1705,67 @@ button.cmd-text { background: none; border: none; text-align: left; }
   flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
   display: flex; flex-direction: column; gap: 8px;
   padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  /* Kill the browser's native long-press selection + its ugly system copy menu (Chrome's bottom bar,
+     iOS's callout). Copy is handled entirely by our own long-press callout (ChatView) — a still hold
+     rings the pressed block and offers 拷贝 / 复制全部. */
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
 }
+/* The block under a long-press: a soft blue ring (radius-following box-shadow) + faint tint, matching the
+   terminal selection's blue. Imperatively toggled by ChatView; purely a visual cue for what will be copied. */
+.chat-copy-hl {
+  border-radius: 10px;
+  box-shadow: 0 0 0 2px rgba(10,132,255,0.55);
+  background-color: rgba(10,132,255,0.12);
+}
+/* Reuses the terminal .sel-callout chrome; only the anchor differs (absolute within .chat-view). */
+.chat-copy-callout { position: absolute; }
 .chat-empty { margin: auto; color: var(--ct-muted); font-size: 13px; text-align: center; padding: 24px 0; }
+/* Time label — muted, small, shown only under YOUR input and the AI's last reply of each turn (see
+   ChatView.timeStampedIndices), aligned to that message's side. Negative top margin pulls it up snug to its
+   own bubble (countering .chat-scroll's 8px row gap). tabular-nums so the digits don't jitter. */
+.chat-ts {
+  color: var(--ct-muted); font-size: 10.5px; font-weight: 500; letter-spacing: .02em;
+  font-variant-numeric: tabular-nums; margin-top: -4px; padding: 0 4px;
+}
+.chat-ts.ts-me { align-self: flex-end; }
+.chat-ts.ts-them { align-self: flex-start; }
+/* ESC-interrupt hint — a quiet centered grey line (an expected user action, not an error → muted, never
+   red), flanked by faint hairlines so it reads as a soft break in the stream. */
+.chat-interrupt {
+  align-self: center; display: flex; align-items: center; gap: 8px;
+  color: var(--ct-muted); font-size: 11px; letter-spacing: .02em; padding: 2px 0;
+}
+.chat-interrupt::before, .chat-interrupt::after {
+  content: ""; width: 22px; height: 1px; background: var(--ct-line);
+}
+
+/* Compaction divider — a FULL-WIDTH rule with a centered label ("上下文已压缩"), marking where the context
+   was compacted. Quiet/grey (a normal lifecycle event, not an error); the hairlines flex to fill the row. */
+.chat-compact-divider {
+  align-self: stretch; display: flex; align-items: center; gap: 10px;
+  color: var(--ct-muted); font-size: 11px; letter-spacing: .04em;
+  margin: 6px 2px; padding: 0;
+}
+.chat-compact-divider::before, .chat-compact-divider::after {
+  content: ""; flex: 1; height: 1px; background: var(--ct-line);
+}
+
+/* Slash command — input and output kept SEPARATE, on the lens's normal two sides. The command the user ran
+   is their action: a compact RIGHT-aligned monospace pill (distinct from a prose bubble — it's a control,
+   not a message). Its stdout echo is the system's reply: a quiet LEFT-aligned system line. */
+.chat-slash-cmd {
+  align-self: flex-end; max-width: 82%;
+  padding: 3px 10px; border-radius: 12px;
+  background: var(--ct-chip); border: 1px solid var(--ct-chip-line);
+  color: var(--ct-chip-ink); font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+  word-break: break-word;
+}
+.chat-slash-result {
+  align-self: flex-start; max-width: 82%;
+  color: var(--ct-muted); font-size: 12.5px; line-height: 1.45;
+  padding: 1px 2px; word-break: break-word;
+}
 
 .chat-bubble {
   padding: 9px 13px; border-radius: 18px; font-size: 15px; line-height: 1.4;
@@ -1745,7 +1821,6 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .chat-tool-stat { flex: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .chat-tool-stat .cts-add { color: #3fb950; }
 .chat-tool-stat .cts-del { color: #f85149; }
-.chat-tool-head-open { white-space: pre-wrap; word-break: break-word; overflow: visible; text-overflow: clip; }
 .chat-tool-head:active { background: var(--ct-chip-2); }
 /* Outcome mark (✓ success / ✗ failure), pinned right; never shrinks. Fixed green/red read on every tone.
    The chip itself stays neutral on error — the cross carries the failure, not a whole red box. */
@@ -1775,6 +1850,113 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .chat-diff-line.cd-del { background: rgba(248,81,73,.15); }
 .chat-diff-line.cd-ctx { color: var(--ct-muted); }
 
+/* ── Tool detail sheet — a ~half-screen bottom sheet (mirrors .cmd-panel's shell), styled in the chat's
+   warm-dusk tokens. Tapping a tool chip opens it (no in-page expand); shows 执行模式 / 执行的命令 /
+   输出结果 as labelled sections. A file-edit's output renders as the coloured diff, visually distinct. */
+.tool-sheet-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 41; }
+.tool-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 42;
+  max-height: 62vh; min-height: 42vh;
+  display: flex; flex-direction: column;
+  background: var(--ct-body); color: var(--ct-ink);
+  border-radius: 18px 18px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,.5);
+  animation: tool-sheet-up .28s cubic-bezier(.22,.61,.36,1);
+}
+@keyframes tool-sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .tool-sheet { animation: none; } }
+.tool-sheet-grip { flex: none; width: 36px; height: 5px; border-radius: 3px; background: var(--ct-chip-line); margin: 8px auto 2px; }
+.tool-sheet-head {
+  flex: none; display: flex; align-items: center; gap: 10px; padding: 6px 46px 12px 14px;
+  border-bottom: 1px solid var(--ct-line);
+}
+.tool-sheet-ic { flex: none; display: inline-flex; color: var(--ct-accent); }
+.tool-sheet-ic svg { width: 19px; height: 19px; display: block; }
+.tool-sheet-title {
+  flex: 1; min-width: 0; margin-right: auto; font-size: 15px; font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tool-sheet-x { position: absolute; top: 12px; right: 12px; z-index: 2; }
+.tool-sheet-body {
+  flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  display: flex; flex-direction: column; gap: 16px;
+  padding: 14px 14px calc(16px + env(safe-area-inset-bottom, 0px));
+}
+.tool-sheet-sec { display: flex; flex-direction: column; gap: 7px; }
+/* min-height:0 lets the output section (and its scrollable diff/pre) shrink within the flex body. */
+.tool-sheet-out { min-height: 0; }
+.tool-sheet-label {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ct-muted);
+}
+.tool-sheet-mode-row { display: flex; align-items: center; gap: 10px; }
+.tool-sheet-mode-val { font-size: 15px; font-weight: 500; color: var(--ct-ink); }
+.tool-sheet-state { flex: none; font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 10px; }
+.tool-sheet-state.ok { color: #7ee0a3; background: rgba(48,209,88,.14); }
+.tool-sheet-state.err { color: #ff9086; background: rgba(255,69,58,.16); }
+.tool-sheet-state.run { color: var(--ct-accent); background: rgba(244,168,76,.16); }
+.tool-sheet-state.idle { color: var(--ct-muted); background: var(--ct-chip-2); }
+.tool-sheet-cmd {
+  margin: 0; padding: 11px 13px; border-radius: 10px;
+  background: var(--ct-code-bg); color: var(--ct-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+.tool-sheet-empty { color: var(--ct-muted); font-size: 13px; padding: 6px 0; }
+/* Inside the sheet the body scrolls, so let the result fill it rather than capping at the chip's small box. */
+.tool-sheet-out .chat-tool-body, .tool-sheet-out .chat-diff { margin: 0; max-height: none; }
+
+/* ── File-edit layout: the sheet becomes a code-review surface, taller, with the diff as the main content. */
+.tool-sheet-edit { max-height: 82vh; }
+.es-head { padding-bottom: 10px; align-items: flex-start; }
+.es-head .tool-sheet-ic { margin-top: 1px; }
+.es-file { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.es-name {
+  font-size: 15px; font-weight: 600; color: var(--ct-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.es-dir {
+  font-size: 11.5px; color: var(--ct-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left;
+}
+.es-body { gap: 0; padding: 0; }
+.es-meta {
+  flex: none; display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-bottom: 1px solid var(--ct-line);
+}
+.es-meta .tool-sheet-mode-val { font-size: 13px; margin-right: auto; }
+.es-note { color: var(--ct-muted); font-size: 13px; padding: 16px 14px; }
+/* The diff owns the remaining height and scrolls both ways on its own. */
+.es-diff { flex: 1; min-height: 0; overflow: auto; -webkit-overflow-scrolling: touch; }
+
+/* Diff viewer — sticky line-number gutter + sign column + pre-formatted code; add/del tinted with a left bar. */
+.dv { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.55; min-width: max-content; }
+.dv-gap {
+  display: flex; align-items: center; justify-content: center;
+  height: 20px; color: var(--ct-muted); background: var(--ct-body);
+  border-top: 1px dashed var(--ct-chip-line); border-bottom: 1px dashed var(--ct-chip-line);
+  position: sticky; left: 0;
+}
+.dv-row { display: flex; align-items: flex-start; min-width: max-content; }
+.dv-ln {
+  position: sticky; left: 0; z-index: 1; flex: none; box-sizing: border-box;
+  width: 46px; padding: 0 8px 0 6px; text-align: right;
+  color: var(--ct-muted); background: var(--ct-body); font-variant-numeric: tabular-nums;
+  border-right: 2px solid transparent; user-select: none;
+}
+.dv-sign { flex: none; width: 15px; text-align: center; user-select: none; }
+.dv-code { flex: 1; white-space: pre; padding: 0 12px 0 4px; color: var(--ct-ink); }
+.dv-add { background: rgba(63,185,80,.12); }
+.dv-add .dv-ln { background: rgba(63,185,80,.16); border-right-color: #3fb950; color: #6fca7f; }
+.dv-add .dv-sign { color: #3fb950; }
+.dv-del { background: rgba(248,81,73,.12); }
+.dv-del .dv-ln { background: rgba(248,81,73,.16); border-right-color: #f85149; color: #f0857e; }
+.dv-del .dv-sign { color: #f85149; }
+.dv-ctx .dv-code { color: var(--ct-chip-ink); }
+
 /* Running tool head — muted running-state tint (still reads as machinery). The head becomes a flex row so
    the command text truncates while the pulse + "运行中" label stay pinned, unclipped, at the line's end. */
 .chat-tool-running .chat-tool-head { background: var(--ct-chip-2); color: var(--ct-ink); display: flex; align-items: center; gap: 6px; }
@@ -1783,10 +1965,6 @@ button.cmd-text { background: none; border: none; text-align: left; }
   flex: none; display: inline-flex; align-items: center; gap: 4px;
   font-size: 11px; color: var(--ct-chip-ink);
 }
-.chat-tool-running .chat-tool-head-open { display: flex; }
-/* Expanded head (running OR not): the summary text WRAPS to multiple lines instead of staying one very long
-   ellipsized/overflowing line. (The collapsed .chat-tool-head-text stays nowrap+ellipsis — one clean line.) */
-.chat-tool-head-open .chat-tool-head-text { white-space: pre-wrap; word-break: break-word; overflow: visible; text-overflow: clip; }
 
 /* Typing indicator (Task 13) — a small assistant-side wave of three dots at the end of the message list,
    standing in for "Claude is generating" since we poll state rather than stream tokens. Also reused
@@ -1809,6 +1987,25 @@ button.cmd-text { background: none; border: none; text-align: left; }
 @media (prefers-reduced-motion: reduce) {
   .chat-typing-dot { animation: chat-typing-fade 1.6s ease-in-out infinite; }
   @keyframes chat-typing-fade { 0%, 100% { opacity: .35; } 50% { opacity: .9; } }
+}
+
+/* Compaction in progress — the typing wave plus an honest label, so a slow /compact reads as progress, not
+   a hang. Same assistant-side pill as .chat-typing, widened for the text. */
+.chat-compacting {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 14px; background: var(--ct-body);
+}
+.chat-compacting-label { font-size: 13px; color: var(--ct-muted); }
+
+/* A turn that ended on an API error. Restrained (not alarming) — a soft red tint, left-aligned like an
+   assistant note — telling the user WHY the reply stopped instead of a silent, forever-spinning wave. */
+.chat-turn-error {
+  align-self: flex-start; max-width: 85%; padding: 8px 12px; border-radius: 14px;
+  font-size: 13px; line-height: 18px;
+  color: #b3261e; background: rgba(179, 38, 30, 0.10);
+}
+@media (prefers-color-scheme: dark) {
+  .chat-turn-error { color: #ffb4ab; background: rgba(255, 180, 171, 0.12); }
 }
 
 /* Thinking — muted, smaller, readable but visually de-emphasized vs. real bubbles. */
@@ -1871,7 +2068,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .cc-card {
   display: flex; flex-direction: column; gap: 0;
   background: var(--ct-field); border: 1px solid var(--ct-field-line); border-radius: 20px;
-  padding: 8px 8px 5px 14px; transition: border-color .15s;
+  padding: 10px 8px 8px 14px; transition: border-color .15s;
 }
 .cc-card:focus-within { border-color: var(--ct-accent); }
 .cc-card.recording { border-color: #34c759; }
@@ -1879,7 +2076,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
    No bottom padding: the action row sits right under the text (a big gap here read as unfinished). */
 .cc-text {
   width: 100%; background: transparent; border: none; outline: none; resize: none;
-  color: var(--ct-ink); font-size: 16px; line-height: 22px; max-height: 132px; padding: 2px 0 0;
+  color: var(--ct-ink); font-size: 16px; line-height: 22px; min-height: 33px; max-height: 132px; padding: 2px 0 0;
   font-family: inherit;
 }
 .cc-text::placeholder { color: var(--ct-muted); }
@@ -1887,12 +2084,22 @@ button.cmd-text { background: none; border: none; text-align: left; }
    centres a ~18px icon → ~7px of air on top); the row still clears the text and the buttons stay ≥32px. */
 .cc-actions { display: flex; align-items: center; justify-content: space-between; margin-top: -3px; }
 .cc-actions-right { display: flex; align-items: center; gap: 6px; }
+/* Context-window chip — model + used %, centered in the action row's free space. pointer-events:none so it
+   never eats the tap-to-focus target; tabular-nums so the % doesn't jitter; the model name truncates first. */
+.cc-ctx {
+  flex: none; min-width: 0; max-width: 46vw; display: flex; align-items: baseline; gap: 5px;
+  padding: 0 4px 0 2px; pointer-events: none; overflow: hidden;
+  color: var(--ct-muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.cc-ctx-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cc-ctx-pct { flex: none; font-weight: 600; color: var(--ct-chip-ink); }
+.cc-ctx.warn .cc-ctx-pct { color: var(--ct-accent); }
 .cc-attach, .cc-send {
   display: inline-flex; align-items: center; justify-content: center;
   width: 32px; height: 32px; border: none; border-radius: 999px;
   touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
-.cc-attach { background: transparent; color: var(--ct-chip-ink); }
+.cc-attach { background: transparent; color: var(--ct-chip-ink); margin-left: -7px; }
 .cc-attach:active { background: var(--ct-chip-2); }
 .cc-send { background: var(--ct-accent); color: #fff; }
 .cc-send:disabled { background: var(--ct-chip-2); color: var(--ct-muted); }

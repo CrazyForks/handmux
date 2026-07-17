@@ -4,6 +4,7 @@ import path from 'node:path';
 import { tmpHome } from './tmphome.js';
 import {
   readClaudeUsage, readCodexUsage, getUsage, getUsageCached, claudeUsagePath,
+  readClaudeContext, claudeContextDir,
 } from '../src/usage.js';
 
 // Write a Codex rollout at sessions/YYYY/MM/DD/<name> with the given jsonl lines.
@@ -35,6 +36,24 @@ describe('readClaudeUsage', () => {
     expect(readClaudeUsage(home)).toMatchObject({ rateLimits: { fiveHour: { usedPercent: 42 } } });
     fs.writeFileSync(claudeUsagePath(home), 'not json');
     expect(readClaudeUsage(home)).toBeNull();
+  });
+});
+
+describe('readClaudeContext (per-session context-window snapshot)', () => {
+  it('reads <sessionId>.json; null when missing', () => {
+    const home = tmpHome('ctx-');
+    expect(readClaudeContext('sess-1', home)).toBeNull();
+    fs.mkdirSync(claudeContextDir(home), { recursive: true });
+    fs.writeFileSync(path.join(claudeContextDir(home), 'sess-1.json'), JSON.stringify({ model: 'Opus 4.8', usedPercent: 24, updatedAt: 9 }));
+    expect(readClaudeContext('sess-1', home)).toMatchObject({ model: 'Opus 4.8', usedPercent: 24 });
+  });
+
+  it('rejects an unsafe session id (path traversal) without reading', () => {
+    const home = tmpHome('ctx-');
+    expect(readClaudeContext('../claude-usage', home)).toBeNull();
+    expect(readClaudeContext('a/b', home)).toBeNull();
+    expect(readClaudeContext('', home)).toBeNull();
+    expect(readClaudeContext(null, home)).toBeNull();
   });
 });
 

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { tmpHome } from './tmphome.js';
 import {
-  statusLineStatus, installStatusLine, uninstallStatusLine, composeHint,
+  statusLineStatus, installStatusLine, uninstallStatusLine, composeHint, refreshStatusLineScript,
 } from '../src/cli/statusLine.js';
 
 const SRC = path.resolve(__dirname, '../hooks'); // bundled scripts (has handmux-statusline.cjs)
@@ -93,6 +93,40 @@ describe('uninstallStatusLine', () => {
     writeSettings(home, { statusLine: { type: 'command', command: 'bash ~/.claude/mystatus.sh' } });
     uninstallStatusLine(home);
     expect(settings(home).statusLine.command).toBe('bash ~/.claude/mystatus.sh');
+  });
+});
+
+describe('refreshStatusLineScript (upgrade path — refresh the on-disk capturer without touching settings)', () => {
+  const scriptPath = (home) => path.join(home, '.claude', 'hooks', 'handmux-statusline.cjs');
+
+  it('refreshes the script in place when ours (plain form)', () => {
+    const home = withClaude('sl-');
+    installStatusLine(home, { srcDir: SRC, usageFile: usageFile(home) });
+    fs.writeFileSync(scriptPath(home), '// stale old capturer'); // simulate a pre-upgrade copy
+    const before = settings(home).statusLine.command;
+    expect(refreshStatusLineScript(home, { srcDir: SRC })).toBe(true);
+    expect(fs.readFileSync(scriptPath(home), 'utf8')).toContain('handmux statusLine capturer'); // bundled again
+    expect(settings(home).statusLine.command).toBe(before); // settings untouched
+  });
+
+  it('refreshes the script but KEEPS a composed (TEE) statusline command intact', () => {
+    const home = withClaude('sl-');
+    // user composed our capturer into their own renderer — reads as 'ours' via the mark, must not be rewritten
+    const composed = 'HANDMUX_STATUS_TEE=1 node ~/.claude/hooks/handmux-statusline.cjs ~/.handmux/claude-usage.json | bash ~/.claude/mystatus.sh';
+    writeSettings(home, { statusLine: { type: 'command', command: composed } });
+    fs.mkdirSync(path.dirname(scriptPath(home)), { recursive: true });
+    fs.writeFileSync(scriptPath(home), '// stale');
+    expect(statusLineStatus(home)).toBe('ours');
+    expect(refreshStatusLineScript(home, { srcDir: SRC })).toBe(true);
+    expect(fs.readFileSync(scriptPath(home), 'utf8')).toContain('handmux statusLine capturer');
+    expect(settings(home).statusLine.command).toBe(composed); // downstream renderer preserved
+  });
+
+  it('no-op (false) when not ours (foreign / absent)', () => {
+    const foreign = withClaude('sl-');
+    writeSettings(foreign, { statusLine: { type: 'command', command: 'bash ~/.claude/mystatus.sh' } });
+    expect(refreshStatusLineScript(foreign, { srcDir: SRC })).toBe(false);
+    expect(refreshStatusLineScript(withClaude('sl-'), { srcDir: SRC })).toBe(false); // absent
   });
 });
 

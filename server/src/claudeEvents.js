@@ -39,6 +39,14 @@ function pushKey(view, ts) { return view === 'done' ? `done:${ts}` : view; }
 // its next event, and a new prompt resets the clock.
 const WORKING_TTL_MS = 2 * 60 * 60 * 1000;
 
+// 压缩中 (compacting) clears three ways: a SUCCESSFUL compaction fires PostCompact (src 'compact' → cleared
+// the instant it finishes); a NO-OP /compact ("Not enough messages to compact") fires no PostCompact but
+// writes its <local-command-stdout> immediately, which the transcript-tail check below catches within a poll;
+// and this TTL is the ultimate backstop for a genuine crash/abort mid-compaction where neither signal comes.
+// It must stay WELL above a real compaction's duration (routinely 1-2min) so it never truncates the animation
+// of a compaction that's actually still running — real ones are cleared by PostCompact, not by this timer.
+const COMPACTING_TTL_MS = 5 * 60 * 1000;
+
 // A pane latched in `permission` (需要你) has NO hook event to close it when the user resolves the prompt:
 // approving a normal tool (Bash/Edit/…) doesn't hit our PostToolUse matcher (only AskUserQuestion|ExitPlanMode
 // do), and DENYING or ESC-interrupting fires no hook at all (verified across all hook events). So the prompt
@@ -84,8 +92,30 @@ export function permissionResolved(rec, mtimeMs, guard = PERM_RESOLVED_GUARD_MS)
 // pane to neutral (null). An unparseable/absent tail is treated as a resume (clears the stale 需要你 and
 // shows active — a truncated huge last line is a big tool_result, never the tiny interrupt marker).
 export function resolvedPermissionKind(lastLine) {
-  if (lastLine && /Request interrupted by user/.test(lastLine)) return null; // ESC → neutral
-  return { kind: 'working', msg: '' };                                       // approve / deny → 进行中
+  if (isInterruptTail(lastLine)) return null;       // ESC → neutral
+  return { kind: 'working', msg: '' };              // approve / deny → 进行中
+}
+
+// Pure: does a transcript's last line mark a user ESC-interrupt? Matches both the plain and the
+// "…for tool use" forms. Used to un-stick a 进行中 pane the instant the user aborts a turn.
+export function isInterruptTail(lastLine) {
+  return !!(lastLine && /Request interrupted by user/.test(lastLine));
+}
+
+// Pure: does a transcript's last line mark a /compact having RESOLVED — i.e. Claude wrote the command's
+// <local-command-stdout>? A NO-OP /compact ("Not enough messages to compact") writes it IMMEDIATELY, whereas
+// a real compaction stays silent for its whole (often 1-2min) run and writes it only at the very end — the
+// same moment PostCompact already clears us. So a fresh stdout tail while still 压缩中 ⇒ the compaction is
+// over (nothing to do / done) ⇒ drop the stuck state. Recognised by the system entry's subtype or the tag.
+export function isLocalCommandStdout(lastLine) {
+  if (!lastLine) return false;
+  try {
+    const o = JSON.parse(lastLine);
+    if (o && o.subtype === 'local_command') return true;
+    const c = o && o.message && o.message.content;
+    if (typeof c === 'string' && /<local-command-stdout>/.test(c)) return true;
+  } catch { /* not JSON → fall through to a raw tag match */ }
+  return /<local-command-stdout>/.test(lastLine);
 }
 
 // Truncate a Claude message to a notification-friendly one-liner.
@@ -163,6 +193,21 @@ export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, 
       if (c && c.kind === 'permission') {
         const tp = rec.payload && rec.payload.transcript_path;
         if (tp && permissionResolved(rec, statMtime(tp))) c = resolvedPermissionKind(readTail(tp));
+      } else if (c && c.kind === 'working') {
+        // ESC-interrupt during a turn leaves the last hook as the stale 'prompt' (working) — no Stop fires,
+        // so working would otherwise stick until WORKING_TTL_MS (2h), pinning the composer's send→stop toggle.
+        // Once the transcript has grown past the prompt event, a bounded tail read settles it: an interrupt
+        // marker → neutral (un-stick now); any other line → Claude is still producing, stay 进行中. Content is
+        // definitive so no guard window is needed; an unreadable stat/tail can't tell → keep working.
+        const tp = rec.payload && rec.payload.transcript_path;
+        if (tp && statMtime(tp) > (rec.ts || 0) && isInterruptTail(readTail(tp))) c = null;
+      } else if (c && c.kind === 'compacting') {
+        // A no-op /compact fires no PostCompact; it writes its <local-command-stdout> at once. Once the
+        // transcript has grown past the PreCompact event and its tail is that stdout, the /compact is done
+        // (nothing to compact) → drop 压缩中. A real compaction stays silent until PostCompact, so it keeps
+        // showing for its whole run. Unreadable stat/tail → can't tell → keep 压缩中 (the TTL is the backstop).
+        const tp = rec.payload && rec.payload.transcript_path;
+        if (tp && statMtime(tp) > (rec.ts || 0) && isLocalCommandStdout(readTail(tp))) c = null;
       }
       const lp = live ? live.get(pane) : null;
       // Dropped when tmux says the pane is gone or no longer running THIS agent (hard kill / crash /
@@ -193,6 +238,7 @@ export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, 
       // Expire a 进行中 latched past the TTL (an ESC-interrupt / walk-away that never got a Stop): drop it
       // from the roster so the stuck working pane goes away. See WORKING_TTL_MS.
       if (c.kind === 'working' && now() - (rec.ts || 0) > WORKING_TTL_MS) continue;
+      if (c.kind === 'compacting' && now() - (rec.ts || 0) > COMPACTING_TTL_MS) continue;
       const loc = lp ? { session: lp.session, window: lp.window, windowName: lp.windowName } : {};
       if (allow && !allow.has(loc.session)) continue;
       out[pane] = { ...loc, kind: c.kind, msg: c.msg || '', ts: rec.ts || 0, agent: agent.id };

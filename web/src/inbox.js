@@ -5,7 +5,10 @@ import { t } from './i18n';
 
 // Raw server kind → display view. idle is just an aged done; permission is the "needs you" bucket
 // (covers tool-permission, AskUserQuestion, ExitPlanMode — all fire permission_prompt).
-const VIEW = { working: 'working', done: 'done', idle: 'done', permission: 'needs' };
+// compacting (context compaction) is a busy state → reads as 进行中. `error` (a turn that died on an API
+// error) is deliberately absent: it stays out of the inbox roster and fires no push — surfaced only in the
+// chat lens for now, until the StopFailure payload is verified against a real error.
+const VIEW = { working: 'working', compacting: 'working', done: 'done', idle: 'done', permission: 'needs' };
 // Urgency for ordering within a session AND for the topbar dot's colour: needs > done > working.
 const VIEW_RANK = { needs: 3, done: 2, working: 1 };
 

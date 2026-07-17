@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { homedir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 import { writeJsonAtomic, deployHookScripts, removeHookScripts } from './hookScaffold.js';
 
 // The six events the inbox reads. src is the arg passed to handmux-notify.sh; only PostToolUse is scoped to
@@ -22,7 +23,60 @@ export const HOOK_EVENTS = [
   { event: 'PermissionRequest', src: 'permreq' },
 ];
 
+// Version-gated events, only registered on a Claude Code new enough to EMIT them. Older Claude does not
+// recognise these event names — and the docs give NO guarantee it ignores unknown ones (it "likely" does,
+// but might reject the settings file) — so we NEVER write an event a version can't handle. Each carries a
+// minVersion; below it (or when the version can't be detected) the event isn't written at all → pure
+// downgrade, never an error. The pane instead self-heals via the existing idle_prompt(~60s) fallback.
+//   PreCompact  → 压缩中 shown while compaction runs (honest progress for a slow op).
+//   PostCompact → clears the 压缩中/进行中 state the instant compaction finishes.
+//   StopFailure → a turn that died on an API error (rate limit / overload / …) fires NO Stop, so without
+//                 this the pane sticks at 进行中 forever; maps to an 'error' state.
+// `pairWith` welds an invariant (learned the hard way — never light a state you can't turn off): PreCompact
+// is installed ONLY when its clearer PostCompact is also installed. minVersion is set conservatively to the
+// version we've actually verified emits these (2.1.207); lower it only after test-firing an older build.
+const COMPACT_MIN = '2.1.207';
+export const HOOK_EVENTS_EXT = [
+  { event: 'PostCompact', src: 'compact', minVersion: COMPACT_MIN },
+  { event: 'PreCompact', src: 'compacting', minVersion: COMPACT_MIN, pairWith: 'PostCompact' },
+  { event: 'StopFailure', src: 'stopfail', minVersion: COMPACT_MIN },
+];
+
 const HOOK_MARK = 'handmux-notify.sh'; // identifies our hooks among the user's own
+
+// Parse `claude --version` output ("2.1.207 (Claude Code)") → { major, minor, patch } | null.
+export function parseClaudeVersion(out) {
+  const m = /(\d+)\.(\d+)\.(\d+)/.exec(String(out || ''));
+  return m ? { major: +m[1], minor: +m[2], patch: +m[3] } : null;
+}
+
+// v >= min ("X.Y.Z"), full major.minor.patch compare. A null/undefined version is always below → fail-closed.
+export function claudeVersionAtLeast(v, minStr) {
+  if (!v) return false;
+  const [a, b, c] = String(minStr).split('.').map(Number);
+  if (v.major !== a) return v.major > a;
+  if (v.minor !== b) return v.minor > b;
+  return v.patch >= c;
+}
+
+// Detect the installed Claude Code version, or null if `claude` can't be run/parsed (→ ext hooks skipped).
+export function detectClaudeVersion(exec = spawnSync) {
+  try {
+    const r = exec('claude', ['--version'], { encoding: 'utf8', timeout: 4000 });
+    if (!r || r.status !== 0 || !r.stdout) return null;
+    return parseClaudeVersion(r.stdout);
+  } catch { return null; }
+}
+
+// Drop OUR hook from settings.hooks[event] (used to prune an ext event that no longer passes the version
+// gate — e.g. Claude was downgraded after a newer install). Mutates the passed hooks object.
+function dropOurHook(hooks, event) {
+  if (!hooks[event]) return;
+  const kept = hooks[event]
+    .map((g) => ({ ...g, hooks: (g.hooks || []).filter((h) => !(typeof h.command === 'string' && h.command.includes(HOOK_MARK))) }))
+    .filter((g) => (g.hooks || []).length > 0);
+  if (kept.length) hooks[event] = kept; else delete hooks[event];
+}
 
 // True if `settings.hooks[event]` already has one of our hooks (command references the dest script).
 function alreadyHas(hooks, event) {
@@ -32,13 +86,22 @@ function alreadyHas(hooks, event) {
 
 // Pure: return a NEW settings object with our six hooks merged into settings.hooks, idempotently, leaving
 // the user's own hooks and other keys untouched. `dest` is the absolute path to the copied notify script.
-export function mergeHooks(settings, dest) {
+export function mergeHooks(settings, dest, claudeVersion = null) {
   const s = { ...(settings || {}) };
   const hooks = (s.hooks && typeof s.hooks === 'object' && !Array.isArray(s.hooks)) ? { ...s.hooks } : {};
-  for (const e of HOOK_EVENTS) {
-    if (alreadyHas(hooks, e.event)) continue;
+  const add = (e) => {
+    if (alreadyHas(hooks, e.event)) return;
     const groups = hooks[e.event] = [...(hooks[e.event] || [])];
     groups.push({ matcher: e.matcher || '', hooks: [{ type: 'command', command: `${dest} ${e.src}`, async: true, timeout: 5 }] });
+  };
+  for (const e of HOOK_EVENTS) add(e);
+  // Version-gated ext events: install only when the detected Claude is new enough AND (for a paired event)
+  // its clearer is also being installed. Anything that fails the gate is actively PRUNED, so a Claude
+  // downgrade after a newer install can't leave an unrecognised event name lingering in settings.json.
+  const enabled = new Set();
+  for (const e of HOOK_EVENTS_EXT) {
+    const ok = claudeVersionAtLeast(claudeVersion, e.minVersion) && (!e.pairWith || enabled.has(e.pairWith));
+    if (ok) { enabled.add(e.event); add(e); } else dropOurHook(hooks, e.event);
   }
   s.hooks = hooks;
   return s;
@@ -79,7 +142,7 @@ export function hooksStatus(home = homedir()) {
 // absent the user doesn't run Claude Code, so we report 'no-claude' and do nothing.
 //   srcDir   = the bundled hooks dir (server/hooks)
 //   stateFile = the unified ~/.handmux/claude-state.json path the hook writes and the server reads
-export function installHooks(home = homedir(), { srcDir, stateFile } = {}) {
+export function installHooks(home = homedir(), { srcDir, stateFile, claudeVersion } = {}) {
   if (!fs.existsSync(claudeDir(home))) return { status: 'no-claude' };
   const hooksDir = path.join(claudeDir(home), 'hooks');
   deployHookScripts(hooksDir, srcDir, stateFile);
@@ -87,7 +150,10 @@ export function installHooks(home = homedir(), { srcDir, stateFile } = {}) {
   const dest = path.join(hooksDir, 'handmux-notify.sh');
   let settings = {};
   try { settings = JSON.parse(fs.readFileSync(settingsPath(home), 'utf8')); } catch { /* missing/corrupt → {} */ }
-  writeJsonAtomic(settingsPath(home), mergeHooks(settings, dest));
+  // Gate the version-specific events (compact pair, StopFailure) on the installed Claude. Detect when the
+  // caller didn't inject a version; a null result (no `claude` / unparseable) is fail-closed = base 6 only.
+  const version = claudeVersion !== undefined ? claudeVersion : detectClaudeVersion();
+  writeJsonAtomic(settingsPath(home), mergeHooks(settings, dest, version));
   return { status: 'installed' };
 }
 

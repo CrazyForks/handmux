@@ -2,7 +2,7 @@
 // A null poll (204 unchanged) keeps the last messages — same discipline as the terminal loop.
 //
 // Paginated (Task 10): the client NEVER holds/requests the whole transcript. Two independent cursors:
-//   - RECENT window (polled, 1500ms): `{since: recentHash, limit: 10}` — hash-gated conditional poll, a
+//   - RECENT window (polled, 1500ms): `{since: recentHash, limit: 20}` — hash-gated conditional poll, a
 //     204/null keeps the last state. New messages MERGE into `messages` keyed by `k` (the server's stable
 //     global ordinal, also the dedup key), kept sorted ascending.
 //   - HISTORY page (`loadOlder()`, scroll-up only, never polled): `{before: oldestK, limit: 10}` — fetched
@@ -42,7 +42,9 @@ export function useTranscript(pane, enabled) {
     setLoadingOlder(false);
   }, [pane]);
 
-  const fetch = useCallback(() => fetchTranscript(pane, { since: hashRef.current, limit: 10 }), [pane]);
+  // Initial + polling window: 20 (was 10) so a short first screen still fills — small transcripts / fresh
+  // sessions were leaving blank space below with 10. History pages (loadOlder) stay 10 per scroll-up.
+  const fetch = useCallback(() => fetchTranscript(pane, { since: hashRef.current, limit: 20 }), [pane]);
   const apply = useCallback((r) => {
     if (!r) return; // 204 / null → keep last
     hashRef.current = r.hash || '';

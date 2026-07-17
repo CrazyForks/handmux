@@ -68,6 +68,10 @@ export const fetchTranscript = (pane, { since, before, limit = 10 } = {}) => {
   if (before != null) url += `&before=${encodeURIComponent(before)}`;
   return req(url, { timeoutMs: 8000 }).then((r) => (r.unchanged ? null : r));
 };
+// The pane's current context-window state: { model, usedPercent } — either may be null when the statusLine
+// capturer isn't opted in / the session hasn't rendered. Polled by the 对话 composer to show a small chip.
+export const getPaneContext = (pane) =>
+  req(`/api/context?pane=${encodeURIComponent(pane)}`, { timeoutMs: 8000 });
 // The pending interactive prompt (AskUserQuestion / permission menu) scraped off the pane, or null when no
 // gate is up. Polled by the 对话 lens only while a gate is up (kind==='permission').
 export const getPendingPrompt = (pane) =>

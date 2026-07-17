@@ -4,7 +4,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { HOOK_EVENTS, mergeHooks, stripHooks, hooksStatus, installHooks, uninstallHooks } from '../src/cli/claudeHooks.js';
+import {
+  HOOK_EVENTS, HOOK_EVENTS_EXT, mergeHooks, stripHooks, hooksStatus, installHooks, uninstallHooks,
+  parseClaudeVersion, claudeVersionAtLeast, detectClaudeVersion,
+} from '../src/cli/claudeHooks.js';
+
+const V = (s) => parseClaudeVersion(s); // "2.1.207" → { major, minor, patch }
 
 const SRC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../hooks');
 
@@ -67,6 +72,75 @@ describe('mergeHooks', () => {
   it('tolerates a malformed hooks field (array) by replacing it with an object', () => {
     const out = mergeHooks({ hooks: [] }, DEST);
     expect(hasHook(out, 'Stop')).toBe(true);
+  });
+});
+
+describe('Claude version detection (fail-closed gating input)', () => {
+  it('parseClaudeVersion reads X.Y.Z out of the --version banner', () => {
+    expect(parseClaudeVersion('2.1.207 (Claude Code)')).toEqual({ major: 2, minor: 1, patch: 207 });
+    expect(parseClaudeVersion('garbage')).toBeNull();
+    expect(parseClaudeVersion('')).toBeNull();
+  });
+  it('claudeVersionAtLeast compares full major.minor.patch; null is always below', () => {
+    expect(claudeVersionAtLeast(V('2.1.207'), '2.1.207')).toBe(true);
+    expect(claudeVersionAtLeast(V('2.1.208'), '2.1.207')).toBe(true);
+    expect(claudeVersionAtLeast(V('2.2.0'), '2.1.207')).toBe(true);
+    expect(claudeVersionAtLeast(V('2.1.100'), '2.1.207')).toBe(false);
+    expect(claudeVersionAtLeast(V('1.9.999'), '2.1.207')).toBe(false);
+    expect(claudeVersionAtLeast(null, '2.1.207')).toBe(false);
+  });
+  it('detectClaudeVersion parses a good run, and returns null on failure/throw (→ no ext hooks)', () => {
+    expect(detectClaudeVersion(() => ({ status: 0, stdout: '2.1.207 (Claude Code)' }))).toEqual({ major: 2, minor: 1, patch: 207 });
+    expect(detectClaudeVersion(() => ({ status: 1, stdout: '' }))).toBeNull();
+    expect(detectClaudeVersion(() => { throw new Error('ENOENT'); })).toBeNull();
+  });
+});
+
+describe('mergeHooks — version-gated ext events (compact pair + StopFailure)', () => {
+  const EXT = ['PostCompact', 'PreCompact', 'StopFailure'];
+
+  it('the ext table pairs PreCompact with its clearer PostCompact, declared AFTER it', () => {
+    const pre = HOOK_EVENTS_EXT.find((e) => e.event === 'PreCompact');
+    expect(pre.pairWith).toBe('PostCompact');
+    const iPost = HOOK_EVENTS_EXT.findIndex((e) => e.event === 'PostCompact');
+    const iPre = HOOK_EVENTS_EXT.findIndex((e) => e.event === 'PreCompact');
+    expect(iPost).toBeLessThan(iPre); // PostCompact must be enabled first for the pairing check to see it
+  });
+
+  it('installs the ext events on a new-enough Claude, with the right src args', () => {
+    const out = mergeHooks({}, DEST, V('2.1.207'));
+    for (const ev of EXT) expect(hasHook(out, ev), ev).toBe(true);
+    const cmd = (ev) => out.hooks[ev].flatMap((g) => g.hooks).map((h) => h.command).join(' ');
+    expect(cmd('PreCompact')).toBe(`${DEST} compacting`);
+    expect(cmd('PostCompact')).toBe(`${DEST} compact`);
+    expect(cmd('StopFailure')).toBe(`${DEST} stopfail`);
+  });
+
+  it('writes NONE of the ext events on an older Claude (pure downgrade)', () => {
+    const out = mergeHooks({}, DEST, V('2.1.100'));
+    for (const ev of EXT) expect(hasHook(out, ev), ev).toBe(false);
+    expect(hasHook(out, 'Stop')).toBe(true); // the base six are always present
+  });
+
+  it('fail-closed: a null (undetectable) version writes no ext events', () => {
+    const out = mergeHooks({}, DEST, null);
+    for (const ev of EXT) expect(hasHook(out, ev), ev).toBe(false);
+    expect(hasHook(out, 'UserPromptSubmit')).toBe(true);
+  });
+
+  it('PRUNES our ext events if Claude is downgraded after a newer install (no lingering unknown event)', () => {
+    const newer = mergeHooks({}, DEST, V('2.1.207'));            // ext installed
+    expect(hasHook(newer, 'PostCompact')).toBe(true);
+    const downgraded = mergeHooks(newer, DEST, V('2.1.100'));    // re-run on an older Claude
+    for (const ev of EXT) expect(hasHook(downgraded, ev), ev).toBe(false);
+    expect(downgraded.hooks.PostCompact).toBeUndefined();        // emptied group dropped entirely
+    expect(hasHook(downgraded, 'Stop')).toBe(true);              // base six untouched
+  });
+
+  it('is idempotent on the ext events too', () => {
+    const once = mergeHooks({}, DEST, V('2.1.207'));
+    const twice = mergeHooks(once, DEST, V('2.1.207'));
+    for (const ev of EXT) expect(twice.hooks[ev]).toHaveLength(1);
   });
 });
 
@@ -135,6 +209,21 @@ describe('installHooks / uninstallHooks (IO)', () => {
     expect(hooksStatus(home)).toBe('absent');
     expect(fs.existsSync(path.join(hooksDir, 'handmux-notify.sh'))).toBe(false);
     expect(fs.existsSync(path.join(hooksDir, 'handmux-notify.env'))).toBe(false);
+  });
+
+  it('gates the ext events on the injected Claude version (new → present, null → base-only)', () => {
+    const mk = () => { const h = tmpHome('twhk-'); fs.mkdirSync(path.join(h, '.claude'), { recursive: true }); return h; };
+    const read = (h) => JSON.parse(fs.readFileSync(path.join(h, '.claude/settings.json'), 'utf8'));
+
+    const newer = mk();
+    installHooks(newer, { srcDir: SRC_DIR, stateFile: path.join(newer, '.handmux/s.json'), claudeVersion: { major: 2, minor: 1, patch: 207 } });
+    expect(hasHook(read(newer), 'PostCompact')).toBe(true);
+    expect(hasHook(read(newer), 'StopFailure')).toBe(true);
+
+    const old = mk();
+    installHooks(old, { srcDir: SRC_DIR, stateFile: path.join(old, '.handmux/s.json'), claudeVersion: null });
+    expect(hasHook(read(old), 'PostCompact')).toBe(false);
+    expect(hasHook(read(old), 'Stop')).toBe(true); // base six still installed
   });
 
   it('refuses to install when ~/.claude is absent (returns no-claude, creates nothing)', () => {

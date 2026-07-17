@@ -4,6 +4,7 @@ import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/re
 vi.mock('../src/api.js', () => ({
   sendText: vi.fn(async () => ({ ok: true })),
   getConfig: vi.fn(async () => ({ asr: false })), // keyless → mic hidden, keeps the DOM simple
+  getPaneContext: vi.fn(async () => ({ model: null, usedPercent: null })), // no context chip by default
   UnauthorizedError: class UnauthorizedError extends Error {},
 }));
 
@@ -13,7 +14,7 @@ vi.mock('../src/voice/usePushToTalk.js', () => ({
 }));
 
 import ChatComposer from '../src/components/ChatComposer.jsx';
-import { sendText } from '../src/api.js';
+import { sendText, getPaneContext } from '../src/api.js';
 
 // No globals:true → register cleanup manually so DOM doesn't leak between tests.
 afterEach(cleanup);
@@ -43,6 +44,42 @@ describe('ChatComposer', () => {
     expect(onSent).toHaveBeenCalledWith('继续实现');
   });
 
+  it('sending a bare non-one-shot slash command hands off to the terminal lens — incl. unrecognized ones', async () => {
+    const onInteractiveSlash = vi.fn();
+    render(<ChatComposer pane="%1" kind="idle" onInteractiveSlash={onInteractiveSlash} />);
+    const ta = screen.getByPlaceholderText('和 Claude 对话…');
+    typeInto(ta, '/model');
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    await waitFor(() => expect(sendText).toHaveBeenCalledWith('%1', '/model', true));
+    typeInto(ta, '/effort'); // was previously missed — now caught by the unknown-command fallback
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    await waitFor(() => expect(sendText).toHaveBeenCalledWith('%1', '/effort', true));
+    expect(onInteractiveSlash).toHaveBeenCalledTimes(2); // both handed off
+    expect(onInteractiveSlash).toHaveBeenLastCalledWith('/effort'); // forwards the command (for the toast)
+  });
+
+  it('does NOT hand off for a slash command with args or a known one-shot (they finish in chat)', async () => {
+    const onInteractiveSlash = vi.fn();
+    render(<ChatComposer pane="%1" kind="idle" onInteractiveSlash={onInteractiveSlash} />);
+    const ta = screen.getByPlaceholderText('和 Claude 对话…');
+    typeInto(ta, '/model sonnet');
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    await waitFor(() => expect(sendText).toHaveBeenCalledWith('%1', '/model sonnet', true));
+    typeInto(ta, '/clear');
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    await waitFor(() => expect(sendText).toHaveBeenCalledWith('%1', '/clear', true));
+    expect(onInteractiveSlash).not.toHaveBeenCalled();
+  });
+
+  it('a saved chip that is a bare interactive command also hands off to the terminal lens', async () => {
+    localStorage.setItem('hm_favs6_agent', JSON.stringify([{ kind: 'cmd', text: '/plugin' }]));
+    const onInteractiveSlash = vi.fn();
+    render(<ChatComposer pane="%1" kind="idle" onInteractiveSlash={onInteractiveSlash} />);
+    fireEvent.click(screen.getByRole('button', { name: '/plugin' }));
+    await waitFor(() => expect(sendText).toHaveBeenCalledWith('%1', '/plugin', true));
+    expect(onInteractiveSlash).toHaveBeenCalledTimes(1);
+  });
+
   // The tap-to-focus target-exclusion is unit-tested here; the MOVEMENT guard (swipe/scroll must not focus)
   // rides on pointer coords, which jsdom delivers as null for pointer events — it's a device gesture, gated
   // on a real-device pass (see CLAUDE.md: touch surfaces are untestable headless).
@@ -63,6 +100,21 @@ describe('ChatComposer', () => {
     fireEvent.pointerDown(attach, { clientX: 20, clientY: 100 });
     fireEvent.pointerUp(attach, { clientX: 20, clientY: 100 });
     expect(document.activeElement).not.toBe(ta); // excluded — the button's own handler owns the tap
+  });
+
+  it('shows a context chip (model · %) when the pane reports a context %, and none when it does not', async () => {
+    getPaneContext.mockResolvedValueOnce({ model: 'Opus 4.8 (1M context)', usedPercent: 24 });
+    const { container, rerender } = render(<ChatComposer pane="%1" kind="idle" />);
+    await waitFor(() => expect(container.querySelector('.cc-ctx')).toBeTruthy());
+    expect(container.querySelector('.cc-ctx-model').textContent).toBe('Opus 4.8'); // "(1M context)" stripped
+    expect(container.querySelector('.cc-ctx-pct').textContent).toBe('24%');
+
+    getPaneContext.mockResolvedValue({ model: null, usedPercent: null });
+    cleanup();
+    const { container: c2 } = render(<ChatComposer pane="%2" kind="idle" />);
+    // give the poll a tick; the chip must stay absent
+    await Promise.resolve();
+    expect(c2.querySelector('.cc-ctx')).toBeNull();
   });
 
   it('while the agent is working the send button becomes a Stop that sends Escape', () => {

@@ -62,6 +62,21 @@ export function installStatusLine(home = homedir(), { srcDir, usageFile } = {}) 
   return { status: 'installed' };
 }
 
+// Refresh the on-disk capturer script to the BUNDLED version without touching settings.statusLine — so an
+// npm upgrade actually reaches a user who already opted in. Critically settings-safe: a user who composed us
+// into their OWN statusline (the TEE form) still reads as 'ours' (the command contains our mark), and we must
+// NOT rewrite their command to the bare form (that would drop their downstream renderer). So this only ever
+// copies the script. No-op (returns false) when we're not installed. Idempotent; safe to call every start.
+export function refreshStatusLineScript(home = homedir(), { srcDir } = {}) {
+  if (statusLineStatus(home) !== 'ours') return false;
+  try {
+    const dest = path.join(claudeDir(home), 'hooks', SCRIPT);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(path.join(srcDir, SCRIPT), dest);
+    return true;
+  } catch { return false; }
+}
+
 // Uninstall: drop settings.statusLine only if it's ours, and remove the copied script. Leaves a foreign
 // statusLine and everything else intact.
 export function uninstallStatusLine(home = homedir()) {

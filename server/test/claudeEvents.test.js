@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { tmpHome } from './tmphome.js';
-import { classifyEvent, createClaudeEvents, permissionResolved, resolvedPermissionKind } from '../src/claudeEvents.js';
+import { classifyEvent, createClaudeEvents, permissionResolved, resolvedPermissionKind, isLocalCommandStdout } from '../src/claudeEvents.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -38,6 +38,19 @@ describe('classifyEvent', () => {
   });
   it('notify auth_success → null (ignored)', () => {
     expect(classifyEvent('notify', { notification_type: 'auth_success' })).toBeNull();
+  });
+  it('compacting → compacting (PreCompact: 压缩上下文进行中)', () => {
+    expect(classifyEvent('compacting', {})).toEqual({ kind: 'compacting', msg: '' });
+  });
+  it('compact → null (PostCompact: compaction done, clear the state)', () => {
+    expect(classifyEvent('compact', {})).toBeNull();
+  });
+  it('stopfail → error, with a friendly reason read defensively from several fields', () => {
+    expect(classifyEvent('stopfail', { error_type: 'rate_limit' })).toEqual({ kind: 'error', msg: '触发限流' });
+    expect(classifyEvent('stopfail', { reason: 'overloaded' })).toEqual({ kind: 'error', msg: '服务过载' });
+    expect(classifyEvent('stopfail', { error: { type: 'billing_error' } })).toEqual({ kind: 'error', msg: '额度/账单问题' });
+    expect(classifyEvent('stopfail', { error: 'boom raw' })).toEqual({ kind: 'error', msg: 'boom raw' });
+    expect(classifyEvent('stopfail', {})).toEqual({ kind: 'error', msg: '' }); // unknown shape → bare error
   });
   it('unknown src → null', () => {
     expect(classifyEvent('whatever', {})).toBeNull();
@@ -134,6 +147,70 @@ describe('createClaudeEvents getStates (reads the hook state file)', () => {
     const tail = JSON.stringify({ type: 'user', message: { content: '[Request interrupted by user for tool use]' } });
     const ev = createClaudeEvents({ commands, push, file: permPane(), statMtime: () => 20_000, readTail: () => tail });
     expect((await ev.getStates())['%1']).toMatchObject({ session: 'proj', agent: 'claude', kind: null });
+  });
+
+  it('a working turn the user ESC-interrupts un-sticks immediately (interrupt tail → neutral), not after WORKING_TTL', async () => {
+    const file = stateFile({ '%1': rec('prompt', { prompt: 'go', transcript_path: '/t.jsonl' }, 10_000) });
+    const commands = { listLivePanes: async () => liveAll(['%1']) };
+    const tail = JSON.stringify({ type: 'user', interruptedMessageId: 'msg_x', message: { content: [{ type: 'text', text: '[Request interrupted by user]' }] } });
+    const ev = createClaudeEvents({ commands, push, file, statMtime: () => 20_000, readTail: () => tail, now: () => 30_000 });
+    expect((await ev.getStates())['%1']).toMatchObject({ session: 'proj', agent: 'claude', kind: null });
+  });
+
+  it('a working turn still producing stays 进行中 (non-interrupt tail, transcript grew)', async () => {
+    const file = stateFile({ '%1': rec('prompt', { prompt: 'go', transcript_path: '/t.jsonl' }, 10_000) });
+    const commands = { listLivePanes: async () => liveAll(['%1']) };
+    const tail = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: '仍在写…' }] } });
+    const ev = createClaudeEvents({ commands, push, file, statMtime: () => 20_000, readTail: () => tail, now: () => 30_000 });
+    expect((await ev.getStates())['%1']).toMatchObject({ kind: 'working', msg: 'go' });
+  });
+
+  it('PreCompact shows 压缩中 (compacting); PostCompact clears it → neutral present', async () => {
+    const commands = { listLivePanes: async () => liveAll(['%1']) };
+    const compacting = createClaudeEvents({ commands, push, file: stateFile({ '%1': rec('compacting', {}, Date.now()) }) });
+    expect((await compacting.getStates())['%1']).toMatchObject({ kind: 'compacting' });
+    // PostCompact overwrites the pane's record (latest-wins) with src 'compact' → classify null → no chip.
+    const done = createClaudeEvents({ commands, push, file: stateFile({ '%1': rec('compact', {}, Date.now()) }) });
+    expect((await done.getStates())['%1']).toMatchObject({ agent: 'claude', kind: null });
+  });
+
+  it('a no-op /compact (stdout tail, no PostCompact) drops 压缩中 within a poll; a real one (silent tail) keeps it', async () => {
+    const commands = { listLivePanes: async () => liveAll(['%1']) };
+    const paneFile = () => stateFile({ '%1': rec('compacting', { transcript_path: '/t.jsonl' }, 10_000) });
+    // NO-OP: transcript grew past the event and its tail is the command's <local-command-stdout> → resolved → clear.
+    const noop = JSON.stringify({ type: 'system', subtype: 'local_command', content: '<local-command-stdout>Not enough messages to compact.</local-command-stdout>' });
+    const evNoop = createClaudeEvents({ commands, push, file: paneFile(), statMtime: () => 20_000, readTail: () => noop, now: () => 25_000 });
+    expect((await evNoop.getStates())['%1']).toMatchObject({ kind: null });
+    // REAL in-progress: only the /compact command echo so far, no stdout yet → still 压缩中 (for its whole run).
+    const echo = JSON.stringify({ type: 'user', message: { role: 'user', content: '<command-name>/compact</command-name>' } });
+    const evReal = createClaudeEvents({ commands, push, file: paneFile(), statMtime: () => 20_000, readTail: () => echo, now: () => 25_000 });
+    expect((await evReal.getStates())['%1']).toMatchObject({ kind: 'compacting' });
+  });
+
+  it('a 压缩中 with no closing signal at all (crash/abort) is swept only after the generous COMPACTING_TTL (5 min)', async () => {
+    const commands = { listLivePanes: async () => liveAll(['%1']) };
+    const mk = (now) => createClaudeEvents({ commands, push, file: stateFile({ '%1': rec('compacting', {}, 0) }), now: () => now });
+    expect((await mk(2 * 60 * 1000).getStates())['%1']).toMatchObject({ kind: 'compacting' }); // 2 min in — a real compaction, kept
+    expect((await mk(6 * 60 * 1000).getStates())['%1']).toMatchObject({ kind: null });          // 6 min — backstop fires
+  });
+
+  it('isLocalCommandStdout recognises the resolve marker by subtype or tag, tolerates junk', () => {
+    expect(isLocalCommandStdout(JSON.stringify({ subtype: 'local_command', content: '<local-command-stdout>x</local-command-stdout>' }))).toBe(true);
+    expect(isLocalCommandStdout(JSON.stringify({ type: 'user', message: { role: 'user', content: '<local-command-stdout>Compacted</local-command-stdout>' } }))).toBe(true);
+    expect(isLocalCommandStdout(JSON.stringify({ type: 'user', message: { role: 'user', content: '<command-name>/compact</command-name>' } }))).toBe(false);
+    expect(isLocalCommandStdout(null)).toBe(false);
+    expect(isLocalCommandStdout('{ truncated…')).toBe(false);
+  });
+
+  it('StopFailure → error state carrying the reason (chat-lens only; no push)', async () => {
+    const file = stateFile({ '%1': rec('stopfail', { error_type: 'overloaded' }, Date.now()) });
+    let sent = 0;
+    const commands = { listLivePanes: async () => liveAll(['%1']) };
+    const ev = createClaudeEvents({ commands, push: { sendToSession: async () => { sent += 1; } }, file });
+    ev.start();
+    expect((await ev.getStates())['%1']).toMatchObject({ kind: 'error', msg: '服务过载' });
+    expect(sent).toBe(0); // error is not a push view — surfaced only in the chat lens
+    ev.stop();
   });
 
   it('an ended pane leaves the ACTIVITY roster (kind:null so the inbox skips it) but stays present while its agent process runs — the /clear case: SessionEnd drops the entry though claude is still alive', async () => {

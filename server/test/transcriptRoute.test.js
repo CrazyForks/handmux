@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { transcriptRoutes } from '../src/routes/transcript.js';
 import { encodeProjectDir } from '../src/agents/scanUtils.js';
+import { claudeContextDir } from '../src/usage.js';
 
 async function call(app, url) {
   const server = app.listen(0);
@@ -189,6 +190,52 @@ describe('GET /api/pending-prompt', () => {
     const app = express();
     app.use(mount(async () => menu));
     const { status } = await call(app, '/pending-prompt?pane=nope');
+    expect(status).toBe(400);
+  });
+});
+
+describe('GET /api/context', () => {
+  const sid = 'ctxtest-' + process.pid;
+  const withSession = { paneSession: () => ({ sessionId: sid }) };
+  const writeCtx = (snap) => {
+    const dir = claudeContextDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const f = path.join(dir, sid + '.json');
+    fs.writeFileSync(f, JSON.stringify(snap));
+    return f;
+  };
+
+  it('joins pane→session→snapshot and returns { model, usedPercent }', async () => {
+    const f = writeCtx({ sessionId: sid, model: 'Opus 4.8 (1M context)', usedPercent: 24, updatedAt: 1 });
+    const app = express();
+    app.use(transcriptRoutes({ commands: {}, claudeEvents: withSession }));
+    try {
+      const { status, body } = await call(app, '/context?pane=%251');
+      expect(status).toBe(200);
+      expect(body).toEqual({ model: 'Opus 4.8 (1M context)', usedPercent: 24 });
+    } finally { fs.rmSync(f, { force: true }); }
+  });
+
+  it('returns nulls when no per-session snapshot exists (capturer not opted in)', async () => {
+    const app = express();
+    app.use(transcriptRoutes({ commands: {}, claudeEvents: withSession }));
+    const { status, body } = await call(app, '/context?pane=%251');
+    expect(status).toBe(200);
+    expect(body).toEqual({ model: null, usedPercent: null });
+  });
+
+  it('returns nulls when the pane has no hook session (hooks off)', async () => {
+    const app = express();
+    app.use(transcriptRoutes({ commands: {}, claudeEvents: noHook }));
+    const { status, body } = await call(app, '/context?pane=%251');
+    expect(status).toBe(200);
+    expect(body).toEqual({ model: null, usedPercent: null });
+  });
+
+  it('400 on bad pane id', async () => {
+    const app = express();
+    app.use(transcriptRoutes({ commands: {}, claudeEvents: withSession }));
+    const { status } = await call(app, '/context?pane=nope');
     expect(status).toBe(400);
   });
 });

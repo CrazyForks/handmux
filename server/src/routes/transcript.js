@@ -18,6 +18,7 @@ import { projectsDir } from '../agents/claude.js';
 import { resolveEncodedDirSession, encodeProjectDir } from '../agents/scanUtils.js';
 import { parseTranscript } from '../transcriptParse.js';
 import { parsePendingPrompt } from '../pendingPrompt.js';
+import { readClaudeContext } from '../usage.js';
 
 export function transcriptRoutes({ commands, claudeEvents }) {
   const r = express.Router();
@@ -30,6 +31,20 @@ export function transcriptRoutes({ commands, claudeEvents }) {
     try {
       const text = await commands.capturePlain(req.query.pane);
       return res.json({ prompt: parsePendingPrompt(text) });
+    } catch (e) { next(e); }
+  });
+
+  // The pane's CURRENT context-window occupancy (model + used %) — the number Claude Code shows before
+  // auto-compact. Joined pane→session (hook state) → the statusLine capturer's per-session snapshot. Returns
+  // { model, usedPercent } (either may be null: capturer not opted in / session hasn't rendered / no hooks).
+  // The 对话 composer polls this to show a small "模型 · 24%" chip. Best-effort: never 500 on a missing file.
+  r.get('/context', (req, res, next) => {
+    if (!isPaneId(req.query.pane)) return res.status(400).json({ error: 'bad pane id' });
+    try {
+      const hooked = claudeEvents && claudeEvents.paneSession ? claudeEvents.paneSession(req.query.pane) : null;
+      const sid = hooked && (hooked.sessionId || (hooked.transcriptPath ? path.basename(hooked.transcriptPath).replace(/\.jsonl$/, '') : null));
+      const ctx = sid ? readClaudeContext(sid) : null;
+      return res.json({ model: (ctx && ctx.model) || null, usedPercent: (ctx && typeof ctx.usedPercent === 'number') ? ctx.usedPercent : null });
     } catch (e) { next(e); }
   });
 

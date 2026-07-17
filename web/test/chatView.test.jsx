@@ -36,12 +36,72 @@ describe('ChatView', () => {
     expect(them.textContent).toContain('好的');
   });
 
+  it('does not surface thinking (reasoning) text — the live animation stands in for it', async () => {
+    mockTranscript([
+      { k: 0, i: 0, role: 'assistant', type: 'thinking', text: '让我想想这个边界情况' },
+      { k: 1, i: 1, role: 'assistant', type: 'text', text: '答案是四十二' },
+    ]);
+    const { container } = render(<ChatView pane="%0" kind="done" />);
+    await screen.findByText('答案是四十二');
+    expect(screen.queryByText(/让我想想/)).toBeNull();
+    expect(container.querySelector('.chat-thinking')).toBeNull();
+  });
+
+  it('stamps time on user inputs and each turn\'s LAST ai reply only (not mid-turn text or tools)', async () => {
+    const t = '2026-07-17T06:00:00.000Z';
+    mockTranscript([
+      { k: 0, i: 0, role: 'user', type: 'text', text: '问题一', ts: t },
+      { k: 1, i: 1, role: 'assistant', type: 'text', text: '中间回复', ts: t },
+      { k: 2, i: 2, role: 'assistant', type: 'tool', tool: { name: 'Bash', input: { command: 'ls' }, result: 'x', isError: false }, ts: t },
+      { k: 3, i: 3, role: 'assistant', type: 'text', text: '最终回复', ts: t },
+      { k: 4, i: 4, role: 'user', type: 'text', text: '问题二', ts: t },
+    ]);
+    const { container } = render(<ChatView pane="%0" kind="done" />);
+    await screen.findByText('问题二');
+    // 问题一(user) + 最终回复(turn-final ai) + 问题二(user) = 3; 中间回复 & 工具 无
+    expect(container.querySelectorAll('.chat-ts').length).toBe(3);
+    expect(container.querySelectorAll('.chat-ts.ts-me').length).toBe(2);
+    expect(container.querySelectorAll('.chat-ts.ts-them').length).toBe(1);
+  });
+
+  it('renders no timestamp when messages carry none (never fabricates one)', async () => {
+    mockTranscript([
+      { k: 0, i: 0, role: 'user', type: 'text', text: '无时间戳' },
+      { k: 1, i: 1, role: 'assistant', type: 'text', text: '也无' },
+    ]);
+    const { container } = render(<ChatView pane="%0" kind="done" />);
+    await screen.findByText('也无');
+    expect(container.querySelector('.chat-ts')).toBeNull();
+  });
+
+  it('renders an ESC-interrupt as a quiet centered hint, not a user bubble', async () => {
+    mockTranscript([
+      { k: 0, i: 0, role: 'user', type: 'text', text: '跑测试' },
+      { k: 1, i: 1, type: 'interrupt' },
+    ]);
+    const { container } = render(<ChatView pane="%0" kind="done" />);
+    await waitFor(() => expect(container.querySelector('.chat-interrupt')).toBeTruthy());
+    expect(container.querySelector('.chat-interrupt').textContent).toContain('终止');
+    // it must NOT render as a right-aligned user pill
+    expect(container.querySelectorAll('.chat-me').length).toBe(1); // only 跑测试
+  });
+
   it('collapses a tool call into a chip with a summary', async () => {
     mockTranscript([{ k: 0, i: 0, role: 'assistant', type: 'tool', tool: { name: 'Bash', input: { command: 'ls' }, result: 'a', isError: false } }]);
     render(<ChatView pane="%0" kind="working" />);
     // chip 文案含工具名/动作，不直接铺原始结果
     await screen.findByText(/Bash|运行|命令/);
     expect(screen.queryByText('a')).toBeNull(); // 结果默认折叠
+  });
+
+  it('an uncatalogued tool gets a generic 调用工具 verb (never a bare tool name); a skill says 激活技能', async () => {
+    mockTranscript([
+      { k: 0, i: 0, role: 'assistant', type: 'tool', tool: { name: 'AskUserQuestion', input: { questions: [] }, result: null, isError: false } },
+      { k: 1, i: 1, role: 'assistant', type: 'tool', tool: { name: 'Skill', input: { skill: 'frontend-design' }, result: 'ok', isError: false } },
+    ]);
+    render(<ChatView pane="%0" kind="working" />);
+    await screen.findByText('调用工具 AskUserQuestion');
+    await screen.findByText('激活技能 frontend-design');
   });
 
   it('a finished tool shows a ✓ on success and a ✗ on failure (box stays neutral)', async () => {
@@ -55,21 +115,27 @@ describe('ChatView', () => {
     expect(container.querySelector('.chat-tool-status.err')).toBeTruthy();
   });
 
-  it('tool head is collapsed one-line by default; tap expands full command + result', async () => {
+  it('tool chip stays one line (no in-page expand); tapping it opens the detail sheet with mode/command/result', async () => {
     const longCmd = 'echo ' + 'x'.repeat(200);
     mockTranscript([{ k: 0, i: 0, role: 'assistant', type: 'tool', tool: { name: 'Bash', input: { command: longCmd }, result: 'the output', isError: false } }]);
-    render(<ChatView pane="%0" kind="working" />);
+    const { container } = render(<ChatView pane="%0" kind="working" />);
     const head = await screen.findByRole('button', { name: new RegExp(longCmd.slice(0, 20)) });
-    // collapsed: not marked "open" — CSS applies the single-line ellipsis truncation off this state
+    // no in-page expand: no open class, no result rendered inline, no sheet yet
     expect(head.className).not.toContain('chat-tool-head-open');
     expect(screen.queryByText('the output')).toBeNull();
+    expect(container.querySelector('.tool-sheet')).toBeNull();
     fireEvent.click(head);
-    expect(head.className).toContain('chat-tool-head-open');
-    expect(head.textContent).toContain(longCmd);
-    await screen.findByText('the output');
+    // the bottom sheet opens with 执行模式 (运行命令), the full command, and the output
+    const sheet = await waitFor(() => { const s = container.querySelector('.tool-sheet'); expect(s).toBeTruthy(); return s; });
+    expect(sheet.textContent).toContain('运行命令');
+    expect(sheet.querySelector('.tool-sheet-cmd').textContent).toContain(longCmd);
+    expect(sheet.textContent).toContain('the output');
+    // closing the sheet dismisses it
+    fireEvent.click(container.querySelector('.tool-sheet-x'));
+    await waitFor(() => expect(container.querySelector('.tool-sheet')).toBeNull());
   });
 
-  it('an edited file shows a +A/−B stat and expands to a coloured diff', async () => {
+  it('an edited file shows a +A/−B stat on the chip and a coloured diff in the sheet', async () => {
     mockTranscript([{
       k: 0, i: 0, role: 'assistant', type: 'tool',
       tool: {
@@ -78,17 +144,24 @@ describe('ChatView', () => {
       },
     }]);
     const { container } = render(<ChatView pane="%0" kind="working" />);
-    // stat badge visible while collapsed
+    // stat badge visible on the collapsed chip
     expect((await screen.findByText('+2'))).toBeTruthy();
     expect(screen.getByText('−1')).toBeTruthy();
     expect(container.querySelector('.chat-tool-status.ok')).toBeNull(); // the +A/−B stat already says success — no redundant ✓
-    expect(container.querySelector('.chat-diff')).toBeNull(); // detail collapsed
+    expect(container.querySelector('.chat-diff')).toBeNull(); // no in-page diff
     fireEvent.click(screen.getByRole('button', { name: /a\.js/ }));
-    // coloured diff lines rendered from the hunk
-    await waitFor(() => expect(container.querySelector('.chat-diff')).toBeTruthy());
-    expect(container.querySelector('.cd-add').textContent).toBe('+new1');
-    expect(container.querySelector('.cd-del').textContent).toBe('-old');
-    expect(container.querySelector('.cd-ctx').textContent).toBe(' keep');
+    // the dedicated code-review layout opens with the diff viewer
+    await waitFor(() => expect(container.querySelector('.tool-sheet-edit .dv')).toBeTruthy());
+    const codes = [...container.querySelectorAll('.dv-add .dv-code')].map((el) => el.textContent);
+    expect(codes).toEqual(['new1', 'new2']); // sign lives in its own column, code is the bare text
+    expect(container.querySelector('.dv-del .dv-code').textContent).toBe('old');
+    expect(container.querySelector('.dv-ctx .dv-code').textContent).toBe('keep');
+    // new-file line numbers: context 'keep' = line 1, adds = 2 and 3 (oldStart/newStart both 1)
+    expect(container.querySelector('.dv-ctx .dv-ln').textContent).toBe('1');
+    expect([...container.querySelectorAll('.dv-add .dv-ln')].map((el) => el.textContent)).toEqual(['2', '3']);
+    // header shows the filename; meta strip shows the mode
+    expect(container.querySelector('.es-name').textContent).toBe('a.js');
+    expect(container.querySelector('.tool-sheet').textContent).toContain('编辑文件');
   });
 
   it('permission with no parseable menu → 允许/拒绝 fallback, taps send Enter', async () => {
@@ -208,6 +281,69 @@ describe('ChatView', () => {
     const { container } = render(<ChatView pane="%0" kind="done" />);
     await screen.findByText('hi');
     expect(container.querySelector('.chat-typing')).toBeTruthy();
+  });
+
+  it('renders a compaction marker as a centered divider, not a bubble', async () => {
+    mockTranscript([
+      { k: 0, i: 0, role: 'user', type: 'text', text: '压缩前' },
+      { k: 1, i: 1, type: 'compact' },
+      { k: 2, i: 2, role: 'assistant', type: 'text', text: '压缩后' },
+    ]);
+    const { container } = render(<ChatView pane="%0" kind="done" />);
+    await screen.findByText('压缩后');
+    const div = container.querySelector('.chat-compact-divider');
+    expect(div).toBeTruthy();
+    expect(div.textContent).toContain('上下文已压缩');
+    expect(container.querySelectorAll('.chat-me').length).toBe(1); // only 压缩前 is a user bubble
+  });
+
+  it('a slash command splits into a right-aligned command pill and a separate left-aligned result line', async () => {
+    mockTranscript([
+      { k: 0, i: 0, type: 'slash', name: '/model', result: 'Set model to Opus 4.8' },
+      { k: 1, i: 1, role: 'assistant', type: 'text', text: '好的' },
+    ]);
+    const { container } = render(<ChatView pane="%0" kind="done" />);
+    await screen.findByText('好的');
+    const cmd = container.querySelector('.chat-slash-cmd');
+    const result = container.querySelector('.chat-slash-result');
+    expect(cmd.textContent).toBe('/model');              // the command the user ran (its own element)
+    expect(result.textContent).toBe('Set model to Opus 4.8'); // the result, a SEPARATE element
+    expect(cmd.contains(result)).toBe(false);             // not merged into one row
+    expect(container.querySelectorAll('.chat-me').length).toBe(0); // never a normal user bubble
+    expect(container.querySelector('.chat-slash-goterm')).toBeNull(); // no in-transcript hand-off button
+  });
+
+  it('a slash command with args shows the args in the pill; a result-less command renders just the pill', async () => {
+    mockTranscript([
+      { k: 0, i: 0, type: 'slash', name: '/model', args: 'sonnet' },
+      { k: 1, i: 1, type: 'slash', name: '/clear' },
+    ]);
+    const { container } = render(<ChatView pane="%0" kind="done" />);
+    await waitFor(() => expect(container.querySelectorAll('.chat-slash-cmd').length).toBe(2));
+    const pills = [...container.querySelectorAll('.chat-slash-cmd')].map((el) => el.textContent);
+    expect(pills).toEqual(['/model sonnet', '/clear']);
+    expect(container.querySelector('.chat-slash-result')).toBeNull(); // neither has a result
+  });
+
+  it('kind="compacting" shows the 压缩中 indicator, not the plain typing wave', async () => {
+    mockTranscript([{ k: 0, i: 0, role: 'user', type: 'text', text: 'hi' }]);
+    const { container } = render(<ChatView pane="%0" kind="compacting" />);
+    await screen.findByText('hi');
+    const c = container.querySelector('.chat-compacting');
+    expect(c).toBeTruthy();
+    expect(c.textContent).toContain('正在压缩上下文');
+    expect(container.querySelector('.chat-typing')).toBeNull(); // compacting suppresses the plain wave
+  });
+
+  it('kind="error" shows a turn-error note with the reason and suppresses typing (even after a trailing user message)', async () => {
+    mockTranscript([{ k: 0, i: 0, role: 'user', type: 'text', text: 'hi' }]);
+    const { container } = render(<ChatView pane="%0" kind="error" msg="服务过载" />);
+    await screen.findByText('hi');
+    const e = container.querySelector('.chat-turn-error');
+    expect(e).toBeTruthy();
+    expect(e.textContent).toContain('本轮出错');
+    expect(e.textContent).toContain('服务过载');
+    expect(container.querySelector('.chat-typing')).toBeNull(); // error is not "generating a reply"
   });
 
   it('a running tool (result:null, last, working) shows a running marker and suppresses the typing bubble; clears once result arrives', async () => {

@@ -16,6 +16,15 @@ describe('inboxRows view mapping + rows', () => {
     expect(byPane).toEqual({ '%1': 'needs', '%2': 'working', '%3': 'done', '%4': 'done', '%5': 'done' });
     expect(rows.find((r) => r.pane === '%2')).toMatchObject({ session: 'a', window: '@2', windowName: 'run', msg: 'build it', ts: 200 });
   });
+  it('compacting reads as 进行中 (busy); error stays OUT of the inbox (chat-lens only)', () => {
+    const rows = inboxRows({
+      '%1': { session: 'a', window: '@1', windowName: 'w', kind: 'compacting', ts: 10 },
+      '%2': { session: 'a', window: '@2', windowName: 'w', kind: 'error', msg: '服务过载', ts: 20 },
+    }, {}, 0);
+    const byPane = Object.fromEntries(rows.map((r) => [r.pane, r.view]));
+    expect(byPane['%1']).toBe('working');   // compaction is a busy state
+    expect(byPane['%2']).toBeUndefined();   // error is not surfaced in the inbox
+  });
   it('threads the agent id (defaults to claude for untagged legacy entries)', () => {
     const rows = inboxRows({
       '%1': { session: 'a', window: '@1', windowName: 'w', kind: 'working', ts: 1, agent: 'codex' },

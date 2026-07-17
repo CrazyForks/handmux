@@ -26,6 +26,22 @@ function permMsg(body) {
   return t ? `需要你授权：${t}` : '需要你';
 }
 
+// Friendly Chinese for the StopFailure error type (matcher values, see the hooks doc). The payload shape
+// isn't verified against a live rate-limit yet, so read the type defensively from several likely fields and
+// always fall back to a bare 本轮出错 — a wrong field name degrades to the generic label, never throws.
+const STOPFAIL_LABEL = {
+  rate_limit: '触发限流', overloaded: '服务过载', authentication_failed: '认证失败',
+  oauth_org_not_allowed: '组织未授权', billing_error: '额度/账单问题', invalid_request: '请求无效',
+  model_not_found: '模型不可用', server_error: '服务端错误', max_output_tokens: '输出超长', unknown: '未知错误',
+};
+function stopFailMsg(body = {}) {
+  const type = body.error_type || body.reason || body.type
+    || (body.error && (typeof body.error === 'string' ? body.error : body.error.type)) || '';
+  if (STOPFAIL_LABEL[type]) return STOPFAIL_LABEL[type];
+  const raw = typeof body.error === 'string' ? body.error : (body.message || '');
+  return raw ? String(raw).replace(/\s+/g, ' ').trim().slice(0, 80) : '';
+}
+
 // Build the 进行中 one-liner for a resume (PostToolUse after the user answered/approved), surfacing the
 // choice they just made — AskUserQuestion stores it in tool_input.answers, keyed by question.
 function resumeMsg(body) {
@@ -52,12 +68,21 @@ function resumeMsg(body) {
 //                                             before the permission_prompt Notification and names the tool,
 //                                             so 需要你 shows faster and says what's being asked. Verified
 //                                             NOT to fire for auto-approved tools → no false 需要你 in auto)
+//   compacting                 → compacting (PreCompact: context compaction started — a slow op, shown as
+//                                             「压缩中」; version-gated, only paired with the clearing event)
+//   compact                    → null       (PostCompact: compaction finished → clear 压缩中/进行中. null
+//                                             drops the roster entry; the pane falls back to neutral present)
+//   stopfail                   → error      (StopFailure: the turn ended on an API error — no Stop fires, so
+//                                             this is the only signal that un-sticks the pane from 进行中)
 //   anything else              → null       (ignored: auth_success, elicitation_*, etc.)
 export function classifyClaude(src, body = {}) {
   if (src === 'stop') return { kind: 'done', msg: body.last_assistant_message || '' };
   if (src === 'prompt') return { kind: 'working', msg: body.prompt || '' };
   if (src === 'resume') return { kind: 'working', msg: resumeMsg(body) };
   if (src === 'permreq') return { kind: 'permission', msg: permMsg(body) };
+  if (src === 'compacting') return { kind: 'compacting', msg: '' };   // PreCompact: 压缩上下文进行中
+  if (src === 'compact') return null;                                 // PostCompact: done → clear 压缩中/进行中
+  if (src === 'stopfail') return { kind: 'error', msg: stopFailMsg(body) }; // turn died on an API error
   if (src === 'end') return { kind: 'end' };
   if (src === 'notify') {
     if (body.notification_type === 'idle_prompt') return { kind: 'idle', msg: body.message || '' };

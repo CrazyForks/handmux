@@ -92,6 +92,7 @@ export default function App() {
   const [gitOpen, setGitOpen] = useState(false);
   const [pendingShare, setPendingShare] = useState(null); // a File shared in via Web Share Target, awaiting a destination
   const [basePrompt, setBasePrompt] = useState(null); // { rawPath } while asking for a relative path's base dir
+  const [handoffToast, setHandoffToast] = useState(null); // "switched to terminal to run /x" hint after a slash hand-off
   const [docToast, setDocToast] = useState(null); // transient error toast for absolute-path doc failures
   const [exitHint, setExitHint] = useState(false); // "press Back again to exit" hint (double-back guard)
   const [docLinkPrompt, setDocLinkPrompt] = useState(null); // { path, x, y } confirm popover for a tapped terminal path
@@ -962,6 +963,14 @@ export default function App() {
     return () => clearTimeout(id);
   }, [docToast]);
 
+  // Auto-dismiss the slash hand-off hint after a few seconds. Re-runs (and resets the timer) each time a new
+  // command is handed off, so a second hand-off refreshes rather than clearing early.
+  useEffect(() => {
+    if (!handoffToast) return;
+    const id = setTimeout(() => setHandoffToast(null), 3500);
+    return () => clearTimeout(id);
+  }, [handoffToast]);
+
   // Initial open: resolve the target session by precedence hash > last > first, then open it.
   // The URL hash (#session-name) deep-links to a session; otherwise the last-opened session;
   // otherwise the first. openSession itself restores that session's remembered window/pane.
@@ -1288,6 +1297,9 @@ export default function App() {
       {exitHint && (
         <div className="exit-toast" role="status">{t('app.backToExit')}</div>
       )}
+      {handoffToast && (
+        <div className="handoff-toast" role="status">{t('chat.slash.handedOff', { cmd: handoffToast })}</div>
+      )}
       {docLinkPrompt && (
         <DocLinkPopover
           path={docLinkPrompt.path}
@@ -1352,7 +1364,7 @@ export default function App() {
           />
           {current.paneId && (
             chatLens ? (
-              <ChatView pane={current.paneId} kind={states[current.paneId]?.kind} onAuthFail={onAuthFail} />
+              <ChatView pane={current.paneId} kind={states[current.paneId]?.kind} msg={states[current.paneId]?.msg} onAuthFail={onAuthFail} />
             ) : (
               <Terminal
                 ref={termRef}
@@ -1374,6 +1386,7 @@ export default function App() {
               onKey={sendKey}
               onAuthFail={onAuthFail}
               onSent={onCommandSent}
+              onInteractiveSlash={(cmd) => { setLens('terminal'); localStorage.setItem('tw_lens_' + current.paneId, 'terminal'); setHandoffToast(cmd); }}
             />
           ) : (
             <BottomDock

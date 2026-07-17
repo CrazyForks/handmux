@@ -1,5 +1,7 @@
 #!/bin/sh
-# handmux 上报 hook. $1 = stop | notify | prompt | end | resume | permreq. $2 = agent id(留空=claude;
+# handmux 上报 hook. $1 = stop | notify | prompt | end | resume | permreq | compacting | compact | stopfail.
+# (compacting/compact/stopfail 是版本门控事件:PreCompact/PostCompact/StopFailure，只在够新的 Claude 上注册。)
+# $2 = agent id(留空=claude;
 # Codex 传 'codex')—— Claude 与 Codex 的 hook payload 字段一致(stdin JSON),所以共用这一个脚本。
 # stdin = agent 原始 payload(JSON).
 # (resume  = PostToolUse on AskUserQuestion/ExitPlanMode:答完选项/批准计划 → 状态翻回进行中、带所选项。)
