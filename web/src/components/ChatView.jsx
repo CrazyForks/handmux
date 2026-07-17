@@ -93,12 +93,13 @@ function ToolBody({ tool }) {
   return null;
 }
 
-// Outcome marker at the end of a finished chip: a green check on success, a red cross on failure. It
-// replaces recolouring the whole box (too heavy) — the tool text/icon stay neutral, only the mark carries
-// the result. Nothing while a tool is still running (the wave shows that) or has no result yet.
+// Outcome marker at the end of a finished chip: a red cross on failure. A green check on success — EXCEPT
+// when a +A/−B diff stat is already shown (a file edit), where the stat itself says it succeeded, so a check
+// would be redundant. Nothing while running (the wave shows that) or when there's no result yet.
 function ToolStatus({ tool }) {
   if (tool.isError) return <span className="chat-tool-status err" aria-label="失败"><XIcon /></span>;
-  if (tool.result != null) return <span className="chat-tool-status ok" aria-label="成功"><CheckIcon /></span>;
+  const hasDiffStat = tool.diff && (tool.diff.added || tool.diff.removed);
+  if (tool.result != null && !hasDiffStat) return <span className="chat-tool-status ok" aria-label="成功"><CheckIcon /></span>;
   return null;
 }
 

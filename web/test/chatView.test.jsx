@@ -81,6 +81,7 @@ describe('ChatView', () => {
     // stat badge visible while collapsed
     expect((await screen.findByText('+2'))).toBeTruthy();
     expect(screen.getByText('−1')).toBeTruthy();
+    expect(container.querySelector('.chat-tool-status.ok')).toBeNull(); // the +A/−B stat already says success — no redundant ✓
     expect(container.querySelector('.chat-diff')).toBeNull(); // detail collapsed
     fireEvent.click(screen.getByRole('button', { name: /a\.js/ }));
     // coloured diff lines rendered from the hunk
