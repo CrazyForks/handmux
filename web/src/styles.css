@@ -2014,12 +2014,20 @@ button.cmd-text { background: none; border: none; text-align: left; }
   font-size: 12.5px; font-style: italic; line-height: 1.45; white-space: pre-wrap; word-break: break-word;
 }
 
-/* Gate card — pinned to the end of the bubble stream, just above the composer (never covers it). Mirrors
-   the flat-section look of .settings-toggle rather than a new floating chrome; buttons are ≥44pt. */
+/* Gate card — DOCKED over the composer (fixed bottom, full-width): while a menu owns the pane's input the
+   composer behind is useless, so the card covers it and the question is always in view — no scrolling.
+   Mirrors the flat-section look of .settings-toggle rather than a new floating chrome; buttons are ≥44pt. */
 .chat-gate {
-  flex: none; margin: 0 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  position: fixed; left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 25;
   padding: 12px 14px; border-radius: 14px;
   background: var(--ct-bar); box-shadow: 0 4px 18px rgba(0,0,0,.35);
+}
+/* Lead-in context: the assistant's last line(s) before the question (scraped — the jsonl turn isn't flushed
+   until AFTER the answer). Quiet, clamped to two lines, separated from the question by a hairline. */
+.chat-gate-leadin {
+  margin: -2px 0 8px; padding-bottom: 8px; border-bottom: .5px solid var(--ct-chip-line);
+  font-size: 13px; color: var(--ct-muted); line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 /* "第 i/N 题" progress for a multi-question AskUserQuestion, above the question. */
 .chat-gate-step { font-size: 11px; font-weight: 600; color: var(--ct-muted); margin-bottom: 6px; letter-spacing: .02em; }

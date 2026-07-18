@@ -3,6 +3,10 @@ import { sendText, sendKeys, UnauthorizedError } from '../api.js';
 
 // The 对话-lens action gate: renders a pending AskUserQuestion / permission menu (scraped from the pane via
 // usePendingPrompt) as a native single-select list + 确认/取消 — instead of blindly showing 允许/拒绝.
+// The gate is DOCKED over the composer (position:fixed bottom — while a menu owns the pane's input, the
+// composer behind is useless anyway), so the question is always in view with no scrolling. `prompt.leadIn`
+// shows the assistant's last line(s) before the question — scraped server-side because the turn isn't
+// flushed to the jsonl until AFTER the answer, so the transcript can't show it while the gate is up.
 //
 // Driving is by DIGIT hotkey (verified live): sending an option's number selects it — for a single question
 // it selects AND submits; for a multi-question it selects AND auto-advances to the next tab; on the review
@@ -40,6 +44,7 @@ export default function PromptGate({ pane, prompt, onAuthFail, onAct }) {
 
   return (
     <div className="chat-gate">
+      {prompt.leadIn && <div className="chat-gate-leadin">{prompt.leadIn}</div>}
       {prompt.multi && <div className="chat-gate-step">第 {prompt.step}/{prompt.total} 题</div>}
       <div className="chat-gate-prompt">{prompt.title}</div>
       <div className="chat-gate-options" role="radiogroup">

@@ -54,6 +54,16 @@ describe('PromptGate', () => {
     expect(screen.getByText('第 2/3 题')).toBeTruthy();
   });
 
+  it('renders the scraped lead-in context above the question when present; omits it when absent', () => {
+    const { container, unmount } = render(<PromptGate pane="%1" prompt={{ ...askPrompt, leadIn: '探完了骨架,推荐方案A' }} />);
+    const leadin = container.querySelector('.chat-gate-leadin');
+    expect(leadin).toBeTruthy();
+    expect(leadin.textContent).toBe('探完了骨架,推荐方案A');
+    unmount();
+    const { container: c2 } = render(<PromptGate pane="%1" prompt={askPrompt} />);
+    expect(c2.querySelector('.chat-gate-leadin')).toBeNull();
+  });
+
   it('the review screen renders 提交/取消 and 提交 sends the "Submit answers" digit', async () => {
     const review = {
       kind: 'question', title: 'review', submit: true, multi: true, step: 2, total: 2,

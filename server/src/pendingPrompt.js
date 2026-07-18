@@ -52,6 +52,33 @@ const stripRight = (s) => String(s == null ? '' : s).replace(/\s+$/, '');
 // the endpoint captures plain.
 const stripAnsi = (s) => String(s || '').replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '').replace(/\x1b[[0-9;?]*[ -/]*[@-~]/g, '');
 
+// The assistant text immediately PRECEDING the menu, scraped because the turn (text + AskUserQuestion) is NOT
+// flushed to the session jsonl until AFTER the user answers (verified live: probe + out-of-order line
+// timestamps) — so the 对话 lens's transcript view structurally can't show it while the gate is up. The title
+// walk below stops at the first boundary (activity spinner / box rule / prompt echo), which is exactly where
+// the lead-in text usually sits. Walk on upward: skip boundary chrome, take the nearest content block, keep
+// its LAST lines (the freshest context, "问题的最后一行"). `fromIdx` = the first line NOT consumed by the
+// title walk, so adjacent lead-in the title already absorbed is never duplicated here.
+const LEADIN_MAX = 2;
+const MSG_MARK_RE = /^\s*⏺/; // ⏺ opens an assistant message in the scrollback — include it, stop there
+function extractLeadIn(lines, fromIdx) {
+  const block = [];
+  let i = fromIdx;
+  // Skip the chrome between the menu and the preceding text (spinner / rules / tab bar / stale footer /
+  // blanks) — but never past a ❯ prompt echo (above it is the PREVIOUS exchange, stale context) nor past a
+  // ⏺ message head (it IS the text's first line — the collect loop includes it).
+  while (i >= 0 && (!lines[i].trim() || (isTitleBoundary(lines[i]) && !PROMPT_ECHO_RE.test(lines[i]) && !MSG_MARK_RE.test(lines[i])))) i--;
+  for (; i >= 0 && block.length < 12; i--) {
+    const l = lines[i];
+    if (!l.trim()) break;                                        // blank = the block's top (last paragraph)
+    if (MSG_MARK_RE.test(l)) { block.unshift(l.trim()); break; } // the ⏺ message head: include & stop
+    if (isTitleBoundary(l)) break;                               // hard chrome (incl. ❯ echo): stop
+    block.unshift(l.trim());
+  }
+  const tail = block.slice(-LEADIN_MAX).map((l) => l.replace(/^⏺\s*/, '').trim()).filter(Boolean);
+  return tail.length ? tail.join(' ') : null;
+}
+
 // Parse the multi-question tab strip → [{ label, answered }]. ☒ = answered, ☐ = not. "✔ Submit" is excluded.
 function parseTabs(line) {
   const tabs = [];
@@ -102,10 +129,12 @@ export function parsePendingPrompt(text) {
 
   // Title = header/question text above the block, skipping in-card blanks, stopping at the card's top edge.
   const head = [];
+  let headStop = top - 1;
   for (let i = top - 1; i >= 0 && head.length < 5; i--) {
-    if (!lines[i].trim()) continue;
-    if (isTitleBoundary(lines[i])) break;
+    if (!lines[i].trim()) { headStop = i - 1; continue; }
+    if (isTitleBoundary(lines[i])) { headStop = i; break; }
     head.unshift(lines[i]);
+    headStop = i - 1;
   }
   const title = head.map((l) => l.replace(HEADER_DECOR_RE, '').trim()).filter(Boolean).join(' — ') || '需要你选择';
 
@@ -120,6 +149,10 @@ export function parsePendingPrompt(text) {
     ? 'permission' : 'question';
 
   const out = { kind, title, options, cursor };
+  // Lead-in context the title walk didn't absorb (it stopped at a boundary or its 5-line cap) — the
+  // assistant's last line(s) before the question, shown above the gate so the phone isn't asked blind.
+  const leadIn = extractLeadIn(lines, headStop);
+  if (leadIn) out.leadIn = leadIn;
   if (multi) {
     out.multi = true;
     out.total = tabs.length;

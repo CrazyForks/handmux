@@ -120,4 +120,71 @@ describe('parsePendingPrompt', () => {
     ]);
     expect(g.title).toBe('Pick one');
   });
+
+  // leadIn: the assistant text preceding the menu. The jsonl turn isn't flushed until AFTER the answer, so
+  // this scrape is the 对话 lens's only way to show why a question is being asked. The title walk stops at
+  // the first boundary (spinner/rule) — leadIn continues past it and keeps the text's last lines.
+  it('leadIn — text above a spinner/rule boundary surfaces as the gate context (the reported bug)', () => {
+    const g = parsePendingPrompt([
+      '⏺ 探完了现有骨架,关键发现是后端零件基本齐全',
+      '  所以推荐直接复用现有管线。',
+      '',
+      '✻ Worked for 9s',
+      '────────────────────────────────',
+      '你喜欢哪个方案?',
+      '❯ 1. 方案A',
+      '  2. 方案B',
+      'Enter to select · Esc to cancel',
+    ].join('\n'));
+    expect(g.title).toBe('你喜欢哪个方案?'); // boundary keeps the title clean…
+    expect(g.leadIn).toBe('探完了现有骨架,关键发现是后端零件基本齐全 所以推荐直接复用现有管线。'); // …but the text still shows
+  });
+
+  it('leadIn — adjacent text the title cannot absorb (⏺ is a boundary) surfaces as leadIn instead', () => {
+    const g = parsePendingPrompt([
+      '⏺ 验证标记 ABC123 这段是问题前的正文',
+      '',
+      '你喜欢哪个?',
+      '❯ 1. 红色',
+      '  2. 蓝色',
+      'Enter to select · Esc to cancel',
+    ].join('\n'));
+    expect(g.title).toBe('你喜欢哪个?');                          // title stops at the ⏺ boundary…
+    expect(g.leadIn).toBe('验证标记 ABC123 这段是问题前的正文');   // …and the text lands in leadIn
+  });
+
+  it('leadIn never crosses the user’s own ❯ prompt echo (that would be stale prior-exchange text)', () => {
+    const g = parsePendingPrompt([
+      '⏺ 上一轮的回答,与当前问题无关',
+      '',
+      '❯ 帮我选个颜色',
+      '✻ Worked for 3s',
+      '────────────────────────────────',
+      '你喜欢哪个?',
+      '❯ 1. 红色',
+      '  2. 蓝色',
+      'Enter to select · Esc to cancel',
+    ].join('\n'));
+    expect(g.leadIn).toBeUndefined(); // nothing between the prompt echo and the menu → no leadIn
+  });
+
+  it('leadIn — keeps only the LAST lines of a long preceding block', () => {
+    const g = parsePendingPrompt([
+      '⏺ 第一行结论',
+      '  中间论证省略',
+      '  最后一行才是重点',
+      '✻ Cogitated for 4s',
+      '────────────────────────────────',
+      '选哪个?',
+      '❯ 1. A',
+      '  2. B',
+      'Enter to select · Esc to cancel',
+    ].join('\n'));
+    expect(g.leadIn).toBe('中间论证省略 最后一行才是重点'); // capped at 2 lines, ⏺ stripped
+  });
+
+  it('no leadIn when nothing precedes the menu', () => {
+    expect(parsePendingPrompt(ASK_MENU).leadIn).toBeUndefined();
+    expect(parsePendingPrompt(PERM_MENU).leadIn).toBeUndefined(); // tool-call lines above a permission are not prose
+  });
 });
