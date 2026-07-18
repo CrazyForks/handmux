@@ -611,6 +611,10 @@ export default function ChatView({ pane, kind, msg, onAuthFail }) {
         />
       )}
 
+      {/* The gate (rich or fallback) is a modal bottom sheet: the backdrop dims the rest of the screen and,
+         critically, covers the composer — a SHORT gate (e.g. the 提交/取消 review card) would otherwise leave
+         the composer's quick-reply chips peeking out AND tappable above the card. */}
+      {(prompt || fb) && <div className="chat-gate-backdrop" />}
       {prompt && <PromptGate pane={pane} prompt={prompt} onAuthFail={onAuthFail} onAct={refetch} />}
       {fb && (
         <div className="chat-gate">

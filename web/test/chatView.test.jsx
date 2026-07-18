@@ -184,6 +184,7 @@ describe('ChatView', () => {
     await screen.findByRole('radio', { name: /红色/ });
     expect(screen.getByText('选个颜色?')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '允许' })).toBeNull(); // rich gate, not the fallback
+    expect(document.querySelector('.chat-gate-backdrop')).toBeTruthy(); // modal backdrop covers the composer
   });
 
   it('after answering, the 允许/拒绝 fallback does NOT flash while kind is still catching up', async () => {
@@ -204,6 +205,7 @@ describe('ChatView', () => {
     await new Promise((r) => setTimeout(r, 600)); // let the post-act refetch land
     expect(screen.queryByRole('button', { name: '允许' })).toBeNull();
     expect(screen.queryByRole('button', { name: '拒绝' })).toBeNull();
+    expect(document.querySelector('.chat-gate-backdrop')).toBeNull(); // backdrop leaves with the gate
   });
 
   it('renders markdown in an assistant text bubble — a table becomes a real <table>', async () => {
