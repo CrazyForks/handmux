@@ -501,6 +501,33 @@ export default function ChatView({ pane, kind, msg, onAuthFail, slashEcho, onSla
   useEffect(() => cancelLongPress, []); // clear a pending hold on unmount
   useEffect(() => { dismissCopy(); setSheetKey(null); }, [pane]); // pane switch drops any callout / sheet
 
+  // Gate backdrop scope: the dim must cover ONLY the chat lens (messages + composer), never the topbar /
+  // window tabs above — those stay visible and tappable while a question is pending. Measure .chat-view's
+  // box relative to .app (both rects in viewport coords → the difference is layout-true even when .app is
+  // translateY-lifted by the Android keyboard, which also re-anchors position:fixed to .app). Re-measure on
+  // viewport churn (keyboard, rotate). Falls back to full-screen (CSS inset:0) when unmeasurable (jsdom).
+  const [gateMask, setGateMask] = useState(null); // { top, height } px relative to .app, or null
+  const gateUp = !!(prompt || fb);
+  useEffect(() => {
+    if (!gateUp) { setGateMask(null); return; }
+    const measure = () => {
+      const view = viewRef.current;
+      const app = view?.closest('.app');
+      if (!view || !app) return;
+      const vr = view.getBoundingClientRect();
+      const ar = app.getBoundingClientRect();
+      const height = ar.bottom - vr.top;
+      setGateMask(height > 0 ? { top: vr.top - ar.top, height } : null);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    window.visualViewport?.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.visualViewport?.removeEventListener('resize', measure);
+    };
+  }, [gateUp]);
+
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
@@ -593,8 +620,8 @@ export default function ChatView({ pane, kind, msg, onAuthFail, slashEcho, onSla
         )}
         {showCompacting && (
           <div className="chat-compacting" aria-live="polite">
+            <span className="chat-compacting-label">正在压缩上下文</span>
             <TypingDots />
-            <span className="chat-compacting-label">正在压缩上下文…</span>
           </div>
         )}
         {showError && (
@@ -630,10 +657,12 @@ export default function ChatView({ pane, kind, msg, onAuthFail, slashEcho, onSla
         />
       )}
 
-      {/* The gate (rich or fallback) is a modal bottom sheet: the backdrop dims the rest of the screen and,
+      {/* The gate (rich or fallback) is a modal bottom sheet: the backdrop dims the chat lens and,
          critically, covers the composer — a SHORT gate (e.g. the 提交/取消 review card) would otherwise leave
-         the composer's quick-reply chips peeking out AND tappable above the card. */}
-      {(prompt || fb) && <div className="chat-gate-backdrop" />}
+         the composer's quick-reply chips peeking out AND tappable above the card. Scoped to the lens (from
+         .chat-view's top edge down): the topbar and window/lens tabs above stay visible and usable. */}
+      {gateUp && <div className="chat-gate-backdrop"
+        style={gateMask ? { top: gateMask.top + 'px', height: gateMask.height + 'px', bottom: 'auto' } : undefined} />}
       {prompt && <PromptGate pane={pane} prompt={prompt} onAuthFail={onAuthFail} onAct={refetch} />}
       {fb && (
         <div className="chat-gate">

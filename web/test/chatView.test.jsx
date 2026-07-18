@@ -187,6 +187,26 @@ describe('ChatView', () => {
     expect(document.querySelector('.chat-gate-backdrop')).toBeTruthy(); // modal backdrop covers the composer
   });
 
+  it('scopes the gate backdrop to the chat lens (measured from .chat-view), leaving the topbar/tabs uncovered', async () => {
+    mockTranscript([{ k: 0, i: 0, role: 'user', type: 'text', text: 'hi' }]);
+    vi.spyOn(api, 'getPendingPrompt').mockResolvedValue({
+      kind: 'question', title: '选个颜色?', cursor: 1,
+      options: [{ n: 1, label: '红色', description: '' }],
+    });
+    // jsdom has no layout: feed rects so .chat-view starts 120px below .app's top (the topbar+tabs strip)
+    // and .app ends at 800 — the backdrop must span exactly the lens (120→800), composer included.
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      if (this.classList?.contains('app')) return { top: 0, bottom: 800, left: 0, right: 375, width: 375, height: 800 };
+      if (this.classList?.contains('chat-view')) return { top: 120, bottom: 700, left: 0, right: 375, width: 375, height: 580 };
+      return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 };
+    });
+    render(<div className="app"><ChatView pane="%0" kind="permission" /></div>);
+    await screen.findByRole('radio', { name: /红色/ });
+    const bd = document.querySelector('.chat-gate-backdrop');
+    await waitFor(() => expect(bd.style.top).toBe('120px'));
+    expect(bd.style.height).toBe('680px');
+  });
+
   it('after answering, the 允许/拒绝 fallback does NOT flash while kind is still catching up', async () => {
     mockTranscript([{ k: 0, i: 0, role: 'user', type: 'text', text: 'hi' }]);
     vi.spyOn(api, 'sendText').mockResolvedValue({ ok: true });
@@ -387,6 +407,10 @@ describe('ChatView', () => {
     const c = container.querySelector('.chat-compacting');
     expect(c).toBeTruthy();
     expect(c.textContent).toContain('正在压缩上下文');
+    expect(c.textContent).not.toContain('…'); // the wave dots carry the "in progress" cue, not a fake ellipsis
+    // the wave trails the label (label first, dots last)
+    const label = c.querySelector('.chat-compacting-label');
+    expect(label.nextElementSibling.classList.contains('chat-typing-dots')).toBe(true);
     expect(container.querySelector('.chat-typing')).toBeNull(); // compacting suppresses the plain wave
   });
 
