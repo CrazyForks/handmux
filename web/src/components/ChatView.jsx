@@ -384,7 +384,15 @@ export default function ChatView({ pane, kind, msg, onAuthFail }) {
   // the menu couldn't be parsed → the generic 允许/拒绝 fallback so there's always a way to act.
   const busy = kind === 'permission';
   const { prompt, refetch } = usePendingPrompt(pane, busy);
-  const fb = !prompt && busy ? fallbackGate() : null;
+  // After the user answers, the menu vanishes from the screen instantly but `kind` stays 'permission'
+  // until the slower /states poll catches up — so !prompt && busy would flash the 允许/拒绝 fallback
+  // for ~1s after every 确认 (and between multi-question steps). Latch "a scraped menu WAS up this
+  // episode": once one was shown, a null re-read means resolving/advancing, never "unparseable menu →
+  // show the generic gate". The latch resets when the episode ends (busy → false).
+  const hadPromptRef = useRef(false);
+  useEffect(() => { if (prompt) hadPromptRef.current = true; }, [prompt]);
+  useEffect(() => { if (!busy) hadPromptRef.current = false; }, [busy]);
+  const fb = !prompt && busy && !hadPromptRef.current ? fallbackGate() : null;
 
   // "Working" indicators (Task 13): state cues, not token streaming — data is polled every 1.5s.
   const last = messages.length ? messages[messages.length - 1] : null;

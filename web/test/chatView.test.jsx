@@ -186,6 +186,26 @@ describe('ChatView', () => {
     expect(screen.queryByRole('button', { name: '允许' })).toBeNull(); // rich gate, not the fallback
   });
 
+  it('after answering, the 允许/拒绝 fallback does NOT flash while kind is still catching up', async () => {
+    mockTranscript([{ k: 0, i: 0, role: 'user', type: 'text', text: 'hi' }]);
+    vi.spyOn(api, 'sendText').mockResolvedValue({ ok: true });
+    vi.spyOn(api, 'getPendingPrompt')
+      .mockResolvedValueOnce({
+        kind: 'question', title: '选个颜色?', cursor: 1,
+        options: [{ n: 1, label: '红色', description: '' }, { n: 2, label: '蓝色', description: '' }],
+      })
+      .mockResolvedValue(null); // answered → the menu is gone from the screen on every later read
+    render(<ChatView pane="%0" kind="permission" />);
+    await screen.findByRole('radio', { name: /红色/ });       // the rich gate was up
+    fireEvent.click(screen.getByRole('button', { name: '确认' })); // answer → post-act refetch (~450ms)
+    // kind prop stays 'permission' (the /states poll hasn't caught up) and the menu re-reads as null —
+    // the generic fallback must stay suppressed (the episode had a scraped menu).
+    await waitFor(() => expect(screen.queryByRole('radio')).toBeNull(), { timeout: 2000 });
+    await new Promise((r) => setTimeout(r, 600)); // let the post-act refetch land
+    expect(screen.queryByRole('button', { name: '允许' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '拒绝' })).toBeNull();
+  });
+
   it('renders markdown in an assistant text bubble — a table becomes a real <table>', async () => {
     const md = '| a | b |\n| - | - |\n| 1 | 2 |\n';
     mockTranscript([{ k: 0, i: 0, role: 'assistant', type: 'text', text: md }]);
