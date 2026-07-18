@@ -9,6 +9,7 @@ import { useTranscript } from '../hooks/useTranscript.js';
 import { usePendingPrompt } from '../hooks/usePendingPrompt.js';
 import { fallbackGate } from '../chatGate.js';
 import PromptGate from './PromptGate.jsx';
+import LensBoot from './LensBoot.jsx';
 import { sendKeys } from '../api.js';
 import { t } from '../i18n';
 import {
@@ -622,7 +623,7 @@ export default function ChatView({ pane, kind, msg, onAuthFail, slashEcho, onSla
         onPointerDown={onCopyDown} onPointerMove={onCopyMove}
         onPointerUp={cancelLongPress} onPointerCancel={cancelLongPress}
         onClickCapture={onCopyClickCapture}>
-        {messages.length === 0 && <div className="chat-empty">还没有对话内容</div>}
+        {messages.length === 0 && <LensBoot hint={t('boot.chat_hint')} />}
         {messages.map((m, idx) => {
           if (m.type === 'thinking') return null; // dropped (see Bubble) — no bubble, no time
           const label = tsIdx.has(idx) ? fmtTime(m.ts) : null;

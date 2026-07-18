@@ -7,6 +7,8 @@ import { drainWheel, notchDir } from '../wheelScroll.js';
 import { shouldKeepKeyboard } from '../dockKeyboard.js';
 import { prepareSeed, cursorSeq } from '../terminalSeed.js';
 import { getFont, setFont, clearFont, getDocHighlight } from '../storage.js';
+import LensBoot from './LensBoot.jsx';
+import { t } from '../i18n';
 import { backoffDelay } from '../backoff.js';
 import { idleDelay } from '../cadence.js';
 import { flingStep, shouldFling } from '../momentum.js';
@@ -1411,6 +1413,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
   return (
     <div className="terminal-wrap">
       <div ref={elRef} className={ready ? 'terminal' : 'terminal terminal--loading'} />
+      {!ready && <LensBoot hint={t('boot.term_hint')} />}
       {!connected && <div className="term-banner term-banner--err">⚠ 连接断开,重连中…</div>}
       {dbgVisible && <div className="dbg">{dbg}</div>}
       {connected && scrollInfo && !selInfo && <div className="term-banner term-banner--hist">{scrollInfo}</div>}

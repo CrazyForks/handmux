@@ -196,6 +196,8 @@ export default {
   'settings.font_auto_title': '依高度自動調整',
   'settings.chat_lens': '啟用對話鏡頭（實驗性功能）',
   'settings.chat_lens_hint': '以對話形式查看和操作 Claude 工作階段。開啟後，視窗列出現鏡頭切換，並可選擇對話配色。',
+  'boot.chat_hint': '正在讀取這段對話…',
+  'boot.term_hint': '正在接通這個終端…',
   'settings.path_highlight': '高亮檔案路徑',
   'settings.path_highlight_hint': '為終端機裡可點開的檔案路徑加底色。無論開關與否，路徑都可點開。',
   'settings.whats_new': '新功能',

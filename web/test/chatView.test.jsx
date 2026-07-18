@@ -22,6 +22,14 @@ function setGeometry(el, { scrollTop, scrollHeight, clientHeight }) {
 }
 
 describe('ChatView', () => {
+  it('an empty transcript shows the branded waiting state (handmux), never a bare "no content"', async () => {
+    mockTranscript([]);
+    const { container } = render(<ChatView pane="%0" kind="done" />);
+    await waitFor(() => expect(container.querySelector('.lens-boot')).toBeTruthy());
+    expect(container.querySelector('.lens-boot-word').textContent).toBe('handmux');
+    expect(container.textContent).not.toContain('还没有对话内容');
+  });
+
   it('renders user text right and assistant text left', async () => {
     mockTranscript([
       { k: 0, i: 0, role: 'user', type: 'text', text: '帮我跑测试' },

@@ -271,6 +271,8 @@ export default {
   'settings.font_auto_title': 'Auto-fit to height',
   'settings.chat_lens': 'Enable chat lens (experimental)',
   'settings.chat_lens_hint': 'View and drive Claude sessions as a chat. Enables the lens switch in the window bar and the chat colour tones below.',
+  'boot.chat_hint': 'Reading the conversation…',
+  'boot.term_hint': 'Connecting the terminal…',
   'settings.chat_tone': 'Chat colour',
   'settings.chat_tone_dusk': 'Warm Dusk',
   'settings.chat_tone_ink': 'Warm Gold',

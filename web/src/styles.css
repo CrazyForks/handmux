@@ -1719,7 +1719,32 @@ button.cmd-text { background: none; border: none; text-align: left; }
 }
 /* Reuses the terminal .sel-callout chrome; only the anchor differs (absolute within .chat-view). */
 .chat-copy-callout { position: absolute; }
-.chat-empty { margin: auto; color: var(--ct-muted); font-size: 13px; text-align: center; padding: 24px 0; }
+/* Branded waiting state for both lenses (LensBoot): wordmark breathing + the typing wave + a friendly
+   hint. Centered by context: in the chat scroll it's a flex item with margin:auto; over the terminal
+   it's an absolute overlay filling .terminal-wrap (the grid stays opacity:0 underneath until ready). */
+.lens-boot {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  pointer-events: none; color: #7d8189; text-align: center;
+}
+.chat-scroll > .lens-boot { margin: auto; color: var(--ct-muted); }
+.terminal-wrap > .lens-boot { position: absolute; inset: 0; z-index: 4; }
+.lens-boot-word {
+  font-size: 21px; font-weight: 700; letter-spacing: .14em;
+  animation: lens-boot-breathe 2.4s ease-in-out infinite;
+}
+@keyframes lens-boot-breathe { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+.lens-boot-dots { display: inline-flex; align-items: center; gap: 4px; }
+.lens-boot-dot {
+  width: 5px; height: 5px; border-radius: 50%; background: currentColor;
+  animation: chat-typing-wave 1.1s ease-in-out infinite;
+}
+.lens-boot-dot:nth-child(2) { animation-delay: .15s; }
+.lens-boot-dot:nth-child(3) { animation-delay: .3s; }
+.lens-boot-hint { font-size: 13px; }
+@media (prefers-reduced-motion: reduce) {
+  .lens-boot-word { animation: none; opacity: .85; }
+  .lens-boot-dot { animation: chat-typing-fade 1.6s ease-in-out infinite; }
+}
 /* Time label — muted, small, shown only under YOUR input and the AI's last reply of each turn (see
    ChatView.timeStampedIndices), aligned to that message's side. Negative top margin pulls it up snug to its
    own bubble (countering .chat-scroll's 8px row gap). tabular-nums so the digits don't jitter. */
