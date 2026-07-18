@@ -20,9 +20,9 @@ const render = (props) => act(() => root.render(
 const click = (n) => act(() => n.dispatchEvent(new MouseEvent('click', { bubbles: true })));
 
 describe('Settings 对话镜头 experimental gate', () => {
-  it('always shows the 启用对话镜头（实验性功能）toggle; the tone picker only appears when enabled', async () => {
+  it('always shows the 启用对话视图（实验性功能）toggle; the tone picker only appears when enabled', async () => {
     await render({ chatLensEnabled: false });
-    expect(container.textContent).toContain('启用对话镜头（实验性功能）');
+    expect(container.textContent).toContain('启用对话视图（实验性功能）');
     // tone picker hidden while the lens is off (its option buttons are gone; the section label too —
     // scoped to buttons so the toggle's own hint text mentioning 对话配色 doesn't false-positive)
     expect([...container.querySelectorAll('.fontbtn')].some((b) => b.textContent === '暖夜')).toBe(false);
@@ -36,7 +36,7 @@ describe('Settings 对话镜头 experimental gate', () => {
     const onChatLensEnabled = vi.fn();
     await render({ chatLensEnabled: false, onChatLensEnabled });
     const label = [...container.querySelectorAll('.settings-toggle')]
-      .find((l) => l.textContent.includes('启用对话镜头'));
+      .find((l) => l.textContent.includes('启用对话视图'));
     expect(label).toBeTruthy();
     const box = label.querySelector('input[type="checkbox"]');
     expect(box.checked).toBe(false);
@@ -45,7 +45,7 @@ describe('Settings 对话镜头 experimental gate', () => {
   });
 
   const lensBox = () => [...container.querySelectorAll('.settings-toggle')]
-    .find((l) => l.textContent.includes('启用对话镜头'))?.querySelector('input[type="checkbox"]');
+    .find((l) => l.textContent.includes('启用对话视图'))?.querySelector('input[type="checkbox"]');
 
   it('hooks absent → toggle locked with the need-hooks hint and a one-tap install button', async () => {
     const onEnableHooks = vi.fn(async () => ({ status: 'installed' }));

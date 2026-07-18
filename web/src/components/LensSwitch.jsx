@@ -22,8 +22,8 @@ export default function LensSwitch({ value, onChange }) {
       type="button"
       className="lens-toggle"
       onClick={() => onChange(next)}
-      aria-label={`切换到${LABEL[next]}模式`}
-      title={`切换到${LABEL[next]}模式`}
+      aria-label={`切换到${LABEL[next]}视图`}
+      title={`切换到${LABEL[next]}视图`}
     >
       <SwapIcon />
       <span className="lens-toggle-label">{LABEL[value]}</span>
