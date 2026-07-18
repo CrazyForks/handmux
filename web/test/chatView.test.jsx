@@ -135,6 +135,37 @@ describe('ChatView', () => {
     await waitFor(() => expect(container.querySelector('.tool-sheet')).toBeNull());
   });
 
+  it('hardware Back closes the tool sheet and stays on the lens (no app navigation)', async () => {
+    mockTranscript([{ k: 0, i: 0, role: 'assistant', type: 'tool', tool: { name: 'Bash', input: { command: 'ls' }, result: 'out', isError: false } }]);
+    const { container } = render(<ChatView pane="%0" kind="done" />);
+    const head = await screen.findByRole('button', { name: /ls/ });
+    fireEvent.click(head);
+    await waitFor(() => expect(container.querySelector('.tool-sheet')).toBeTruthy());
+    expect(window.history.state?.chatToolSheet).toBe(true); // one entry pushed above the app
+    // Faithful hardware-Back: actually traverse jsdom history (fires popstate in a task).
+    await act(async () => {
+      await new Promise((res) => {
+        const h = () => { window.removeEventListener('popstate', h); res(); };
+        window.addEventListener('popstate', h);
+        window.history.back();
+      });
+    });
+    await waitFor(() => expect(container.querySelector('.tool-sheet')).toBeNull());
+    expect(window.history.state?.chatToolSheet).toBeFalsy(); // the sheet's own entry was the one consumed
+  });
+
+  it('closing the sheet via ✕ unwinds its history entry (a later Back does not double-pop)', async () => {
+    mockTranscript([{ k: 0, i: 0, role: 'assistant', type: 'tool', tool: { name: 'Bash', input: { command: 'ls' }, result: 'out', isError: false } }]);
+    const { container } = render(<ChatView pane="%0" kind="done" />);
+    const head = await screen.findByRole('button', { name: /ls/ });
+    fireEvent.click(head);
+    await waitFor(() => expect(container.querySelector('.tool-sheet')).toBeTruthy());
+    fireEvent.click(container.querySelector('.tool-sheet-x'));
+    await waitFor(() => expect(container.querySelector('.tool-sheet')).toBeNull());
+    // history.go(-1) traversal lands in a task: the current entry must no longer be the sheet's
+    await waitFor(() => expect(window.history.state?.chatToolSheet).toBeFalsy());
+  });
+
   it('an edited file shows a +A/−B stat on the chip and a coloured diff in the sheet', async () => {
     mockTranscript([{
       k: 0, i: 0, role: 'assistant', type: 'tool',

@@ -451,6 +451,25 @@ export default function ChatView({ pane, kind, msg, onAuthFail, slashEcho, onSla
   const sheetMsg = sheetKey != null ? messages.find((m) => m.type === 'tool' && (m.k ?? m.i) === sheetKey) : null;
   useEffect(() => { if (sheetKey != null && !sheetMsg) setSheetKey(null); }, [sheetKey, sheetMsg]);
 
+  // Android/browser Back must close the sheet and land back on the chat lens — not navigate the app away
+  // (or trip the exit-confirm guard). Same overlay contract as FileManager/GitPanel: push ONE history entry
+  // above useExitConfirm's guard while the sheet is open; the popstate from Back closes it. Closing via
+  // ✕/backdrop/Esc/pane-switch unwinds the entry we still own — never pushState inside the popstate handler
+  // (some Android WebViews drop it, unbalancing the stack).
+  const sheetOpen = sheetMsg != null;
+  const sheetDepthRef = useRef(0);
+  useEffect(() => {
+    if (!sheetOpen) return undefined;
+    window.history.pushState({ chatToolSheet: true }, '');
+    sheetDepthRef.current = 1;
+    const onPop = () => { sheetDepthRef.current = 0; setSheetKey(null); };
+    window.addEventListener('popstate', onPop);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      if (sheetDepthRef.current > 0) { window.history.go(-sheetDepthRef.current); sheetDepthRef.current = 0; }
+    };
+  }, [sheetOpen]);
+
   const clearHighlight = () => { if (hlRef.current) { hlRef.current.classList.remove('chat-copy-hl'); hlRef.current = null; } };
   const dismissCopy = () => { clearHighlight(); setCopyUI(null); };
   const cancelLongPress = () => { const lp = lpRef.current; if (lp.timer) { clearTimeout(lp.timer); lp.timer = null; } };
