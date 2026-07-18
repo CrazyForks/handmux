@@ -11,6 +11,22 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.17.1',
+    date: '2026-07-18',
+    highlight: {
+      zh: '修复官方原生安装的 Claude 认不出的问题',
+      en: 'Fix: Claude from the official native installer not recognized',
+    },
+    items: {
+      zh: [
+        '修复了在用官方原生安装器(native installer)装 Claude Code 的机器上认不出 Claude 会话的问题——没有 agent 图标、对话视图切换钮不出现;现在这类机器也能正常使用对话视图。',
+      ],
+      en: [
+        'Fixed Claude sessions not being recognized on machines where Claude Code was installed via the official native installer — no agent icon, no chat-view switch; the chat view now works there.',
+      ],
+    },
+  },
+  {
     version: '0.17.0',
     date: '2026-07-18',
     highlight: {
