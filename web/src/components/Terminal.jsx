@@ -1413,7 +1413,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
   return (
     <div className="terminal-wrap">
       <div ref={elRef} className={ready ? 'terminal' : 'terminal terminal--loading'} />
-      {!ready && <LensBoot hint={t('boot.term_hint')} />}
+      {!ready && <LensBoot hint={t('boot.loading')} />}
       {!connected && <div className="term-banner term-banner--err">⚠ 连接断开,重连中…</div>}
       {dbgVisible && <div className="dbg">{dbg}</div>}
       {connected && scrollInfo && !selInfo && <div className="term-banner term-banner--hist">{scrollInfo}</div>}

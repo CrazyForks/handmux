@@ -26,6 +26,7 @@ export function useTranscript(pane, enabled) {
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [session, setSession] = useState(null); // the session id `messages` belong to (ChatView's echo dedup)
+  const [loaded, setLoaded] = useState(false); // has the FIRST response landed? (loading vs genuinely empty)
   const hashRef = useRef('');
   const oldestKRef = useRef(null);
   const seededRef = useRef(false); // has the older-page cursor been seeded from the first recent response?
@@ -44,6 +45,7 @@ export function useTranscript(pane, enabled) {
     setHasMoreOlder(false);
     setLoadingOlder(false);
     setSession(null);
+    setLoaded(false);
   }, [pane]);
 
   // Initial + polling window: 20 (was 10) so a short first screen still fills — small transcripts / fresh
@@ -51,6 +53,7 @@ export function useTranscript(pane, enabled) {
   const fetch = useCallback(() => fetchTranscript(pane, { since: hashRef.current, limit: 20 }), [pane]);
   const apply = useCallback((r) => {
     if (!r) return; // 204 / null → keep last
+    setLoaded(true); // first real response: from now on an empty list means an empty SESSION, not loading
     hashRef.current = r.hash || '';
     const incoming = Array.isArray(r.messages) ? r.messages : [];
     // SESSION SWITCH (e.g. /clear started a new jsonl): REPLACE, never merge. k is a per-file ordinal that
@@ -95,5 +98,5 @@ export function useTranscript(pane, enabled) {
     }
   }, [pane, hasMoreOlder]);
 
-  return { messages, hasMoreOlder, loadOlder, loadingOlder, session };
+  return { messages, hasMoreOlder, loadOlder, loadingOlder, session, loaded };
 }

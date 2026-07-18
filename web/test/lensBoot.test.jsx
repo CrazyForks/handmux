@@ -6,17 +6,16 @@ import LensBoot from '../src/components/LensBoot.jsx';
 // a global afterEach) never registers — without this, DOM from one test leaks into the next.
 afterEach(cleanup);
 
-describe('LensBoot (branded waiting state)', () => {
-  it('renders the handmux wordmark, the three-dot wave, and the hint', () => {
-    const { container } = render(<LensBoot hint="正在读取这段对话…" />);
-    expect(container.querySelector('.lens-boot-word').textContent).toBe('handmux');
+describe('LensBoot (waiting state)', () => {
+  it('renders the three-dot wave and the hint', () => {
+    const { container } = render(<LensBoot hint="正在加载" />);
     expect(container.querySelectorAll('.lens-boot-dot').length).toBe(3);
-    expect(screen.getByText('正在读取这段对话…')).toBeTruthy();
+    expect(screen.getByText('正在加载')).toBeTruthy();
   });
 
-  it('the hint is optional (wordmark + wave still carry the wait)', () => {
+  it('the hint is optional (the wave alone still carries the wait)', () => {
     const { container } = render(<LensBoot />);
-    expect(container.querySelector('.lens-boot-word')).toBeTruthy();
+    expect(container.querySelectorAll('.lens-boot-dot').length).toBe(3);
     expect(container.querySelector('.lens-boot-hint')).toBeNull();
   });
 });

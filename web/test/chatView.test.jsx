@@ -22,11 +22,15 @@ function setGeometry(el, { scrollTop, scrollHeight, clientHeight }) {
 }
 
 describe('ChatView', () => {
-  it('an empty transcript shows the branded waiting state (handmux), never a bare "no content"', async () => {
+  it('loading shows the wave + 正在加载; a loaded-but-empty session shows the friendly first-message nudge', async () => {
     mockTranscript([]);
     const { container } = render(<ChatView pane="%0" kind="done" />);
-    await waitFor(() => expect(container.querySelector('.lens-boot')).toBeTruthy());
-    expect(container.querySelector('.lens-boot-word').textContent).toBe('handmux');
+    // before the first poll lands: the wave is up, with no assumption that the session is empty
+    expect(container.querySelector('.lens-boot')).toBeTruthy();
+    expect(container.textContent).toContain('正在加载');
+    // first response landed with zero messages → genuinely empty session → static nudge, no wave
+    await waitFor(() => expect(container.textContent).toContain('发送你的第一条消息'));
+    expect(container.querySelector('.lens-boot')).toBeNull();
     expect(container.textContent).not.toContain('还没有对话内容');
   });
 

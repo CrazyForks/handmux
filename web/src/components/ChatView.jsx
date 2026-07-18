@@ -378,7 +378,7 @@ function resolveCopyBlock(target) {
 const COPY_CALLOUT_W = 72; // estimated callout width (px) for the right-edge clamp (single 拷贝 button)
 
 export default function ChatView({ pane, kind, msg, onAuthFail, slashEcho, onSlashEchoDone }) {
-  const { messages, hasMoreOlder, loadOlder, loadingOlder, session } = useTranscript(pane, true);
+  const { messages, hasMoreOlder, loadOlder, loadingOlder, session, loaded } = useTranscript(pane, true);
   const tsIdx = useMemo(() => timeStampedIndices(messages), [messages]);
   // The gate's options are scraped from the pane's on-screen menu (they're not in the transcript). Poll only
   // while Claude is blocked (kind==='permission'). If a menu is up → the rich PromptGate; if permission but
@@ -623,7 +623,11 @@ export default function ChatView({ pane, kind, msg, onAuthFail, slashEcho, onSla
         onPointerDown={onCopyDown} onPointerMove={onCopyMove}
         onPointerUp={cancelLongPress} onPointerCancel={cancelLongPress}
         onClickCapture={onCopyClickCapture}>
-        {messages.length === 0 && <LensBoot hint={t('boot.chat_hint')} />}
+        {/* Loading (first poll in flight) → wave + 正在加载; loaded-but-empty (a fresh session) → a
+            friendly static nudge to send the first message. Never a bare "no content". */}
+        {messages.length === 0 && (loaded
+          ? <div className="chat-new">{t('boot.chat_empty')}</div>
+          : <LensBoot hint={t('boot.loading')} />)}
         {messages.map((m, idx) => {
           if (m.type === 'thinking') return null; // dropped (see Bubble) — no bubble, no time
           const label = tsIdx.has(idx) ? fmtTime(m.ts) : null;
