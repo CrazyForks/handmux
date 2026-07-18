@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.17.2] - 2026-07-19
+
 ### Fixed
 - 修复了 0.17.1 对官方一键安装器（native installer）版 Claude Code 的识别在 macOS 上仍未生效的问题：上一版假设 `ps` 能给出进程全路径（实际只有 basename），佐证从未通过。现改为用 `lsof`（Linux 为 /proc）取进程真实可执行路径，路径中含 `claude` 即认——覆盖所有官方安装布局，与版本号、安装方式无关；路径不含 `claude` 的同名软件不会误认。
 
