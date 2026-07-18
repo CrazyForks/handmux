@@ -195,7 +195,7 @@ export default {
   'settings.font_auto': '自適應',
   'settings.font_auto_title': '依高度自動調整',
   'settings.chat_lens': '啟用對話鏡頭（實驗性功能）',
-  'settings.chat_lens_hint': '以對話形式查看和操作 Claude 工作階段。開啟後，視窗列出現鏡頭切換，並可選擇對話配色。',
+  'settings.chat_lens_hint': '實驗性功能，可能不穩定。以對話形式查看和操作 Claude 工作階段；開啟後，視窗列出現鏡頭切換，並可選擇對話配色。',
   'boot.loading': '正在載入',
   'boot.chat_empty': '發送你的第一則訊息，對話就開始啦',
   'settings.path_highlight': '高亮檔案路徑',

@@ -270,7 +270,7 @@ export default {
   'settings.font_auto': 'Auto',
   'settings.font_auto_title': 'Auto-fit to height',
   'settings.chat_lens': 'Enable chat lens (experimental)',
-  'settings.chat_lens_hint': 'View and drive Claude sessions as a chat. Enables the lens switch in the window bar and the chat colour tones below.',
+  'settings.chat_lens_hint': 'Experimental — may be unstable. View and drive Claude sessions as a chat; enables the lens switch in the window bar and the chat colour tones below.',
   'boot.loading': 'Loading',
   'boot.chat_empty': 'Send your first message to start the conversation',
   'settings.chat_tone': 'Chat colour',
