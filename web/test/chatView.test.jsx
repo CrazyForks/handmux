@@ -554,4 +554,28 @@ describe('ChatView', () => {
       vi.useRealTimers();
     }
   });
+
+  it('auto-pulls the previous page when every message is small (window shorter than the viewport, nothing to scroll)', async () => {
+    const spy = vi.spyOn(api, 'fetchTranscript');
+    let resolveFirst;
+    spy.mockImplementationOnce(() => new Promise((res) => { resolveFirst = res; }));
+    const { container } = render(<ChatView pane="%0" kind="done" />);
+    const el = container.querySelector('.chat-scroll');
+    // One tiny message: the content (200px) doesn't fill the viewport (600px) — scrollTop is pinned at 0,
+    // so the scroll-up trigger for loadOlder can never fire. The auto-fill must pull instead.
+    setGeometry(el, { scrollTop: 0, scrollHeight: 200, clientHeight: 600 });
+    spy.mockResolvedValueOnce({
+      messages: [{ k: 5, i: 5, role: 'assistant', type: 'text', text: 'older page' }], hasMore: false, firstSeq: 5,
+    });
+    await act(async () => {
+      resolveFirst({
+        messages: [{ k: 10, i: 10, role: 'assistant', type: 'text', text: 'hi' }],
+        hash: 'h1', hasMore: true, firstSeq: 10,
+      });
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    });
+    await screen.findByText('older page'); // pulled with no scrolling at all
+    expect(spy).toHaveBeenCalledWith('%0', expect.objectContaining({ before: 10, limit: 10 }));
+    // and it stops: hasMore is now false, so no third fetch chain forms
+  });
 });
