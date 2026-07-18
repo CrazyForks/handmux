@@ -228,7 +228,7 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
 export default function WindowBar({
   windows, windowAgents = {}, paneAgents = {}, currentAgent, currentWindowId, panes, currentPaneId, onSelectWindow, onSelectPane, onNewWindow, onManageWindow,
   onManagePane, paneSheetOpen = false, openMapFor = null, onMapOpened, trackWindowId,
-  lens = 'terminal', onLensChange = () => {},
+  lens = 'terminal', onLensChange = () => {}, chatLensEnabled = false,
 }) {
   const scrollRef = useRef(null);
   // While a window is being managed (its long-press menu open), keep its tab in view as the order
@@ -276,7 +276,8 @@ export default function WindowBar({
         })}
         <button className="win-tab win-new" onClick={onNewWindow} aria-label={t('windowbar.newWindow')} title={t('windowbar.newWindow')}>＋</button>
       </div>
-      {currentAgent && <LensSwitch value={lens} onChange={onLensChange} />}
+      {/* The 对话 lens is experimental (Settings opt-in): no switch until it's enabled. */}
+      {currentAgent && chatLensEnabled && <LensSwitch value={lens} onChange={onLensChange} />}
     </div>
   );
 }

@@ -11,7 +11,7 @@ import { t, getLangCode, setLang, AVAILABLE } from '../i18n';
 // font-size control. Font reads/writes the live terminal through termRef — the same persisted
 // size the two-finger pinch drives — so the modal and the gesture stay in sync.
 export default function Settings({ open, onClose, termRef, onColAdjust, onColRestore, onOpenChangelog, changelogUnread,
-  chatTone = 'ink', onChatTone = () => {},
+  chatTone = 'ink', onChatTone = () => {}, chatLensEnabled = false, onChatLensEnabled = () => {},
   notifUnread = false, onOpenInbox,
   updateInfo = null,
   activePreview = null, pane = null, lastPreviewDir = null, dynamicEnabled = false,
@@ -146,6 +146,20 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
         </div>
 
         <div className="settings-section">
+          <label className="settings-toggle">
+            <span className="settings-label">{t('settings.chat_lens')}</span>
+            <span className="cmd-switch">
+              <input type="checkbox" checked={chatLensEnabled} onChange={(e) => onChatLensEnabled(e.target.checked)} />
+              <span className="cmd-switch-track" aria-hidden="true" />
+              <span className="cmd-switch-knob" aria-hidden="true" />
+            </span>
+          </label>
+          <div className="settings-hint">{t('settings.chat_lens_hint')}</div>
+        </div>
+
+        {/* The tone picker only makes sense once the 对话 lens itself is enabled (experimental opt-in). */}
+        {chatLensEnabled && (
+        <div className="settings-section">
           <div className="settings-label">{t('settings.chat_tone')}</div>
           <div className="settings-btns">
             {['dusk', 'ink', 'light'].map((tn) => (
@@ -161,6 +175,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
           </div>
           <div className="settings-hint">{t('settings.chat_tone_hint')}</div>
         </div>
+        )}
 
         <div className="settings-section">
           <label className="settings-toggle">

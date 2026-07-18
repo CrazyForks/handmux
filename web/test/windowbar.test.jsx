@@ -109,6 +109,13 @@ describe('WindowBar', () => {
     expect(container.querySelector('.wt-trigger .agent-mark')?.getAttribute('aria-label')).toBe('claude');
   });
 
+  it('the lens switch only renders when the experimental 对话 lens is enabled (and the pane has an agent)', () => {
+    render({ ...base, currentAgent: 'claude' }); // no chatLensEnabled → hidden
+    expect(container.querySelector('.lens-toggle')).toBeNull();
+    render({ ...base, currentAgent: 'claude', chatLensEnabled: true });
+    expect(container.querySelector('.lens-toggle')).toBeTruthy();
+  });
+
   it('a single-pane active window shows no pane control — just the plain window tab', () => {
     render({
       ...base,

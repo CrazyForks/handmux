@@ -9,7 +9,7 @@ import {
   renameWindowIdeas, getChangelogSeen, setChangelogSeen,
   getVersionSeen, setVersionSeen,
   getReadInboxIds, addReadInboxId, pruneReadInboxIds, getNotifSeenTs, setNotifSeenTs,
-  getPreviewDir, getIdeas, getChatTone, setChatTone,
+  getPreviewDir, getIdeas, getChatTone, setChatTone, getChatLensEnabled, setChatLensEnabled,
 } from './storage.js';
 import { LATEST_RELEASE } from './changelog.js';
 import {
@@ -82,6 +82,9 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [chatTone, setChatToneState] = useState(getChatTone); // 对话-lens colour tone (persisted); default 深墨
   const pickChatTone = (tone) => { setChatTone(tone); setChatToneState(tone); };
+  // 对话 lens is experimental: hidden everywhere (lens switch + tone picker) until opted in via Settings.
+  const [chatLensOn, setChatLensOn] = useState(getChatLensEnabled);
+  const toggleChatLens = (on) => { setChatLensEnabled(on); setChatLensOn(on); };
   const [usageOpen, setUsageOpen] = useState(false);
   const [bindOpen, setBindOpen] = useState(false);
   const [newWinOpen, setNewWinOpen] = useState(false);
@@ -821,7 +824,7 @@ export default function App() {
 
   // Chat lens is active only for an agent pane whose lens is set to 'chat'. Drives BOTH swaps: the main
   // view (ChatView vs Terminal) and the bottom bar (ChatComposer vs the terminal BottomDock).
-  const chatLens = !!current?.paneId && !!states[current.paneId]?.agent && lens === 'chat';
+  const chatLens = chatLensOn && !!current?.paneId && !!states[current.paneId]?.agent && lens === 'chat';
 
   // Fetch + open a doc by ABSOLUTE path: dedupe into a tab, record the recent, reveal the sheet.
   // Throws on fetch failure so callers can decide (prompt for a base dir, or surface inline).
@@ -1127,6 +1130,8 @@ export default function App() {
         onClose={() => setSettingsOpen(false)}
         chatTone={chatTone}
         onChatTone={pickChatTone}
+        chatLensEnabled={chatLensOn}
+        onChatLensEnabled={toggleChatLens}
         termRef={termRef}
         getColCount={() => tmuxColsRef.current ?? termRef.current?.getSize()?.cols}
         onColAdjust={(d) => tmuxResizeCols(d)}
@@ -1367,6 +1372,7 @@ export default function App() {
             onMapOpened={() => setOpenMapFor(null)}
             trackWindowId={manageWindow?.id}
             lens={lens}
+            chatLensEnabled={chatLensOn}
             onLensChange={(v) => { setLens(v); localStorage.setItem('tw_lens_' + current.paneId, v); }}
           />
           {current.paneId && (

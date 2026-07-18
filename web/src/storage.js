@@ -14,6 +14,7 @@ const PREVIEW_DIR_KEY = 'tw_preview_dir';   // { [windowId]: absPath } — last 
 const STARTUP_CMD_KEY = 'tw_startup_cmd';   // last startup command chosen in new window/session (e.g. "claude")
 const CHAT_DRAFT_KEY = 'tw_chat_draft';     // the chat composer's unsent text — survives an app exit/kill
 const CHAT_TONE_KEY = 'tw_chat_tone';       // the 对话-lens colour tone the user picked (ink | light | dusk)
+const CHAT_LENS_KEY = 'tw_chat_lens';       // the 对话-lens experimental opt-in ('1' = enabled)
 const IDEAS_KEY = 'tw_ideas';               // { [sessionName]: { [windowName]: Idea[] } } — per-window todo list
 const CHANGELOG_SEEN_KEY = 'tw_changelog_seen'; // the latest changelog entry id (v) the user has opened
 const VERSION_SEEN_KEY = 'tw_version_seen';     // the npm "latest" version already acknowledged in Settings
@@ -195,6 +196,15 @@ export const getChatTone = () => {
 };
 export const setChatTone = (tone) => {
   if (CHAT_TONES.includes(tone)) localStorage.setItem(CHAT_TONE_KEY, tone);
+};
+
+// 对话 lens itself — an EXPERIMENTAL feature, opt-in from Settings (default OFF). When off, the lens
+// switch in the window bar is hidden (every pane stays on the terminal lens) and the chat-tone picker
+// goes with it; a pane's remembered lens choice is kept, so re-enabling restores it.
+export const getChatLensEnabled = () => localStorage.getItem(CHAT_LENS_KEY) === '1';
+export const setChatLensEnabled = (on) => {
+  if (on) localStorage.setItem(CHAT_LENS_KEY, '1');
+  else localStorage.removeItem(CHAT_LENS_KEY);
 };
 
 // Chat composer draft — mirrored on every change (send/fill clear the box, which removes the key),

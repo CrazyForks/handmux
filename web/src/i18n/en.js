@@ -269,6 +269,8 @@ export default {
   'settings.font_increase': 'Increase font size',
   'settings.font_auto': 'Auto',
   'settings.font_auto_title': 'Auto-fit to height',
+  'settings.chat_lens': 'Enable chat lens (experimental)',
+  'settings.chat_lens_hint': 'View and drive Claude sessions as a chat. Enables the lens switch in the window bar and the chat colour tones below.',
   'settings.chat_tone': 'Chat colour',
   'settings.chat_tone_dusk': 'Warm Dusk',
   'settings.chat_tone_ink': 'Warm Gold',

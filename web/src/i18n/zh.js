@@ -268,6 +268,8 @@ export default {
   'settings.font_increase': '增大字体',
   'settings.font_auto': '自适应',
   'settings.font_auto_title': '按高度自动适配',
+  'settings.chat_lens': '启用对话镜头（实验性功能）',
+  'settings.chat_lens_hint': '以对话形式查看和操作 Claude 会话。开启后，窗口栏出现镜头切换，并可选择对话配色。',
   'settings.chat_tone': '对话配色',
   'settings.chat_tone_dusk': '暖夜',
   'settings.chat_tone_ink': '暖金',
