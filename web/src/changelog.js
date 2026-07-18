@@ -11,6 +11,22 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.17.2',
+    date: '2026-07-18',
+    highlight: {
+      zh: '再次修复官方一键安装的 Claude 认不出的问题',
+      en: 'Second fix for native-install Claude not recognized',
+    },
+    items: {
+      zh: [
+        '修复了上一版(0.17.1)对官方一键安装器版 Claude Code 的识别在 macOS 上仍未生效的问题;现在所有官方安装方式都能正确识别 Claude 会话(agent 图标、对话视图切换钮正常出现)。',
+      ],
+      en: [
+        'Fixed the 0.17.1 native-installer Claude detection still not working on macOS; Claude sessions are now recognized across all official install methods (agent icon and chat-view switch appear).',
+      ],
+    },
+  },
+  {
     version: '0.17.1',
     date: '2026-07-18',
     highlight: {

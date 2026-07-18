@@ -143,6 +143,9 @@ function readStateFile(file) {
 // The hook is the sole writer; the server reads the file fresh on every getStates and on every file
 // change (the watcher, for push). No persisted state of our own — the file IS the persistence.
 export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, now = () => Date.now(), statMtime = defaultStatMtime, readTail = defaultReadTail, run = defaultRun } = {}) {
+  // Cache for resolveVersionedComms verdicts ((tty|cmd) → bool) — one corroboration per version per pane,
+  // not one per poll. Per instance: prod shares one server-wide map; tests get isolation for free.
+  const commVerdicts = new Map();
   const lastPushed = {}; // pane → 'needs' | 'done' | null  (in-process push-transition dedup, by display view)
   // The dedup above is in-process ONLY: a restart (e.g. ./deploy.sh) wipes it while the hook's state
   // file on disk keeps every pane's latest 需要你/已完成. Without priming, the first read after boot
@@ -188,7 +191,7 @@ export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, 
       const panes = await commands.listLivePanes();
       // Native-install Claude binaries report a version string as pane_current_command — corroborate via
       // ps and normalize to 'claude' BEFORE any identity/liveness match (see agents/claude.js).
-      await resolveVersionedComms(panes, run);
+      await resolveVersionedComms(panes, run, commVerdicts);
       live = new Map(panes.map((p) => [p.id, p]));
     } catch { /* tmux down */ }
 

@@ -285,11 +285,14 @@ describe('createClaudeEvents getStates (reads the hook state file)', () => {
     expect((await ev.getStates())['%1']).toMatchObject({ session: 'proj', window: '@5', agent: 'claude', kind: null });
   });
 
-  it('treats a native-install version-named binary (pane_current_command = bare semver) as Claude — but ONLY with ps path corroboration', async () => {
-    const panes = liveAll(['%1'], { '%1': { cmd: '2.1.196', tty: '/dev/ttys077' } });
-    const claudeRun = async () => 'ttys077 4242 /Users/x/.local/share/claude/versions/2.1.196';
+  it('treats a native-install version-named binary (pane_current_command = bare semver) as Claude — but ONLY with exe-path corroboration', async () => {
+    const panes = liveAll(['%1'], { '%1': { cmd: '2_1_196', tty: '/dev/ttys077' } });
+    const mkRun = (exe) => async (cmd) => cmd === 'lsof'
+      ? `p4242\nftxt\nn${exe}\n`
+      : 'ttys077 4242 2_1_196'; // ps: pane procs show the basename comm
     // process presence (no hooks yet): corroborated version-named comm → icon / lens switch work
     const commands = { listLivePanes: async () => panes.map((p) => ({ ...p })) };
+    const claudeRun = mkRun('/Users/x/.local/share/claude/versions/2.1.196');
     const ev = createClaudeEvents({ commands, push, file: '/no/such/file.json', run: claudeRun });
     expect((await ev.getStates())['%1']).toMatchObject({ agent: 'claude', kind: null });
     // liveness: a recorded 进行中 on that pane must NOT be pruned as gone
@@ -297,8 +300,7 @@ describe('createClaudeEvents getStates (reads the hook state file)', () => {
     const ev2 = createClaudeEvents({ commands, push, file, run: claudeRun });
     expect((await ev2.getStates())['%1']).toMatchObject({ kind: 'working', msg: 'build' });
     // the 随便一个软件 case: a version-named binary OUTSIDE claude's versions dir is NOT Claude
-    const otherRun = async () => 'ttys077 4242 /opt/sometool/2.1.196';
-    const ev3 = createClaudeEvents({ commands, push, file: '/no/such/file.json', run: otherRun });
+    const ev3 = createClaudeEvents({ commands, push, file: '/no/such/file.json', run: mkRun('/opt/sometool/2.1.196') });
     expect(await ev3.getStates()).toEqual({});
   });
 

@@ -14,44 +14,55 @@ import { promises as fsp } from 'node:fs';
 import { resolveEncodedDirSession, isSessionUuid, normTty } from './scanUtils.js';
 
 // The NATIVE installer names the real binary by version (~/.local/share/claude/versions/2.1.196 —
-// ~/.local/bin/claude is only a symlink to it), and tmux #{pane_current_command} follows the kernel comm:
-// the binary's BASENAME. On those machines a claude pane reports a bare version string ("2.1.196")
-// instead of "claude". Matching any semver-shaped NAME would misidentify any version-named binary as
-// Claude, so we corroborate with ps: a process on the pane's tty whose FULL executable path is a file in
-// Claude's versions dir, its basename tied to the comm tmux reported (macOS ps `comm` carries the full
-// path — verified live; on Linux comm is the basename and the real path comes from /proc/<pid>/exe).
+// ~/.local/bin/claude is only a symlink to it), and tmux #{pane_current_command} follows the process
+// title: the binary's basename. On those machines a claude pane reports a bare version string ("2_1_196",
+// dots sanitized to underscores) instead of "claude". Matching any semver-shaped NAME would misidentify
+// any version-named binary as Claude, and ps `comm` can't corroborate it (for pane-tty processes it shows
+// the same basename — verified live), so we corroborate with the process's REAL executable path
+// (`lsof -d txt` on macOS, /proc/<pid>/exe on Linux): every official install layout carries "claude" in
+// the path (Caskroom/claude-code@latest, .local/share/claude/versions, node_modules/@anthropic-ai/
+// claude-code, …) — version- and layout-proof — while a foreign version-named binary's path doesn't.
 // Only then is the pane's cmd normalized to 'claude', so every downstream match (identity + liveness)
-// stays exact-name. Costs one ps (plus a readlink or two on Linux) and only when a semver-shaped comm
-// shows up at all.
+// stays exact-name. Verdicts are cached per (tty, cmd) in an injected Map — a cache miss costs one ps +
+// one lsof per candidate pane, and misses only happen once per version per pane.
 const VERSION_COMM_RE = /^\d+[._]\d+[._]\d+$/;
-const VERSIONED_DIR_RE = /\/\.local\/share\/claude\/versions\/[^/]+$/;
-export async function resolveVersionedComms(panes, run) {
+const CLAUDE_PATH_RE = /claude/;
+
+// The real executable path of a pid: first txt entry from lsof (resolves symlinks → the actual binary),
+// falling back to /proc on Linux where lsof output may be restricted. '' when unknowable.
+async function exePath(run, pid) {
+  const out = await run('lsof', ['-a', '-p', String(pid), '-d', 'txt', '-Fn']);
+  for (const line of String(out).split('\n')) if (line[0] === 'n') return line.slice(1).trim();
+  try { return await fsp.readlink(`/proc/${pid}/exe`); } catch { return ''; }
+}
+
+export async function resolveVersionedComms(panes, run, verdicts = new Map()) {
   const candidates = panes.filter((p) => p && p.tty && VERSION_COMM_RE.test(p.cmd || ''));
   if (!candidates.length) return panes;
+  const key = (p) => `${normTty(p.tty)}|${p.cmd}`;
+  for (const p of candidates) if (verdicts.get(key(p)) === true) p.cmd = 'claude';
+  const pending = candidates.filter((p) => p.cmd !== 'claude' && !verdicts.has(key(p)));
+  if (!pending.length) return panes;
+
   const out = await run('ps', ['-Ao', 'tty=,pid=,comm=']);
-  const byTty = new Map(); // tty → [{ pid, exe }]
+  const procs = []; // [{ tty, pid, comm }]
   for (const line of String(out).split('\n')) {
     const m = line.match(/^\s*(\S+)\s+(\d+)\s+(.*)$/);
     if (!m) continue;
     const tty = normTty(m[1]);
-    if (!tty) continue;
-    if (!byTty.has(tty)) byTty.set(tty, []);
-    byTty.get(tty).push({ pid: m[2], exe: m[3].trim() });
+    if (tty) procs.push({ tty, pid: m[2], comm: m[3].trim() });
   }
-  for (const p of candidates) {
-    for (const proc of byTty.get(normTty(p.tty)) || []) {
-      let exe = proc.exe;
-      if (!exe.startsWith('/')) {
-        try { exe = await fsp.readlink(`/proc/${proc.pid}/exe`); } catch { continue; } // Linux-only fallback
-      }
-      // The file's basename must equal the comm tmux reported (dots or the sanitized-underscore variant),
-      // AND the file must live in Claude's versions dir — a random semver-named binary elsewhere is NOT Claude.
-      const base = exe.split('/').pop();
-      if ((base === p.cmd || base === p.cmd.replace(/_/g, '.')) && VERSIONED_DIR_RE.test(exe)) {
-        p.cmd = 'claude';
-        break;
-      }
+  for (const p of pending) {
+    let ok = false;
+    // The process must tie to the pane by tty AND by comm (dots or sanitized underscores), then prove
+    // its real path carries "claude" — a random semver-named binary elsewhere is NOT Claude.
+    const ties = procs.filter((r) => r.tty === normTty(p.tty)
+      && (r.comm === p.cmd || r.comm === p.cmd.replace(/_/g, '.')));
+    for (const r of ties) {
+      if (CLAUDE_PATH_RE.test(await exePath(run, r.pid))) { ok = true; break; }
     }
+    verdicts.set(key(p), ok);
+    if (ok) p.cmd = 'claude';
   }
   return panes;
 }

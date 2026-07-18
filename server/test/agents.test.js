@@ -95,26 +95,36 @@ describe('resolveCodexSession', () => {
 });
 
 describe('resolveVersionedComms (native-install Claude: comm = bare version string)', () => {
-  const PS = (lines) => async () => lines.join('\n');
-  it('normalizes cmd → claude only when the exe path is in Claude\'s versions dir', async () => {
+  // run stub: ps lists tty/pid/comm (pane procs show the BASENAME — verified); lsof txt gives the real exe path
+  const RUN = (psLines, exeByPid) => async (cmd, args) => {
+    if (cmd === 'ps') return psLines.join('\n');
+    if (cmd === 'lsof') {
+      const pid = args[args.indexOf('-p') + 1];
+      const exe = exeByPid[pid];
+      return exe ? `p${pid}\nftxt\nn${exe}\n` : '';
+    }
+    return '';
+  };
+  it('normalizes cmd → claude only when the real exe path carries "claude" (any install layout)', async () => {
     const panes = [
-      { id: '%1', cmd: '2.1.196', tty: '/dev/ttys010' },  // real native-install claude
-      { id: '%2', cmd: '2.1.196', tty: '/dev/ttys011' },  // some OTHER binary that happens to be version-named
+      { id: '%1', cmd: '2_1_196', tty: '/dev/ttys010' },  // native install
+      { id: '%2', cmd: '2_1_196', tty: '/dev/ttys011' },  // some OTHER binary that happens to be version-named
       { id: '%3', cmd: 'zsh', tty: '/dev/ttys012' },
+      { id: '%4', cmd: '2_1_196', tty: '/dev/ttys013' },  // hypothetical other official layout
     ];
-    const run = PS([
-      'ttys010 4242 /Users/x/.local/share/claude/versions/2.1.196',
-      'ttys011 4343 /opt/sometool/2.1.196',
-    ]);
+    const run = RUN(
+      ['ttys010 4242 2_1_196', 'ttys011 4343 2_1_196', 'ttys013 4545 2_1_196'],
+      {
+        4242: '/Users/x/.local/share/claude/versions/2.1.196',
+        4343: '/opt/sometool/2.1.196',
+        4545: '/usr/local/Caskroom/claude-code@latest/2.1.196/2.1.196',
+      },
+    );
     await resolveVersionedComms(panes, run);
     expect(panes[0].cmd).toBe('claude');
-    expect(panes[1].cmd).toBe('2.1.196'); // NOT in claude's versions dir → untouched
+    expect(panes[1].cmd).toBe('2_1_196'); // no "claude" anywhere in its path → untouched
     expect(panes[2].cmd).toBe('zsh');
-  });
-  it('accepts the underscore-sanitized comm variant against the dotted filename', async () => {
-    const panes = [{ id: '%1', cmd: '2_1_196', tty: 'ttys010' }];
-    await resolveVersionedComms(panes, PS(['ttys010 4242 /Users/x/.local/share/claude/versions/2.1.196']));
-    expect(panes[0].cmd).toBe('claude');
+    expect(panes[3].cmd).toBe('claude');
   });
   it('does not call ps at all when no semver-shaped comm is present', async () => {
     const panes = [{ id: '%1', cmd: 'claude', tty: 'ttys010' }, { id: '%2', cmd: 'zsh', tty: 'ttys011' }];
@@ -124,16 +134,30 @@ describe('resolveVersionedComms (native-install Claude: comm = bare version stri
     expect(panes[0].cmd).toBe('claude');
   });
   it('a semver comm without a tty is ignored (and ps never runs)', async () => {
-    const panes = [{ id: '%1', cmd: '2.1.196' }];
+    const panes = [{ id: '%1', cmd: '2_1_196' }];
     let called = false;
     await resolveVersionedComms(panes, async () => { called = true; return ''; });
     expect(called).toBe(false);
-    expect(panes[0].cmd).toBe('2.1.196');
+    expect(panes[0].cmd).toBe('2_1_196');
   });
-  it('Linux: comm is the basename — falls back to /proc/<pid>/exe only when it exists (skips silently on macOS-style layout)', async () => {
-    // On macOS there is no /proc, so a basename-only comm can never be corroborated → stays as-is.
+  it('caches verdicts per (tty, cmd): the second call needs no ps/lsof, and a cached false stays false', async () => {
+    let psCalls = 0, lsofCalls = 0;
+    const run = async (cmd) => {
+      if (cmd === 'ps') { psCalls++; return 'ttys020 4242 2_1_196'; }
+      if (cmd === 'lsof') { lsofCalls++; return 'p4242\nftxt\nn/Users/x/.local/share/claude/versions/2.1.196\n'; }
+      return '';
+    };
+    const verdicts = new Map();
+    const mk = () => [{ id: '%1', cmd: '2_1_196', tty: '/dev/ttys020' }];
+    expect((await resolveVersionedComms(mk(), run, verdicts))[0].cmd).toBe('claude');
+    expect((await resolveVersionedComms(mk(), run, verdicts))[0].cmd).toBe('claude');
+    expect(psCalls).toBe(1);
+    expect(lsofCalls).toBe(1);
+  });
+  it('Linux fallback: lsof empty → /proc readlink (best effort, never throws)', async () => {
     const panes = [{ id: '%1', cmd: '2.1.196', tty: 'pts/3' }];
-    await resolveVersionedComms(panes, PS(['pts/3 4242 2.1.196']));
+    const run = RUN(['pts/3 4242 2.1.196'], {});
+    await resolveVersionedComms(panes, run);
     expect(['2.1.196', 'claude']).toContain(panes[0].cmd); // platform-dependent; never throws
   });
 });
