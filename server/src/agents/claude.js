@@ -10,8 +10,8 @@
 //   sessions       cwd → session resolution + the `resume` command, for orphan takeover
 import path from 'node:path';
 import os from 'node:os';
-import { promises as fsp } from 'node:fs';
-import { resolveEncodedDirSession, isSessionUuid, normTty } from './scanUtils.js';
+import { resolveEncodedDirSession, isSessionUuid } from './scanUtils.js';
+import { resolveByExecutable, executableBasename } from './processIdentity.js';
 
 // The NATIVE installer names the real binary by version (~/.local/share/claude/versions/2.1.196 —
 // ~/.local/bin/claude is only a symlink to it), and tmux #{pane_current_command} follows that basename
@@ -23,50 +23,22 @@ import { resolveEncodedDirSession, isSessionUuid, normTty } from './scanUtils.js
 // "claude" — every official install layout carries it (Caskroom/claude-code@latest, .local/share/
 // claude/versions, node_modules/@anthropic-ai/claude-code, …), version- and layout-proof, while a
 // foreign version-named binary's path doesn't. Only then is the pane's cmd normalized to 'claude', so
-// every downstream match (identity + liveness) stays exact-name. Verdicts are cached per (tty, cmd) in
-// an injected Map — a cache miss costs one ps + one lsof per candidate pane, once per version per pane.
+// every downstream match (identity + liveness) stays exact-name. A short executable-verdict cache still
+// refreshes the cheap foreground pid signature every poll: PID/TTY reuse invalidates immediately and a
+// transient negative probe retries after 3s instead of poisoning the pane until server restart.
 const VERSION_COMM_RE = /^\d+[._]\d+[._]\d+$/;
 const CLAUDE_PATH_RE = /claude/;
 
-// The real executable path of a pid: first txt entry from lsof (resolves symlinks → the actual binary),
-// falling back to /proc on Linux where lsof output may be restricted. '' when unknowable.
-async function exePath(run, pid) {
-  const out = await run('lsof', ['-a', '-p', String(pid), '-d', 'txt', '-Fn']);
-  for (const line of String(out).split('\n')) if (line[0] === 'n') return line.slice(1).trim();
-  try { return await fsp.readlink(`/proc/${pid}/exe`); } catch { return ''; }
-}
-
-export async function resolveVersionedComms(panes, run, verdicts = new Map()) {
-  const candidates = panes.filter((p) => p && p.tty && VERSION_COMM_RE.test(p.cmd || ''));
-  if (!candidates.length) return panes;
-  const key = (p) => `${normTty(p.tty)}|${p.cmd}`;
-  for (const p of candidates) if (verdicts.get(key(p)) === true) p.cmd = 'claude';
-  const pending = candidates.filter((p) => p.cmd !== 'claude' && !verdicts.has(key(p)));
-  if (!pending.length) return panes;
-
-  const out = await run('ps', ['-Ao', 'tty=,pid=,comm=']);
-  const procs = []; // [{ tty, pid, comm }]
-  for (const line of String(out).split('\n')) {
-    const m = line.match(/^\s*(\S+)\s+(\d+)\s+(.*)$/);
-    if (!m) continue;
-    const tty = normTty(m[1]);
-    if (tty) procs.push({ tty, pid: m[2], comm: m[3].trim() });
-  }
-  for (const p of pending) {
-    let ok = false;
-    // Tie by tty + exe BASENAME (== tmux's version comm; ps comm is the self-set title and can't be
-    // trusted to match), then require the real path to carry "claude" — a random semver-named binary
-    // elsewhere is NOT Claude.
-    const want = p.cmd.replace(/_/g, '.');
-    for (const r of procs.filter((r) => r.tty === normTty(p.tty))) {
-      const exe = await exePath(run, r.pid);
-      const base = exe.split('/').pop() || '';
-      if ((base === p.cmd || base === want) && CLAUDE_PATH_RE.test(exe)) { ok = true; break; }
-    }
-    verdicts.set(key(p), ok);
-    if (ok) p.cmd = 'claude';
-  }
-  return panes;
+export async function resolveVersionedComms(panes, run, verdicts = new Map(), opts = {}) {
+  return resolveByExecutable(panes, run, verdicts, {
+    candidate: (cmd) => VERSION_COMM_RE.test(cmd),
+    normalized: 'claude',
+    matches: (exe, cmd) => {
+      const base = executableBasename(exe);
+      return (base === cmd || base === cmd.replace(/_/g, '.')) && CLAUDE_PATH_RE.test(exe);
+    },
+    ...opts,
+  });
 }
 
 // Build the 需要你 one-liner for a PermissionRequest, from the tool it's gating on (PermissionRequest

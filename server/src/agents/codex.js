@@ -9,6 +9,7 @@ import os from 'node:os';
 import { promises as fsp } from 'node:fs';
 import { readHead, readTail, firstCwd, isSessionUuid } from './scanUtils.js';
 import { classifyClaude } from './claude.js';
+import { resolveByExecutable, executableBasename } from './processIdentity.js';
 
 export const sessionsDir = (home = os.homedir()) => path.join(home, '.codex', 'sessions');
 
@@ -42,6 +43,18 @@ export function codexUserSnippet(tailText, max = 80) {
     return text.length > max ? `${text.slice(0, max)}…` : text;
   }
   return '';
+}
+
+// The npm-installed Codex launcher leaves `node` as tmux's pane_current_command. Never accept that
+// ambiguous name by itself: prove a foreground process on the same TTY has a real executable named
+// `codex` from a Codex path, then normalize the pane to the canonical agent name.
+export async function resolveCodexComms(panes, run, verdicts = new Map(), opts = {}) {
+  return resolveByExecutable(panes, run, verdicts, {
+    candidate: (cmd) => cmd === 'node',
+    normalized: 'codex',
+    matches: (exe) => /^codex(?:\.exe)?$/i.test(executableBasename(exe)) && /codex/i.test(exe),
+    ...opts,
+  });
 }
 
 // Walk the date-nested sessions tree (…/YYYY/MM/DD/rollout-*.jsonl) newest-first and collect up to `limit`
@@ -90,11 +103,8 @@ export const codex = {
   id: 'codex',
   label: 'Codex CLI',
   procName: 'codex',
-  // The `codex` CLI on PATH is a Node launcher that spawns the real (Rust) codex as a child but stays the
-  // pane's foreground process — so tmux #{pane_current_command} reports "node", not "codex" (verified live).
-  // Accept both for liveness; a codex-tagged state entry only exists where codex actually ran, so matching
-  // "node" can only keep it alive while that pane is still a node app (it's pruned once it returns to a shell).
-  procNames: ['codex', 'node'],
+  // Ambiguous `node` launchers are normalized by resolveCodexComms only after real-executable proof.
+  procNames: ['codex'],
   procMatch: /^(\S*\/)?codex(\s|$)/,
   takeoverPrefix: 'cx', // tmux session name prefix for a takeover (cx-<label>-<n>)
   classify: classifyClaude, // Codex hook payloads match Claude's field-for-field — same classifier

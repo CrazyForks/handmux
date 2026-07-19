@@ -289,7 +289,7 @@ describe('createClaudeEvents getStates (reads the hook state file)', () => {
     const panes = liveAll(['%1'], { '%1': { cmd: '2_1_196', tty: '/dev/ttys077' } });
     const mkRun = (exe) => async (cmd) => cmd === 'lsof'
       ? `p4242\nftxt\nn${exe}\n`
-      : 'ttys077 4242 claude'; // ps comm is the self-set title, NOT tmux's version report (verified live)
+      : 'ttys077 4242 S+'; // only foreground pids are candidates; identity comes from the real exe
     // process presence (no hooks yet): corroborated version-named comm → icon / lens switch work
     const commands = { listLivePanes: async () => panes.map((p) => ({ ...p })) };
     const claudeRun = mkRun('/Users/x/.local/share/claude/versions/2.1.196');
@@ -305,8 +305,9 @@ describe('createClaudeEvents getStates (reads the hook state file)', () => {
   });
 
   it('does NOT surface a non-agent process — a plain shell or bare node is not an agent (procName match, never the ambiguous "node")', async () => {
-    const commands = { listLivePanes: async () => liveAll(['%1', '%2'], { '%1': { cmd: 'zsh' }, '%2': { cmd: 'node' } }) };
-    const ev = createClaudeEvents({ commands, push, file: '/no/such/file.json' });
+    const commands = { listLivePanes: async () => liveAll(['%1', '%2'], { '%1': { cmd: 'zsh' }, '%2': { cmd: 'node', tty: '/dev/ttys078' } }) };
+    const run = async (cmd) => cmd === 'ps' ? 'ttys078 777 S+' : 'p777\nftxt\nn/usr/local/bin/node\n';
+    const ev = createClaudeEvents({ commands, push, file: '/no/such/file.json', run });
     expect(await ev.getStates()).toEqual({});
   });
 
@@ -469,19 +470,28 @@ describe('createClaudeEvents with a Codex-tagged pane (agent dispatch, Claude-pa
   const cdone = (msg, ts) => ({ ts, src: 'stop', host: 'h', payload: { last_assistant_message: msg }, agent: 'codex' });
   const cwork = (prompt, ts) => ({ ts, src: 'prompt', host: 'h', payload: { prompt }, agent: 'codex' });
   // Real codex pane_current_command is "node" (the launcher stays foreground) — must NOT be pruned.
-  const liveCodex = (ids, cmd = 'node') => ids.map((id) => ({ id, cmd, session: 'proj', window: '@5', windowName: 'dev' }));
+  const liveCodex = (ids, cmd = 'node') => ids.map((id) => ({ id, cmd, tty: '/dev/ttys030', session: 'proj', window: '@5', windowName: 'dev' }));
+  const codexRun = async (cmd, args) => {
+    if (cmd === 'ps') return 'ttys030 501 S+\nttys030 502 R+';
+    if (cmd === 'lsof') {
+      const pid = args[args.indexOf('-p') + 1];
+      const exe = pid === '502' ? '/opt/@openai/codex/bin/codex' : '/usr/local/bin/node';
+      return `p${pid}\nftxt\nn${exe}\n`;
+    }
+    return '';
+  };
 
   it("keeps a codex pane whose command is the node launcher (not pruned as non-codex)", async () => {
     const file = stateFile({ '%1': cdone('ok', 1000) });
-    const states = await createClaudeEvents({ commands: { listLivePanes: async () => liveCodex(['%1'], 'node') }, push: { sendToSession: async () => ({}) }, file }).getStates();
+    const states = await createClaudeEvents({ commands: { listLivePanes: async () => liveCodex(['%1'], 'node') }, push: { sendToSession: async () => ({}) }, file, run: codexRun }).getStates();
     expect(states['%1']).toMatchObject({ kind: 'done', msg: 'ok' });
   });
 
   it("classifies codex hook verbs (prompt→working, stop→done) and prunes when the pane isn't running codex", async () => {
-    expect((await createClaudeEvents({ commands: { listLivePanes: async () => liveCodex(['%1']) }, push: { sendToSession: async () => ({}) }, file: stateFile({ '%1': cwork('do it', Date.now()) }) }).getStates())['%1'])
+    expect((await createClaudeEvents({ commands: { listLivePanes: async () => liveCodex(['%1']) }, push: { sendToSession: async () => ({}) }, file: stateFile({ '%1': cwork('do it', Date.now()) }), run: codexRun }).getStates())['%1'])
       .toMatchObject({ kind: 'working', msg: 'do it', session: 'proj' });
     const file = stateFile({ '%1': cdone('built it', 1000) });
-    expect((await createClaudeEvents({ commands: { listLivePanes: async () => liveCodex(['%1']) }, push: { sendToSession: async () => ({}) }, file }).getStates())['%1'])
+    expect((await createClaudeEvents({ commands: { listLivePanes: async () => liveCodex(['%1']) }, push: { sendToSession: async () => ({}) }, file, run: codexRun }).getStates())['%1'])
       .toMatchObject({ kind: 'done', msg: 'built it', session: 'proj', agent: 'codex' }); // agent surfaced for the UI logo
     // pane flipped back to the shell → codex no longer foreground → pruned (procName mismatch, not 'claude')
     const shellPane = { listLivePanes: async () => [{ id: '%1', cmd: 'zsh', session: 'proj', window: '@5', windowName: 'dev' }] };
@@ -493,7 +503,7 @@ describe('createClaudeEvents with a Codex-tagged pane (agent dispatch, Claude-pa
     const push = { sendToSession: async (session, payload) => { pushed.push(payload.body); return { sent: 1 }; } };
     const file = stateFile({ '%1': cdone('turn one', 1000) });
     const commands = { listLivePanes: async () => liveCodex(['%1']) };
-    const ev = createClaudeEvents({ commands, push, file });
+    const ev = createClaudeEvents({ commands, push, file, run: codexRun });
     await ev.getStates();                                                       // done#1 → push
     await ev.getStates();                                                       // same ts → deduped
     fs.writeFileSync(file, JSON.stringify({ '%1': cdone('turn two', 2000) }));  // new Stop, new ts

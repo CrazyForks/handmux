@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { AGENTS, getAgent, agentForProc } from '../src/agents/index.js';
 import { resolveVersionedComms } from '../src/agents/claude.js';
+import { resolveCodexComms } from '../src/agents/codex.js';
 import { resolveCodexSession, rolloutSessionId, codexUserSnippet } from '../src/agents/codex.js';
 import { parseAgentProcs } from '../src/agents/scanUtils.js';
 import { scanOrphans, takeoverOrphan } from '../src/orphans.js';
@@ -115,7 +116,7 @@ describe('resolveVersionedComms (native-install Claude: comm = bare version stri
       { id: '%5', cmd: '2_1_196', tty: '/dev/ttys014' },  // claude in path but wrong basename → no tie
     ];
     const run = RUN(
-      ['ttys010 4242 claude', 'ttys011 4343 claude', 'ttys013 4545 claude', 'ttys014 4646 helper'],
+      ['ttys010 4242 S+', 'ttys011 4343 S+', 'ttys013 4545 S+', 'ttys014 4646 S+'],
       {
         4242: '/Users/x/.local/share/claude/versions/2.1.196',
         4343: '/opt/sometool/2.1.196',
@@ -144,10 +145,10 @@ describe('resolveVersionedComms (native-install Claude: comm = bare version stri
     expect(called).toBe(false);
     expect(panes[0].cmd).toBe('2_1_196');
   });
-  it('caches verdicts per (tty, cmd): the second call needs no ps/lsof, and a cached false stays false', async () => {
+  it('refreshes ps identity every call but caches lsof only while the foreground pid is unchanged', async () => {
     let psCalls = 0, lsofCalls = 0;
     const run = async (cmd) => {
-      if (cmd === 'ps') { psCalls++; return 'ttys020 4242 claude'; }
+      if (cmd === 'ps') { psCalls++; return 'ttys020 4242 S+'; }
       if (cmd === 'lsof') { lsofCalls++; return 'p4242\nftxt\nn/Users/x/.local/share/claude/versions/2.1.196\n'; }
       return '';
     };
@@ -155,14 +156,75 @@ describe('resolveVersionedComms (native-install Claude: comm = bare version stri
     const mk = () => [{ id: '%1', cmd: '2_1_196', tty: '/dev/ttys020' }];
     expect((await resolveVersionedComms(mk(), run, verdicts))[0].cmd).toBe('claude');
     expect((await resolveVersionedComms(mk(), run, verdicts))[0].cmd).toBe('claude');
-    expect(psCalls).toBe(1);
+    expect(psCalls).toBe(2);
     expect(lsofCalls).toBe(1);
+  });
+  it('retries a failed executable probe after the short negative TTL', async () => {
+    let now = 1000;
+    let lsofCalls = 0;
+    const run = async (cmd) => {
+      if (cmd === 'ps') return 'ttys020 4242 S+';
+      if (cmd === 'lsof') {
+        lsofCalls++;
+        return lsofCalls === 1 ? 'p4242\nftxt\nn/opt/other/2.1.196\n'
+          : 'p4242\nftxt\nn/Users/x/.local/share/claude/versions/2.1.196\n';
+      }
+      return '';
+    };
+    const verdicts = new Map();
+    const mk = () => [{ id: '%1', cmd: '2_1_196', tty: '/dev/ttys020' }];
+    expect((await resolveVersionedComms(mk(), run, verdicts, { now: () => now }))[0].cmd).toBe('2_1_196');
+    now += 1000;
+    expect((await resolveVersionedComms(mk(), run, verdicts, { now: () => now }))[0].cmd).toBe('2_1_196');
+    expect(lsofCalls).toBe(1);
+    now += 3000;
+    expect((await resolveVersionedComms(mk(), run, verdicts, { now: () => now }))[0].cmd).toBe('claude');
+    expect(lsofCalls).toBe(2);
   });
   it('Linux fallback: lsof empty → /proc readlink (best effort, never throws)', async () => {
     const panes = [{ id: '%1', cmd: '2.1.196', tty: 'pts/3' }];
-    const run = RUN(['pts/3 4242 2.1.196'], {});
+    const run = RUN(['pts/3 4242 S+'], {});
     await resolveVersionedComms(panes, run);
     expect(['2.1.196', 'claude']).toContain(panes[0].cmd); // platform-dependent; never throws
+  });
+});
+
+describe('resolveCodexComms (ambiguous node launcher)', () => {
+  it('normalizes node only when a foreground real executable proves Codex', async () => {
+    const panes = [
+      { id: '%1', cmd: 'node', tty: '/dev/ttys030' },
+      { id: '%2', cmd: 'node', tty: '/dev/ttys031' },
+    ];
+    const run = async (cmd, args) => {
+      if (cmd === 'ps') return 'ttys030 501 S+\nttys030 502 R+\nttys031 601 S+';
+      if (cmd === 'lsof') {
+        const pid = args[args.indexOf('-p') + 1];
+        const exe = { 501: '/usr/local/bin/node', 502: '/opt/@openai/codex/bin/codex', 601: '/usr/local/bin/node' }[pid];
+        return exe ? `p${pid}\nftxt\nn${exe}\n` : '';
+      }
+      return '';
+    };
+    await resolveCodexComms(panes, run);
+    expect(panes[0].cmd).toBe('codex');
+    expect(panes[1].cmd).toBe('node');
+  });
+
+  it('invalidates a cached success immediately when the foreground pid set changes', async () => {
+    let phase = 1;
+    const run = async (cmd, args) => {
+      if (cmd === 'ps') return phase === 1 ? 'ttys030 501 S+\nttys030 502 R+' : 'ttys030 701 S+';
+      if (cmd === 'lsof') {
+        const pid = args[args.indexOf('-p') + 1];
+        const exe = pid === '502' ? '/opt/@openai/codex/bin/codex' : '/usr/local/bin/node';
+        return `p${pid}\nftxt\nn${exe}\n`;
+      }
+      return '';
+    };
+    const verdicts = new Map();
+    const mk = () => [{ id: '%1', cmd: 'node', tty: '/dev/ttys030' }];
+    expect((await resolveCodexComms(mk(), run, verdicts))[0].cmd).toBe('codex');
+    phase = 2;
+    expect((await resolveCodexComms(mk(), run, verdicts))[0].cmd).toBe('node');
   });
 });
 

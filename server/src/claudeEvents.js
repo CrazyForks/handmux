@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getAgent, agentForProc } from './agents/index.js';
 import { resolveVersionedComms } from './agents/claude.js';
+import { resolveCodexComms } from './agents/codex.js';
 import { defaultRun } from './agents/scanUtils.js';
 import { claude } from './agents/claude.js';
 
@@ -137,14 +138,14 @@ function readStateFile(file) {
 
 // Per-process event reader. Deps injected for testability:
 //   commands.listLivePanes() → [{ id, cmd, tty, session, window, windowName }]  (one tmux call)
-//   run(cmd, args) → stdout   (only used by the version-named-comm corroboration; default defaultRun)
+//   run(cmd, args) → stdout   (used to prove ambiguous version/node commands by real exe; default defaultRun)
 //   push.sendToSession(session, payload, {ttl, urgency, topic})
 //   file: the hook-maintained JSON state file (DEFAULT_STATE_FILE).
 // The hook is the sole writer; the server reads the file fresh on every getStates and on every file
 // change (the watcher, for push). No persisted state of our own — the file IS the persistence.
 export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, now = () => Date.now(), statMtime = defaultStatMtime, readTail = defaultReadTail, run = defaultRun } = {}) {
-  // Cache for resolveVersionedComms verdicts ((tty|cmd) → bool) — one corroboration per version per pane,
-  // not one per poll. Per instance: prod shares one server-wide map; tests get isolation for free.
+  // Short-lived executable-identity verdicts. Each poll still checks the foreground pid signature; the
+  // cache only avoids repeating lsof while that exact process set is unchanged.
   const commVerdicts = new Map();
   const lastPushed = {}; // pane → 'needs' | 'done' | null  (in-process push-transition dedup, by display view)
   // The dedup above is in-process ONLY: a restart (e.g. ./deploy.sh) wipes it while the hook's state
@@ -189,9 +190,10 @@ export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, 
     let live = null;
     try {
       const panes = await commands.listLivePanes();
-      // Native-install Claude binaries report a version string as pane_current_command — corroborate via
-      // ps and normalize to 'claude' BEFORE any identity/liveness match (see agents/claude.js).
+      // Normalize ambiguous commands BEFORE identity/liveness matching: native Claude may report a bare
+      // version and npm-installed Codex reports node. Both require foreground-TTY + real-executable proof.
       await resolveVersionedComms(panes, run, commVerdicts);
+      await resolveCodexComms(panes, run, commVerdicts);
       live = new Map(panes.map((p) => [p.id, p]));
     } catch { /* tmux down */ }
 
