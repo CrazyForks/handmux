@@ -4,6 +4,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Changed
+- 应用内「更新日志」改为只展示最新一个版本（同日连发补丁时不再刷屏）。
+
 ### Fixed
 - 修复了 0.17.2 对官方一键安装器版 Claude Code 的识别在真实环境仍未生效的问题：ps 报的进程名（claude 自设标题）与 tmux 报的（版本号）根本不一致，按 ps 名对账永远失败。改为用 lsof 真实路径的**文件名**与 tmux 版本号对账 + 路径含 `claude`——已由真机数据验证（`ps` 报 `claude`、`lsof` 报 `…/claude/versions/2.1.196`）。
 
