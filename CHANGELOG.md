@@ -4,6 +4,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Fixed
+- 对话视图改为异步增量读取会话记录并限制服务端 session 缓存与手机端常驻消息数，避免长会话轮询反复全量解析、阻塞服务或持续占用手机内存。
+
 ## [0.17.4] - 2026-07-19
 
 ### Fixed

@@ -7,20 +7,20 @@
 //   - History page (scroll-up, not polled): ?pane=&before=<k>&limit=10 — the last `limit` messages with
 //     `k < before`, no hash.
 // `k` = each message's global ordinal from `all.map((m,k)=>({...m,k}))` — stable because the jsonl is
-// append-only, so it doubles as the client's dedup key. `limit` clamps to [1,100], default 10. Mounted
-// under /api.
+// append-only, so it doubles as the client's dedup key. The underlying reader asynchronously scans once,
+// then parses only appended complete lines; replacement/truncation resets it. `limit` clamps to [1,100],
+// default 10. Mounted under /api.
 import express from 'express';
-import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { isPaneId } from '../tmux/commands.js';
 import { projectsDir } from '../agents/claude.js';
 import { resolveEncodedDirSession, encodeProjectDir } from '../agents/scanUtils.js';
-import { parseTranscript } from '../transcriptParse.js';
+import { transcriptReader } from '../transcriptReader.js';
 import { parsePendingPrompt } from '../pendingPrompt.js';
 import { readClaudeContext } from '../usage.js';
 
-export function transcriptRoutes({ commands, claudeEvents }) {
+export function transcriptRoutes({ commands, claudeEvents, reader = transcriptReader }) {
   const r = express.Router();
 
   // These three endpoints are one Claude-specific lens surface. Gate them together so a future endpoint
@@ -85,9 +85,8 @@ export function transcriptRoutes({ commands, claudeEvents }) {
       }
       const empty = { messages: [], hash: '', session: sessionId || null, hasMore: false, firstSeq: null };
       if (!file) return res.json(empty);
-      let text;
-      try { text = fs.readFileSync(file, 'utf8'); } catch { return res.json(empty); }
-      const all = parseTranscript(text.split('\n')).map((m, k) => ({ ...m, k })); // k = stable global ordinal
+      const parsed = await reader.read(file);
+      const all = parsed.map((m, k) => ({ ...m, k })); // k = stable global ordinal
       const pool = before == null ? all : all.filter((m) => m.k < before);
       const messages = pool.slice(-limit);
       const firstSeq = messages.length ? messages[0].k : null;

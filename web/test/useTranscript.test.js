@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act, cleanup } from '@testing-library/react';
-import { useTranscript } from '../src/hooks/useTranscript.js';
+import { useTranscript, mergeByK, MAX_TRANSCRIPT_MESSAGES } from '../src/hooks/useTranscript.js';
 import * as api from '../src/api.js';
 
 beforeEach(() => { vi.restoreAllMocks(); });
@@ -16,6 +16,13 @@ function makeMsgs(startK, count) {
 }
 
 describe('useTranscript', () => {
+  it('bounds the resident message window while keeping the newest messages', () => {
+    const existing = makeMsgs(0, MAX_TRANSCRIPT_MESSAGES);
+    const merged = mergeByK(existing, makeMsgs(MAX_TRANSCRIPT_MESSAGES, 10));
+    expect(merged).toHaveLength(MAX_TRANSCRIPT_MESSAGES);
+    expect(merged[0].k).toBe(10);
+    expect(merged.at(-1).k).toBe(MAX_TRANSCRIPT_MESSAGES + 9);
+  });
   it('polls the recent window and returns messages; keeps last on a null (204) poll', async () => {
     const recent = makeMsgs(10, 10); // k=10..19
     const spy = vi.spyOn(api, 'fetchTranscript')

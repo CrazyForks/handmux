@@ -75,11 +75,16 @@ function leadingText(content) {
   return '';
 }
 
-export function parseTranscript(lines) {
+// Stateful form used by the transcript route's append-only file cache. `push()` may be called with
+// successive complete JSONL batches: tool results and slash-command stdout in a later batch can still
+// update the tool/slash message created by an earlier batch. The one-shot `parseTranscript()` wrapper
+// below preserves the public pure-function API used everywhere else.
+export function createTranscriptParser() {
   const msgs = [];
   const byToolId = new Map(); // tool_use_id → the tool message awaiting its result
   let i = 0;
-  for (const raw of lines) {
+  function push(lines) {
+    for (const raw of lines) {
     const s = typeof raw === 'string' ? raw.trim() : '';
     if (!s) { i++; continue; }
     let o;
@@ -164,6 +169,12 @@ export function parseTranscript(lines) {
       }
     }
     i++;
+    }
+    return msgs;
   }
-  return msgs;
+  return { push, messages: msgs };
+}
+
+export function parseTranscript(lines) {
+  return createTranscriptParser().push(lines);
 }

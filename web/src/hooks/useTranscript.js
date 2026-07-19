@@ -6,7 +6,8 @@
 //     204/null keeps the last state. New messages MERGE into `messages` keyed by `k` (the server's stable
 //     global ordinal, also the dedup key), kept sorted ascending.
 //   - HISTORY page (`loadOlder()`, scroll-up only, never polled): `{before: oldestK, limit: 10}` — fetched
-//     on demand, prepended (merged by `k`) ahead of the recent window.
+//     on demand, prepended (merged by `k`) ahead of the recent window. Resident messages are capped at
+//     MAX_TRANSCRIPT_MESSAGES so leaving the lens open cannot grow phone memory without bound.
 // `oldestK`/`hasMoreOlder` seed from the FIRST successful recent response (its `firstSeq`/`hasMore`) and
 // are only ever pushed further back by `loadOlder()` — a later recent poll must not reset them (that would
 // re-open "more to load" under a window that's actually already been paged past).
@@ -15,10 +16,13 @@ import { usePollingLoop } from './usePollingLoop.js';
 import { fetchTranscript } from '../api.js';
 
 // Merge `incoming` into the current k-keyed message map and return a new ascending-by-k array.
-function mergeByK(existing, incoming) {
+export const MAX_TRANSCRIPT_MESSAGES = 500;
+
+export function mergeByK(existing, incoming) {
   const byK = new Map(existing.map((m) => [m.k, m]));
   for (const m of incoming) byK.set(m.k, m);
-  return Array.from(byK.values()).sort((a, b) => a.k - b.k);
+  const merged = Array.from(byK.values()).sort((a, b) => a.k - b.k);
+  return merged.length > MAX_TRANSCRIPT_MESSAGES ? merged.slice(-MAX_TRANSCRIPT_MESSAGES) : merged;
 }
 
 export function useTranscript(pane, enabled) {
@@ -32,6 +36,7 @@ export function useTranscript(pane, enabled) {
   const seededRef = useRef(false); // has the older-page cursor been seeded from the first recent response?
   const loadingOlderRef = useRef(false);
   const sessionRef = useRef(null); // the session id the current `messages` belong to
+  const messagesRef = useRef([]); // synchronous count/bound checks across poll + loadOlder callbacks
 
   // Reset the省流 cursor + view whenever the pane changes, so switching panes doesn't briefly show the
   // previous session's messages nor skip re-fetching because a stale hash looks "unchanged".
@@ -41,6 +46,7 @@ export function useTranscript(pane, enabled) {
     seededRef.current = false;
     loadingOlderRef.current = false;
     sessionRef.current = null;
+    messagesRef.current = [];
     setMessages([]);
     setHasMoreOlder(false);
     setLoadingOlder(false);
@@ -61,12 +67,14 @@ export function useTranscript(pane, enabled) {
     // strand the old session's higher-k tail on screen (the "/clear 没清屏" bug). The server's `session`
     // field is the switch signal; only act on a non-null id different from the one we're showing.
     if (r.session && sessionRef.current && r.session !== sessionRef.current) {
-      setMessages(incoming);
+      messagesRef.current = incoming.slice(-MAX_TRANSCRIPT_MESSAGES);
+      setMessages(messagesRef.current);
       oldestKRef.current = r.firstSeq ?? null;
       setHasMoreOlder(!!r.hasMore);
       seededRef.current = true; // the older-page cursor restarts from the new session's window
     } else {
-      setMessages((prev) => mergeByK(prev, incoming));
+      messagesRef.current = mergeByK(messagesRef.current, incoming);
+      setMessages(messagesRef.current);
       // Seed the older-page cursor from the FIRST successful recent response only — once loadOlder has
       // started walking it back, later recent polls (a new hasMore/firstSeq for the tail window) must not
       // clobber it.
@@ -75,6 +83,7 @@ export function useTranscript(pane, enabled) {
         oldestKRef.current = r.firstSeq ?? null;
         setHasMoreOlder(!!r.hasMore);
       }
+      if (messagesRef.current.length >= MAX_TRANSCRIPT_MESSAGES) setHasMoreOlder(false);
     }
     if (r.session) { sessionRef.current = r.session; setSession(r.session); }
   }, []);
@@ -83,15 +92,18 @@ export function useTranscript(pane, enabled) {
 
   const loadOlder = useCallback(async () => {
     if (loadingOlderRef.current || !hasMoreOlder || oldestKRef.current == null) return;
+    if (messagesRef.current.length >= MAX_TRANSCRIPT_MESSAGES) { setHasMoreOlder(false); return; }
     loadingOlderRef.current = true;
     setLoadingOlder(true);
     try {
-      const r = await fetchTranscript(pane, { before: oldestKRef.current, limit: 10 });
+      const limit = Math.min(10, MAX_TRANSCRIPT_MESSAGES - messagesRef.current.length);
+      const r = await fetchTranscript(pane, { before: oldestKRef.current, limit });
       if (!r) return;
       const incoming = Array.isArray(r.messages) ? r.messages : [];
-      setMessages((prev) => mergeByK(prev, incoming));
+      messagesRef.current = mergeByK(messagesRef.current, incoming);
+      setMessages(messagesRef.current);
       oldestKRef.current = r.firstSeq ?? oldestKRef.current;
-      setHasMoreOlder(!!r.hasMore);
+      setHasMoreOlder(!!r.hasMore && messagesRef.current.length < MAX_TRANSCRIPT_MESSAGES);
     } finally {
       loadingOlderRef.current = false;
       setLoadingOlder(false);
