@@ -14,17 +14,17 @@ import { promises as fsp } from 'node:fs';
 import { resolveEncodedDirSession, isSessionUuid, normTty } from './scanUtils.js';
 
 // The NATIVE installer names the real binary by version (~/.local/share/claude/versions/2.1.196 —
-// ~/.local/bin/claude is only a symlink to it), and tmux #{pane_current_command} follows the process
-// title: the binary's basename. On those machines a claude pane reports a bare version string ("2_1_196",
-// dots sanitized to underscores) instead of "claude". Matching any semver-shaped NAME would misidentify
-// any version-named binary as Claude, and ps `comm` can't corroborate it (for pane-tty processes it shows
-// the same basename — verified live), so we corroborate with the process's REAL executable path
-// (`lsof -d txt` on macOS, /proc/<pid>/exe on Linux): every official install layout carries "claude" in
-// the path (Caskroom/claude-code@latest, .local/share/claude/versions, node_modules/@anthropic-ai/
-// claude-code, …) — version- and layout-proof — while a foreign version-named binary's path doesn't.
-// Only then is the pane's cmd normalized to 'claude', so every downstream match (identity + liveness)
-// stays exact-name. Verdicts are cached per (tty, cmd) in an injected Map — a cache miss costs one ps +
-// one lsof per candidate pane, and misses only happen once per version per pane.
+// ~/.local/bin/claude is only a symlink to it), and tmux #{pane_current_command} follows that basename
+// ("2_1_196", dots sanitized to underscores) instead of "claude". ps can't tie it: ps `comm` shows the
+// process's self-set title ("claude"), which does NOT match tmux's report (verified live on a native-
+// install machine). Matching any semver-shaped name would misidentify any version-named binary, so we
+// corroborate with the process's REAL executable path (`lsof -d txt` on macOS, /proc/<pid>/exe on
+// Linux): a pid on the pane's tty whose exe BASENAME equals tmux's version comm, and whose path carries
+// "claude" — every official install layout carries it (Caskroom/claude-code@latest, .local/share/
+// claude/versions, node_modules/@anthropic-ai/claude-code, …), version- and layout-proof, while a
+// foreign version-named binary's path doesn't. Only then is the pane's cmd normalized to 'claude', so
+// every downstream match (identity + liveness) stays exact-name. Verdicts are cached per (tty, cmd) in
+// an injected Map — a cache miss costs one ps + one lsof per candidate pane, once per version per pane.
 const VERSION_COMM_RE = /^\d+[._]\d+[._]\d+$/;
 const CLAUDE_PATH_RE = /claude/;
 
@@ -54,12 +54,14 @@ export async function resolveVersionedComms(panes, run, verdicts = new Map()) {
   }
   for (const p of pending) {
     let ok = false;
-    // The process must tie to the pane by tty AND by comm (dots or sanitized underscores), then prove
-    // its real path carries "claude" — a random semver-named binary elsewhere is NOT Claude.
-    const ties = procs.filter((r) => r.tty === normTty(p.tty)
-      && (r.comm === p.cmd || r.comm === p.cmd.replace(/_/g, '.')));
-    for (const r of ties) {
-      if (CLAUDE_PATH_RE.test(await exePath(run, r.pid))) { ok = true; break; }
+    // Tie by tty + exe BASENAME (== tmux's version comm; ps comm is the self-set title and can't be
+    // trusted to match), then require the real path to carry "claude" — a random semver-named binary
+    // elsewhere is NOT Claude.
+    const want = p.cmd.replace(/_/g, '.');
+    for (const r of procs.filter((r) => r.tty === normTty(p.tty))) {
+      const exe = await exePath(run, r.pid);
+      const base = exe.split('/').pop() || '';
+      if ((base === p.cmd || base === want) && CLAUDE_PATH_RE.test(exe)) { ok = true; break; }
     }
     verdicts.set(key(p), ok);
     if (ok) p.cmd = 'claude';

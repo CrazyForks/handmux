@@ -289,7 +289,7 @@ describe('createClaudeEvents getStates (reads the hook state file)', () => {
     const panes = liveAll(['%1'], { '%1': { cmd: '2_1_196', tty: '/dev/ttys077' } });
     const mkRun = (exe) => async (cmd) => cmd === 'lsof'
       ? `p4242\nftxt\nn${exe}\n`
-      : 'ttys077 4242 2_1_196'; // ps: pane procs show the basename comm
+      : 'ttys077 4242 claude'; // ps comm is the self-set title, NOT tmux's version report (verified live)
     // process presence (no hooks yet): corroborated version-named comm → icon / lens switch work
     const commands = { listLivePanes: async () => panes.map((p) => ({ ...p })) };
     const claudeRun = mkRun('/Users/x/.local/share/claude/versions/2.1.196');

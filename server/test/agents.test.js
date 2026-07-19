@@ -95,7 +95,8 @@ describe('resolveCodexSession', () => {
 });
 
 describe('resolveVersionedComms (native-install Claude: comm = bare version string)', () => {
-  // run stub: ps lists tty/pid/comm (pane procs show the BASENAME — verified); lsof txt gives the real exe path
+  // run stub: ps lists tty/pid/comm (comm is the self-set title 'claude' — it does NOT match tmux's
+  // version report, verified live); lsof txt gives the real exe path, which is what we tie on.
   const RUN = (psLines, exeByPid) => async (cmd, args) => {
     if (cmd === 'ps') return psLines.join('\n');
     if (cmd === 'lsof') {
@@ -111,13 +112,15 @@ describe('resolveVersionedComms (native-install Claude: comm = bare version stri
       { id: '%2', cmd: '2_1_196', tty: '/dev/ttys011' },  // some OTHER binary that happens to be version-named
       { id: '%3', cmd: 'zsh', tty: '/dev/ttys012' },
       { id: '%4', cmd: '2_1_196', tty: '/dev/ttys013' },  // hypothetical other official layout
+      { id: '%5', cmd: '2_1_196', tty: '/dev/ttys014' },  // claude in path but wrong basename → no tie
     ];
     const run = RUN(
-      ['ttys010 4242 2_1_196', 'ttys011 4343 2_1_196', 'ttys013 4545 2_1_196'],
+      ['ttys010 4242 claude', 'ttys011 4343 claude', 'ttys013 4545 claude', 'ttys014 4646 helper'],
       {
         4242: '/Users/x/.local/share/claude/versions/2.1.196',
         4343: '/opt/sometool/2.1.196',
         4545: '/usr/local/Caskroom/claude-code@latest/2.1.196/2.1.196',
+        4646: '/Users/x/claude-tools/helper',
       },
     );
     await resolveVersionedComms(panes, run);
@@ -125,6 +128,7 @@ describe('resolveVersionedComms (native-install Claude: comm = bare version stri
     expect(panes[1].cmd).toBe('2_1_196'); // no "claude" anywhere in its path → untouched
     expect(panes[2].cmd).toBe('zsh');
     expect(panes[3].cmd).toBe('claude');
+    expect(panes[4].cmd).toBe('2_1_196'); // basename ≠ version comm → untouched
   });
   it('does not call ps at all when no semver-shaped comm is present', async () => {
     const panes = [{ id: '%1', cmd: 'claude', tty: 'ttys010' }, { id: '%2', cmd: 'zsh', tty: 'ttys011' }];
@@ -143,7 +147,7 @@ describe('resolveVersionedComms (native-install Claude: comm = bare version stri
   it('caches verdicts per (tty, cmd): the second call needs no ps/lsof, and a cached false stays false', async () => {
     let psCalls = 0, lsofCalls = 0;
     const run = async (cmd) => {
-      if (cmd === 'ps') { psCalls++; return 'ttys020 4242 2_1_196'; }
+      if (cmd === 'ps') { psCalls++; return 'ttys020 4242 claude'; }
       if (cmd === 'lsof') { lsofCalls++; return 'p4242\nftxt\nn/Users/x/.local/share/claude/versions/2.1.196\n'; }
       return '';
     };

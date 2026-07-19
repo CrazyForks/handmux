@@ -11,6 +11,22 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.17.3',
+    date: '2026-07-19',
+    highlight: {
+      zh: '三修官方一键安装的 Claude 识别,真机已验证',
+      en: 'Third fix for native-install Claude detection, device-verified',
+    },
+    items: {
+      zh: [
+        '修复了官方一键安装器版 Claude Code 仍识别不出的问题(0.17.2 的对账依据在真实环境不成立);本次按真机数据修正,已验证所有官方安装方式都能正确识别(agent 图标、对话视图切换钮正常出现)。',
+      ],
+      en: [
+        'Fixed native-installer Claude detection still not working (0.17.2 relied on a signal that doesn\'t hold in the real environment); corrected against real-device data — verified across all official install methods (agent icon and chat-view switch appear).',
+      ],
+    },
+  },
+  {
     version: '0.17.2',
     date: '2026-07-18',
     highlight: {
