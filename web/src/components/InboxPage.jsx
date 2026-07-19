@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom';
 import { t } from '../i18n';
 import { ChevronDownIcon } from './icons.jsx';
+import { sanitizeNotificationUrl } from '../urlPolicy.js';
 
 // Relative time, compact (jsdom-safe, no Intl.RelativeTimeFormat): "刚刚" / "5分钟前" / a date.
 function ago(ts) {
@@ -22,6 +23,7 @@ export default function InboxPage({ open, detailId, items, readIds = [], onOpenD
   const readSet = new Set(readIds);
   const inDetail = detailId != null;
   const detail = inDetail ? items.find((x) => x.id === detailId) : null;
+  const detailUrl = sanitizeNotificationUrl(detail?.url);
   const hasUnread = items.some((n) => !readSet.has(n.id));
 
   return createPortal(
@@ -52,7 +54,7 @@ export default function InboxPage({ open, detailId, items, readIds = [], onOpenD
               <div className="push-inbox-detail-title">{detail.title}</div>
               <div className="push-inbox-detail-time">{ago(detail.ts)}</div>
               <div className="push-inbox-detail-text">{detail.body}</div>
-              {detail.url && <a className="fontbtn push-inbox-openurl" href={detail.url}>{t('pushInbox.openUrl')}</a>}
+              {detailUrl && <a className="fontbtn push-inbox-openurl" href={detailUrl}>{t('pushInbox.openUrl')}</a>}
               <button className="fontbtn push-inbox-detail-del" onClick={() => { onDelete(detail.id); onCloseDetail(); }}>{t('pushInbox.delete')}</button>
             </div>
           ) : (

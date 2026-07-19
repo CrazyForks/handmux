@@ -822,9 +822,12 @@ export default function App() {
   // The current pane's cwd (from /panes), used as the default base when resolving a relative doc path.
   const currentPaneCwd = current?.panes?.find((p) => p.id === current.paneId)?.cwd || null;
 
-  // Chat lens is active only for an agent pane whose lens is set to 'chat'. Drives BOTH swaps: the main
+  // The current implementation parses Claude transcripts only. Keep availability and activation on the
+  // same predicate so Codex can never enter a view that would read an unrelated Claude session by cwd.
+  const chatLensAvailable = chatLensOn && states[current?.paneId]?.agent === 'claude';
+  // Chat lens is active only for a supported pane whose lens is set to 'chat'. Drives BOTH swaps: the main
   // view (ChatView vs Terminal) and the bottom bar (ChatComposer vs the terminal BottomDock).
-  const chatLens = chatLensOn && !!current?.paneId && !!states[current.paneId]?.agent && lens === 'chat';
+  const chatLens = chatLensAvailable && lens === 'chat';
 
   // Fetch + open a doc by ABSOLUTE path: dedupe into a tab, record the recent, reveal the sheet.
   // Throws on fetch failure so callers can decide (prompt for a base dir, or surface inline).
@@ -945,7 +948,7 @@ export default function App() {
   // link carries its kind — a doc path opens the reader/image viewer; a loopback URL asks to 开启代理并预览.
   // Pass the raw tap point — DocLinkPopover clamps its own measured box inside the viewport.
   const onDocLinkTap = (link, cx, cy) => {
-    if (link?.kind === 'url') setLocalUrlPrompt({ port: link.port, path: link.urlPath, raw: link.raw, x: cx, y: cy });
+    if (link?.kind === 'url') setLocalUrlPrompt({ protocol: link.protocol, port: link.port, path: link.urlPath, raw: link.raw, x: cx, y: cy });
     else setDocLinkPrompt({ path: link?.path ?? link, x: cx, y: cy });
   };
   const confirmDocLink = (path) => { setDocLinkPrompt(null); onOpenDoc(path); };
@@ -957,7 +960,7 @@ export default function App() {
     const p = localUrlPrompt;
     if (!p) return;
     try {
-      await startUrlPreview({ port: p.port, path: p.path });
+      await startUrlPreview({ protocol: p.protocol, port: p.port, path: p.path });
       setLocalUrlPrompt(null);
       setLocalUrlError(null);
     } catch {
@@ -1374,7 +1377,7 @@ export default function App() {
             onMapOpened={() => setOpenMapFor(null)}
             trackWindowId={manageWindow?.id}
             lens={lens}
-            chatLensEnabled={chatLensOn}
+            chatLensEnabled={chatLensAvailable}
             onLensChange={(v) => { setLens(v); localStorage.setItem('tw_lens_' + current.paneId, v); }}
           />
           {current.paneId && (

@@ -39,6 +39,12 @@ describe('per-device notifications store', () => {
     expect(b.url).toBe('/x');
   });
 
+  it('never persists a notification link with a non-web protocol', async () => {
+    const mod = await freshModule();
+    mod.record(['k1'], { title: 'a', body: '1', url: 'javascript:alert(1)' });
+    expect(mod.list('k1')[0].url).toBeUndefined();
+  });
+
   it('ring buffer keeps the last 100 per device', async () => {
     const mod = await freshModule();
     for (let i = 0; i < 130; i++) mod.record(['k1'], { title: `t${i}`, body: 'x' });

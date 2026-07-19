@@ -23,11 +23,24 @@ import { readClaudeContext } from '../usage.js';
 export function transcriptRoutes({ commands, claudeEvents }) {
   const r = express.Router();
 
+  // These three endpoints are one Claude-specific lens surface. Gate them together so a future endpoint
+  // cannot accidentally skip the invariant: explicit non-Claude requests and panes already bound to a
+  // non-Claude hook record are rejected before any cwd→newest-Claude-session fallback or screen scraping.
+  r.use(['/pending-prompt', '/context', '/transcript'], (req, res, next) => {
+    const pane = req.query.pane;
+    if (!isPaneId(pane)) return res.status(400).json({ error: 'bad pane id' });
+    const requested = req.query.agent;
+    const bound = claudeEvents && claudeEvents.paneAgent ? claudeEvents.paneAgent(pane) : null;
+    if ((requested != null && requested !== '' && requested !== 'claude') || (bound && bound !== 'claude')) {
+      return res.status(409).json({ error: 'chat lens unsupported for this agent' });
+    }
+    next();
+  });
+
   // The pending interactive PROMPT on the pane's screen — an AskUserQuestion menu or a tool-permission
   // menu — scraped from `capture-pane` (its options are NOT in the .jsonl while pending; see pendingPrompt.js).
   // Returns { prompt: {kind,title,options,cursor} | null }. Polled by the 对话 lens only while a gate is up.
   r.get('/pending-prompt', async (req, res, next) => {
-    if (!isPaneId(req.query.pane)) return res.status(400).json({ error: 'bad pane id' });
     try {
       const text = await commands.capturePlain(req.query.pane);
       return res.json({ prompt: parsePendingPrompt(text) });
@@ -39,7 +52,6 @@ export function transcriptRoutes({ commands, claudeEvents }) {
   // { model, usedPercent } (either may be null: capturer not opted in / session hasn't rendered / no hooks).
   // The 对话 composer polls this to show a small "模型 · 24%" chip. Best-effort: never 500 on a missing file.
   r.get('/context', (req, res, next) => {
-    if (!isPaneId(req.query.pane)) return res.status(400).json({ error: 'bad pane id' });
     try {
       const hooked = claudeEvents && claudeEvents.paneSession ? claudeEvents.paneSession(req.query.pane) : null;
       const sid = hooked && (hooked.sessionId || (hooked.transcriptPath ? path.basename(hooked.transcriptPath).replace(/\.jsonl$/, '') : null));
@@ -49,7 +61,6 @@ export function transcriptRoutes({ commands, claudeEvents }) {
   });
 
   r.get('/transcript', async (req, res, next) => {
-    if (!isPaneId(req.query.pane)) return res.status(400).json({ error: 'bad pane id' });
     const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
     const before = req.query.before != null && req.query.before !== '' ? Number(req.query.before) : null;
     try {

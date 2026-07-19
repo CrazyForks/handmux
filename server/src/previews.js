@@ -69,16 +69,17 @@ export function createPreviews({
     return { name: entry.name, kind: entry.kind, expiresAt: entry.expiresAt };
   };
 
-  async function register({ name, dir, port }) {
+  async function register({ name, dir, port, protocol = 'http' }) {
     const nm = safePreviewName(name);
     if (!nm) return { error: 'bad name', status: 400 };
     if (port !== undefined && port !== null && port !== '') {
       if (!dynamicEnabled) return { error: 'dynamic disabled', status: 400 };
+      if (protocol !== 'http' && protocol !== 'https') return { error: 'bad protocol', status: 400 };
       const p = Number(port);
       if (!Number.isInteger(p) || p < 1 || p > 65535) return { error: 'bad port', status: 400 };
       const host = await probePort(p); // '127.0.0.1' | '::1' | null
       if (!host) return { error: 'port not listening', status: 400 };
-      return upsert({ name: nm, kind: 'dynamic', port: p, host });
+      return upsert({ name: nm, kind: 'dynamic', port: p, host, protocol });
     }
     if (typeof dir !== 'string' || dir[0] !== '/') return { error: 'not absolute', status: 400 };
     let real;
@@ -94,14 +95,17 @@ export function createPreviews({
     const entry = entries.find((e) => e && e.name === name);
     if (!entry) return { state: 'missing' };
     if (entry.expiresAt <= now()) { entries = entries.filter((e) => e.name !== name); flush(); return { state: 'expired' }; }
-    return { state: 'active', entry: { kind: 'static', ...entry } }; // legacy rows (no kind) → static
+    const normalized = entry.kind === 'dynamic'
+      ? { ...entry, kind: 'dynamic', protocol: entry.protocol === 'https' ? 'https' : 'http' }
+      : { kind: 'static', ...entry }; // legacy rows (no kind) → static
+    return { state: 'active', entry: normalized };
   }
 
   function list() {
     const active = entries.filter((e) => e && e.expiresAt > now());
     if (active.length !== entries.length) { entries = active; flush(); }
     return active.map((e) => (e.kind === 'dynamic'
-      ? { name: e.name, kind: 'dynamic', port: e.port, expiresAt: e.expiresAt }
+      ? { name: e.name, kind: 'dynamic', port: e.port, protocol: e.protocol === 'https' ? 'https' : 'http', expiresAt: e.expiresAt }
       : { name: e.name, kind: 'static', dir: e.dir, expiresAt: e.expiresAt }));
   }
 

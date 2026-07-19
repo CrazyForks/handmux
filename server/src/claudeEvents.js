@@ -324,5 +324,14 @@ export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, 
     return { sessionId, transcriptPath, cwd };
   }
 
-  return { getStates, start, stop, paneSession };
+  // Agent identity is needed independently of session metadata: a Codex pane may not have a Claude-style
+  // transcript path, but the current Claude-only chat lens must still fail closed instead of cwd-falling
+  // back to an unrelated Claude jsonl. Untagged legacy hook rows are Claude.
+  function paneAgent(pane) {
+    const rec = readStateFile(file)[pane];
+    if (!rec || typeof rec !== 'object') return null;
+    return typeof rec.agent === 'string' && rec.agent ? rec.agent : 'claude';
+  }
+
+  return { getStates, start, stop, paneSession, paneAgent };
 }

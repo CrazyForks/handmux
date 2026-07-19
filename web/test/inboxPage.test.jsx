@@ -50,4 +50,9 @@ describe('InboxPage detail', () => {
       onOpenDetail={() => {}} onCloseDetail={() => {}} onClose={() => {}} onDelete={() => {}} />);
     expect(screen.getByText(/已过期|expired/i)).toBeTruthy();
   });
+  it('does not render a link with a non-web protocol from legacy stored data', () => {
+    render(<InboxPage open items={[{ ...items[0], url: 'javascript:alert(1)' }]} readIds={[]} detailId="2"
+      onOpenDetail={() => {}} onCloseDetail={() => {}} onClose={() => {}} onDelete={() => {}} />);
+    expect(screen.queryByText(/打开链接|Open link/i)).toBeNull();
+  });
 });

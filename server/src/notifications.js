@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import { readJsonArray, writeJsonAtomic } from './jsonStore.js';
+import { sanitizeNotificationUrl } from './urlPolicy.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const DIR = process.env.NOTIF_DIR || path.resolve(here, '../data/notifications');
@@ -24,7 +25,8 @@ const load = (file) => readJsonArray(file).filter((n) => n && typeof n.title ===
 export function record(pushKeys, { title, body, tag, url } = {}) {
   const rec = { id: genId(), ts: Date.now(), title: String(title ?? ''), body: String(body ?? '') };
   if (tag) rec.tag = String(tag);
-  if (url) rec.url = String(url);
+  const safeUrl = sanitizeNotificationUrl(url);
+  if (safeUrl) rec.url = safeUrl;
   for (const key of pushKeys || []) {
     const file = fileFor(key);
     if (!file) continue;

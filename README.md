@@ -72,7 +72,7 @@ handmux start --tunnel cloudflare   # instant public URL (cloudflared auto-insta
 - **Command & chat modes** — one bottom bar, two modes: type straight into the terminal, or talk to the agent in natural language. Preset ESC/Tab/Ctrl+C, custom ⌃⇧⌥ key-combos, and saved/recent commands split global or per-window (slash-commands included).
 - **Script push** — notify your phone from any script or CI step with `handmux push`; target all devices, a named session, or a specific device.
 - **Git viewer** — changes / commit history / any branch / full-screen colored diff, multi-repo tabs, read-only, never touches your tree.
-- **Site preview** — a static folder, or a running service by port (routing / APIs / live-reload intact), in a phone or desktop viewport.
+- **Site preview** — a static folder, or a running HTTP/HTTPS service by port (routing / APIs / live-reload intact), in a phone or desktop viewport.
 - **Docs** — tap a path in the terminal to open it; Markdown rendered, font zoom, sentence-by-sentence read-aloud.
 - **Select & copy text** — long-press to select in the terminal, drag iOS-style handles to fine-tune, copy the selection / a whole line / a whole paragraph.
 - **Files both ways** — multi-select upload from the chat box, download, share in, copy any absolute path.
@@ -101,7 +101,7 @@ handmux push <title> <body> [options]
 | `--session <name>` | Target all devices subscribed to this tmux session (repeatable; comma-separated values OK) |
 | `--device <key>` | Target a specific device by its key (repeatable; comma-separated values OK) |
 | `--tag <T>` | Notification tag (collapses duplicates) |
-| `--url <U>` | URL to open when the notification is tapped |
+| `--url <U>` | HTTP(S) URL or same-origin relative path to open when the notification is tapped |
 
 **Scopes — pick at most one:**
 

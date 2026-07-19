@@ -4,6 +4,11 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Fixed
+- 对话视图在 Codex pane 上不再误读同目录的 Claude 会话；在 Codex 适配完整落地前，前后端均按 Claude-only 关闭入口。
+- `handmux push --url` 现在只接受 HTTP(S) 或安全的站内相对链接，并拦截历史通知中的危险协议链接。
+- 本机地址一键预览现在完整支持 HTTPS/WSS 上游（含常见的 loopback 自签名开发证书），并修复带 `#fragment` 的深链因 token 落在片段后而 401。
+
 ## [0.17.3] - 2026-07-19
 
 ### Changed

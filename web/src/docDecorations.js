@@ -5,10 +5,10 @@ import { findLocalUrls } from './localUrl.js';
 // (kind:'doc'). URLs win — a doc-path match that OVERLAPS a URL span is dropped, because `:` is a
 // doc-path delimiter, so `localhost:3000/foo.html` would otherwise also surface a spurious `3000/foo.html`
 // doc link. Returns start/end (char offsets into `text`) + a small payload the tap handler routes on:
-//   url → { port, urlPath, raw };  doc → {}  (its path is text.slice(start,end), same as before).
+//   url → { protocol, port, urlPath, raw };  doc → {}  (its path is text.slice(start,end), same as before).
 function findAllLinks(text) {
   const urls = findLocalUrls(text);
-  const links = urls.map((u) => ({ start: u.start, end: u.end, kind: 'url', port: u.port, urlPath: u.path, raw: u.raw }));
+  const links = urls.map((u) => ({ start: u.start, end: u.end, kind: 'url', protocol: u.protocol, port: u.port, urlPath: u.path, raw: u.raw }));
   for (const d of findDocLinks(text)) {
     if (urls.some((u) => d.start < u.end && d.end > u.start)) continue; // inside a URL → not a doc path
     links.push({ start: d.start, end: d.end, kind: 'doc' });
@@ -148,7 +148,7 @@ export function docLinksOnLine(term, bufferLineNumber) {
   if (idx < 0 || idx >= buf.length) return [];
   const { text, cells } = readLogicalLine(buf, idx, cols);
   const out = [];
-  for (const { start, end, kind, port, urlPath, raw } of findAllLinks(text)) {
+  for (const { start, end, kind, protocol, port, urlPath, raw } of findAllLinks(text)) {
     const s = cells[start];
     const e = cells[end - 1];
     if (idx < s.row || idx > e.row) continue; // this link isn't on the queried line
@@ -156,7 +156,7 @@ export function docLinksOnLine(term, bufferLineNumber) {
       range: { start: { x: s.col + 1, y: s.row + 1 }, end: { x: e.col + e.w, y: e.row + 1 } },
       kind,
       path: text.slice(start, end),
-      port, urlPath, raw, // present only for kind:'url'
+      protocol, port, urlPath, raw, // present only for kind:'url'
     });
   }
   return out;

@@ -40,6 +40,29 @@ function fixtureSession(cwd) {
 const noHook = { paneSession: () => null };
 
 describe('GET /api/transcript', () => {
+  it('409s for an explicitly requested Codex lens before cwd fallback can read a Claude session', async () => {
+    let cwdRead = false;
+    const app = express();
+    app.use(transcriptRoutes({
+      commands: { paneCurrentPath: async () => { cwdRead = true; return '/shared'; } },
+      claudeEvents: noHook,
+    }));
+    const { status, body } = await call(app, '/transcript?pane=%251&agent=codex');
+    expect(status).toBe(409);
+    expect(body.error).toMatch(/agent/i);
+    expect(cwdRead).toBe(false);
+  });
+
+  it('409s when hook state binds the pane to Codex even if the caller claims Claude', async () => {
+    const app = express();
+    app.use(transcriptRoutes({
+      commands: { paneCurrentPath: async () => '/shared' },
+      claudeEvents: { paneSession: () => null, paneAgent: () => 'codex' },
+    }));
+    const { status } = await call(app, '/transcript?pane=%251&agent=claude');
+    expect(status).toBe(409);
+  });
+
   it('returns normalized messages for a pane', async () => {
     const cwd = path.join(os.tmpdir(), 'chatlens-fixture-' + process.pid);
     const file = fixtureSession(cwd);

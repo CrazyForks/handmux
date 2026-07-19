@@ -626,6 +626,12 @@ describe('previews API', () => {
     expect(res.body).toEqual({ name: 'app', kind: 'dynamic', url: 'https://app.preview.example.com/?token=good', expiresAt: 99 });
     expect(pv.register).toHaveBeenCalledWith({ name: 'app', port: 3000 });
   });
+  it('POST forwards an HTTPS loopback protocol to the registry', async () => {
+    const pv = fakePreviews({ register: vi.fn(async () => ({ name: 'app', kind: 'dynamic', expiresAt: 99 })) });
+    await auth(request(appPv(pv, 'preview.example.com')).post('/api/previews'))
+      .send({ name: 'app', port: 8443, protocol: 'https' }).expect(200);
+    expect(pv.register).toHaveBeenCalledWith({ name: 'app', port: 8443, protocol: 'https' });
+  });
   it('POST maps a registry error to its status', async () => {
     const pv = fakePreviews({ register: vi.fn(async () => ({ error: 'outside home', status: 400 })) });
     await auth(request(appPv(pv)).post('/api/previews')).send({ name: 'foo', dir: '/etc' }).expect(400);

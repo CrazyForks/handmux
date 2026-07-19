@@ -11,6 +11,22 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.17.4',
+    date: '2026-07-19',
+    highlight: {
+      zh: 'HTTPS 本机预览修复 · 通知链接安全加固',
+      en: 'HTTPS localhost previews fixed · safer notification links',
+    },
+    items: {
+      zh: [
+        '修复了 HTTPS/WSS 本机服务无法一键预览、带 # 的深链打开失败,以及 Codex pane 偶尔误出现 Claude 对话视图的问题;通知跳转链接也增加了安全校验。',
+      ],
+      en: [
+        'Fixed one-tap previews for local HTTPS/WSS services, deep links with # fragments, and Claude chat view occasionally appearing on a Codex pane; notification links now receive stricter safety checks too.',
+      ],
+    },
+  },
+  {
     version: '0.17.3',
     date: '2026-07-19',
     highlight: {

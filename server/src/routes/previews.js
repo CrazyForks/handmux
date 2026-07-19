@@ -10,12 +10,14 @@ export function previewRoutes({ previews, previewDomain, token }) {
   // dynamic reverse-proxy reachable at https://<name>.<DOMAIN>/ (only when previewDomain is set).
   r.post('/previews', async (req, res, next) => {
     if (!previews) return res.status(503).json({ error: 'previews disabled' });
-    const { name, dir, port } = req.body || {};
+    const { name, dir, port, protocol } = req.body || {};
     if (typeof name !== 'string' || !name) return res.status(400).json({ error: 'bad request' });
     const hasPort = port !== undefined && port !== null && port !== '';
     if (!hasPort && (typeof dir !== 'string' || !dir)) return res.status(400).json({ error: 'bad request' });
     try {
-      const out = await previews.register(hasPort ? { name, port } : { name, dir });
+      const dynamic = { name, port };
+      if (protocol !== undefined) dynamic.protocol = protocol;
+      const out = await previews.register(hasPort ? dynamic : { name, dir });
       if (out.error) return res.status(out.status).json({ error: out.error });
       const url = out.kind === 'dynamic'
         ? `https://${encodeURIComponent(out.name)}.${previewDomain}/?token=${encodeURIComponent(token)}`

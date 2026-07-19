@@ -11,7 +11,7 @@ const HOST = '(?:localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0|\\[::1\\])';
 // URL sitting in Chinese prose / brackets ends where the eye says it does. Port + path are optional.
 const LOCAL_URL_RE = new RegExp(`https?://${HOST}(?::(\\d{1,5}))?(/[^${DELIMS}]*)?`, 'gi');
 
-// Find every loopback URL in one line of text → [{ start, end, port, path, raw }] (end exclusive).
+// Find every loopback URL in one line of text → [{ start, end, protocol, port, path, raw }] (end exclusive).
 //   - port: the URL's port, or the scheme default (80/443) when omitted — so a bare `http://localhost/`
 //     still yields a number (its proxy will just fail the port-listening probe, which is the honest result).
 //   - path: the `/…` suffix (query/hash included, to the delimiter), or '/' when absent — this is what the
@@ -31,7 +31,7 @@ export function findLocalUrls(line) {
     const rawPath = m[2] || '';
     const path = rawPath.replace(/\.+$/, '');
     const end = m.index + m[0].length - (rawPath.length - path.length);
-    out.push({ start: m.index, end, port, path: path || '/', raw: line.slice(m.index, end) });
+    out.push({ start: m.index, end, protocol: isHttps ? 'https' : 'http', port, path: path || '/', raw: line.slice(m.index, end) });
   }
   return out;
 }

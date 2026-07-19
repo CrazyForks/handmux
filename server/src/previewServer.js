@@ -5,6 +5,8 @@
 // Also handles dynamic preview: Host-based dispatch to loopback ports (HTTP + WS upgrade).
 import net from 'node:net';
 import http from 'node:http';
+import https from 'node:https';
+import tls from 'node:tls';
 import express from 'express';
 import { tokenEquals } from './auth.js';
 import { safePreviewName } from './previews.js';
@@ -57,7 +59,15 @@ function cookieScope(domain) {
 // Resolve the on-disk file for a request path under a preview: '' or '<dir>/' → its index.html.
 function fileFor(rest) { return (!rest || rest.endsWith('/')) ? `${rest}index.html` : rest; }
 
-export function createPreview({ previews, token, domain = null }) {
+export function createPreview({
+  previews,
+  token,
+  domain = null,
+  httpRequest = http.request,
+  httpsRequest = https.request,
+  netConnect = net.connect,
+  tlsConnect = tls.connect,
+}) {
   const router = express.Router();
   const cookieDomain = cookieScope(domain);
 
@@ -117,9 +127,16 @@ export function createPreview({ previews, token, domain = null }) {
   // its own root, so path/method/headers/body forward as-is. `host` is the loopback family the app was
   // found on at register time ('127.0.0.1' or '::1'); the Host header stays 127.0.0.1:<port> so a dev
   // server's host check (e.g. Vite, whose allowedHosts include localhost/127.0.0.1) is satisfied.
-  function proxyHttp(port, host, req, res) {
+  function proxyHttp(port, host, protocol, req, res) {
     const headers = { ...req.headers, host: `127.0.0.1:${port}` };
-    const up = http.request({ host: host || '127.0.0.1', port, method: req.method, path: req.url, headers }, (upRes) => {
+    const secure = protocol === 'https';
+    const request = secure ? httpsRequest : httpRequest;
+    const options = { host: host || '127.0.0.1', port, method: req.method, path: req.url, headers };
+    // Local HTTPS dev servers commonly use a self-signed certificate. The connection target is constrained
+    // to loopback by registration/probing, so accepting that certificate does not expand trust to a network
+    // host. SNI stays localhost because that is what development certificates are normally issued for.
+    if (secure) Object.assign(options, { servername: 'localhost', rejectUnauthorized: false });
+    const up = request(options, (upRes) => {
       res.writeHead(upRes.statusCode, upRes.headers);
       upRes.on('error', () => res.destroy()); // mid-stream upstream reset (after headers) → tear down the client socket
       upRes.pipe(res);
@@ -147,7 +164,7 @@ export function createPreview({ previews, token, domain = null }) {
     if (state === 'missing') return res.status(404).type('html').send('<!doctype html><meta charset="utf-8"><h1>预览不存在</h1>');
     if (state === 'expired') return res.status(410).type('html').send('<!doctype html><meta charset="utf-8"><h1>预览已过期</h1><p>请回到 app 重新启动预览。</p>');
     if (entry.kind !== 'dynamic') return res.status(404).end(); // a static name reached via subdomain — not served here
-    proxyHttp(entry.port, entry.host, req, res);
+    proxyHttp(entry.port, entry.host, entry.protocol, req, res);
   }
 
   // WebSocket (and any raw Upgrade) for a dynamic preview: same cookie auth, then a bare TCP pipe to
@@ -165,7 +182,13 @@ export function createPreview({ previews, token, domain = null }) {
     if (!credOk({ query, headers: req.headers }, token)) return socket.destroy();
     const { state, entry } = previews.get(name);
     if (state !== 'active' || entry.kind !== 'dynamic') return socket.destroy();
-    const up = net.connect(entry.port, entry.host || '127.0.0.1', () => {
+    const secure = entry.protocol === 'https';
+    const options = { port: entry.port, host: entry.host || '127.0.0.1' };
+    if (secure) Object.assign(options, {
+      servername: 'localhost', rejectUnauthorized: false, ALPNProtocols: ['http/1.1'],
+    });
+    const connect = secure ? tlsConnect : netConnect;
+    const up = connect(options, () => {
       const fwd = { ...req.headers, host: `127.0.0.1:${entry.port}` };
       up.write(`GET ${req.url} HTTP/1.1\r\n`);
       for (const [k, v] of Object.entries(fwd)) up.write(`${k}: ${v}\r\n`);

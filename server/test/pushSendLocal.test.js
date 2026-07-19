@@ -44,6 +44,10 @@ describe('POST /api/push/send-local', () => {
   it('400s when sessions and devices are both given (mutex)', async () => {
     await post({ title: 't', body: 'b', sessions: ['proj-a'], devices: [keyA] }).expect(400);
   });
+  it('400s a notification link with a non-web protocol', async () => {
+    const r = await post({ title: 't', body: 'b', url: 'javascript:alert(1)' }).expect(400);
+    expect(r.body.error).toMatch(/url/i);
+  });
   it('no scope → all devices', async () => {
     const r = await post({ title: 't', body: 'b' }).expect(200);
     expect(r.body.sent).toBe(2);

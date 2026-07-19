@@ -17,8 +17,12 @@ describe('findLocalUrls', () => {
   });
 
   it('defaults the port to the scheme when omitted', () => {
-    expect(one('http://localhost/').port).toBe(80);
-    expect(one('https://localhost/secure').port).toBe(443);
+    expect(one('http://localhost/')).toMatchObject({ port: 80, protocol: 'http' });
+    expect(one('https://localhost/secure')).toMatchObject({ port: 443, protocol: 'https' });
+  });
+
+  it('preserves an explicit HTTPS scheme for the upstream proxy', () => {
+    expect(one('https://localhost:8443/secure')).toMatchObject({ port: 8443, protocol: 'https' });
   });
 
   it('defaults the path to "/" when absent', () => {

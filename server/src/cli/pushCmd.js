@@ -3,6 +3,7 @@
 // Scope is mutually exclusive: --device (by key) or --session, else all. Pure parse + injectable
 // runner so it unit-tests without spawning or real fetch.
 import { readState } from './state.js';
+import { sanitizeNotificationUrl } from '../urlPolicy.js';
 
 const collect = (acc, v) => acc.concat(String(v).split(',').map((s) => s.trim()).filter(Boolean));
 
@@ -23,11 +24,13 @@ export function parsePushArgs(argv) {
   const [title, body] = positional;
   if (!title || !body) return { error: 'usage: handmux push <title> <body> [--session X]... [--device K]... [--tag T] [--url U]' };
   if (sessions.length && devices.length) return { error: 'use --session or --device, not both' };
+  const safeUrl = url == null ? null : sanitizeNotificationUrl(url);
+  if (url != null && !safeUrl) return { error: '--url must be an http(s) URL or a relative path' };
   const out = { title, body };
   if (sessions.length) out.sessions = sessions;
   if (devices.length) out.devices = devices;
   if (tag) out.tag = tag;
-  if (url) out.url = url;
+  if (safeUrl) out.url = safeUrl;
   return out;
 }
 

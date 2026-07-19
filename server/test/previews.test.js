@@ -105,9 +105,19 @@ describe('dynamic register', () => {
       expect(out).toMatchObject({ name: 'app', kind: 'dynamic', expiresAt: 1_000_000 + 600_000 });
       expect(dyn.get('app')).toMatchObject({ state: 'active', entry: { kind: 'dynamic', port: 3000 } });
     });
+    it('stores HTTPS for an HTTPS loopback upstream and defaults legacy callers to HTTP', async () => {
+      await dyn.register({ name: 'secure', port: 3000, protocol: 'https' });
+      await dyn.register({ name: 'plain', port: 3000 });
+      expect(dyn.get('secure').entry.protocol).toBe('https');
+      expect(dyn.get('plain').entry.protocol).toBe('http');
+    });
+    it('rejects an unsupported upstream protocol', async () => {
+      expect(await dyn.register({ name: 'bad', port: 3000, protocol: 'file' }))
+        .toMatchObject({ error: 'bad protocol', status: 400 });
+    });
     it('list exposes kind + port for a dynamic entry (no dir)', async () => {
       await dyn.register({ name: 'app', port: 3000 });
-      expect(dyn.list()).toEqual([{ name: 'app', kind: 'dynamic', port: 3000, expiresAt: 1_000_000 + 600_000 }]);
+      expect(dyn.list()).toEqual([{ name: 'app', kind: 'dynamic', port: 3000, protocol: 'http', expiresAt: 1_000_000 + 600_000 }]);
     });
     it('rejects a non-numeric / out-of-range port', async () => {
       expect(await dyn.register({ name: 'app', port: 0 })).toMatchObject({ status: 400 });

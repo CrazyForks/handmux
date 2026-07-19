@@ -1,6 +1,7 @@
 // Web Push routes: hand the client the VAPID key, store/update/remove a browser PushSubscription, and
 // the local script-push send entry. The push module owns the delivery contract (TTL/topic/prune).
 import express from 'express';
+import { sanitizeNotificationUrl } from '../urlPolicy.js';
 
 export function pushRoutes({ push, notifications }) {
   const r = express.Router();
@@ -55,6 +56,8 @@ export function pushRoutes({ push, notifications }) {
     const { sessions, devices, title, body, tag, url } = req.body || {};
     if (typeof title !== 'string' || !title.trim()) return res.status(400).json({ error: 'title required' });
     if (typeof body !== 'string' || !body.trim()) return res.status(400).json({ error: 'body required' });
+    const safeUrl = url == null ? null : sanitizeNotificationUrl(url);
+    if (url != null && !safeUrl) return res.status(400).json({ error: 'url must be http(s) or relative' });
     const hasSessions = Array.isArray(sessions) && sessions.length > 0;
     const hasDevices = Array.isArray(devices) && devices.length > 0;
     if (hasSessions && hasDevices) return res.status(400).json({ error: 'use --session or --device, not both' });
@@ -66,7 +69,7 @@ export function pushRoutes({ push, notifications }) {
     // is stored on the record (surfaced in the detail), NOT used as the tap target.
     if (notifications) {
       const targetKeys = push.resolveTargetKeys({ devices: hasDevices ? devices : null, sessions: hasSessions ? sessions : null });
-      const rec = notifications.record(targetKeys, { title, body, tag: payload.tag, url });
+      const rec = notifications.record(targetKeys, { title, body, tag: payload.tag, url: safeUrl });
       payload.data = { inboxId: rec.id };
     }
     try {

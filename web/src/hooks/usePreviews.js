@@ -46,7 +46,7 @@ export function usePreviews(current, { settingsOpen, setSettingsOpen }) {
   const now = Date.now();
   const tabs = previews
     .filter((p) => p && p.expiresAt > now && isWindowPreview(p.name))
-    .map((p) => ({ name: p.name, kind: p.kind, port: p.port, dir: p.dir, expiresAt: p.expiresAt, path: pathByName[p.name] || '/' }))
+    .map((p) => ({ name: p.name, kind: p.kind, port: p.port, protocol: p.protocol, dir: p.dir, expiresAt: p.expiresAt, path: pathByName[p.name] || '/' }))
     .sort((a, b) => (a.name === curPreviewName ? -1 : b.name === curPreviewName ? 1 : (a.port || 0) - (b.port || 0)));
 
   // Effective active tab: the picked one if it's still live, else the first tab. shownPreview drives the
@@ -128,10 +128,10 @@ export function usePreviews(current, { settingsOpen, setSettingsOpen }) {
   // Open a tapped loopback URL through a dynamic-preview reverse-proxy: register `<window>-<port>` (so
   // several ports coexist as tabs), remember its deep-link path, focus its tab. Throws on failure (e.g.
   // the port isn't listening) so the caller can surface why — mirrors startDynamicPreview.
-  const startUrlPreview = useCallback(async ({ port, path }) => {
+  const startUrlPreview = useCallback(async ({ protocol = 'http', port, path }) => {
     if (!curPreviewName) return;
     const name = `${curPreviewName}-${port}`;
-    await createPreview(name, { port }); // throws on failure
+    await createPreview(name, { port, protocol }); // throws on failure
     setPathByName((m) => ({ ...m, [name]: path || '/' }));
     setActiveTabName(name);
     await refreshPreviews();
@@ -157,7 +157,7 @@ export function usePreviews(current, { settingsOpen, setSettingsOpen }) {
   const renewPreview = useCallback(async () => {
     const target = tabs.find((tb) => tb.name === activeName);
     if (!target) return;
-    const opts = target.kind === 'dynamic' ? { port: target.port } : { dir: target.dir };
+    const opts = target.kind === 'dynamic' ? { port: target.port, protocol: target.protocol || 'http' } : { dir: target.dir };
     try { await createPreview(target.name, opts); await refreshPreviews(); } catch { /* ignore */ }
   }, [tabs, activeName, refreshPreviews]);
 
@@ -178,7 +178,7 @@ export function usePreviews(current, { settingsOpen, setSettingsOpen }) {
         await Promise.all(names.map((name) => {
           const p = previews.find((e) => e && e.name === name);
           if (!p) return null;
-          return createPreview(name, p.kind === 'dynamic' ? { port: p.port } : { dir: p.dir });
+          return createPreview(name, p.kind === 'dynamic' ? { port: p.port, protocol: p.protocol || 'http' } : { dir: p.dir });
         }));
         await refreshPreviews();
       } catch { /* ignore */ }

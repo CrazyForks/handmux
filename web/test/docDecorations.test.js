@@ -119,6 +119,15 @@ describe('scanDocLinks', () => {
 });
 
 describe('docLinksOnLine', () => {
+  it('preserves HTTPS in the tappable local-URL payload', async () => {
+    const t = new Terminal({ cols: 80, rows: 2, allowProposedApi: true, scrollback: 100 });
+    await write(t, 'open https://localhost:8443/secure');
+    expect(docLinksOnLine(t, 1)[0]).toMatchObject({
+      kind: 'url', protocol: 'https', port: 8443, urlPath: '/secure',
+    });
+    t.dispose();
+  });
+
   it('returns a 1-based inclusive range for a path on a single line', async () => {
     const t = new Terminal({ cols: 40, rows: 3, allowProposedApi: true, scrollback: 100 });
     await write(t, 'row0\r\nsee /h/docs/a.md now\r\nrow2');

@@ -240,7 +240,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
         activate: (event, text) => {
           const u = findLocalUrls(text)[0];
           if (u && onDocLinkTapRef.current) {
-            onDocLinkTapRef.current({ kind: 'url', port: u.port, urlPath: u.path, raw: u.raw, path: u.raw }, event?.clientX ?? 0, event?.clientY ?? 0);
+            onDocLinkTapRef.current({ kind: 'url', protocol: u.protocol, port: u.port, urlPath: u.path, raw: u.raw, path: u.raw }, event?.clientX ?? 0, event?.clientY ?? 0);
             return;
           }
           try { window.open(text, '_blank', 'noopener,noreferrer'); } catch { /* ignore */ }

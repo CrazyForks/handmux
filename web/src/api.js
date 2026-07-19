@@ -63,7 +63,7 @@ export const getHistory = (pane, lines = 1500, since) =>
 // no hash — always returns whatever's there). limit defaults to 10 so the client never asks for more than
 // one page at a time (it never holds/requests the whole transcript).
 export const fetchTranscript = (pane, { since, before, limit = 10 } = {}) => {
-  let url = `/api/transcript?pane=${encodeURIComponent(pane)}&limit=${encodeURIComponent(limit)}`;
+  let url = `/api/transcript?pane=${encodeURIComponent(pane)}&agent=claude&limit=${encodeURIComponent(limit)}`;
   if (since) url += `&since=${encodeURIComponent(since)}`;
   if (before != null) url += `&before=${encodeURIComponent(before)}`;
   return req(url, { timeoutMs: 8000 }).then((r) => (r.unchanged ? null : r));
@@ -71,11 +71,11 @@ export const fetchTranscript = (pane, { since, before, limit = 10 } = {}) => {
 // The pane's current context-window state: { model, usedPercent } — either may be null when the statusLine
 // capturer isn't opted in / the session hasn't rendered. Polled by the 对话 composer to show a small chip.
 export const getPaneContext = (pane) =>
-  req(`/api/context?pane=${encodeURIComponent(pane)}`, { timeoutMs: 8000 });
+  req(`/api/context?pane=${encodeURIComponent(pane)}&agent=claude`, { timeoutMs: 8000 });
 // The pending interactive prompt (AskUserQuestion / permission menu) scraped off the pane, or null when no
 // gate is up. Polled by the 对话 lens only while a gate is up (kind==='permission').
 export const getPendingPrompt = (pane) =>
-  req(`/api/pending-prompt?pane=${encodeURIComponent(pane)}`, { timeoutMs: 8000 }).then((r) => r.prompt || null);
+  req(`/api/pending-prompt?pane=${encodeURIComponent(pane)}&agent=claude`, { timeoutMs: 8000 }).then((r) => r.prompt || null);
 export const sendText = (pane, text, enter = true) =>
   req('/api/send', { method: 'POST', body: JSON.stringify({ pane, text, enter }) });
 export const sendKeys = (pane, keys) =>
@@ -235,20 +235,23 @@ export function fetchImageUrl(path, sinceMtime = null) {
 // Preview registry. previewUrl carries the token so a raw browser navigation can set the preview
 // cookie. Static → same-origin /preview path; dynamic → the wildcard subdomain (needs `domain`).
 export const previewUrl = (entry, domain, path = '/') => {
-  const t = encodeURIComponent(getToken() ?? '');
   if (entry?.kind === 'dynamic') {
-    // `path` is a proxied deep link (e.g. '/admin?tab=1' from a tapped terminal URL); append the token
-    // with the right separator so a path that already carries a query keeps it. Static previews own their
-    // own routing under /preview/<name>/, so they ignore `path`.
+    // `path` is a proxied deep link (e.g. '/admin?tab=1#top' from a tapped terminal URL). URL/searchParams
+    // puts the token in the query BEFORE any fragment, so the browser actually sends it. Static previews
+    // own their own routing under /preview/<name>/, so they ignore `path`.
     const p = path && path.startsWith('/') ? path : '/';
-    const sep = p.includes('?') ? '&' : '?';
-    return `https://${encodeURIComponent(entry.name)}.${domain}${p}${sep}token=${t}`;
+    const url = new URL(p, `https://${encodeURIComponent(entry.name)}.${domain}/`);
+    url.searchParams.set('token', getToken() ?? '');
+    return url.toString();
   }
-  return `/preview/${encodeURIComponent(entry?.name)}/?token=${t}`;
+  return `/preview/${encodeURIComponent(entry?.name)}/?token=${encodeURIComponent(getToken() ?? '')}`;
 };
-// opts = { dir } (static) | { port } (dynamic).
-export const createPreview = (name, opts = {}) =>
-  req('/api/previews', { method: 'POST', body: JSON.stringify(opts.port != null ? { name, port: opts.port } : { name, dir: opts.dir }) });
+// opts = { dir } (static) | { port, protocol? } (dynamic; protocol defaults to http server-side).
+export const createPreview = (name, opts = {}) => {
+  const body = opts.port != null ? { name, port: opts.port } : { name, dir: opts.dir };
+  if (opts.port != null && opts.protocol) body.protocol = opts.protocol;
+  return req('/api/previews', { method: 'POST', body: JSON.stringify(body) });
+};
 export const getPreviews = () => req('/api/previews');
 export const deletePreview = (name) =>
   req(`/api/previews/${encodeURIComponent(name)}`, { method: 'DELETE' });

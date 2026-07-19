@@ -1,9 +1,10 @@
 // server/test/previewServer.test.js
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import http from 'node:http';
 import net from 'node:net';
+import { PassThrough } from 'node:stream';
 import { promises as fsp } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -183,6 +184,30 @@ describe('createPreview dynamic proxy (HTTP)', () => {
   });
 });
 
+describe('createPreview dynamic proxy (HTTPS upstream)', () => {
+  it('selects HTTPS and permits a loopback development certificate', async () => {
+    const upRes = new PassThrough();
+    upRes.statusCode = 200;
+    upRes.headers = { 'content-type': 'text/plain' };
+    const httpsRequest = vi.fn((opts, done) => {
+      const upReq = new PassThrough();
+      queueMicrotask(() => { done(upRes); upRes.end('secure upstream'); });
+      return upReq;
+    });
+    const previews = { get: () => ({
+      state: 'active', entry: { kind: 'dynamic', port: 8443, host: '127.0.0.1', protocol: 'https' },
+    }) };
+    const { dynamicProxy } = createPreview({ previews, token: 'good', domain: 'preview.test', httpsRequest });
+    const app = express();
+    app.use(dynamicProxy);
+    const res = await request(app).get('/secure').set('Host', 'app.preview.test').set('Cookie', 'tw_preview=good').expect(200);
+    expect(res.text).toBe('secure upstream');
+    expect(httpsRequest).toHaveBeenCalledWith(expect.objectContaining({
+      host: '127.0.0.1', port: 8443, servername: 'localhost', rejectUnauthorized: false,
+    }), expect.any(Function));
+  });
+});
+
 describe('createPreview dynamic disabled (no domain)', () => {
   it('dynamicProxy is a pass-through when domain is null', async () => {
     const { dynamicProxy } = createPreview({ previews: { get: () => ({ state: 'missing' }) }, token: 'good', domain: null });
@@ -249,5 +274,24 @@ describe('createPreview onUpgrade (WS/raw socket)', () => {
   });
   it('an upgrade for a missing preview is destroyed', async () => {
     await expect(upgrade({ host: `ghost.${DOMAIN}`, cookie: 'tw_preview=good' })).rejects.toThrow();
+  });
+});
+
+describe('createPreview onUpgrade (WSS upstream)', () => {
+  it('uses a TLS loopback connection for an HTTPS preview entry', async () => {
+    const writes = [];
+    const upstream = { write: (s) => writes.push(String(s)), pipe: vi.fn(), on: vi.fn(), destroy: vi.fn() };
+    const socket = { pipe: vi.fn(), on: vi.fn(), destroy: vi.fn() };
+    const tlsConnect = vi.fn((opts, connected) => { queueMicrotask(connected); return upstream; });
+    const previews = { get: () => ({
+      state: 'active', entry: { kind: 'dynamic', port: 8443, host: '127.0.0.1', protocol: 'https' },
+    }) };
+    const { onUpgrade } = createPreview({ previews, token: 'good', domain: 'preview.test', tlsConnect });
+    onUpgrade({ url: '/socket', headers: { host: 'app.preview.test', cookie: 'tw_preview=good' } }, socket, Buffer.alloc(0));
+    await Promise.resolve();
+    expect(tlsConnect).toHaveBeenCalledWith(expect.objectContaining({
+      host: '127.0.0.1', port: 8443, servername: 'localhost', rejectUnauthorized: false,
+    }), expect.any(Function));
+    expect(writes.join('')).toContain('GET /socket HTTP/1.1');
   });
 });

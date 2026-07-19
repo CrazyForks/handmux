@@ -22,6 +22,9 @@ describe('parsePushArgs', () => {
   it('errors when both --session and --device are given (mutex)', () => {
     expect(parsePushArgs(['push', 'T', 'B', '--session', 'a', '--device', 'k']).error).toMatch(/session|device/);
   });
+  it('rejects a non-web --url protocol before contacting the server', () => {
+    expect(parsePushArgs(['push', 'T', 'B', '--url', 'javascript:alert(1)']).error).toMatch(/url/i);
+  });
 });
 
 describe('runPush', () => {
