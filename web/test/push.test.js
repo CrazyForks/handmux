@@ -27,6 +27,7 @@ describe('enableNotifications', () => {
     allowNotifications();
     const subscription = { endpoint: 'NEW' };
     global.navigator.serviceWorker = {
+      register: vi.fn(async () => {}),
       ready: Promise.resolve({
         pushManager: {
           getSubscription: vi.fn(async () => null),
@@ -41,6 +42,7 @@ describe('enableNotifications', () => {
     const { enableNotifications } = await import('../src/push.js');
     await expect(enableNotifications()).resolves.toBe(true);
 
+    expect(global.navigator.serviceWorker.register).toHaveBeenCalledWith('/sw.js');
     expect(localStorage.getItem('tw_notify')).toBe('1');
     const report = global.fetch.mock.calls.find(([url]) => url === '/api/push/subscribe');
     expect(JSON.parse(report[1].body)).toEqual({
@@ -52,7 +54,10 @@ describe('enableNotifications', () => {
   it('returns control when the service worker never becomes ready', async () => {
     vi.useFakeTimers();
     allowNotifications();
-    global.navigator.serviceWorker = { ready: new Promise(() => {}) };
+    global.navigator.serviceWorker = {
+      register: vi.fn(async () => {}),
+      ready: new Promise(() => {}),
+    };
 
     const { enableNotifications } = await import('../src/push.js');
     const result = enableNotifications();
@@ -79,6 +84,7 @@ describe('enableNotifications', () => {
     vi.useFakeTimers();
     allowNotifications();
     global.navigator.serviceWorker = {
+      register: vi.fn(async () => {}),
       ready: Promise.resolve({ pushManager: { getSubscription: vi.fn() } }),
     };
     global.fetch = vi.fn(() => new Promise(() => {}));
@@ -95,6 +101,7 @@ describe('enableNotifications', () => {
     vi.useFakeTimers();
     allowNotifications();
     global.navigator.serviceWorker = {
+      register: vi.fn(async () => {}),
       ready: Promise.resolve({
         pushManager: {
           getSubscription: vi.fn(async () => null),
@@ -116,6 +123,7 @@ describe('enableNotifications', () => {
     vi.useFakeTimers();
     allowNotifications();
     global.navigator.serviceWorker = {
+      register: vi.fn(async () => {}),
       ready: Promise.resolve({
         pushManager: { getSubscription: vi.fn(async () => ({ endpoint: 'NEW' })) },
       }),
@@ -133,6 +141,21 @@ describe('enableNotifications', () => {
     await assertion;
     expect(global.fetch.mock.calls[1][1].signal.aborted).toBe(true);
     expect(localStorage.getItem('tw_notify')).toBe('0');
+  });
+
+  it('surfaces the browser error when service-worker registration fails', async () => {
+    allowNotifications();
+    global.navigator.serviceWorker = {
+      register: vi.fn(async () => { throw new TypeError('script has an unsupported MIME type'); }),
+      ready: new Promise(() => {}),
+    };
+
+    const { enableNotifications } = await import('../src/push.js');
+    await expect(enableNotifications()).rejects.toMatchObject({
+      code: 'push.swRegisterFailed',
+      message: expect.stringContaining('unsupported MIME type'),
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
 

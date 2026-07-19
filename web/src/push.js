@@ -34,6 +34,12 @@ function timeoutError(key) {
   return error;
 }
 
+function setupError(key, vars) {
+  const error = new Error(t(key, vars));
+  error.code = key;
+  return error;
+}
+
 // Browser push APIs are allowed to stay pending indefinitely (notably serviceWorker.ready), and
 // Chromium can also leave PushManager.subscribe pending while its push service is unavailable. Keep
 // each boundary finite so Settings always gives control back with the exact stage that stalled.
@@ -92,6 +98,20 @@ export async function enableNotifications() {
   );
   if (perm !== 'granted') throw new Error(t('push.permissionDenied'));
 
+  // Registration used to happen only in the app bootstrap as a separate best-effort side effect whose
+  // errors were swallowed. Push then waited on `ready` forever when that distant setup never produced an
+  // active worker. Register here as an idempotent prerequisite so the operation cannot start without the
+  // service it needs, and preserve the browser's real registration error for the user.
+  try {
+    await withTimeout(
+      navigator.serviceWorker.register('/sw.js'),
+      LOCAL_STEP_TIMEOUT_MS,
+      'push.swRegisterTimeout',
+    );
+  } catch (error) {
+    if (error?.code === 'push.swRegisterTimeout') throw error;
+    throw setupError('push.swRegisterFailed', { reason: error?.message || t('push.unknownReason') });
+  }
   const reg = await withTimeout(
     navigator.serviceWorker.ready,
     LOCAL_STEP_TIMEOUT_MS,
