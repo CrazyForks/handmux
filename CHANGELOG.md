@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.17.3] - 2026-07-19
+
 ### Changed
 - 应用内「更新日志」改为只展示最新一个版本（同日连发补丁时不再刷屏）。
 
