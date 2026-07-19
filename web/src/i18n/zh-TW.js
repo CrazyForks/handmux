@@ -417,4 +417,7 @@ export default {
   'pushInbox.back': '返回',
   'pushInbox.markAllRead': '全部已讀',
   'pushInbox.unreadCount': '{n} 未讀',
+  'pushInbox.loadFailed': '通知記錄載入失敗，請檢查連線後重試',
+  'pushInbox.deleteFailed': '通知刪除失敗，訊息已保留，請重試',
+  'pushInbox.retry': '重試',
 };

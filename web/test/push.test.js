@@ -38,3 +38,36 @@ describe('reportBound', () => {
     expect(call).toBeUndefined();
   });
 });
+
+describe('notification inbox failures', () => {
+  const response = (ok, body = {}, status = ok ? 200 : 500) => ({ ok, status, json: async () => body });
+
+  it('rejects a failed inbox load instead of turning it into an empty list', async () => {
+    global.fetch = vi.fn(async (url) => String(url).includes('/api/push/key')
+      ? response(true, { pushKey: 'K' })
+      : response(false, {}, 503));
+    const { getNotifications } = await import('../src/push.js');
+    await expect(getNotifications()).rejects.toThrow();
+  });
+
+  it('rejects an unauthorized key lookup so App can return to the token prompt', async () => {
+    global.fetch = vi.fn(async () => response(false, {}, 401));
+    const { getNotifications } = await import('../src/push.js');
+    const { UnauthorizedError } = await import('../src/api.js');
+    await expect(getNotifications()).rejects.toBeInstanceOf(UnauthorizedError);
+  });
+
+  it('keeps the Settings device-key lookup best-effort on the same auth failure', async () => {
+    global.fetch = vi.fn(async () => response(false, {}, 401));
+    const { getScriptPushKey } = await import('../src/push.js');
+    await expect(getScriptPushKey()).resolves.toBeNull();
+  });
+
+  it('rejects a failed delete instead of reporting success to the optimistic UI', async () => {
+    global.fetch = vi.fn(async (url) => String(url).includes('/api/push/key')
+      ? response(true, { pushKey: 'K' })
+      : response(false, {}, 503));
+    const { deleteNotification } = await import('../src/push.js');
+    await expect(deleteNotification('n1')).rejects.toThrow();
+  });
+});

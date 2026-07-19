@@ -127,6 +127,11 @@ export default function App() {
   const [seen, setSeen] = useState(getInboxSeen); // pane → last-viewed ts (inbox read state)
   const [readTs, setReadTs] = useState(getInboxReadTs); // server-ts high-water mark for done history (null=unset)
   const [notifItems, setNotifItems] = useState([]);            // manual-push inbox records (newest-first)
+  const [notifError, setNotifError] = useState('');            // load/delete failure; last good items stay visible
+  const [notifRetrySeq, setNotifRetrySeq] = useState(0);       // explicit retry trigger for the non-polling inbox
+  const [notifDeletingId, setNotifDeletingId] = useState(null);// server-confirmed delete in flight
+  const notifDeleteRef = useRef(false);                        // synchronous double-tap guard (state updates lag)
+  const notifMutationRef = useRef(0);                          // stale loads cannot undo a confirmed delete
   const [readIds, setReadIds] = useState(getReadInboxIds);      // ids already opened (per-device)
   const [notifInboxOpen, setNotifInboxOpen] = useState(false);  // full-screen inbox list page
   const [notifDetailId, setNotifDetailId] = useState(null);     // open message detail (null = list only)
@@ -175,8 +180,24 @@ export default function App() {
   const closeNotifInbox = () => { setNotifDetailId(null); setNotifInboxOpen(false); }; // ⌄ collapse → cleanup unwinds
   const markAllNotifRead = () => { notifItems.forEach((n) => addReadInboxId(n.id)); setReadIds(getReadInboxIds()); };
   const deleteNotifItem = async (id) => {
-    setNotifItems((cur) => cur.filter((n) => n.id !== id)); // optimistic
-    await deleteNotification(id);
+    if (notifDeleteRef.current) return false;
+    notifDeleteRef.current = true;
+    notifMutationRef.current += 1;
+    setNotifDeletingId(id); setNotifError('');
+    try {
+      await deleteNotification(id);
+      setNotifItems((cur) => cur.filter((n) => n.id !== id));
+      return true;
+    } catch (e) {
+      if (!handledAuth(e)) setNotifError(t('pushInbox.deleteFailed'));
+      return false;
+    } finally {
+      // Also invalidate refreshes that started WHILE the DELETE was in flight; an early GET response must
+      // not re-add a record after the server has confirmed its deletion (or clear a delete-failure banner).
+      notifMutationRef.current += 1;
+      notifDeleteRef.current = false;
+      setNotifDeletingId(null);
+    }
   };
   const termRef = useRef(null);
   const dockRef = useRef(null); // imperative handle into BottomDock — idea panel fills its input box
@@ -789,16 +810,23 @@ export default function App() {
   useEffect(() => {
     if (needToken) return;
     let alive = true;
-    const refresh = () => getNotifications().then((list) => {
-      if (!alive) return;
-      setNotifItems(list);
-      setReadIds(pruneReadInboxIds(list.map((n) => n.id)));
-    });
+    const refresh = async () => {
+      const mutation = notifMutationRef.current;
+      try {
+        const list = await getNotifications();
+        if (!alive || mutation !== notifMutationRef.current) return;
+        setNotifItems(list);
+        setReadIds(pruneReadInboxIds(list.map((n) => n.id)));
+        setNotifError('');
+      } catch (e) {
+        if (alive && !handledAuth(e)) setNotifError(t('pushInbox.loadFailed'));
+      }
+    };
     refresh();
     const onVis = () => { if (document.visibilityState === 'visible') refresh(); };
     document.addEventListener('visibilitychange', onVis);
     return () => { alive = false; document.removeEventListener('visibilitychange', onVis); };
-  }, [needToken, notifInboxOpen]);
+  }, [needToken, notifInboxOpen, notifRetrySeq, handledAuth]);
 
   // Record a just-sent command into this WINDOW's recent history (deduped + capped in storage).
   const onCommandSent = useCallback((cmd) => {
@@ -1172,6 +1200,9 @@ export default function App() {
         onCloseDetail={closeNotifDetail}
         onClose={closeNotifInbox}
         onDelete={deleteNotifItem}
+        deletingId={notifDeletingId}
+        error={notifError}
+        onRetry={() => setNotifRetrySeq((n) => n + 1)}
         onMarkAllRead={markAllNotifRead}
         unreadCount={notifUnreadCount}
       />

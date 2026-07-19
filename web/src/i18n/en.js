@@ -494,4 +494,7 @@ export default {
   'pushInbox.back': 'Back',
   'pushInbox.markAllRead': 'Mark all read',
   'pushInbox.unreadCount': '{n} unread',
+  'pushInbox.loadFailed': 'Could not load notifications. Check the connection and retry.',
+  'pushInbox.deleteFailed': 'Could not delete the notification. It was kept; please retry.',
+  'pushInbox.retry': 'Retry',
 };

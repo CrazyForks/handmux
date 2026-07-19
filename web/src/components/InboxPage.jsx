@@ -19,7 +19,8 @@ function ago(ts) {
 // overlay. List and detail are ONE sheet: opening a message swaps the header (‹ back + title) and body
 // (matches App's single back-guard: detail→list→close). App owns state/read/delete; this is presentational.
 // Classes stay push-inbox-* (not inbox-*) — .inbox-* belongs to the unrelated pane-status Inbox.
-export default function InboxPage({ open, detailId, items, readIds = [], onOpenDetail, onCloseDetail, onClose, onDelete, onMarkAllRead, unreadCount = 0 }) {
+export default function InboxPage({ open, detailId, items, readIds = [], onOpenDetail, onCloseDetail, onClose,
+  onDelete, deletingId = null, error = '', onRetry, onMarkAllRead, unreadCount = 0 }) {
   const readSet = new Set(readIds);
   const inDetail = detailId != null;
   const detail = inDetail ? items.find((x) => x.id === detailId) : null;
@@ -48,6 +49,12 @@ export default function InboxPage({ open, detailId, items, readIds = [], onOpenD
       </div>
 
       <div className="push-inbox-body">
+        {error && (
+          <div className="push-inbox-error" role="alert">
+            <span>{error}</span>
+            <button type="button" onClick={onRetry}>{t('pushInbox.retry')}</button>
+          </div>
+        )}
         {inDetail ? (
           detail ? (
             <div className="push-inbox-detail">
@@ -55,14 +62,17 @@ export default function InboxPage({ open, detailId, items, readIds = [], onOpenD
               <div className="push-inbox-detail-time">{ago(detail.ts)}</div>
               <div className="push-inbox-detail-text">{detail.body}</div>
               {detailUrl && <a className="fontbtn push-inbox-openurl" href={detailUrl}>{t('pushInbox.openUrl')}</a>}
-              <button className="fontbtn push-inbox-detail-del" onClick={() => { onDelete(detail.id); onCloseDetail(); }}>{t('pushInbox.delete')}</button>
+              <button className="fontbtn push-inbox-detail-del" disabled={deletingId != null}
+                onClick={async () => { if (await onDelete(detail.id)) onCloseDetail(); }}>
+                {t('pushInbox.delete')}
+              </button>
             </div>
           ) : (
             <p className="push-inbox-empty">{t('pushInbox.expired')}</p>
           )
-        ) : items.length === 0 ? (
+        ) : items.length === 0 && !error ? (
           <p className="push-inbox-empty">{t('pushInbox.empty')}</p>
-        ) : (
+        ) : items.length > 0 ? (
           <ul className="push-inbox-list">
             {items.map((n) => (
               <li key={n.id} className={`push-inbox-row${readSet.has(n.id) ? '' : ' push-inbox-unread'}`}>
@@ -73,11 +83,11 @@ export default function InboxPage({ open, detailId, items, readIds = [], onOpenD
                   </div>
                   <div className="push-inbox-row-body">{n.body}</div>
                 </button>
-                <button className="push-inbox-del" onClick={() => onDelete(n.id)} aria-label={t('pushInbox.delete')}>✕</button>
+                <button className="push-inbox-del" disabled={deletingId != null} onClick={() => onDelete(n.id)} aria-label={t('pushInbox.delete')}>✕</button>
               </li>
             ))}
           </ul>
-        )}
+        ) : null}
       </div>
     </div>,
     document.body,

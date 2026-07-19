@@ -493,4 +493,7 @@ export default {
   'pushInbox.back': '返回',
   'pushInbox.markAllRead': '全部已读',
   'pushInbox.unreadCount': '{n} 未读',
+  'pushInbox.loadFailed': '通知记录加载失败，请检查连接后重试',
+  'pushInbox.deleteFailed': '通知删除失败，消息已保留，请重试',
+  'pushInbox.retry': '重试',
 };

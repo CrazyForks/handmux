@@ -3,6 +3,7 @@
 // FCM/APNs → SW (see public/sw.js); this module only manages the subscription lifecycle.
 import { getToken, getBoundSessions } from './storage.js';
 import { t } from './i18n';
+import { UnauthorizedError } from './api.js';
 
 const NOTIFY_KEY = 'tw_notify'; // '1' once the user has enabled device notifications on this device
 
@@ -105,7 +106,7 @@ export async function sendTestPush() {
 // This device's addressing key, resolved from the live subscription's endpoint (server-token auth).
 // Returns null if push isn't enabled/subscribed here. The key is not a secret — it only selects a
 // device for `handmux push --device`; sending still requires the loopback server token.
-export async function getScriptPushKey() {
+async function resolveScriptPushKey(strict) {
   if (!pushSupported()) return null;
   try {
     const reg = await navigator.serviceWorker.ready;
@@ -116,10 +117,19 @@ export async function getScriptPushKey() {
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ endpoint: sub.endpoint }),
     });
-    if (!r.ok) return null;
+    if (r.status === 401) throw new UnauthorizedError();
+    if (!r.ok) {
+      if (strict) throw new Error('push key lookup failed');
+      return null;
+    }
     return (await r.json()).pushKey || null;
-  } catch { return null; }
+  } catch (e) {
+    if (strict) throw e;
+    return null;
+  }
 }
+
+export const getScriptPushKey = () => resolveScriptPushKey(false);
 
 // Clear any OS notification for a pane (called when the user navigates to that pane). Best-effort.
 export async function clearPaneNotification(pane) {
@@ -132,24 +142,22 @@ export async function clearPaneNotification(pane) {
 }
 
 // Per-device inbox: resolve THIS device's pushKey (its subscription identity) and scope the fetch to it. A
-// device that never subscribed has no pushKey → no inbox. Best-effort — failures yield []/false so the page
-// just shows the empty state.
+// device that never subscribed has no pushKey → no inbox. Transport/auth failures MUST reject: treating an
+// outage as [] erases the last good list and falsely tells the user they have no notifications.
 export async function getNotifications() {
-  const key = await getScriptPushKey();
+  const key = await resolveScriptPushKey(true);
   if (!key) return [];
-  try {
-    const r = await fetch(`/api/notifications?device=${encodeURIComponent(key)}`, { headers: authHeaders(), cache: 'no-store' });
-    if (!r.ok) return [];
-    return (await r.json()).items || [];
-  } catch { return []; }
+  const r = await fetch(`/api/notifications?device=${encodeURIComponent(key)}`, { headers: authHeaders(), cache: 'no-store' });
+  if (r.status === 401) throw new UnauthorizedError();
+  if (!r.ok) throw new Error('notification inbox load failed');
+  return (await r.json()).items || [];
 }
 
 export async function deleteNotification(id) {
-  const key = await getScriptPushKey();
-  if (!key) return false;
-  try {
-    const r = await fetch(`/api/notifications/${encodeURIComponent(id)}?device=${encodeURIComponent(key)}`, { method: 'DELETE', headers: authHeaders() });
-    if (!r.ok) return false;
-    return (await r.json()).ok === true;
-  } catch { return false; }
+  const key = await resolveScriptPushKey(true);
+  if (!key) throw new Error('notification device unavailable');
+  const r = await fetch(`/api/notifications/${encodeURIComponent(id)}?device=${encodeURIComponent(key)}`, { method: 'DELETE', headers: authHeaders() });
+  if (r.status === 401) throw new UnauthorizedError();
+  if (!r.ok || (await r.json()).ok !== true) throw new Error('notification delete failed');
+  return true;
 }
