@@ -11,7 +11,130 @@ beforeEach(() => {
   global.window.Notification = function () {};
 });
 
-afterEach(() => { delete global.navigator.serviceWorker; });
+afterEach(() => {
+  vi.useRealTimers();
+  delete global.navigator.serviceWorker;
+});
+
+describe('enableNotifications', () => {
+  const response = (body = {}) => ({ ok: true, json: async () => body });
+  const allowNotifications = () => {
+    global.window.Notification.requestPermission = vi.fn(async () => 'granted');
+    localStorage.setItem('tw_notify', '0');
+  };
+
+  it('completes the existing subscribe flow and records the device', async () => {
+    allowNotifications();
+    const subscription = { endpoint: 'NEW' };
+    global.navigator.serviceWorker = {
+      ready: Promise.resolve({
+        pushManager: {
+          getSubscription: vi.fn(async () => null),
+          subscribe: vi.fn(async () => subscription),
+        },
+      }),
+    };
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(response({ key: 'AQ' }))
+      .mockResolvedValueOnce(response());
+
+    const { enableNotifications } = await import('../src/push.js');
+    await expect(enableNotifications()).resolves.toBe(true);
+
+    expect(localStorage.getItem('tw_notify')).toBe('1');
+    const report = global.fetch.mock.calls.find(([url]) => url === '/api/push/subscribe');
+    expect(JSON.parse(report[1].body)).toEqual({
+      subscription,
+      boundSessions: ['proj-a', 'proj-b'],
+    });
+  });
+
+  it('returns control when the service worker never becomes ready', async () => {
+    vi.useFakeTimers();
+    allowNotifications();
+    global.navigator.serviceWorker = { ready: new Promise(() => {}) };
+
+    const { enableNotifications } = await import('../src/push.js');
+    const result = enableNotifications();
+    const assertion = expect(result).rejects.toMatchObject({ code: 'push.swTimeout' });
+    await vi.advanceTimersByTimeAsync(10000);
+    await assertion;
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('returns control when the system permission prompt never resolves', async () => {
+    vi.useFakeTimers();
+    localStorage.setItem('tw_notify', '0');
+    global.window.Notification.requestPermission = vi.fn(() => new Promise(() => {}));
+
+    const { enableNotifications } = await import('../src/push.js');
+    const result = enableNotifications();
+    const assertion = expect(result).rejects.toMatchObject({ code: 'push.permissionTimeout' });
+    await vi.advanceTimersByTimeAsync(10000);
+    await assertion;
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('aborts a stalled push-configuration request', async () => {
+    vi.useFakeTimers();
+    allowNotifications();
+    global.navigator.serviceWorker = {
+      ready: Promise.resolve({ pushManager: { getSubscription: vi.fn() } }),
+    };
+    global.fetch = vi.fn(() => new Promise(() => {}));
+
+    const { enableNotifications } = await import('../src/push.js');
+    const result = enableNotifications();
+    const assertion = expect(result).rejects.toMatchObject({ code: 'push.configTimeout' });
+    await vi.advanceTimersByTimeAsync(10000);
+    await assertion;
+    expect(global.fetch.mock.calls[0][1].signal.aborted).toBe(true);
+  });
+
+  it('identifies a stalled browser push-service subscription', async () => {
+    vi.useFakeTimers();
+    allowNotifications();
+    global.navigator.serviceWorker = {
+      ready: Promise.resolve({
+        pushManager: {
+          getSubscription: vi.fn(async () => null),
+          subscribe: vi.fn(() => new Promise(() => {})),
+        },
+      }),
+    };
+    global.fetch = vi.fn(async () => response({ key: 'AQ' }));
+
+    const { enableNotifications } = await import('../src/push.js');
+    const result = enableNotifications();
+    const assertion = expect(result).rejects.toMatchObject({ code: 'push.browserTimeout' });
+    await vi.advanceTimersByTimeAsync(20000);
+    await assertion;
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('aborts a stalled subscription report and identifies the server stage', async () => {
+    vi.useFakeTimers();
+    allowNotifications();
+    global.navigator.serviceWorker = {
+      ready: Promise.resolve({
+        pushManager: { getSubscription: vi.fn(async () => ({ endpoint: 'NEW' })) },
+      }),
+    };
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(response({ key: 'AQ' }))
+      .mockImplementationOnce((_url, { signal }) => new Promise((resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      }));
+
+    const { enableNotifications } = await import('../src/push.js');
+    const result = enableNotifications();
+    const assertion = expect(result).rejects.toMatchObject({ code: 'push.reportTimeout' });
+    await vi.advanceTimersByTimeAsync(10000);
+    await assertion;
+    expect(global.fetch.mock.calls[1][1].signal.aborted).toBe(true);
+    expect(localStorage.getItem('tw_notify')).toBe('0');
+  });
+});
 
 describe('reportBound', () => {
   it('POSTs the current bound set with the subscription endpoint', async () => {

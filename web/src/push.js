@@ -6,6 +6,8 @@ import { t } from './i18n';
 import { UnauthorizedError } from './api.js';
 
 const NOTIFY_KEY = 'tw_notify'; // '1' once the user has enabled device notifications on this device
+const LOCAL_STEP_TIMEOUT_MS = 10000;
+const PUSH_SERVICE_TIMEOUT_MS = 20000;
 
 export const notifyEnabled = () => localStorage.getItem(NOTIFY_KEY) === '1';
 const setNotifyFlag = (on) => localStorage.setItem(NOTIFY_KEY, on ? '1' : '0');
@@ -26,6 +28,50 @@ function authHeaders(extra = {}) {
   return { Authorization: `Bearer ${getToken() ?? ''}`, ...extra };
 }
 
+function timeoutError(key) {
+  const error = new Error(t(key));
+  error.code = key;
+  return error;
+}
+
+// Browser push APIs are allowed to stay pending indefinitely (notably serviceWorker.ready), and
+// Chromium can also leave PushManager.subscribe pending while its push service is unavailable. Keep
+// each boundary finite so Settings always gives control back with the exact stage that stalled.
+function withTimeout(promise, ms, key) {
+  let timer;
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject) => { timer = setTimeout(() => reject(timeoutError(key)), ms); }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+// Abort network work when its UI deadline expires. Unlike the browser-owned push operations above,
+// fetch is cancellable, so there is no reason to leave a dead request running after Settings recovers.
+async function fetchWithTimeout(url, options, key) {
+  const controller = new AbortController();
+  let timer;
+  let timedOut = false;
+  try {
+    return await Promise.race([
+      fetch(url, { ...options, signal: controller.signal }),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+          reject(timeoutError(key));
+        }, LOCAL_STEP_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (error) {
+    // abort dispatch can make fetch reject before the timeout promise wins the race. Normalize that
+    // ordering difference so callers always receive the stage-specific error, never bare AbortError.
+    if (timedOut) throw timeoutError(key);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // VAPID public key arrives as URL-safe base64; PushManager.subscribe wants a Uint8Array.
 function urlBase64ToUint8Array(b64) {
   const pad = '='.repeat((4 - (b64.length % 4)) % 4);
@@ -39,27 +85,51 @@ function urlBase64ToUint8Array(b64) {
 export async function enableNotifications() {
   if (!pushSupported()) throw new Error(t('push.unsupported'));
   if (isIOS() && !isStandalone()) throw new Error(t('push.iosAddToHome'));
-  const perm = await Notification.requestPermission();
+  const perm = await withTimeout(
+    Notification.requestPermission(),
+    LOCAL_STEP_TIMEOUT_MS,
+    'push.permissionTimeout',
+  );
   if (perm !== 'granted') throw new Error(t('push.permissionDenied'));
 
-  const reg = await navigator.serviceWorker.ready;
-  const res = await fetch('/api/push/vapid', { headers: authHeaders(), cache: 'no-store' });
+  const reg = await withTimeout(
+    navigator.serviceWorker.ready,
+    LOCAL_STEP_TIMEOUT_MS,
+    'push.swTimeout',
+  );
+  const res = await fetchWithTimeout(
+    '/api/push/vapid',
+    { headers: authHeaders(), cache: 'no-store' },
+    'push.configTimeout',
+  );
   if (!res.ok) throw new Error(t('push.noVapid'));
   const { key } = await res.json();
 
-  let sub = await reg.pushManager.getSubscription();
+  let sub = await withTimeout(
+    reg.pushManager.getSubscription(),
+    PUSH_SERVICE_TIMEOUT_MS,
+    'push.browserTimeout',
+  );
   if (!sub) {
-    sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(key),
-    });
+    sub = await withTimeout(
+      reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(key),
+      }),
+      PUSH_SERVICE_TIMEOUT_MS,
+      'push.browserTimeout',
+    );
   }
 
-  const r = await fetch('/api/push/subscribe', {
-    method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ subscription: sub, boundSessions: getBoundSessions() }),
-  });
+  const r = await fetchWithTimeout(
+    '/api/push/subscribe',
+    {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ subscription: sub, boundSessions: getBoundSessions() }),
+    },
+    'push.reportTimeout',
+  );
   if (!r.ok) throw new Error(t('push.subscribeFailed'));
   setNotifyFlag(true);
   return true;
