@@ -11,6 +11,30 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.17.5',
+    date: '2026-07-20',
+    highlight: {
+      zh: '通知开启修复 · 长会话与设置可靠性提升',
+      en: 'Notification setup fixed · stronger chat and settings reliability',
+    },
+    items: {
+      zh: [
+        '修复了安卓 Chrome 开启通知永久转圈、失效订阅假报成功以及更换域名后收不到通知的问题;注册、激活、FCM 与服务器上报现在会分别检查,失效订阅可自动重置。',
+        '修复了超长对话反复全量解析、可能拖慢服务并持续占用手机内存的问题;对话记录改为增量读取并限制缓存规模。',
+        '恢复设置里的完整版本更新历史;有新版本时的升级提示仍只展示最新一条,更早版本可按需展开。',
+        '修复通知记录加载或删除失败时误显示为空、消息短暂消失的问题,现在会保留已有内容并提示重试。',
+        '修复 Agent 退出后偶尔残留旧状态、普通 Node 程序被误认成 Codex 的问题;动态预览认证也限制在当前子域,启动失败会显示真实原因。',
+      ],
+      en: [
+        'Fixed Android Chrome notification setup spinning forever, stale subscriptions being reported as enabled, and notifications not arriving after a domain change; registration, activation, FCM, and server reporting are now checked separately, with expired subscriptions reset automatically.',
+        'Fixed very long chats being repeatedly parsed in full, which could slow the service and keep growing phone memory use; transcripts now load incrementally with bounded caches.',
+        'Restored the complete version history in Settings; the upgrade prompt still shows only the newest release by default, with older versions expandable on demand.',
+        'Fixed notification history appearing empty or briefly losing a message when loading or deletion failed; existing content is now preserved with a retry action.',
+        'Fixed stale Agent state after exit and ordinary Node programs occasionally being mistaken for Codex; dynamic-preview authentication is now scoped to the current subdomain and startup failures show their real cause.',
+      ],
+    },
+  },
+  {
     version: '0.17.4',
     date: '2026-07-19',
     highlight: {
