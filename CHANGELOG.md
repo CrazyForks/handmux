@@ -7,6 +7,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ### Fixed
 - 对话视图改为异步增量读取会话记录并限制服务端 session 缓存与手机端常驻消息数，避免长会话轮询反复全量解析、阻塞服务或持续占用手机内存。
 - Agent 存活识别现在绑定前台 PID 与真实 executable：Claude 探测失败会短期重试，Codex 退出后启动普通 Node 程序也不会让旧状态重新出现。
+- 动态预览认证改用当前子域专属 Cookie，兼容两段式域名且不再向父域/兄弟子域扩散凭据；本机预览启动失败会显示真实原因。
 
 ## [0.17.4] - 2026-07-19
 

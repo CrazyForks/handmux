@@ -262,6 +262,13 @@ export default {
   'settings.err_bad_port': '連接埠不合法（1–65535）',
   'settings.err_dynamic_disabled': '動態預覽未開啟',
   'settings.err_start_failed': '啟動失敗',
+  'localurl.title': '開啟代理並預覽',
+  'localurl.open': '開啟代理',
+  'localurl.disabled': '動態預覽未開啟——在設定中配置預覽網域後即可代理本機連接埠。',
+  'localurl.notListening': '連接埠 :{port} 沒有服務在監聽。',
+  'localurl.badProtocol': '此連結不是可代理的 HTTP 或 HTTPS 位址。',
+  'localurl.network': '無法連線 handmux 服務，請檢查網路後重試。',
+  'localurl.failed': '無法開啟預覽：{reason}。請檢查設定後重試。',
 
   // filebrowser / filemanager
   'filebrowser.openDirFailed': '無法開啟該目錄',

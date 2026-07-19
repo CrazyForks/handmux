@@ -253,6 +253,13 @@ export default {
   'settings.err_bad_port': '포트 번호가 유효하지 않습니다（1–65535）',
   'settings.err_dynamic_disabled': '동적 미리보기가 비활성화되어 있습니다',
   'settings.err_start_failed': '시작에 실패했습니다',
+  'localurl.title': '프록시를 활성화하여 미리보기',
+  'localurl.open': '프록시 활성화',
+  'localurl.disabled': '동적 미리보기가 비활성화되어 있습니다. 설정에서 미리보기 도메인을 구성하면 로컬 포트를 프록시할 수 있습니다.',
+  'localurl.notListening': '포트 :{port}에서 수신 중인 서비스가 없습니다.',
+  'localurl.badProtocol': '이 링크는 프록시할 수 있는 HTTP 또는 HTTPS 주소가 아닙니다.',
+  'localurl.network': 'handmux 서비스에 연결할 수 없습니다. 네트워크를 확인한 후 다시 시도하세요.',
+  'localurl.failed': '미리보기를 시작할 수 없습니다: {reason}. 설정을 확인한 후 다시 시도하세요.',
 
   // filebrowser / filemanager
   'filebrowser.openDirFailed': '디렉토리를 열 수 없습니다',

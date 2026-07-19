@@ -6,6 +6,7 @@ import { fetchPaneCwd } from '../api.js';
 import { fmtRemainMin, useRemaining } from '../previewCountdown.js';
 import { getDocHighlight, setDocHighlight } from '../storage.js';
 import { t, getLangCode, setLang, AVAILABLE } from '../i18n';
+import { previewStartError } from '../previewErrors.js';
 
 // Settings modal: the screen-column controls (⊟/⊞/↺, previously in the topbar) plus an explicit
 // font-size control. Font reads/writes the live terminal through termRef — the same persisted
@@ -48,12 +49,6 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   const [starting, setStarting] = useState(false);          // disable 启动 while the request is in flight
   const remainMs = useRemaining(activePreview?.expiresAt, !!activePreview && open); // live TTL countdown
   useEffect(() => { setConfirmStop(false); setStartErr(''); }, [activePreview?.name, open]); // reset guards per preview/open
-  // Friendly text for the server's dynamic-start errors.
-  const startMsg = (m) => ({
-    'port not listening': t('settings.err_port_not_listening'),
-    'bad port': t('settings.err_bad_port'),
-    'dynamic disabled': t('settings.err_dynamic_disabled'),
-  }[m] || m || t('settings.err_start_failed'));
   const startDynamic = async () => {
     const p = Number(port);
     if (!p) return;
@@ -63,7 +58,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
     // call onClose() here (App owns the close). On failure it throws and we keep Settings open to show the
     // inline error below.
     try { await onStartDynamicPreview?.(p); }
-    catch (e) { setStartErr(startMsg(e?.message)); }
+    catch (e) { setStartErr(previewStartError(e, { port: p })); }
     finally { setStarting(false); }
   };
   // Open the dir picker seeded at the LAST preview dir for this window (so re-previewing the same

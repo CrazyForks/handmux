@@ -253,6 +253,13 @@ export default {
   'settings.err_bad_port': 'ポート番号が無効です（1〜65535）',
   'settings.err_dynamic_disabled': 'ダイナミックプレビューは無効です',
   'settings.err_start_failed': '起動に失敗しました',
+  'localurl.title': 'プロキシを有効にしてプレビュー',
+  'localurl.open': 'プロキシを有効化',
+  'localurl.disabled': 'ダイナミックプレビューは無効です。設定でプレビュードメインを構成するとローカルポートをプロキシできます。',
+  'localurl.notListening': 'ポート :{port} で待ち受けているサービスがありません。',
+  'localurl.badProtocol': 'このリンクはプロキシ可能な HTTP または HTTPS アドレスではありません。',
+  'localurl.network': 'handmux サービスに接続できません。ネットワークを確認して再試行してください。',
+  'localurl.failed': 'プレビューを開始できません：{reason}。設定を確認して再試行してください。',
 
   // filebrowser / filemanager
   'filebrowser.openDirFailed': 'ディレクトリを開けませんでした',

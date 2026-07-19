@@ -122,6 +122,9 @@ export default {
   'localurl.open': 'Enable proxy',
   'localurl.disabled': 'Dynamic preview is off — set a preview domain in Settings to proxy local ports.',
   'localurl.notListening': 'Nothing is listening on :{port}.',
+  'localurl.badProtocol': 'This link is not a proxyable HTTP or HTTPS address.',
+  'localurl.network': 'Could not reach the handmux service. Check your connection and try again.',
+  'localurl.failed': 'Could not start the preview: {reason}. Check the configuration and try again.',
   'changelog.title': "What's new",
 
   // preview / imageviewer / mic

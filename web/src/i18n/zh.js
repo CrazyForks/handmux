@@ -121,6 +121,9 @@ export default {
   'localurl.open': '开启代理',
   'localurl.disabled': '动态预览未开启——在设置里配置预览域名后可代理本机端口。',
   'localurl.notListening': '端口 :{port} 没有服务在监听。',
+  'localurl.badProtocol': '该链接不是可代理的 HTTP 或 HTTPS 地址。',
+  'localurl.network': '连接 handmux 服务失败，请检查网络后重试。',
+  'localurl.failed': '无法开启预览：{reason}。请检查配置后重试。',
   'changelog.title': '新功能',
 
   // preview / imageviewer / mic

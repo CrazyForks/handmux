@@ -161,9 +161,10 @@ describe('createPreview dynamic proxy (HTTP)', () => {
   it('401 on a preview host without creds', async () => {
     await request(app).get('/').set('Host', H('app')).expect(401);
   });
-  it('sets a Domain-scoped cookie and 302-strips the token', async () => {
+  it('sets a host-only cookie and 302-strips the token (works for two-label domains without sharing)', async () => {
     const res = await request(app).get('/?token=good').set('Host', H('app')).expect(302);
-    expect(res.headers['set-cookie'][0]).toMatch(/tw_preview=good; Domain=test; Path=\/; HttpOnly/);
+    expect(res.headers['set-cookie'][0]).toMatch(/tw_preview=good; Path=\/; HttpOnly/);
+    expect(res.headers['set-cookie'][0]).not.toMatch(/Domain=/i);
     expect(res.headers.location).toBe('/');
   });
   it('proxies a GET to the upstream, forwarding path + rewriting Host to loopback', async () => {

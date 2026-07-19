@@ -30,6 +30,7 @@ import { isAbsolute, joinPath } from './docPath.js';
 import { isImageName } from './mime.js';
 import { useDocTabs } from './hooks/useDocTabs.js';
 import { usePreviews } from './hooks/usePreviews.js';
+import { previewStartError } from './previewErrors.js';
 import { usePollingLoop } from './hooks/usePollingLoop.js';
 import { authHandled } from './authGuard.js';
 
@@ -194,6 +195,10 @@ export default function App() {
     activePreview, shownPreview, tabs: previewTabs, activeName: previewActiveName, openPreviewSheet,
     startPreview, startDynamicPreview, startUrlPreview, switchTab, closeTab, stopPreview, renewPreview,
   } = usePreviews(current, { settingsOpen, setSettingsOpen });
+  const startDynamicPreviewFromSettings = useCallback(async (port) => {
+    try { await startDynamicPreview(port); }
+    catch (e) { if (!handledAuth(e)) throw e; }
+  }, [startDynamicPreview, handledAuth]);
 
   // Update check: once per app launch (not polled), ask the server whether the installed CLI is behind the
   // latest npm release. The result lights the gear's dot and drives the "run `handmux update`" hint in Settings.
@@ -963,8 +968,9 @@ export default function App() {
       await startUrlPreview({ protocol: p.protocol, port: p.port, path: p.path });
       setLocalUrlPrompt(null);
       setLocalUrlError(null);
-    } catch {
-      setLocalUrlError(t('localurl.notListening', { port: p.port }));
+    } catch (e) {
+      if (handledAuth(e)) return;
+      setLocalUrlError(previewStartError(e, { port: p.port }));
     }
   };
   const closeLocalUrl = () => { setLocalUrlPrompt(null); setLocalUrlError(null); };
@@ -1151,7 +1157,7 @@ export default function App() {
         lastPreviewDir={getPreviewDir(current?.window?.id)}
         dynamicEnabled={dynamicEnabled}
         onStartPreview={startPreview}
-        onStartDynamicPreview={startDynamicPreview}
+        onStartDynamicPreview={startDynamicPreviewFromSettings}
         onOpenPreview={openPreviewSheet}
         onRenew={renewPreview}
         onStop={stopPreview}

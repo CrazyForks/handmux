@@ -60,7 +60,7 @@ describe('Settings preview section', () => {
     await act(() => { nativeSetValue(input, '3000'); input.dispatchEvent(new Event('input', { bubbles: true })); });
     await act(async () => { [...container.querySelectorAll('button')].find((b) => b.textContent === '启动').click(); });
     await act(async () => {}); // flush the rejected promise + state update
-    expect(container.textContent).toContain('该端口未在监听');
+    expect(container.textContent).toContain('端口 :3000 没有服务在监听');
     expect(onClose).not.toHaveBeenCalled();
   });
 
@@ -95,7 +95,10 @@ describe('Settings preview section', () => {
     await act(() => { [...container.querySelectorAll('button')].find((b) => b.textContent === '动态').click(); });
     const input = container.querySelector('input[type="number"]');
     await act(() => { nativeSetValue(input, '3000'); input.dispatchEvent(new Event('input', { bubbles: true })); });
-    await act(() => { [...container.querySelectorAll('button')].find((b) => b.textContent === '启动').click(); });
+    await act(async () => {
+      [...container.querySelectorAll('button')].find((b) => b.textContent === '启动').click();
+      await Promise.resolve();
+    });
     expect(onStartDynamicPreview).toHaveBeenCalledWith(3000);
   });
 });

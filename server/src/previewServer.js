@@ -46,16 +46,6 @@ export function isPreviewHost(host, domain) {
   return safePreviewName(label);
 }
 
-// Cookie scope = base domain minus its first label (preview.example.com → example.com) so the token
-// cookie set on a preview subdomain is also sent to the main app and every sibling preview. A cookie
-// Domain attribute can't carry a port, so strip any :port from the configured domain first.
-function cookieScope(domain) {
-  if (!domain) return null;
-  const base = domain.split(':')[0];
-  const dot = base.indexOf('.');
-  return dot === -1 ? base : base.slice(dot + 1);
-}
-
 // Resolve the on-disk file for a request path under a preview: '' or '<dir>/' → its index.html.
 function fileFor(rest) { return (!rest || rest.endsWith('/')) ? `${rest}index.html` : rest; }
 
@@ -69,7 +59,6 @@ export function createPreview({
   tlsConnect = tls.connect,
 }) {
   const router = express.Router();
-  const cookieDomain = cookieScope(domain);
 
   // Gate: ?token= (set cookie + 302 strip) OR a valid cookie; else 401.
   router.use((req, res, next) => {
@@ -153,8 +142,10 @@ export function createPreview({
     if (!name) return next();
     const q = req.query?.token;
     if (typeof q === 'string' && q && credOk(req, token)) {
-      const scope = cookieDomain ? `; Domain=${cookieDomain}` : '';
-      res.setHeader('Set-Cookie', `${COOKIE}=${encodeURIComponent(token)}${scope}; Path=/; HttpOnly; SameSite=Lax`);
+      // Host-only by design: the token URL is opened on THIS preview host, and its page + HMR/WS stay on
+      // that host. Sharing the credential with the parent/main app or sibling previews is unnecessary,
+      // expands exposure, and produces invalid Domain=com for a configured two-label domain.
+      res.setHeader('Set-Cookie', `${COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax`);
       const u = new URL(req.originalUrl, 'http://x');
       u.searchParams.delete('token');
       return res.redirect(302, u.pathname + u.search);
@@ -175,7 +166,7 @@ export function createPreview({
     const host = (req.headers.host || '').split(':')[0];
     const name = isPreviewHost(host, domain);
     if (!name) return socket.destroy();
-    // ws handshakes rarely carry ?token=; the Domain-scoped cookie set on the first HTTP load is what
+    // ws handshakes rarely carry ?token=; the host-only cookie set on the first HTTP load is what
     // authorizes them. Build a minimal req-shape for credOk (query parsed from the URL for parity).
     let query = {};
     try { query = Object.fromEntries(new URL(req.url, 'http://x').searchParams); } catch { /* none */ }
