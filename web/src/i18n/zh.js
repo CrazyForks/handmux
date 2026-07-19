@@ -296,6 +296,7 @@ export default {
   'settings.feedback_group': '微信用户群',
   'settings.feedback_hint': 'bug、想法都欢迎——Issue 会被跟踪处理;微信群反馈直达。',
   'settings.update_available': '有新版本 v{v} 可用',
+  'settings.update_more': '另有 {n} 个版本更新',
   'settings.update_how': '在电脑上运行',
   'settings.push_notifications': '推送通知',
   'settings.notify_on': '已开启 ✓',

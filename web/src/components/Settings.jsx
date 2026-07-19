@@ -233,13 +233,26 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
               <div className="settings-update-title">{t('settings.update_available', { v: updateInfo.latest })}</div>
               {updateInfo.whatsNew?.length > 0 && (
                 <ul className="settings-update-new">
-                  {updateInfo.whatsNew.map((w) => (
+                  {updateInfo.whatsNew.slice(0, 1).map((w) => (
                     <li key={w.version}>
                       <span className="settings-update-new-ver">v{w.version}</span>
                       {(getLangCode().startsWith('zh') ? w.zh : w.en) || w.en}
                     </li>
                   ))}
                 </ul>
+              )}
+              {updateInfo.whatsNew?.length > 1 && (
+                <details className="settings-update-more">
+                  <summary>{t('settings.update_more', { n: updateInfo.whatsNew.length - 1 })}</summary>
+                  <ul className="settings-update-new">
+                    {updateInfo.whatsNew.slice(1).map((w) => (
+                      <li key={w.version}>
+                        <span className="settings-update-new-ver">v{w.version}</span>
+                        {(getLangCode().startsWith('zh') ? w.zh : w.en) || w.en}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               )}
               <div className="settings-update-how">{t('settings.update_how')} <code>handmux update</code></div>
             </div>

@@ -205,6 +205,7 @@ export default {
   'settings.feedback_group': 'WeChat 그룹',
   'settings.feedback_hint': '버그와 아이디어 모두 환영 — Issue는 추적되고 답변됩니다.',
   'settings.update_available': '버전 {v} 사용 가능',
+  'settings.update_more': '이전 버전 업데이트 {n}개 더 보기',
   'settings.update_how': '컴퓨터에서 실행:',
   'settings.push_notifications': '푸시 알림',
   'settings.notify_on': '활성화됨 ✓',

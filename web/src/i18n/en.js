@@ -297,6 +297,7 @@ export default {
   'settings.feedback_group': 'WeChat group',
   'settings.feedback_hint': 'Bugs and ideas welcome — issues are tracked and answered.',
   'settings.update_available': 'Version {v} available',
+  'settings.update_more': '{n} more version updates',
   'settings.update_how': 'On your computer, run',
   'settings.push_notifications': 'Push notifications',
   'settings.notify_on': 'Enabled ✓',

@@ -37,11 +37,13 @@ describe('Changelog sheet', () => {
     act(() => root.render(<Changelog open={false} onClose={() => {}} />));
     expect(container.querySelector('.changelog-panel')).toBeNull();
   });
-  it('shows ONLY the latest release (patch trains read as noise)', () => {
+  it('lists every release with its items', () => {
     act(() => root.render(<Changelog open onClose={() => {}} />));
-    expect(container.querySelectorAll('.rel')).toHaveLength(1);
+    expect(container.querySelectorAll('.rel')).toHaveLength(CHANGELOG.length);
     expect(container.querySelector('.rel-ver').textContent).toBe(`v${CHANGELOG[0].version}`);
     // items is bilingual { zh, en }; the suite renders in zh (see test/setup.js).
-    expect(container.querySelectorAll('.rel-items li')).toHaveLength(CHANGELOG[0].items.zh.length);
+    expect(container.querySelectorAll('.rel-items li')).toHaveLength(
+      CHANGELOG.reduce((n, r) => n + r.items.zh.length, 0),
+    );
   });
 });

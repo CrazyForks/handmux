@@ -214,6 +214,7 @@ export default {
   'settings.feedback_group': '微信用戶群',
   'settings.feedback_hint': 'bug、想法都歡迎——Issue 會被追蹤處理;微信群回饋直達。',
   'settings.update_available': '有新版本 v{v} 可用',
+  'settings.update_more': '另有 {n} 個版本更新',
   'settings.update_how': '在電腦上執行',
   'settings.push_notifications': '推播通知',
   'settings.notify_on': '已開啟 ✓',

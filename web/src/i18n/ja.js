@@ -205,6 +205,7 @@ export default {
   'settings.feedback_group': 'WeChat グループ',
   'settings.feedback_hint': 'バグ報告や要望は Issue へ — 必ず追跡・返信されます。',
   'settings.update_available': 'バージョン {v} が利用可能',
+  'settings.update_more': 'ほか {n} バージョンの更新',
   'settings.update_how': 'パソコンで実行:',
   'settings.push_notifications': 'プッシュ通知',
   'settings.notify_on': '有効 ✓',
