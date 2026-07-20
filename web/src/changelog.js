@@ -11,6 +11,28 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.17.6',
+    date: '2026-07-20',
+    highlight: {
+      zh: '推送结果可追踪 · 对话与权限操作更可靠',
+      en: 'Traceable push results · safer chats and permissions',
+    },
+    items: {
+      zh: [
+        '脚本通知现在会按设备显示成功或失败,失败详情会区分订阅失效、限流、推送服务不可用、拒绝和网络错误;handmux push 也不会再把零送达或部分失败报告为成功。',
+        '修复了关闭通知、打开或删除通知记录、查询设备 key 等操作在浏览器或网络无响应时可能一直等待的问题;关闭本地通知开关现在会立即生效。',
+        '长对话轮询不再遍历整段会话;历史记录统一每次加载 20 条,首次打开不足一屏时也会自动继续补取更早内容。',
+        '权限确认卡调整为左侧取消、右侧确认;取消需要在 2 秒内再次点击,避免误触中断正在等待的请求。',
+      ],
+      en: [
+        'Script notifications now show success or failure per device, with details for expired subscriptions, rate limits, unavailable push services, rejection, and network errors; handmux push no longer reports zero delivery or partial failure as success.',
+        'Fixed notification disabling, inbox loading or deletion, and device-key lookup waiting forever when the browser or network stops responding; the local notification switch now turns off immediately.',
+        'Long-chat polling no longer walks the entire session; history loads 20 messages at a time and automatically keeps fetching older messages when the first page does not fill the screen.',
+        'Permission cards now place Cancel on the left and Confirm on the right; cancellation requires a second tap within two seconds to prevent accidentally interrupting a pending request.',
+      ],
+    },
+  },
+  {
     version: '0.17.5',
     date: '2026-07-20',
     highlight: {
