@@ -252,7 +252,8 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
   box-shadow: 0 12px 34px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.05);
   transform-origin: top; animation: dd-pop .12s ease; }
 .pane-map-cell { position: absolute; padding: 0; border: 0; background: none; color: inherit;
-  font: inherit; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  font: inherit; box-sizing: border-box; -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 /* The visible tile surface, inset from the cell box so tiles read as separate window thumbnails. A
    too-small pane is already padded to a legible minimum by the layout (paneLayout grows the map), so
    the surface just fills its cell — no CSS min needed. */

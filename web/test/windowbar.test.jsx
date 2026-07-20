@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import WindowBar from '../src/components/WindowBar.jsx';
+
+const styles = readFileSync(path.resolve(process.cwd(), 'src/styles.css'), 'utf8');
 
 let container;
 let root;
@@ -240,6 +244,13 @@ describe('WindowBar', () => {
     const map = paneMap();
     expect(map).not.toBeNull();
     expect(map.parentElement).toBe(document.body);
+  });
+
+  it('disables iOS native selection and callout on long-pressable map cells', () => {
+    const rule = styles.match(/\.pane-map-cell\s*\{([^}]*)\}/)?.[1] ?? '';
+    expect(rule).toMatch(/(?:^|;)\s*-webkit-user-select:\s*none\s*;/);
+    expect(rule).toMatch(/(?:^|;)\s*user-select:\s*none\s*;/);
+    expect(rule).toMatch(/(?:^|;)\s*-webkit-touch-callout:\s*none\s*;/);
   });
 
   it('map cell tap flashes the chosen tile, then commits the switch and keeps the map open', () => {
