@@ -47,7 +47,8 @@ export function pushRoutes({ push, notifications }) {
         { title: 'handmux 测试', body: '这是一条测试通知 — 点我回到 app', tag: 'handmux-test' },
         { topic: 'handmux', urgency: 'high' },
       );
-      res.json(out);
+      const { deliveries: _deliveries, ...summary } = out;
+      res.json(summary);
     } catch (e) { next(e); }
   });
 
@@ -76,16 +77,33 @@ export function pushRoutes({ push, notifications }) {
     if (payload.tag) opts.topic = payload.tag;
     // Record FIRST so the notification tap can deep-link to this exact message's detail page. `--url`
     // is stored on the record (surfaced in the detail), NOT used as the tap target.
+    let targetKeys = [];
+    let rec = null;
     if (notifications) {
-      const targetKeys = push.resolveTargetKeys({ devices: hasDevices ? devices : null, sessions: hasSessions ? sessions : null });
-      const rec = notifications.record(targetKeys, { title, body, tag: payload.tag, url: safeUrl });
+      targetKeys = push.resolveTargetKeys({ devices: hasDevices ? devices : null, sessions: hasSessions ? sessions : null });
+      rec = notifications.record(targetKeys, {
+        title, body, tag: payload.tag, url: safeUrl, delivery: { status: 'pending' },
+      });
       payload.data = { inboxId: rec.id };
     }
     try {
       const out = hasDevices ? await push.sendToDevices(devices, payload, opts)
         : hasSessions ? await push.sendToSessions(sessions, payload, opts)
         : await push.sendToAll(payload, opts);
-      res.json(out);
+      if (notifications && rec) {
+        for (const delivery of out.deliveries || []) {
+          if (!delivery.pushKey) continue;
+          try { notifications.updateDelivery(delivery.pushKey, rec.id, delivery); }
+          catch (error) {
+            // Delivery already happened. Do not turn a status-metadata write failure into an HTTP error:
+            // CLI automation would retry and send the real notification twice. The pending record remains
+            // honest (unknown final state) and the server log retains the storage failure for diagnosis.
+            console.warn(`[handmux] notification delivery status update failed: ${error?.message || error}`);
+          }
+        }
+      }
+      const { deliveries: _deliveries, ...summary } = out;
+      res.json(summary);
     } catch (e) { next(e); }
   });
 

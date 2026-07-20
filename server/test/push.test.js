@@ -40,26 +40,44 @@ describe('push sendToAll and dead-endpoint pruning', () => {
   it('sendToAll delivers to every registered subscription', async () => {
     push.addSubscription({ endpoint: 'A', keys: {} }, ['proj-a']);
     push.addSubscription({ endpoint: 'B', keys: {} }, ['proj-b']);
+    const keyA = push.getPushKey('A');
+    const keyB = push.getPushKey('B');
     const r = await push.sendToAll({ title: 't' }, {});
     expect(r.sent).toBe(2);
     expect(sent.sort()).toEqual(['A', 'B']);
+    expect(r.deliveries).toEqual(expect.arrayContaining([
+      { pushKey: keyA, status: 'success' },
+      { pushKey: keyB, status: 'success' },
+    ]));
   });
 
   it('a 410 prunes the dead subscription from the store', async () => {
     push.addSubscription({ endpoint: 'A', keys: {} }, ['proj-a']);
     push.addSubscription({ endpoint: 'B', keys: {} }, ['proj-b']);
+    const keyB = push.getPushKey('B');
     failEndpoints.set('B', 410);
     const r = await push.sendToAll({ title: 't' }, {});
     expect(push.count()).toBe(1); // B was pruned on the failed send
     expect(r).toMatchObject({ sent: 1, failed: 1, gone: 1 });
+    expect(r.deliveries).toContainEqual({ pushKey: keyB, status: 'failed', reason: 'expired' });
   });
 
   it('reports a non-expiry rejection without pruning the subscription', async () => {
     push.addSubscription({ endpoint: 'A', keys: {} }, ['proj-a']);
+    const keyA = push.getPushKey('A');
     failEndpoints.set('A', 503);
     const r = await push.sendToAll({ title: 't' }, {});
     expect(r).toMatchObject({ sent: 0, failed: 1, gone: 0 });
+    expect(r.deliveries).toContainEqual({ pushKey: keyA, status: 'failed', reason: 'service_unavailable' });
     expect(push.count()).toBe(1);
+  });
+
+  it('classifies per-device failure reasons without inventing a partial state', () => {
+    expect(push.classifyDeliveryFailure({ statusCode: 410 })).toBe('expired');
+    expect(push.classifyDeliveryFailure({ statusCode: 429 })).toBe('rate_limited');
+    expect(push.classifyDeliveryFailure({ statusCode: 503 })).toBe('service_unavailable');
+    expect(push.classifyDeliveryFailure({ statusCode: 403 })).toBe('rejected');
+    expect(push.classifyDeliveryFailure(new TypeError('fetch failed'))).toBe('network_error');
   });
 });
 

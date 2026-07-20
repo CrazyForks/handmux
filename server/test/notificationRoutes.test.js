@@ -6,10 +6,19 @@ import os from 'node:os';
 import path from 'node:path';
 
 const deliveredData = [];
+const failedEndpoints = new Map();
 vi.mock('web-push', () => ({
   default: {
     setVapidDetails: vi.fn(),
-    sendNotification: vi.fn(async (sub, data) => { deliveredData.push(data); return { statusCode: 201 }; }),
+    sendNotification: vi.fn(async (sub, data) => {
+      deliveredData.push(data);
+      if (failedEndpoints.has(sub.endpoint)) {
+        const error = new Error('push rejected');
+        error.statusCode = failedEndpoints.get(sub.endpoint);
+        throw error;
+      }
+      return { statusCode: 201 };
+    }),
   },
 }));
 
@@ -19,6 +28,7 @@ process.env.VAPID_PRIVATE = 'priv';
 let app;
 beforeEach(async () => {
   deliveredData.length = 0;
+  failedEndpoints.clear();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'notif-routes-'));
   process.env.PUSH_STORE = path.join(dir, 'push.json');
   process.env.NOTIF_DIR = path.join(dir, 'notifications');
@@ -45,10 +55,24 @@ describe('notification inbox routes', () => {
     const aItems = (await auth(request(app).get(`/api/notifications?device=${keyA}`)).expect(200)).body.items;
     const bItems = (await auth(request(app).get(`/api/notifications?device=${keyB}`)).expect(200)).body.items;
     expect(aItems.map((n) => n.title)).toEqual(['x']);
+    expect(aItems[0].delivery).toEqual({ status: 'success' });
     expect(bItems).toEqual([]);
     // the delivered payload deep-links to that record
     const payload = JSON.parse(deliveredData[deliveredData.length - 1]);
     expect(payload.data.inboxId).toBe(aItems[0].id);
+  });
+
+  it('stores an independent success/failure result in each targeted device inbox', async () => {
+    const push = await import('../src/push.js');
+    push.addSubscription({ endpoint: 'B', keys: {} }, []);
+    const keyA = push.getPushKey('A');
+    const keyB = push.getPushKey('B');
+    failedEndpoints.set('B', 503);
+    await auth(request(app).post('/api/push/send-local').send({ title: 'x', body: '1' })).expect(200);
+    const a = (await auth(request(app).get(`/api/notifications?device=${keyA}`)).expect(200)).body.items[0];
+    const b = (await auth(request(app).get(`/api/notifications?device=${keyB}`)).expect(200)).body.items[0];
+    expect(a.delivery).toEqual({ status: 'success' });
+    expect(b.delivery).toEqual({ status: 'failed', reason: 'service_unavailable' });
   });
 
   it('no device param → empty list / delete false', async () => {

@@ -5,8 +5,8 @@ import InboxPage from '../src/components/InboxPage.jsx';
 afterEach(cleanup);
 
 const items = [
-  { id: '2', ts: 200, title: '构建完成', body: '耗时 3m', url: '/x' },
-  { id: '1', ts: 100, title: '部署成功', body: 'v1.2' },
+  { id: '2', ts: 200, title: '构建完成', body: '耗时 3m', url: '/x', delivery: { status: 'success' } },
+  { id: '1', ts: 100, title: '部署成功', body: 'v1.2', delivery: { status: 'failed', reason: 'rate_limited' } },
 ];
 
 describe('InboxPage list', () => {
@@ -15,6 +15,8 @@ describe('InboxPage list', () => {
       onOpenDetail={() => {}} onCloseDetail={() => {}} onClose={() => {}} onDelete={() => {}} />);
     expect(screen.getByText('构建完成')).toBeTruthy();
     expect(screen.getByText('部署成功')).toBeTruthy();
+    expect(screen.getByText(/^成功$/)).toBeTruthy();
+    expect(screen.getByText(/^失败$|^Failed$/i)).toBeTruthy();
   });
   it('empty state when no items', () => {
     render(<InboxPage open items={[]} readIds={[]} detailId={null}
@@ -58,12 +60,18 @@ describe('InboxPage detail', () => {
       onOpenDetail={() => {}} onCloseDetail={() => {}} onClose={() => {}} onDelete={() => {}} />);
     expect(screen.getByText('构建完成')).toBeTruthy();
     expect(screen.getByText('耗时 3m')).toBeTruthy();
+    expect(screen.getByText(/^成功$/)).toBeTruthy();
     expect(screen.getByText(/打开链接|Open link/i)).toBeTruthy();
   });
   it('shows expired when the id is gone', () => {
     render(<InboxPage open items={items} readIds={[]} detailId="999"
       onOpenDetail={() => {}} onCloseDetail={() => {}} onClose={() => {}} onDelete={() => {}} />);
     expect(screen.getByText(/已过期|expired/i)).toBeTruthy();
+  });
+  it('shows this device\'s failure reason in detail', () => {
+    render(<InboxPage open items={items} readIds={[]} detailId="1"
+      onOpenDetail={() => {}} onCloseDetail={() => {}} onClose={() => {}} onDelete={() => {}} />);
+    expect(screen.getByText(/失败.*限流|Failed.*rate/i)).toBeTruthy();
   });
   it('does not render a link with a non-web protocol from legacy stored data', () => {
     render(<InboxPage open items={[{ ...items[0], url: 'javascript:alert(1)' }]} readIds={[]} detailId="2"

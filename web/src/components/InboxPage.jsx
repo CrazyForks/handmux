@@ -14,6 +14,26 @@ function ago(ts) {
   return new Date(ts).toLocaleDateString();
 }
 
+const DELIVERY_REASON_KEY = {
+  expired: 'pushInbox.deliveryReasonExpired',
+  rate_limited: 'pushInbox.deliveryReasonRateLimited',
+  service_unavailable: 'pushInbox.deliveryReasonUnavailable',
+  rejected: 'pushInbox.deliveryReasonRejected',
+  network_error: 'pushInbox.deliveryReasonNetwork',
+  not_configured: 'pushInbox.deliveryReasonNotConfigured',
+};
+
+function deliveryLabel(delivery, withReason = false) {
+  if (delivery?.status === 'pending') return t('pushInbox.deliveryPending');
+  if (delivery?.status === 'success') return t('pushInbox.deliverySuccess');
+  if (delivery?.status === 'failed') {
+    if (!withReason) return t('pushInbox.deliveryFailed');
+    const reason = t(DELIVERY_REASON_KEY[delivery.reason] || 'pushInbox.deliveryReasonUnknown');
+    return `${t('pushInbox.deliveryFailed')} · ${reason}`;
+  }
+  return '';
+}
+
 // Full-screen manual-push inbox. Uses the app's shared full-screen sheet shell (.file-sheet slide-up +
 // portal-on-<body> + .file-tabs header), exactly like GitPanel/FileManager/PreviewSheet — NOT a bespoke
 // overlay. List and detail are ONE sheet: opening a message swaps the header (‹ back + title) and body
@@ -25,6 +45,7 @@ export default function InboxPage({ open, detailId, items, readIds = [], onOpenD
   const inDetail = detailId != null;
   const detail = inDetail ? items.find((x) => x.id === detailId) : null;
   const detailUrl = sanitizeNotificationUrl(detail?.url);
+  const detailDelivery = deliveryLabel(detail?.delivery, true);
   const hasUnread = items.some((n) => !readSet.has(n.id));
 
   return createPortal(
@@ -60,6 +81,7 @@ export default function InboxPage({ open, detailId, items, readIds = [], onOpenD
             <div className="push-inbox-detail">
               <div className="push-inbox-detail-title">{detail.title}</div>
               <div className="push-inbox-detail-time">{ago(detail.ts)}</div>
+              {detailDelivery && <div className={`push-inbox-delivery detail ${detail.delivery.status}`}>{detailDelivery}</div>}
               <div className="push-inbox-detail-text">{detail.body}</div>
               {detailUrl && <a className="fontbtn push-inbox-openurl" href={detailUrl}>{t('pushInbox.openUrl')}</a>}
               <button className="fontbtn push-inbox-detail-del" disabled={deletingId != null}
@@ -79,6 +101,9 @@ export default function InboxPage({ open, detailId, items, readIds = [], onOpenD
                 <button className="push-inbox-main" onClick={() => onOpenDetail(n.id)}>
                   <div className="push-inbox-row-top">
                     <span className="push-inbox-row-title">{n.title}</span>
+                    {deliveryLabel(n.delivery) && (
+                      <span className={`push-inbox-delivery ${n.delivery.status}`}>{deliveryLabel(n.delivery)}</span>
+                    )}
                     <span className="push-inbox-row-time">{ago(n.ts)}</span>
                   </div>
                   <div className="push-inbox-row-body">{n.body}</div>

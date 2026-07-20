@@ -103,18 +103,36 @@ function options(opts = {}) {
   return { TTL: opts.ttl ?? 90, urgency: opts.urgency || 'normal', topic: safeTopic(opts.topic) };
 }
 
+export function classifyDeliveryFailure(error) {
+  const status = Number(error?.statusCode) || 0;
+  if (status === 404 || status === 410) return 'expired';
+  if (status === 429) return 'rate_limited';
+  if (status >= 500) return 'service_unavailable';
+  if (status >= 400) return 'rejected';
+  return 'network_error';
+}
+
 async function deliver(records, payload, opts = {}) {
   ensureInit();
-  if (!configured) return { sent: 0, failed: 0, gone: 0, configured: false };
+  if (!configured) return {
+    sent: 0, failed: 0, gone: 0, configured: false,
+    deliveries: records.map((rec) => ({ pushKey: rec.pushKey, status: 'failed', reason: 'not_configured' })),
+  };
   const data = JSON.stringify(payload);
   const dead = [];
+  const deliveries = [];
   let sent = 0;
   let failed = 0;
   await Promise.all(records.map(async (rec) => {
-    try { await webpush.sendNotification(rec.subscription, data, options(opts)); sent += 1; }
+    try {
+      await webpush.sendNotification(rec.subscription, data, options(opts));
+      sent += 1;
+      deliveries.push({ pushKey: rec.pushKey, status: 'success' });
+    }
     catch (e) {
       failed += 1;
       if (e?.statusCode === 404 || e?.statusCode === 410) dead.push(rec.subscription.endpoint);
+      deliveries.push({ pushKey: rec.pushKey, status: 'failed', reason: classifyDeliveryFailure(e) });
       let host = 'unknown push service';
       try { host = new URL(rec.subscription.endpoint).host; } catch { /* malformed endpoints fail below */ }
       const detail = String(e?.body || e?.message || 'unknown error').replace(/\s+/g, ' ').slice(0, 200);
@@ -122,7 +140,7 @@ async function deliver(records, payload, opts = {}) {
     }
   }));
   if (dead.length) { subs = subs.filter((s) => !dead.includes(s.subscription.endpoint)); persist(); }
-  return { sent, failed, gone: dead.length, configured: true };
+  return { sent, failed, gone: dead.length, configured: true, deliveries };
 }
 
 export const sendToAll = (payload, opts = {}) => deliver(subs, payload, opts);

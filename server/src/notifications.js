@@ -22,9 +22,10 @@ function fileFor(key) {
 }
 const load = (file) => readJsonArray(file).filter((n) => n && typeof n.title === 'string');
 
-export function record(pushKeys, { title, body, tag, url } = {}) {
+export function record(pushKeys, { title, body, tag, url, delivery } = {}) {
   const rec = { id: genId(), ts: Date.now(), title: String(title ?? ''), body: String(body ?? '') };
   if (tag) rec.tag = String(tag);
+  if (delivery?.status === 'pending') rec.delivery = { status: 'pending' };
   const safeUrl = sanitizeNotificationUrl(url);
   if (safeUrl) rec.url = safeUrl;
   for (const key of pushKeys || []) {
@@ -35,6 +36,20 @@ export function record(pushKeys, { title, body, tag, url } = {}) {
     writeJsonAtomic(file, items.length > CAP ? items.slice(items.length - CAP) : items);
   }
   return rec;
+}
+
+export function updateDelivery(pushKey, id, delivery) {
+  const file = fileFor(pushKey);
+  if (!file) return false;
+  const items = load(file);
+  const item = items.find((n) => n.id === id);
+  if (!item) return false;
+  const status = delivery?.status;
+  if (!['pending', 'success', 'failed'].includes(status)) return false;
+  item.delivery = { status };
+  if (status === 'failed' && typeof delivery.reason === 'string') item.delivery.reason = delivery.reason;
+  writeJsonAtomic(file, items);
+  return true;
 }
 
 export function list(pushKey) {

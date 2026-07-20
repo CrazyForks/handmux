@@ -28,6 +28,17 @@ describe('per-device notifications store', () => {
     expect(mod.list('k2')[0].id).toBe(rec.id);
   });
 
+  it('updates delivery status for one device without changing another device\'s copy', async () => {
+    const mod = await freshModule();
+    const rec = mod.record(['k1', 'k2'], {
+      title: 'a', body: '1', delivery: { status: 'pending' },
+    });
+    expect(mod.updateDelivery('k1', rec.id, { status: 'success' })).toBe(true);
+    expect(mod.updateDelivery('k2', rec.id, { status: 'failed', reason: 'rate_limited' })).toBe(true);
+    expect(mod.list('k1')[0].delivery).toEqual({ status: 'success' });
+    expect(mod.list('k2')[0].delivery).toEqual({ status: 'failed', reason: 'rate_limited' });
+  });
+
   it('tag and url stored only when present', async () => {
     const mod = await freshModule();
     mod.record(['k1'], { title: 'a', body: '1' });

@@ -1656,6 +1656,11 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .push-inbox-row-title { flex: 1; min-width: 0; font-weight: 500; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .push-inbox-unread .push-inbox-row-title { font-weight: 700; }
 .push-inbox-unread .push-inbox-row-title::before { content: '•'; color: var(--blue); margin-right: 6px; }
+.push-inbox-delivery { flex: 0 0 auto; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.push-inbox-delivery.pending { color: #8b99a7; }
+.push-inbox-delivery.success { color: #65c98a; }
+.push-inbox-delivery.failed { color: #ff8d84; }
+.push-inbox-delivery.detail { margin: -9px 0 14px; font-size: 12px; }
 .push-inbox-row-body { color: #9fb0c0; font-size: 13px; word-break: break-word; margin-top: 3px; }
 .push-inbox-row-time { flex: 0 0 auto; color: #6b7a89; font-size: 11px; font-variant-numeric: tabular-nums; }
 .push-inbox-del { flex: 0 0 auto; width: 44px; background: none; border: none; color: #6b7a89; font-size: 13px; }
