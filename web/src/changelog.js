@@ -11,6 +11,26 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.17.8',
+    date: '2026-07-20',
+    highlight: {
+      zh: '分屏地图显示尺寸 · iPhone 交互修复',
+      en: 'Pane dimensions in the map · iPhone interaction fixes',
+    },
+    items: {
+      zh: [
+        '分屏地图现在会在空间足够的窗格里低调显示真实终端尺寸（列×行）,较小窗格仍保持简洁。',
+        '修复了分屏地图在 iPhone 上无法显示、长按窗格时触发系统文字选择的问题。',
+        '设置分屏列宽时现在会读取当前窗格的实际宽度,不同窗格不再互相沿用调整值。',
+      ],
+      en: [
+        'The pane map now quietly shows each terminal\'s real columns × rows when space allows, while smaller tiles stay uncluttered.',
+        'Fixed the pane map failing to appear on iPhone and long-pressing a pane triggering the system text-selection UI.',
+        'Pane-width settings now read the active pane\'s actual width, so adjustments no longer carry over between panes.',
+      ],
+    },
+  },
+  {
     version: '0.17.7',
     date: '2026-07-20',
     highlight: {
