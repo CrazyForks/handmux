@@ -287,6 +287,42 @@ export default {
   'setup.previewTlsCf': "  TLS: Cloudflare's free cert covers ONE level (*.example.com); deeper (*.preview.example.com) needs Advanced Certificate Manager.",
   'setup.previewTlsEdge': "  TLS: your edge serves the wildcard cert (e.g. a Let's Encrypt *.preview.your.domain).",
 
+  // workspace restore
+  'restore.usage': 'Usage: handmux restore [--dry-run] [--checkpoint <id>] [--session <name>] | handmux restore --list',
+  'restore.badFlag': 'Unknown restore option {flag}.',
+  'restore.flagBoolean': '{flag} does not take a value.',
+  'restore.checkpointValue': '--checkpoint needs an id value (or latest).',
+  'restore.checkpointId': '--checkpoint must be a valid id containing only letters, numbers, dots, underscores, or hyphens.',
+  'restore.sessionValue': '--session needs a non-empty session name.',
+  'restore.listExclusive': '--list must be used alone; it cannot be combined with --dry-run, --checkpoint, or --session.',
+  'restore.listRow': '{id}  {time}  {sessions} session(s) · {windows} window(s) · {panes} pane(s) · {agents} agent(s)',
+  'restore.listUnavailable': '{id}  unavailable: {error}',
+  'restore.listEmpty': 'No workspace checkpoints have been archived yet.',
+  'restore.selectCheckpoint': 'Choose a workspace checkpoint to restore',
+  'restore.selectHint': '{time} · {sessions} session(s) · {windows} window(s) · {panes} pane(s)',
+  'restore.noCheckpoint': 'No usable checkpoint exists yet. handmux is silently protecting the current workspace; retry after the next computer or tmux restart.',
+  'restore.selectionCancelled': 'No checkpoint was selected. Run `handmux restore` again when you are ready.',
+  'restore.planCheckpoint': 'Checkpoint: {time} ({id}; {sessions} sessions, {windows} windows, {panes} panes)',
+  'restore.planCurrent': 'Current: {sessions} live sessions',
+  'restore.planCreate': '+ {session}',
+  'restore.planRenamed': '+ {session} -> {target} (name already in use)',
+  'restore.planAlready': '= {session} (already restored)',
+  'restore.planUnavailable': '! {session} (unavailable: {reason})',
+  'restore.warning': 'Warning: {warning}',
+  'restore.sessionWarning': '  Warning for {session}: {warning}',
+  'restore.nonDestructive': 'No existing session or process will be stopped or modified.',
+  'restore.nonDestructivePast': 'Existing sessions were not modified.',
+  'restore.dryRunHint': 'Run `handmux restore` to continue.',
+  'restore.resultRestored': '✓ {session}',
+  'restore.resultRenamed': '✓ {session} restored as {target}',
+  'restore.resultAlready': '= {session} (already restored)',
+  'restore.sessionFailed': 'Checkpoint {checkpoint}; session {session}; stage {stage}: {error}',
+  'restore.operationFailed': 'Checkpoint {checkpoint}; stage {stage}: {error}',
+  'restore.retrySession': 'Retry only this session: handmux restore --checkpoint {checkpoint} --session {session}',
+  'restore.resultSummary': 'Restored {restored} session(s); {already} already present; {failed} failed.',
+  'restore.error': 'Checkpoint {checkpoint} failed during the restore command: {error}',
+  'restore.retry': 'Retry with `handmux restore --checkpoint {checkpoint}` after fixing the reported cause.',
+
   // help
   'help.body': `handmux — drive your tmux from your phone
 
@@ -297,6 +333,8 @@ export default {
   handmux stop | restart | status
   handmux logs [--follow] [--lines N]
   handmux push <title> <body>   notify your phone from a script (--session X · --device K · --tag T · --url U)
+  handmux restore [--dry-run] [--checkpoint <id>] [--session <name>]
+  handmux restore --list
   handmux update           upgrade to the latest published version (npm i -g handmux@latest)
 
 New here? run 'handmux setup' — it walks you through remote access + phone notifications.

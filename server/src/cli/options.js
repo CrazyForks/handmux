@@ -13,15 +13,20 @@ const camel = (s) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 export function parseArgs(argv) {
   const [command = 'help', ...rest] = argv;
   const flags = {};
+  const multiFlags = new Set(['session']);
+  const assign = (key, value) => {
+    if (!multiFlags.has(key) || flags[key] === undefined) { flags[key] = value; return; }
+    flags[key] = Array.isArray(flags[key]) ? [...flags[key], value] : [flags[key], value];
+  };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     if (a === '-f') { flags.foreground = true; continue; }
     if (!a.startsWith('--')) continue;
     const key = a.slice(2);
-    if (key.startsWith('no-')) { flags[camel(key.slice(3))] = false; continue; }
+    if (key.startsWith('no-')) { assign(camel(key.slice(3)), false); continue; }
     const next = rest[i + 1];
-    if (next === undefined || next.startsWith('--')) { flags[camel(key)] = true; }
-    else { flags[camel(key)] = next; i++; }
+    if (next === undefined || next.startsWith('--')) { assign(camel(key), true); }
+    else { assign(camel(key), next); i++; }
   }
   return { command, flags };
 }

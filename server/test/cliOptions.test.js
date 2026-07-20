@@ -16,6 +16,11 @@ describe('parseArgs', () => {
   it('defaults the command to help when empty', () => {
     expect(parseArgs([]).command).toBe('help');
   });
+  it('collects repeated --session values without changing ordinary repeated flags', () => {
+    expect(parseArgs(['restore', '--session', 'api', '--session', 'web', '--session', 'docs']).flags.session)
+      .toEqual(['api', 'web', 'docs']);
+    expect(parseArgs(['start', '--port', '3000', '--port', '4000']).flags.port).toBe('4000');
+  });
 });
 
 describe('resolveConfig', () => {

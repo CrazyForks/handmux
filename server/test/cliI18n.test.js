@@ -52,4 +52,15 @@ describe('catalog parity', () => {
     const missing = Object.keys(en).filter((k) => !(k in zh));
     expect(missing).toEqual([]);
   });
+
+  it('documents both restore forms and provides actionable restore messages in both locales', () => {
+    for (const dict of [en, zh]) {
+      expect(dict['help.body']).toContain('handmux restore [--dry-run] [--checkpoint <id>] [--session <name>]');
+      expect(dict['help.body']).toContain('handmux restore --list');
+      expect(dict['restore.error']).toMatch(/\{checkpoint\}/);
+      expect(dict['restore.sessionFailed']).toMatch(/\{session\}/);
+      expect(dict['restore.sessionFailed']).toMatch(/\{stage\}/);
+      expect(dict['restore.retrySession']).toMatch(/handmux restore/);
+    }
+  });
 });

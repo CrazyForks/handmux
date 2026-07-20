@@ -41,6 +41,7 @@ import { probe } from '../src/cli/probe.js';
 import { notifyUpdate, runUpdateCheck, isBrewInstall, PKG_NAME } from '../src/cli/updateCheck.js';
 import { t, initLocale, setLocale } from '../src/cli/i18n/index.js';
 import { runPush } from '../src/cli/pushCmd.js';
+import { runWorkspaceCommand } from '../src/cli/workspaceCmd.js';
 
 const HOME = homedir();
 const SELF = fileURLToPath(import.meta.url);
@@ -145,6 +146,7 @@ async function main() {
     case 'status': await status(); process.exit(process.exitCode || 0);
     case 'logs': return logs();
     case 'push': process.exitCode = await pushCmd(); return;
+    case 'restore': process.exitCode = await runWorkspaceCommand({ flags, home: HOME }); return;
     case 'config': return configCmd();
     case 'setup': return setupCmd();
     case 'shortcuts': return shortcutsCmd();
