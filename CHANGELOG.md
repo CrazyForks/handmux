@@ -8,7 +8,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 - `handmux status` 现在显示实际运行版本；升级后尚未重启时，也会同时提示已安装的新版本。
 
 ### Fixed
-- 安装开机自启后，`start` / `stop` / `restart` 统一交由 launchd/systemd 管理，不再因服务管理器自动拉起旧 supervisor 而产生双实例、端口占用、`restart` 不出 URL 或 `stop` 后仍可访问；重启还会刷新升级后的可执行路径与固化配置。
+- 安装开机自启后，`start` / `stop` / `restart` 统一交由 launchd/systemd 管理，不再因服务管理器自动拉起旧 supervisor 而产生双实例、端口占用、`restart` 不出 URL 或 `stop` 后仍可访问；生命周期锁会阻止并发启动，进程表兜底会提示未登记/重复 PID，`stop` / `restart` 则回收全部副本并确认归零；重启还会刷新升级后的可执行路径与固化配置。
 - `handmux status` 完成输出后会显式退出，避免 WSL 中公网探活留下的 Node 网络句柄让终端迟迟不返回命令行。
 
 ## [0.17.6] - 2026-07-20

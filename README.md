@@ -124,7 +124,7 @@ No tunnel by default — the phone connects **straight to your own computer**, n
 
 > Tunnel config, server-side reverse proxy, autostart, voice/push credentials, and port previews → see the **[docs](https://handmux.com/docs)**.
 
-Once autostart is installed, `handmux start` / `stop` / `restart` coordinate with that same launchd/systemd service (including after an upgrade), and `handmux status` shows the version actually running.
+Once autostart is installed, `handmux start` / `stop` / `restart` coordinate with that same launchd/systemd service (including after an upgrade). A lifecycle lock prevents concurrent launches; `status` shows the running version and warns with PIDs if stale/duplicate supervisors exist, while `stop` reaps every copy.
 
 ## Requirements
 

@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readState, writeState, clearState, isAlive, statePath, claudeStatePath, pushStorePath, previewStorePath } from '../src/cli/state.js';
+import {
+  readState, writeState, clearState, isAlive, statePath, lifecycleLockPath,
+  acquireLifecycleLock, claudeStatePath, pushStorePath, previewStorePath,
+} from '../src/cli/state.js';
 
 let home;
 beforeEach(() => { home = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-')); });
@@ -30,6 +33,27 @@ describe('state', () => {
     expect(isAlive(process.pid)).toBe(true);
     expect(isAlive(0)).toBe(false);
     expect(isAlive(2 ** 30)).toBe(false);
+  });
+  it('lifecycle lock is exclusive and releases only its own lock', () => {
+    const release = acquireLifecycleLock(home);
+    expect(JSON.parse(fs.readFileSync(lifecycleLockPath(home), 'utf8')).pid).toBe(process.pid);
+    expect(() => acquireLifecycleLock(home)).toThrow(/already running/);
+    release();
+    expect(fs.existsSync(lifecycleLockPath(home))).toBe(false);
+  });
+  it('lifecycle lock reclaims a dead owner', () => {
+    fs.mkdirSync(path.dirname(lifecycleLockPath(home)), { recursive: true });
+    fs.writeFileSync(lifecycleLockPath(home), String(2 ** 30));
+    const release = acquireLifecycleLock(home);
+    expect(JSON.parse(fs.readFileSync(lifecycleLockPath(home), 'utf8')).pid).toBe(process.pid);
+    release();
+  });
+  it('lifecycle lock reclaims an expired stamp even if its pid has been reused', () => {
+    fs.mkdirSync(path.dirname(lifecycleLockPath(home)), { recursive: true });
+    fs.writeFileSync(lifecycleLockPath(home), JSON.stringify({ pid: process.pid, createdAt: 1 }));
+    const release = acquireLifecycleLock(home);
+    expect(JSON.parse(fs.readFileSync(lifecycleLockPath(home), 'utf8')).pid).toBe(process.pid);
+    release();
   });
   it('claudeStatePath is ~/.handmux/claude-state.json', () => {
     expect(claudeStatePath('/home/x')).toBe('/home/x/.handmux/claude-state.json');

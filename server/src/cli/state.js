@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 
 export function pocketHome(home = homedir()) { return path.join(home, '.handmux'); }
 export function statePath(home) { return path.join(pocketHome(home), 'state.json'); }
+export function lifecycleLockPath(home) { return path.join(pocketHome(home), 'lifecycle.lock'); }
 export function logPath(home) { return path.join(pocketHome(home), 'handmux.log'); }
 export function configPath(home) { return path.join(pocketHome(home), 'config.json'); }
 
@@ -46,4 +47,44 @@ export function clearState(home) {
 export function isAlive(pid) {
   if (!pid) return false;
   try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
+}
+
+const LIFECYCLE_LOCK_STALE_MS = 10 * 60 * 1000;
+
+// Cross-process mutex for start/stop/restart/service operations. `wx` is atomic even when two shells run
+// start at exactly the same time. A killed CLI leaves a tiny stale file; its dead owner is detected and
+// reclaimed on the next operation. The release closure only removes a lock still owned by this process.
+export function acquireLifecycleLock(home, pid = process.pid) {
+  fs.mkdirSync(pocketHome(home), { recursive: true });
+  const file = lifecycleLockPath(home);
+  const stamp = JSON.stringify({ pid, createdAt: Date.now() });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      fs.writeFileSync(file, stamp, { flag: 'wx' });
+      return () => {
+        try {
+          if (fs.readFileSync(file, 'utf8') === stamp) fs.unlinkSync(file);
+        } catch { /* already gone/replaced */ }
+      };
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      let owner = 0, createdAt = 0;
+      try {
+        const raw = fs.readFileSync(file, 'utf8').trim();
+        const parsed = JSON.parse(raw);
+        owner = Number(parsed.pid);
+        createdAt = Number(parsed.createdAt);
+      } catch { /* malformed/legacy → stale unless its plain pid is live */
+        try { owner = Number(fs.readFileSync(file, 'utf8').trim()); } catch { /* stale */ }
+      }
+      const fresh = !createdAt || (Date.now() - createdAt) < LIFECYCLE_LOCK_STALE_MS;
+      if (owner && fresh && isAlive(owner)) {
+        const err = new Error(`lifecycle operation already running (pid ${owner})`);
+        err.ownerPid = owner;
+        throw err;
+      }
+      try { fs.unlinkSync(file); } catch { /* raced with another contender */ }
+    }
+  }
+  throw new Error('could not acquire lifecycle lock');
 }

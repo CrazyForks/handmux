@@ -124,7 +124,7 @@ handmux push <title> <body> [选项]
 
 > 隧道配置、服务端反向代理、开机自启、语音 / 推送凭证、端口预览等细节 → 见 **[文档](https://handmux.com/docs)**。
 
-安装开机自启后，`handmux start` / `stop` / `restart` 会始终与同一个 launchd/systemd 服务协同（升级后也一样）；`handmux status` 会显示实际运行的版本。
+安装开机自启后，`handmux start` / `stop` / `restart` 会始终与同一个 launchd/systemd 服务协同（升级后也一样）。生命周期锁会阻止并发启动；`status` 显示实际运行版本，并列出未登记/重复 supervisor 的 PID；`stop` 会回收全部副本。
 
 ## 环境要求
 

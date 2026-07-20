@@ -29,7 +29,8 @@ import { resolveTunlite, checkSshAuth } from '../src/cli/tunlite.js';
 import { resolveNatapp, resolveCpolar } from '../src/cli/tunnelClients.js';
 import { installService, uninstallService, isServiceInstalled, stopService } from '../src/cli/service.js';
 import { checkTmux, MIN_TMUX, tmuxInstallHint } from '../src/cli/tmuxVersion.js';
-import { readState, clearState, isAlive, pocketHome, logPath, configPath, claudeStatePath } from '../src/cli/state.js';
+import { readState, clearState, isAlive, acquireLifecycleLock, pocketHome, logPath, configPath, claudeStatePath } from '../src/cli/state.js';
+import { scanSupervisorPids, terminateSupervisorPids } from '../src/cli/supervisorProcesses.js';
 import { runSetup } from '../src/cli/setupWizard.js';
 import { hooksStatus, installHooks, uninstallHooks } from '../src/cli/claudeHooks.js';
 import { codexHooksStatus, installCodexHooks, uninstallCodexHooks } from '../src/cli/codexHooks.js';
@@ -136,23 +137,37 @@ async function preflightNgrok(cfg) {
 
 async function main() {
   switch (command) {
-    case 'start': return start();
+    case 'start': return withLifecycleLock(start);
     case 'open': return openCmd();
-    case 'stop': await stopAndWait(); return;
-    case 'restart': { if (!await stopAndWait()) return; return start(); }
+    case 'stop': return withLifecycleLock(stopAndWait);
+    case 'restart': return withLifecycleLock(async () => { if (!await stopAndWait()) return; return start(); });
     case 'status': await status(); process.exit(process.exitCode || 0);
     case 'logs': return logs();
     case 'push': process.exitCode = await pushCmd(); return;
     case 'config': return configCmd();
     case 'setup': return setupCmd();
     case 'hooks': return hooksCmd();
-    case 'service': return serviceCmd();
+    case 'service': return withLifecycleLock(serviceCmd);
     case 'update': case 'upgrade': return updateCmd();
     case '__supervise': return runSupervise();
     case '__update-check': return runUpdateCheck(HOME);
     case 'version': case '--version': case '-v': return version();
     default: return help();
   }
+}
+
+async function withLifecycleLock(fn) {
+  let release;
+  try { release = acquireLifecycleLock(HOME); }
+  catch (e) {
+    console.error(e.ownerPid
+      ? t('lifecycle.busy', { pid: e.ownerPid })
+      : t('err.generic', { msg: e.message }));
+    process.exitCode = 1;
+    return;
+  }
+  try { return await fn(); }
+  finally { release(); }
 }
 
 // `handmux --version` / `-v` — print the package version (read from this package's package.json, so it
@@ -205,12 +220,28 @@ async function start() {
   }
   if (!tmux.ok) console.warn(t('tmux.tooOld', { raw: tmux.raw, min: MIN_TMUX }));
 
+  // state.json cannot represent two supervisors. Refuse to add another when the real process table says
+  // the state is missing/stale or a historical duplicate already exists; `handmux stop` is the repair path.
+  const supervisors = scanSupervisorPids();
+  if (!supervisors.ok) {
+    console.error(t('lifecycle.scanFailed'));
+    process.exitCode = 1;
+    return;
+  }
+
   // Already running? `start` never disrupts a live instance on its own. If this run's config matches
   // what's running, just reassure + reprint the address. If it DIFFERS (e.g. you changed the tunnel and
   // re-ran `start` expecting it to apply), spell out the difference and — interactively — offer to restart
   // into it; otherwise point at `handmux restart`. The principle stays intact: we only restart on an
   // explicit yes.
   const existing = readState(HOME);
+  const statePid = existing && isAlive(existing.supervisorPid) ? existing.supervisorPid : null;
+  if (supervisors.pids.length > 1 || (supervisors.pids.length === 1 && supervisors.pids[0] !== statePid)) {
+    console.error(t('start.instancesFound', { pids: supervisors.pids.join(', ') }));
+    console.error(t('start.instancesHint'));
+    process.exitCode = 1;
+    return;
+  }
   if (existing && isAlive(existing.supervisorPid)) {
     const changed = configChanges(cfg, existing);
     if (!changed.length) {
@@ -293,55 +324,68 @@ function reapOrphans(st) {
   }
 }
 
-function stop() {
+// A lifecycle command must not start the replacement while the previous supervisor can still own the
+// port/tunnel. Stop every real supervisor, not only the one last writer recorded in state.json, then rescan
+// until none remain. This both repairs historical duplicates and prevents restart from racing a straggler.
+async function stopAndWait() {
   const st = readState(HOME);
-  if (isServiceInstalled(HOME)) {
+  const initial = scanSupervisorPids();
+  if (!initial.ok) {
+    console.error(t('lifecycle.scanFailed'));
+    process.exitCode = 1;
+    return false;
+  }
+  const managed = isServiceInstalled(HOME);
+  if (managed) {
     try { stopService({ home: HOME }); }
     catch (e) { console.error(t('err.generic', { msg: e.message })); process.exitCode = 1; return false; }
-    // Recover a duplicate detached supervisor created by older releases' restart race, if state.json was
-    // pointing at it when stop began. The managed supervisor has already been stopped, so this cannot make
-    // the service manager resurrect either process.
-    if (st && isAlive(st.supervisorPid)) {
-      try { process.kill(st.supervisorPid, 'SIGTERM'); } catch { /* raced away */ }
-    }
-    console.log(st ? t('stop.stopped', { pid: st.supervisorPid }) : t('stop.notRunning'));
-    return true;
   }
-  if (!st || !isAlive(st.supervisorPid)) {
-    // Supervisor already gone — but a non-graceful death may have orphaned its children. Reap them before
-    // dropping the state file, or nothing ever will.
+  const seen = new Set(initial.pids);
+  if (st && isAlive(st.supervisorPid)) seen.add(st.supervisorPid);
+  if (!seen.size) {
     if (st) reapOrphans(st);
-    console.log(t('stop.notRunning'));
     clearState(HOME);
+    console.log(managed ? t('stop.stoppedManaged') : t('stop.notRunning'));
     return true;
   }
-  try { process.kill(st.supervisorPid, 'SIGTERM'); } catch { /* race: already gone */ }
-  console.log(t('stop.stopped', { pid: st.supervisorPid }));
+  const result = await terminateSupervisorPids([...seen]);
+  if (!result.ok) {
+    console.error(t(result.reason === 'scan' ? 'lifecycle.scanFailed' : 'stop.timeout', {
+      pids: result.remaining.join(', '),
+    }));
+    process.exitCode = 1;
+    return false;
+  }
+  clearState(HOME);
+  console.log(t(result.pids.length > 1 ? 'stop.stoppedMany' : 'stop.stopped', {
+    pid: result.pids[0], pids: result.pids.join(', '),
+  }));
   return true;
-}
-
-// A lifecycle command must not start the replacement while the previous supervisor can still own the
-// port/tunnel. Managed stops normally block inside systemctl/launchctl; direct supervisors shut down
-// asynchronously and can legitimately take up to 3s while they reap children, so verify the PID is gone.
-async function stopAndWait() {
-  const pid = readState(HOME)?.supervisorPid;
-  if (!stop()) return false;
-  if (!pid) return true;
-  const deadline = Date.now() + 4500;
-  while (isAlive(pid) && Date.now() < deadline) await sleep(100);
-  if (!isAlive(pid)) return true;
-  console.error(t('stop.timeout', { pid }));
-  process.exitCode = 1;
-  return false;
 }
 
 async function status() {
   const st = readState(HOME);
   const installed = currentVersion();
-  if (!st || !isAlive(st.supervisorPid)) { console.log(t('status.stopped', { version: installed })); return; }
+  const supervisors = scanSupervisorPids();
+  if (!supervisors.ok) console.warn(t('status.scanFailed'));
+  const stateAlive = !!(st && isAlive(st.supervisorPid));
+  if (supervisors.ok && supervisors.pids.length && !stateAlive) {
+    console.log(t('status.untracked', { version: installed, pids: supervisors.pids.join(', ') }));
+    console.log(t('status.cleanupHint'));
+    process.exitCode = 1;
+    return;
+  }
+  if (!stateAlive) { console.log(t('status.stopped', { version: installed })); return; }
   const running = st.version || installed;
   console.log(t('status.running', { version: running }));
   if (running !== installed) console.log(t('status.installed', { version: installed }));
+  if (supervisors.ok && (supervisors.pids.length > 1
+      || (supervisors.pids.length > 0 && !supervisors.pids.includes(st.supervisorPid)))) {
+    const all = [...new Set([st.supervisorPid, ...supervisors.pids])].sort((a, b) => a - b);
+    console.warn(t('status.duplicates', { pids: all.join(', ') }));
+    console.warn(t('status.cleanupHint'));
+    process.exitCode = 1;
+  }
   await printAccess(st);
 }
 
@@ -402,7 +446,13 @@ async function serviceInstall() {
   // Converge a pre-existing manual run (and any old broken managed/manual pair) before loading the service.
   // Otherwise the very first `service install` can itself create two supervisors fighting over one port.
   const existing = readState(HOME);
-  if (isServiceInstalled(HOME) || (existing && isAlive(existing.supervisorPid))) {
+  const supervisors = scanSupervisorPids();
+  if (!supervisors.ok) {
+    console.error(t('lifecycle.scanFailed'));
+    process.exitCode = 1;
+    return;
+  }
+  if (isServiceInstalled(HOME) || supervisors.pids.length || (existing && isAlive(existing.supervisorPid))) {
     if (!await stopAndWait()) return;
   }
   const args = supervisorArgs(cfg);
@@ -434,9 +484,11 @@ async function setupCmd() {
   }
   await maybeOfferStatusLine();
   if (doStart) {
-    Object.assign(flags, cfg);
-    if (running && !await stopAndWait()) return; // restart into the new config
-    return start();
+    return withLifecycleLock(async () => {
+      Object.assign(flags, cfg);
+      if (running && !await stopAndWait()) return; // restart into the new config
+      return start();
+    });
   }
   console.log(t(running ? 'setup.laterRestart' : 'setup.later'));
 }

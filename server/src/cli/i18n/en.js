@@ -6,6 +6,8 @@ export default {
   'err.configNotFound': '✗ --config {path}: not found',
   'err.badConfig': '✗ bad config {path}: {msg}',
   'err.namedNotProvisioned': '✗ named tunnel not provisioned — run `handmux setup` first',
+  'lifecycle.busy': '✗ another handmux lifecycle operation is running (pid {pid}); try again shortly.',
+  'lifecycle.scanFailed': '✗ could not inspect handmux supervisor processes; refusing to continue because that could create a duplicate.',
 
   // config line printed at the top of start / service install
   'config.loaded': 'config: {path}',
@@ -31,6 +33,8 @@ export default {
   'start.running.changedRow': '  • {key}: {from} → {to} (what you asked for now)',
   'start.running.switchQ': 'Switch to the new settings now? (restarts handmux)',
   'start.running.hint': "Leaving it as-is. Run 'handmux restart' whenever you want to apply the new settings.",
+  'start.instancesFound': '✗ found an untracked or duplicate handmux supervisor (pid: {pids}).',
+  'start.instancesHint': '  refusing to launch another copy. Run `handmux stop` first to reap every instance.',
 
   // start — launching
   'start.overrides': '  ↳ --tunnel {flag} overrides config ({file}) for this run only',
@@ -40,10 +44,16 @@ export default {
   // stop / status
   'stop.notRunning': 'handmux not running',
   'stop.stopped': 'stopped handmux (pid {pid})',
-  'stop.timeout': '✗ handmux (pid {pid}) did not fully stop; refusing to start a second instance. Check `handmux status` / `handmux logs`.',
+  'stop.stoppedMany': 'stopped duplicate handmux instances (pids: {pids})',
+  'stop.stoppedManaged': 'stopped the managed handmux service',
+  'stop.timeout': '✗ handmux (pids: {pids}) did not fully stop; refusing to start a second instance. Check `handmux status` / `handmux logs`.',
   'status.stopped': '● handmux {version} stopped',
   'status.running': '● handmux {version} running',
   'status.installed': '  installed version {version} (takes effect after restart)',
+  'status.untracked': '⚠ handmux state is stale, but supervisor processes still exist (pids: {pids}); running version unknown, installed version {version}.',
+  'status.duplicates': '⚠ multiple handmux supervisors detected (pids: {pids}); the access details below only belong to the last state writer.',
+  'status.cleanupHint': '  run `handmux stop` to reap every copy.',
+  'status.scanFailed': '⚠ could not inspect supervisor processes; the status below comes from state.json only.',
 
   // logs
   'logs.none': '(no log yet — start handmux first)',

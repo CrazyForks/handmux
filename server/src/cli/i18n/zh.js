@@ -5,6 +5,8 @@ export default {
   'err.configNotFound': '✗ --config {path}:找不到该文件',
   'err.badConfig': '✗ 配置有误 {path}:{msg}',
   'err.namedNotProvisioned': '✗ 命名隧道尚未配置 —— 请先运行 `handmux setup`',
+  'lifecycle.busy': '✗ 另一个 handmux 启停操作正在进行(pid {pid})，请稍后重试。',
+  'lifecycle.scanFailed': '✗ 无法检查 handmux supervisor 进程；为避免启动重复实例，本次操作已停止。',
 
   // start / service install 顶部打印的配置来源
   'config.loaded': '配置:{path}',
@@ -30,6 +32,8 @@ export default {
   'start.running.changedRow': '  • {key}:{from} → {to}(你这次想要的)',
   'start.running.switchQ': '现在切换到新设置吗?(会重启 handmux)',
   'start.running.hint': "保持不变。想应用新设置时,运行 'handmux restart' 即可。",
+  'start.instancesFound': '✗ 检测到未登记或重复的 handmux supervisor(pid: {pids})。',
+  'start.instancesHint': '  为避免再启动一份，本次不会继续。请先运行 `handmux stop` 回收全部副本。',
 
   // start —— 启动中
   'start.overrides': '  ↳ --tunnel {flag} 仅本次覆盖配置文件里的 {file}',
@@ -39,10 +43,16 @@ export default {
   // stop / status
   'stop.notRunning': 'handmux 未在运行',
   'stop.stopped': '已停止 handmux(pid {pid})',
-  'stop.timeout': '✗ handmux(pid {pid})未能完全停止；为避免启动双实例，本次不会继续启动。请运行 `handmux status` / `handmux logs` 检查。',
+  'stop.stoppedMany': '已停止重复的 handmux 实例(pid: {pids})',
+  'stop.stoppedManaged': '已停止 handmux 托管服务',
+  'stop.timeout': '✗ handmux(pid: {pids})未能完全停止；为避免启动双实例，本次不会继续启动。请运行 `handmux status` / `handmux logs` 检查。',
   'status.stopped': '● handmux {version} 已停止',
   'status.running': '● handmux {version} 运行中',
   'status.installed': '  已安装版本 {version}(重启后生效)',
+  'status.untracked': '⚠ 状态文件已失效，但仍检测到 handmux supervisor(pid: {pids})；运行版本未知，已安装版本为 {version}。',
+  'status.duplicates': '⚠ 检测到多个 handmux supervisor(pid: {pids})；下方访问信息仅来自最后写入状态的实例。',
+  'status.cleanupHint': '  运行 `handmux stop` 可回收全部副本。',
+  'status.scanFailed': '⚠ 无法检查 supervisor 进程表；以下状态仅来自 state.json。',
 
   // logs
   'logs.none': '(还没有日志 —— 先运行 handmux start)',
