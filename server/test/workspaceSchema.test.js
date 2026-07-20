@@ -18,6 +18,14 @@ const base = {
     { id: 'w-a', runtimeId: '@2', name: 'client', index: 1, layout: 'layout-a', activePaneId: 'p-b', panes: [pane('p-b', 2)] },
   ],
 };
+const empty = {
+  ...base,
+  environment: { ...base.environment, tmuxServerId: null },
+  tmuxVersion: 'unknown',
+  active: null,
+  sessions: [],
+  windows: [],
+};
 
 describe('workspace schema', () => {
   it('keeps real runtime ordering out of the canonical fingerprint and uses code-point order', () => {
@@ -78,6 +86,22 @@ describe('workspace schema', () => {
     const checkpoint = sealPayload({ ...base, id: 'cp-a', archivedAt: base.capturedAt });
     expect(validateCheckpoint(checkpoint).ok).toBe(true);
     expect(validateCheckpoint({ ...checkpoint, capturedAt: undefined }).error).toMatch(/capturedAt/);
+  });
+
+  it('canonicalizes, fingerprints, and seals an explicit empty live state', () => {
+    expect(canonicalizeSnapshot(empty)).toEqual(empty);
+    expect(fingerprintSnapshot(empty)).toMatch(/^[0-9a-f]{64}$/);
+    const checkpoint = sealPayload({ ...empty, id: 'cp-empty', archivedAt: empty.capturedAt });
+    expect(validateCheckpoint(checkpoint)).toMatchObject({ ok: true });
+  });
+
+  it('rejects inconsistent empty and non-empty live-state combinations', () => {
+    expect(() => canonicalizeSnapshot({ ...base, sessions: [] })).toThrow(/sessions and windows/);
+    expect(() => canonicalizeSnapshot({ ...base, windows: [] })).toThrow(/sessions and windows/);
+    expect(() => canonicalizeSnapshot({ ...empty, active: base.active })).toThrow(/active must be null/);
+    expect(() => canonicalizeSnapshot({ ...base, active: null })).toThrow(/active must be an object/);
+    expect(() => canonicalizeSnapshot({ ...base, environment: { ...base.environment, tmuxServerId: null } })).toThrow(/tmuxServerId/);
+    expect(() => canonicalizeSnapshot({ ...empty, environment: { ...empty.environment, tmuxServerId: '' } })).toThrow(/tmuxServerId/);
   });
 
   it('places all private files below ~/.handmux/workspaces', () => {

@@ -23,12 +23,20 @@ function requireIndex(value, label) {
 function validateShape(input) {
   requireString(input.capturedAt, 'capturedAt');
   requireObject(input.environment, 'environment');
-  for (const field of ['id', 'bootIdentity', 'tmuxServerId']) requireString(input.environment[field], `environment.${field}`);
+  for (const field of ['id', 'bootIdentity']) requireString(input.environment[field], `environment.${field}`);
+  if (input.environment.tmuxServerId !== null) requireString(input.environment.tmuxServerId, 'environment.tmuxServerId');
   requireString(input.tmuxVersion, 'tmuxVersion');
-  requireObject(input.active, 'active');
-  for (const field of ['sessionId', 'windowId', 'paneId']) requireString(input.active[field], `active.${field}`);
   requireArray(input.sessions, 'sessions');
   requireArray(input.windows, 'windows');
+  const empty = input.sessions.length === 0 && input.windows.length === 0;
+  if ((input.sessions.length === 0) !== (input.windows.length === 0)) throw new Error('sessions and windows must both be empty or non-empty');
+  if (empty) {
+    if (input.active !== null) throw new Error('active must be null for an empty workspace');
+  } else {
+    requireString(input.environment.tmuxServerId, 'environment.tmuxServerId');
+    requireObject(input.active, 'active');
+    for (const field of ['sessionId', 'windowId', 'paneId']) requireString(input.active[field], `active.${field}`);
+  }
 
   for (const [index, session] of input.sessions.entries()) {
     const label = `sessions[${index}]`;
@@ -55,6 +63,7 @@ function validateShape(input) {
 }
 
 function validateReferences(input, sessions, windows) {
+  if (sessions.length === 0) return;
   const windowsById = new Map(windows.map((window) => [window.id, window]));
   const sessionsById = new Map(sessions.map((session) => [session.id, session]));
 
