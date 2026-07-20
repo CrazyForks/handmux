@@ -40,8 +40,10 @@ export default {
   // stop / status
   'stop.notRunning': 'handmux not running',
   'stop.stopped': 'stopped handmux (pid {pid})',
-  'status.stopped': '● handmux stopped',
-  'status.running': '● handmux running',
+  'stop.timeout': '✗ handmux (pid {pid}) did not fully stop; refusing to start a second instance. Check `handmux status` / `handmux logs`.',
+  'status.stopped': '● handmux {version} stopped',
+  'status.running': '● handmux {version} running',
+  'status.installed': '  installed version {version} (takes effect after restart)',
 
   // logs
   'logs.none': '(no log yet — start handmux first)',

@@ -7,11 +7,14 @@ import net from 'node:net';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { getDriver } from './drivers.js';
 import { writeState, clearState, claudeStatePath, pushStorePath, previewStorePath, notificationsDirPath } from './state.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SERVER = path.resolve(here, '../server.js');
+const require = createRequire(import.meta.url);
+const VERSION = require('../../package.json').version;
 
 // First non-internal IPv4 — the address a phone on the same wifi uses when there's no tunnel.
 export function lanUrl(port, ifaces = os.networkInterfaces()) {
@@ -45,6 +48,7 @@ export function supervise(cfg, { home, log = console } = {}) {
 
   const state = {
     supervisorPid: process.pid,
+    version: VERSION,
     startedAt: Date.now(),
     tunnel: cfg.tunnel,
     port: cfg.port,

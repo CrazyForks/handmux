@@ -13,6 +13,12 @@ export const UNIT = 'handmux.service';
 export function plistPath(home) { return path.join(home, 'Library', 'LaunchAgents', `${LABEL}.plist`); }
 export function unitPath(home) { return path.join(home, '.config', 'systemd', 'user', UNIT); }
 
+export function isServiceInstalled(home, platform = process.platform) {
+  if (platform === 'darwin') return fs.existsSync(plistPath(home));
+  if (platform === 'linux') return fs.existsSync(unitPath(home));
+  return false;
+}
+
 const xmlEscape = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 // launchd LaunchAgent. args = full argv for the process (node, script, __supervise, --payload, b64).
@@ -70,11 +76,33 @@ export function installService(args, { home, platform = process.platform, exec =
     fs.mkdirSync(path.dirname(p), { recursive: true });
     fs.writeFileSync(p, unitFor({ args }));
     exec('systemctl', ['--user', 'daemon-reload'], { stdio: 'ignore' });
-    const r = exec('systemctl', ['--user', 'enable', '--now', UNIT], { encoding: 'utf8' });
-    if (r.status !== 0) throw new Error(`systemctl enable failed: ${r.stderr || r.status}`);
+    const enabled = exec('systemctl', ['--user', 'enable', UNIT], { encoding: 'utf8' });
+    if (enabled.status !== 0) throw new Error(`systemctl enable failed: ${enabled.stderr || enabled.status}`);
+    // `enable --now` does not restart an already-active unit. Always restart after rewriting ExecStart so
+    // an npm/brew upgrade (new CLI/Node path) and a changed baked config take effect immediately.
+    const restarted = exec('systemctl', ['--user', 'restart', UNIT], { encoding: 'utf8' });
+    if (restarted.status !== 0) throw new Error(`systemctl restart failed: ${restarted.stderr || restarted.status}`);
     log.log?.(`installed systemd --user unit: ${p}`);
     log.log?.('(for autostart before login: loginctl enable-linger "$USER")');
     return p;
+  }
+  throw new Error(`autostart not supported on ${platform} yet`);
+}
+
+// Stop the currently-loaded service without removing/disable-ing its login registration. This is what the
+// ordinary `handmux stop` command needs: stay stopped for this login session, then start normally again at
+// the next login/boot. In particular, do NOT SIGTERM the supervisor directly while KeepAlive/Restart=always
+// is active — the service manager would immediately resurrect it and race a second manual supervisor.
+export function stopService({ home, platform = process.platform, exec = spawnSync } = {}) {
+  if (platform === 'darwin') {
+    const r = exec('launchctl', ['unload', plistPath(home)], { encoding: 'utf8' });
+    // unload returns non-zero when it was already unloaded; `stop` stays idempotent.
+    return r.status === 0;
+  }
+  if (platform === 'linux') {
+    const r = exec('systemctl', ['--user', 'stop', UNIT], { encoding: 'utf8' });
+    if (r.status !== 0) throw new Error(`systemctl stop failed: ${r.stderr || r.status}`);
+    return true;
   }
   throw new Error(`autostart not supported on ${platform} yet`);
 }

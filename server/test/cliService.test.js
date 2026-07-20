@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { plistFor, unitFor, plistPath, unitPath, installService, uninstallService, LABEL, UNIT } from '../src/cli/service.js';
+import {
+  plistFor, unitFor, plistPath, unitPath, installService, uninstallService,
+  isServiceInstalled, stopService, LABEL, UNIT,
+} from '../src/cli/service.js';
 
 const ARGS = ['/usr/bin/node', '/abs/bin/handmux.js', '__supervise', '--payload', 'eyJ4Ijox'];
 
@@ -39,7 +42,17 @@ describe('install/uninstall (mocked exec, temp home)', () => {
   it('linux writes the unit and enables it', () => {
     installService(ARGS, { home, platform: 'linux', exec, log: { log() {} } });
     expect(fs.existsSync(unitPath(home))).toBe(true);
-    expect(calls.some((c) => c.join(' ') === `systemctl --user enable --now ${UNIT}`)).toBe(true);
+    expect(calls.some((c) => c.join(' ') === `systemctl --user enable ${UNIT}`)).toBe(true);
+    expect(calls.some((c) => c.join(' ') === `systemctl --user restart ${UNIT}`)).toBe(true);
+  });
+  it('linux reinstall replaces an upgrade-stale executable path and restarts the one unit', () => {
+    installService(ARGS, { home, platform: 'linux', exec, log: { log() {} } });
+    const upgraded = ['/new/node', '/new/handmux.js', '__supervise', '--payload', 'bmV3'];
+    installService(upgraded, { home, platform: 'linux', exec, log: { log() {} } });
+    const unit = fs.readFileSync(unitPath(home), 'utf8');
+    expect(unit).toContain('ExecStart=/new/node /new/handmux.js __supervise --payload bmV3');
+    expect(unit).not.toContain('/abs/bin/handmux.js');
+    expect(calls.filter((c) => c.join(' ') === `systemctl --user restart ${UNIT}`)).toHaveLength(2);
   });
   it('unsupported platform throws', () => {
     expect(() => installService(ARGS, { home, platform: 'sunos', exec })).toThrow(/not supported/);
@@ -49,5 +62,23 @@ describe('install/uninstall (mocked exec, temp home)', () => {
     uninstallService({ home, platform: 'darwin', exec, log: { log() {} } });
     expect(fs.existsSync(plistPath(home))).toBe(false);
     expect(calls.some(([c, a]) => c === 'launchctl' && a === 'unload')).toBe(true);
+  });
+  it('detects a registered service by its platform file', () => {
+    expect(isServiceInstalled(home, 'linux')).toBe(false);
+    installService(ARGS, { home, platform: 'linux', exec, log: { log() {} } });
+    expect(isServiceInstalled(home, 'linux')).toBe(true);
+    expect(isServiceInstalled(home, 'darwin')).toBe(false);
+  });
+  it('linux stop leaves the enabled unit file in place', () => {
+    installService(ARGS, { home, platform: 'linux', exec, log: { log() {} } });
+    stopService({ home, platform: 'linux', exec });
+    expect(calls.some((c) => c.join(' ') === `systemctl --user stop ${UNIT}`)).toBe(true);
+    expect(fs.existsSync(unitPath(home))).toBe(true);
+  });
+  it('darwin stop unloads without deleting or disabling the plist', () => {
+    installService(ARGS, { home, platform: 'darwin', exec, log: { log() {} } });
+    stopService({ home, platform: 'darwin', exec });
+    expect(calls.some((c) => c.join(' ') === `launchctl unload ${plistPath(home)}`)).toBe(true);
+    expect(fs.existsSync(plistPath(home))).toBe(true);
   });
 });

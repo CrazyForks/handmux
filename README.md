@@ -124,6 +124,8 @@ No tunnel by default — the phone connects **straight to your own computer**, n
 
 > Tunnel config, server-side reverse proxy, autostart, voice/push credentials, and port previews → see the **[docs](https://handmux.com/docs)**.
 
+Once autostart is installed, `handmux start` / `stop` / `restart` coordinate with that same launchd/systemd service (including after an upgrade), and `handmux status` shows the version actually running.
+
 ## Requirements
 
 Your computer needs **Node ≥ 18** and **tmux ≥ 3.0**; the phone just needs a browser. On **Windows**, run it inside **WSL2** (a real Linux kernel + real tmux) — see the [docs](https://handmux.com/docs#windows).

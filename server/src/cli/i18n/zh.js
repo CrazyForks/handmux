@@ -39,8 +39,10 @@ export default {
   // stop / status
   'stop.notRunning': 'handmux 未在运行',
   'stop.stopped': '已停止 handmux(pid {pid})',
-  'status.stopped': '● handmux 已停止',
-  'status.running': '● handmux 运行中',
+  'stop.timeout': '✗ handmux(pid {pid})未能完全停止；为避免启动双实例，本次不会继续启动。请运行 `handmux status` / `handmux logs` 检查。',
+  'status.stopped': '● handmux {version} 已停止',
+  'status.running': '● handmux {version} 运行中',
+  'status.installed': '  已安装版本 {version}(重启后生效)',
 
   // logs
   'logs.none': '(还没有日志 —— 先运行 handmux start)',
