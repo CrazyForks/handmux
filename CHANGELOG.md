@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.17.7] - 2026-07-20
+
 ### Changed
 - `handmux status` 现在显示实际运行版本；升级后尚未重启时，也会同时提示已安装的新版本。
 
