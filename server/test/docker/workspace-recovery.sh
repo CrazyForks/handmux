@@ -222,6 +222,25 @@ function syntheticFailureCheckpoint() {
   };
 }
 
+function syntheticAgentCheckpoint({ sessionId, windowId, paneId, name, transcriptPath }) {
+  return {
+    id: `agent-${name}`,
+    capturedAt: '2026-07-20T00:00:00.000Z',
+    archivedAt: '2026-07-20T00:01:00.000Z',
+    environment: { id: `agent-${name}`, bootIdentity: 'fixture', tmuxServerId: 'fixture', endedReason: 'tmux-changed' },
+    tmuxVersion: 'fixture',
+    active: { sessionId, windowId, paneId },
+    sessions: [{ id: sessionId, runtimeId: '$fixture', name, windowLinks: [{ windowId, index: 0 }], activeWindowId: windowId }],
+    windows: [{
+      id: windowId, runtimeId: '@fixture', name: 'agent', index: 0, layout: 'invalid-layout', activePaneId: paneId,
+      panes: [{
+        id: paneId, runtimeId: '%fixture', index: 0, cwd: '/workspace/api',
+        agent: { id: 'claude', sessionId: CLAUDE_ID, transcriptPath },
+      }],
+    }],
+  };
+}
+
 async function phaseB() {
   await assertFixtureFormats();
   process.env.PATH = `${HOME}/fake-bin:${process.env.PATH}`;
@@ -354,6 +373,59 @@ async function phaseB() {
   const historical = await runtime.getRestorePlan({ checkpointId, historical: true, sessions: ['docs'] });
   assert.equal(historical.sessions.length, 1);
   assert.ok(['create', 'create-renamed'].includes(historical.sessions[0].action));
+
+  async function verifyAgentFailure(checkpointValue, warningPattern) {
+    const before = await core.tmux.captureTopology();
+    const plan = buildRestorePlan(checkpointValue, before, { historical: true });
+    const result = await executeRestore({ plan, checkpoint: checkpointValue, tmux: core.tmux, home: HOME });
+    assert.equal(result.status, 'succeeded', JSON.stringify(result));
+    assert.equal(result.results[0].status, 'restored');
+    assert.ok(result.results[0].warnings.some((warning) => warningPattern.test(warning)), JSON.stringify(result));
+    const after = await core.tmux.captureTopology();
+    assertSessionIdentity(after, existingNewWork);
+    assertSessionIdentity(after, existingApi);
+    const session = after.sessions.find((item) => item.id === checkpointValue.sessions[0].id);
+    assert.ok(session, `missing agent failure shell ${checkpointValue.sessions[0].name}`);
+    const window = after.windows.find((item) => item.id === checkpointValue.windows[0].id);
+    assert.equal(window?.panes[0]?.cwd, '/workspace/api');
+  }
+
+  await verifyAgentFailure(syntheticAgentCheckpoint({
+    sessionId: '44444444-4444-4444-8444-444444444401',
+    windowId: '44444444-4444-4444-8444-444444444411',
+    paneId: '44444444-4444-4444-8444-444444444421',
+    name: 'agent-missing-context',
+    transcriptPath: '/app/test/fixtures/workspace/missing-session.jsonl',
+  }), /context is unavailable.*shell was restored/i);
+
+  const claudeBinary = path.join(HOME, 'fake-bin', 'claude');
+  const savedClaudeBinary = `${claudeBinary}.saved`;
+  await fsp.rename(claudeBinary, savedClaudeBinary);
+  try {
+    await verifyAgentFailure(syntheticAgentCheckpoint({
+      sessionId: '44444444-4444-4444-8444-444444444402',
+      windowId: '44444444-4444-4444-8444-444444444412',
+      paneId: '44444444-4444-4444-8444-444444444422',
+      name: 'agent-missing-cli',
+      transcriptPath: FIXTURES.claude,
+    }), /binary not found.*shell was restored|shell was restored.*binary not found/i);
+  } finally {
+    await fsp.rename(savedClaudeBinary, claudeBinary);
+  }
+
+  const successfulClaude = await fsp.readFile(claudeBinary, 'utf8');
+  await fsp.writeFile(claudeBinary, '#!/bin/sh\nexit 23\n', { mode: 0o755 });
+  try {
+    await verifyAgentFailure(syntheticAgentCheckpoint({
+      sessionId: '44444444-4444-4444-8444-444444444403',
+      windowId: '44444444-4444-4444-8444-444444444413',
+      paneId: '44444444-4444-4444-8444-444444444423',
+      name: 'agent-resume-nonzero',
+      transcriptPath: FIXTURES.claude,
+    }), /exited 23.*shell was restored|shell was restored.*exited 23/i);
+  } finally {
+    await fsp.writeFile(claudeBinary, successfulClaude, { mode: 0o755 });
+  }
 
   const failureFixture = syntheticFailureCheckpoint();
   const liveBeforeFailure = await core.tmux.captureTopology();
