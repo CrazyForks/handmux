@@ -10,10 +10,8 @@ import { UPLOAD_ACCEPT } from '../uploadTypes.js';
 import { ArrowUpIcon, StopIcon, PlusIcon, GearIcon } from './icons.jsx';
 import { useUpload } from '../hooks/useUpload.js';
 import { usePushToTalk } from '../voice/usePushToTalk.js';
-import { useAsrAvailable } from '../voice/useAsrAvailable.js';
 import { useScreenWakeLock } from '../hooks/useScreenWakeLock.js';
-import { useServerShortcuts } from '../hooks/useServerShortcuts.js';
-import { mergeShortcuts, shortcutIdentity } from '../shortcutMerge.js';
+import { DEFAULT_SERVER_SHORTCUTS, mergeShortcuts, shortcutIdentity } from '../shortcutMerge.js';
 import { t } from '../i18n';
 
 // The 对话-lens composer — a single modern AI-agent input CARD (textarea on top, an action row beneath),
@@ -38,7 +36,8 @@ const keepFocus = (e) => {
 const chipTint = (text) => (text.startsWith('/') ? 'cmd' : 'reply');
 
 export default function ChatComposer({
-  pane, kind, cwd = null, onKey = () => {}, onAuthFail, onSent, onInteractiveSlash, shortcuts = null,
+  pane, kind, cwd = null, onKey = () => {}, onAuthFail, onSent, onInteractiveSlash,
+  shortcuts = null, micAvailable = false,
 }) {
   // Draft persists across an app exit / lens switch (shared store with the dock's chat page — switching
   // lenses carries your half-typed message either way). send/clear set '' → the stored draft clears too.
@@ -48,9 +47,9 @@ export default function ChatComposer({
   const uploadRef = useRef(null);    // hidden <input type=file>
   const tapPt = useRef({ x: 0, y: 0, moved: false }); // for tap-to-focus on the card's blank areas
 
-  // Config presets stay first and locked; phone-local additions follow. Reload the local half whenever the
-  // ⚙ editor closes, while the shared server hook refreshes presets after a service restart.
-  const serverShortcuts = useServerShortcuts(shortcuts);
+  // Config presets stay first and locked; phone-local additions follow. App fetches the server half once
+  // at startup; reloading the local half when the editor closes is enough for on-device changes.
+  const serverShortcuts = shortcuts || DEFAULT_SERVER_SHORTCUTS;
   const [favs, setFavs] = useState(() => loadFavs('agent'));
   const [editOpen, setEditOpen] = useState(false);
   useEffect(() => { if (!editOpen) setFavs(loadFavs('agent')); }, [editOpen]);
@@ -88,7 +87,6 @@ export default function ChatComposer({
     setValue(head + text + tail);
   };
   const voice = usePushToTalk({ onText: commitVoice });
-  const micAvailable = useAsrAvailable();
   const recording = voice.state === 'recording' || voice.state === 'finalizing';
   useScreenWakeLock(recording); // keep the screen awake while dictating
   useEffect(() => {

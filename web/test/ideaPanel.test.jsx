@@ -26,7 +26,7 @@ afterEach(() => {
   container.remove();
 });
 
-const base = { open: true, session: 's', window: 'w', onClose: vi.fn(), onSend: vi.fn() };
+const base = { open: true, session: 's', window: 'w', micAvailable: true, onClose: vi.fn(), onSend: vi.fn() };
 const render = (props = {}) => act(() => root.render(<IdeaPanel {...base} {...props} />));
 const $ = (sel) => container.querySelector(sel);
 const $$ = (sel) => [...container.querySelectorAll(sel)];

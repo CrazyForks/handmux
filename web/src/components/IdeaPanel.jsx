@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { getIdeas as loadIdeas, setIdeas as saveIdeas } from '../storage.js';
 import { newIdea, moveItem } from '../ideas.js';
 import { usePushToTalk } from '../voice/usePushToTalk.js';
-import { useAsrAvailable } from '../voice/useAsrAvailable.js';
 import { useScreenWakeLock } from '../hooks/useScreenWakeLock.js';
 import MicButton from './MicButton.jsx';
 import { PlusIcon, CheckIcon } from './icons.jsx';
@@ -13,7 +12,7 @@ import { t } from '../i18n';
 // AND edit (tapping a row's text loads it in, button flips 添加→保存); rows drag-reorder by their
 // ≡ handle (pointer events only, see the project's KeyBar note on touch+mouse double-fire). 发送 fills
 // the bottom input box (never sends); ✕ deletes. The compose box supports the app's push-to-talk mic.
-export default function IdeaPanel({ open, session, window: win, onClose, onSend, onCountChange }) {
+export default function IdeaPanel({ open, session, window: win, onClose, onSend, onCountChange, micAvailable = false }) {
   const [list, setList] = useState([]);
   const [value, setValue] = useState('');
   const [editingId, setEditingId] = useState(null); // null = add mode; else the idea being edited
@@ -49,7 +48,6 @@ export default function IdeaPanel({ open, session, window: win, onClose, onSend,
     caretRef.current = head.length + text.length;
   };
   const voice = usePushToTalk({ onText: commitVoice });
-  const micAvailable = useAsrAvailable(); // hide the mic when no ASR engine is configured (keyless install)
   const recording = voice.state === 'recording' || voice.state === 'finalizing';
   useScreenWakeLock(recording);
 

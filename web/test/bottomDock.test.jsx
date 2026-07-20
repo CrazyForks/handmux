@@ -4,7 +4,6 @@ import { createRoot } from 'react-dom/client';
 
 vi.mock('../src/api.js', () => ({
   sendText: vi.fn(async () => ({ ok: true })),
-  getConfig: vi.fn(async () => ({ asr: true })), // useAsrAvailable refresh → keep the mic visible
   UnauthorizedError: class UnauthorizedError extends Error {},
 }));
 
@@ -38,7 +37,7 @@ afterEach(() => {
   if ('visualViewport' in window) delete window.visualViewport; // drop any per-test mock
 });
 
-const render = (props) => act(() => root.render(<BottomDock {...props} />));
+const render = (props) => act(() => root.render(<BottomDock micAvailable {...props} />));
 const fire = (node, type) => act(() => node.dispatchEvent(new MouseEvent(type, { bubbles: true })));
 // Quick-command chips are HoldButtons (pointer events, no onClick): a clean tap = pointerdown + pointerup.
 const tap = (node) => { fire(node, 'pointerdown'); fire(node, 'pointerup'); };

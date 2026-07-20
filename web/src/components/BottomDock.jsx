@@ -11,14 +11,12 @@ import { UPLOAD_ACCEPT } from '../uploadTypes.js';
 import { ArrowUpIcon, UploadIcon, ClockIcon, KeyboardIcon, GearIcon } from './icons.jsx';
 import { useUpload } from '../hooks/useUpload.js';
 import { usePushToTalk } from '../voice/usePushToTalk.js';
-import { useAsrAvailable } from '../voice/useAsrAvailable.js';
 import { useScreenWakeLock } from '../hooks/useScreenWakeLock.js';
 import { useBackButton } from '../hooks/useBackButton.js';
 import { softKeyboardUp } from '../hooks/useKeyboardInset.js';
 import { t } from '../i18n';
 import { MODIFIERS, modActive, consumeMods, withMods } from '../keybarKeys.js';
-import { mergeShortcuts, shortcutIdentity } from '../shortcutMerge.js';
-import { useServerShortcuts } from '../hooks/useServerShortcuts.js';
+import { DEFAULT_SERVER_SHORTCUTS, mergeShortcuts, shortcutIdentity } from '../shortcutMerge.js';
 
 // The bottom dock is a two-page pager (swipe the non-key chrome to switch, or TAP the page-dots above;
 // two dots show which page is current):
@@ -90,7 +88,7 @@ function HoldButton({ className, onTap, onHold, children, ...rest }) {
 
 function BottomDock({
   pane, onAuthFail, onKey, onText, cwd = null, agent = null, windowId = null,
-  recent = [], onSent, onRemoveRecent, inset = 0, shortcuts = null,
+  recent = [], onSent, onRemoveRecent, inset = 0, shortcuts = null, micAvailable = false,
 }, fwdRef) {
   // The composer restores its unsent draft across an app exit/kill: seeded from storage, mirrored on
   // every change (send/fill set '' → the stored draft clears with it). The mount-time autoGrow +
@@ -100,7 +98,7 @@ function BottomDock({
   const [multi, setMulti] = useState(false); // composer grew past one line → full-width text, mic/send overlay bottom-right
   const [crowd, setCrowd] = useState(false); // last text line would run under the overlaid buttons → reserve a bottom strip
   const [panelOpen, setPanelOpen] = useState(false);
-  const serverShortcuts = useServerShortcuts(shortcuts);
+  const serverShortcuts = shortcuts || DEFAULT_SERVER_SHORTCUTS;
   // The chat page's horizontal quick-command bar reads the agent 常用 list; re-load it whenever the
   // FavDrawer closes so add/delete there flow straight into the bar (single source of truth: favStore).
   const [favs, setFavs] = useState(() => loadFavs('agent'));
@@ -461,7 +459,6 @@ function BottomDock({
     caretRef.current = head.length + text.length;
   };
   const voice = usePushToTalk({ onText: commitVoice });
-  const micAvailable = useAsrAvailable(); // hide the mic when no ASR engine is configured (keyless install)
   const recording = voice.state === 'recording' || voice.state === 'finalizing';
   useScreenWakeLock(recording); // 语音激活时屏幕常亮,别中途变暗/锁屏
 

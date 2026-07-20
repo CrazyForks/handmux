@@ -9,7 +9,6 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // modules import it, so the locale is fixed before any component resolves t().
 try { localStorage.setItem('tw_lang', 'zh'); } catch { /* no localStorage in this env */ }
 
-// Pin ASR as available so component suites render the mic button (its absence on keyless installs is a
-// separate concern, covered by test/useAsrAvailable.test.jsx). useAsrAvailable reads this as its cached
-// initial value before the /api/config refresh resolves.
+// Pin ASR as available for suites that exercise the cached startup state. Its absence on keyless installs
+// and updates from the shared startup config are covered separately by test/useAsrAvailable.test.jsx.
 try { localStorage.setItem('tw_asr', '1'); } catch { /* no localStorage in this env */ }

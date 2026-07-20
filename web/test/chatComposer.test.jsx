@@ -3,7 +3,6 @@ import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/re
 
 vi.mock('../src/api.js', () => ({
   sendText: vi.fn(async () => ({ ok: true })),
-  getConfig: vi.fn(async () => ({ asr: false })), // keyless → mic hidden, keeps the DOM simple
   getPaneContext: vi.fn(async () => ({ model: null, usedPercent: null })), // no context chip by default
   UnauthorizedError: class UnauthorizedError extends Error {},
 }));

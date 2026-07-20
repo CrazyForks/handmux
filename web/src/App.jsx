@@ -32,6 +32,7 @@ import { useDocTabs } from './hooks/useDocTabs.js';
 import { usePreviews } from './hooks/usePreviews.js';
 import { previewStartError } from './previewErrors.js';
 import { usePollingLoop } from './hooks/usePollingLoop.js';
+import { useServerConfig } from './hooks/useServerConfig.js';
 import { authHandled } from './authGuard.js';
 
 import Drawer from './components/Drawer.jsx';
@@ -62,6 +63,7 @@ import IdeaPanel from './components/IdeaPanel.jsx';
 import Changelog from './components/Changelog.jsx';
 import { FolderIcon, GearIcon, BulbIcon, MonitorIcon, GitIcon, GaugeIcon, SplitHIcon, SplitVIcon, PaneMapIcon, XIcon } from './components/icons.jsx';
 import { useKeyboardInset } from './hooks/useKeyboardInset.js';
+import { useAsrAvailable } from './voice/useAsrAvailable.js';
 import { usePageScrollLock } from './hooks/usePageScrollLock.js';
 import { useLongPress } from './hooks/useLongPress.js';
 import { useBackButton } from './hooks/useBackButton.js';
@@ -69,6 +71,7 @@ import { useExitConfirm } from './hooks/useExitConfirm.js';
 import { readRoute, writeSessionHash } from './hashRoute.js';
 import { hasShareFlag, takeSharedFile, clearShareFlag } from './shareIntake.js';
 import { windowManageSubtitle, paneManageSubtitle } from './manageLabels.js';
+import { DEFAULT_SERVER_SHORTCUTS } from './shortcutMerge.js';
 
 const COL_STEP = 10; // columns added/removed per ⊟/⊞ tap
 
@@ -79,6 +82,9 @@ const pickId = (items, prefer) =>
 
 export default function App() {
   const [needToken, setNeedToken] = useState(!getToken());
+  const serverConfig = useServerConfig({ enabled: !needToken });
+  const serverShortcuts = serverConfig?.shortcuts || DEFAULT_SERVER_SHORTCUTS;
+  const micAvailable = useAsrAvailable(serverConfig);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [chatTone, setChatToneState] = useState(getChatTone); // 对话-lens colour tone (persisted); default 深墨
@@ -117,7 +123,7 @@ export default function App() {
   const [orphans, setOrphans] = useState([]); // claude sessions running outside tmux (/api/orphans)
   const [takeoverTarget, setTakeoverTarget] = useState(null); // orphan being taken over (opens the sheet)
   const [inboxOpen, setInboxOpen] = useState(false); // inbox dropdown open
-  const { status: hooksStatus, enable: enableHooks } = useClaudeHooks();
+  const { status: hooksStatus, enable: enableHooks } = useClaudeHooks(serverConfig);
   const [ideaOpen, setIdeaOpen] = useState(false); // per-window idea sheet open
   const [ideaCount, setIdeaCount] = useState(0);   // idea count for the current window (badge)
   const [changelogOpen, setChangelogOpen] = useState(false); // "what's new" sheet open
@@ -1382,6 +1388,7 @@ export default function App() {
         open={ideaOpen}
         session={current?.session?.name}
         window={current?.window?.name || current?.window?.id}
+        micAvailable={micAvailable}
         onClose={() => setIdeaOpen(false)}
         onSend={(text) => { dockRef.current?.fill(text); setIdeaOpen(false); }}
         onCountChange={setIdeaCount}
@@ -1444,6 +1451,8 @@ export default function App() {
               onKey={sendKey}
               onAuthFail={onAuthFail}
               onSent={onCommandSent}
+              shortcuts={serverShortcuts}
+              micAvailable={micAvailable}
               onInteractiveSlash={(cmd) => { setLens('terminal'); localStorage.setItem('tw_lens_' + current.paneId, 'terminal'); setHandoffToast(cmd); }}
             />
           ) : (
@@ -1462,6 +1471,8 @@ export default function App() {
               onToggleFav={toggleFavorite}
               onRemoveRecent={removeRecentCmd}
               inset={inset}
+              shortcuts={serverShortcuts}
+              micAvailable={micAvailable}
             />
           )}
         </>
