@@ -130,6 +130,12 @@ export const getConfig = () => req('/api/config', { timeoutMs: 8000 });
 // { current, latest, updateAvailable } — is the installed CLI behind the latest npm release? Checked once
 // per app launch; when true the phone hints the user to run `handmux update` on their computer.
 export const getServerVersion = () => req('/api/version', { timeoutMs: 8000 });
+export const getWorkspaceRestorePlan = (checkpointId = 'latest') =>
+  req(`/api/workspace/restore-plan?checkpoint=${encodeURIComponent(checkpointId)}`, { timeoutMs: 8000 });
+export const startWorkspaceRestore = (body = { checkpointId: 'latest' }) =>
+  req('/api/workspace/restore', { method: 'POST', body: JSON.stringify(body), timeoutMs: 8000 });
+export const getWorkspaceRestoreOperation = (operationId) =>
+  req(`/api/workspace/restore/${encodeURIComponent(operationId)}`, { timeoutMs: 8000 });
 // Enable the Claude Code lifecycle hooks on the host (one-tap from the inbox). Token-gated like every API;
 // 15s timeout covers the file copy + settings merge. Returns { ok, status }.
 export const installClaudeHooks = () => req('/api/hooks/install', { method: 'POST', timeoutMs: 15000 });

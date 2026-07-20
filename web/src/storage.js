@@ -20,6 +20,8 @@ const CHANGELOG_SEEN_KEY = 'tw_changelog_seen'; // the latest changelog entry id
 const VERSION_SEEN_KEY = 'tw_version_seen';     // the npm "latest" version already acknowledged in Settings
 const GIT_REPOS_KEY = 'tw_git_repos';          // { [windowId]: absPath[] } —
 const GIT_DIRS_KEY = 'tw_git_dirs';            // { [windowId]: absPath[] } — dirs the user picked repos from (history, newest first) bound git repos per window absolute paths (order = tab order)
+const WORKSPACE_PROMPT_KEY = 'tw_workspace_prompt';
+const WORKSPACE_APPLIED_MAPPINGS_KEY = 'tw_workspace_applied_mappings';
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t);
@@ -70,6 +72,96 @@ function writeMapEntry(key, k, v) {
   const m = readMap(key);
   m[k] = v;
   localStorage.setItem(key, JSON.stringify(m));
+}
+
+function writeWorkspacePrompt(checkpointId, patch) {
+  if (!checkpointId) return {};
+  const all = readMap(WORKSPACE_PROMPT_KEY);
+  const current = all[checkpointId];
+  all[checkpointId] = {
+    ...(current && typeof current === 'object' && !Array.isArray(current) ? current : {}),
+    ...patch,
+  };
+  localStorage.setItem(WORKSPACE_PROMPT_KEY, JSON.stringify(all));
+  return all[checkpointId];
+}
+
+export const getWorkspacePromptState = (checkpointId) => {
+  if (!checkpointId) return {};
+  const value = readMap(WORKSPACE_PROMPT_KEY)[checkpointId];
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+};
+export const markWorkspaceAutoShown = (checkpointId) =>
+  writeWorkspacePrompt(checkpointId, { autoShown: true });
+export const ignoreWorkspaceCheckpoint = (checkpointId) =>
+  writeWorkspacePrompt(checkpointId, { ignored: true, autoShown: true });
+
+function getAppliedWorkspaceMappings() {
+  try {
+    const value = JSON.parse(localStorage.getItem(WORKSPACE_APPLIED_MAPPINGS_KEY));
+    return Array.isArray(value) ? value.filter((id) => typeof id === 'string') : [];
+  } catch { return []; }
+}
+
+function runtimeMap(value, prefix) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter(([source, actual]) => (
+    typeof source === 'string' && source.startsWith(prefix)
+    && typeof actual === 'string' && actual.startsWith(prefix)
+  )));
+}
+
+function remapMapKey(key, keyMapping, valueMapping = {}) {
+  if (localStorage.getItem(key) === null) return;
+  const current = readMap(key);
+  const next = {};
+  for (const [oldKey, oldValue] of Object.entries(current)) {
+    if (Object.prototype.hasOwnProperty.call(keyMapping, oldKey)) continue;
+    next[oldKey] = typeof oldValue === 'string' && Object.prototype.hasOwnProperty.call(valueMapping, oldValue)
+      ? valueMapping[oldValue]
+      : oldValue;
+  }
+  for (const [oldKey, actualKey] of Object.entries(keyMapping)) {
+    if (!Object.prototype.hasOwnProperty.call(current, oldKey)) continue;
+    const oldValue = current[oldKey];
+    next[actualKey] = typeof oldValue === 'string' && Object.prototype.hasOwnProperty.call(valueMapping, oldValue)
+      ? valueMapping[oldValue]
+      : oldValue;
+  }
+  localStorage.setItem(key, JSON.stringify(next));
+}
+
+function remapKnownWorkspaceKeys(runtime) {
+  const sessions = runtimeMap(runtime?.sessions, '$');
+  const windows = runtimeMap(runtime?.windows, '@');
+  const panes = runtimeMap(runtime?.panes, '%');
+
+  const lastSession = localStorage.getItem(LAST_SESSION_KEY);
+  if (lastSession && Object.prototype.hasOwnProperty.call(sessions, lastSession)) {
+    localStorage.setItem(LAST_SESSION_KEY, sessions[lastSession]);
+  }
+  remapMapKey(WIN_BY_SESSION_KEY, sessions, windows);
+  remapMapKey(PANE_BY_WINDOW_KEY, windows, panes);
+  for (const key of [GIT_REPOS_KEY, GIT_DIRS_KEY, BROWSE_DIR_KEY, PREVIEW_DIR_KEY]) {
+    remapMapKey(key, windows);
+  }
+  for (const key of [PANE_BASE_KEY, INBOX_SEEN_KEY]) remapMapKey(key, panes);
+}
+
+export function applyWorkspaceRestoreMapping(mapping) {
+  if (!mapping?.id || typeof mapping.id !== 'string') return false;
+  const applied = getAppliedWorkspaceMappings();
+  if (applied.includes(mapping.id)) return false;
+
+  remapKnownWorkspaceKeys(mapping.runtime);
+  if (mapping.names && typeof mapping.names === 'object' && !Array.isArray(mapping.names)) {
+    const bound = getBoundSessions();
+    for (const [source, actual] of Object.entries(mapping.names)) {
+      if (bound.includes(source) && typeof actual === 'string' && actual) addBoundSession(actual);
+    }
+  }
+  localStorage.setItem(WORKSPACE_APPLIED_MAPPINGS_KEY, JSON.stringify([...applied, mapping.id]));
+  return true;
 }
 
 // A localStorage-backed nested map { [session]: { [window]: T[] } } — the shape shared by recent commands
