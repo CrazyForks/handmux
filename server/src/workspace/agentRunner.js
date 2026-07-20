@@ -38,10 +38,16 @@ export function launchAgentRequest(requestInput, {
   let child;
   let readyDone = false;
   let timer = null;
+  let completionDone = false;
   let settleReady;
   let settleCompletion;
   const ready = new Promise((resolve) => { settleReady = resolve; });
   const completion = new Promise((resolve) => { settleCompletion = resolve; });
+  const finishCompletion = (value) => {
+    if (completionDone) return;
+    completionDone = true;
+    settleCompletion(value);
+  };
   const failReady = (error, code) => {
     if (readyDone) return;
     readyDone = true;
@@ -52,8 +58,8 @@ export function launchAgentRequest(requestInput, {
     child = spawn(request.cmd, request.args, { stdio: 'inherit', shell: false });
   } catch (error) {
     failReady(error);
-    settleCompletion({ code: null, signal: null, error: errorText(error) });
-    return { child: null, ready, completion };
+    finishCompletion({ code: null, signal: null, error: errorText(error) });
+    return { child: null, ready, completion, terminate: async () => completion };
   }
   child.once('spawn', () => {
     timer = setTimeout(() => {
@@ -64,13 +70,34 @@ export function launchAgentRequest(requestInput, {
   });
   child.once('error', (error) => {
     failReady(error);
-    settleCompletion({ code: null, signal: null, error: errorText(error) });
+    finishCompletion({ code: null, signal: null, error: errorText(error) });
   });
   child.once('exit', (code, signal) => {
     failReady(null, code);
-    settleCompletion({ code, signal });
+    finishCompletion({ code, signal });
   });
-  return { child, ready, completion };
+  return {
+    child,
+    ready,
+    completion,
+    async terminate() {
+      if (!completionDone) child.kill('SIGTERM');
+      return completion;
+    },
+  };
+}
+
+export async function publishAgentReadiness(launched, writeStatus) {
+  const ready = await launched.ready;
+  try {
+    await writeStatus(ready);
+  } catch (error) {
+    let cleanupError;
+    try { await launched.terminate(); } catch (failure) { cleanupError = failure; }
+    if (cleanupError) throw new Error(`${errorText(error)}; cleanup failed: ${errorText(cleanupError)}`);
+    throw error;
+  }
+  return ready;
 }
 
 function shellQuote(value) {
@@ -78,6 +105,12 @@ function shellQuote(value) {
 }
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function unlinkIfPresent(fs, file) {
+  try { await fs.unlink(file); } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+}
 
 export function createAgentRunner({
   home = os.homedir(),
@@ -100,7 +133,7 @@ export function createAgentRunner({
       const request = validateAgentRequest({ cmd, args });
       const target = files(paneId);
       await ensurePrivateDir(dir, { fs });
-      await fs.unlink(target.status).catch((error) => { if (error?.code !== 'ENOENT') throw error; });
+      await unlinkIfPresent(fs, target.status);
       await writeJsonAtomic(target.request, { paneId, ...request }, { fs });
     },
     async waitReady(paneId) {
@@ -119,7 +152,7 @@ export function createAgentRunner({
     },
     async cancel(paneId) {
       const target = files(paneId);
-      await Promise.all([target.request, target.status].map((file) => fs.unlink(file).catch(() => {})));
+      await Promise.all([target.request, target.status].map((file) => unlinkIfPresent(fs, file)));
     },
   };
 }
@@ -135,11 +168,13 @@ async function runPreparedAgent() {
   const input = JSON.parse(await fsp.readFile(target.request, 'utf8'));
   if (input.paneId !== paneId) throw new Error('agent runner pane mismatch');
   const launched = launchAgentRequest(input);
-  const ready = await launched.ready;
-  await writeJsonAtomic(target.status, ready);
-  if (ready.status === 'ready') await launched.completion;
-  await fsp.unlink(target.request).catch(() => {});
-  if (ready.status !== 'ready') throw new Error(ready.error);
+  try {
+    const ready = await publishAgentReadiness(launched, (status) => writeJsonAtomic(target.status, status));
+    if (ready.status === 'ready') await launched.completion;
+    if (ready.status !== 'ready') throw new Error(ready.error);
+  } finally {
+    await unlinkIfPresent(fsp, target.request);
+  }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === RUNNER_FILE) {

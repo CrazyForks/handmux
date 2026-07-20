@@ -139,6 +139,14 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID, agent
     created.delete(sessionId);
   }
 
+  function revokeCreatedTargets() {
+    created.clear();
+    sessionWindows.clear();
+    windowSession.clear();
+    windowPanes.clear();
+    paneWindow.clear();
+  }
+
   async function cleanupSteps(steps) {
     const failures = [];
     for (const step of steps) {
@@ -338,13 +346,24 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID, agent
     const args = ['new-session', '-d', '-P', '-F', '#{session_id}\t#{window_id}\t#{pane_id}\t#{window_index}', '-s', name];
     if (hasSeed) args.push('-n', windowName);
     args.push('-c', cwd);
-    const parsed = rows(await run(args), 4, 'created session')[0];
-    if (!parsed) throw new Error('tmux did not return created session ids');
-    const [sessionId, windowId, paneId, seedIndexValue] = parsed;
-    requireCreatedRuntime(sessionId, '$', 'created session id');
-    requireCreatedRuntime(windowId, '@', 'created window id');
-    requireCreatedRuntime(paneId, '%', 'created pane id');
-    const seedIndex = index(seedIndexValue, 'created window index');
+    const output = await run(args);
+    let sessionId;
+    let windowId;
+    let paneId;
+    let seedIndex;
+    try {
+      const parsed = rows(output, 4, 'created session')[0];
+      if (!parsed) throw new Error('tmux did not return created session ids');
+      [sessionId, windowId, paneId] = parsed;
+      requireCreatedRuntime(sessionId, '$', 'created session id');
+      requireCreatedRuntime(windowId, '@', 'created window id');
+      requireCreatedRuntime(paneId, '%', 'created pane id');
+      seedIndex = index(parsed[3], 'created window index');
+    } catch (error) {
+      let cleanupError;
+      try { await run(['kill-session', '-t', `=${name}`]); } catch (failure) { cleanupError = failure; }
+      throw withCleanupError(error, cleanupError);
+    }
     created.add(sessionId); created.add(windowId); created.add(paneId);
     trackWindow(sessionId, windowId, paneId);
     try {
@@ -451,14 +470,25 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID, agent
       : cmd === 'codex' && args.length === 2 && args[0] === 'resume' && isUuid(args[1]);
     if (!valid) throw new Error('unsafe agent command token');
     await agentRunner.prepare({ paneId, cmd, args });
+    let foregroundStarted = false;
     try {
       await run(['send-keys', '-t', paneId, '-l', '--', agentRunner.command]);
       await run(['send-keys', '-t', paneId, 'Enter']);
+      foregroundStarted = true;
       const ready = await agentRunner.waitReady(paneId);
       if (ready?.status !== 'ready') throw new Error(ready?.error || 'agent failed before readiness');
     } catch (error) {
-      await agentRunner.cancel?.(paneId).catch(() => {});
-      throw error;
+      const cleanupFailures = [];
+      if (foregroundStarted) {
+        try { await run(['send-keys', '-t', paneId, 'C-c']); } catch (failure) { cleanupFailures.push(failure); }
+      }
+      if (typeof agentRunner.cancel === 'function') {
+        try { await agentRunner.cancel(paneId); } catch (failure) { cleanupFailures.push(failure); }
+      }
+      const cleanupError = cleanupFailures.length
+        ? new Error(cleanupFailures.map(errorText).join('; '))
+        : null;
+      throw withCleanupError(error, cleanupError);
     }
   }
 
@@ -484,5 +514,6 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID, agent
     killCreatedWindow,
     startAgent,
     topologyFingerprint,
+    revokeCreatedTargets,
   };
 }

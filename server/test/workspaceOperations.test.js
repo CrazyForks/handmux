@@ -23,6 +23,7 @@ const LOGICAL = {
 const flush = async () => {
   for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
 };
+const acquireOperationLock = async () => ({ release: async () => {} });
 
 function operationStore(seed = []) {
   const values = new Map(seed.map((value) => [value.id, structuredClone(value)]));
@@ -50,6 +51,7 @@ describe('workspace operation persistence', () => {
 
     const first = await manager.start({ checkpointId: 'cp-a', sessions: ['b', 'a', 'a'] }, runner);
     const duplicate = await manager.start({ sessions: ['a', 'b'], checkpointId: 'cp-a' }, runner);
+    await flush();
     expect(duplicate).toMatchObject({ operationId: first.operationId, reused: true });
     expect(runner).toHaveBeenCalledTimes(1);
     expect(store.writes.map((row) => row.status)).toEqual(expect.arrayContaining(['pending', 'running']));
@@ -77,30 +79,162 @@ describe('workspace operation persistence', () => {
       { id: UUIDS[1], status: 'succeeded', requestHash: 'b', results: [], updatedAt: 'old' },
     ];
     const store = operationStore(seed);
-    const manager = createOperationManager({ store, now: () => 3_000 });
+    const manager = createOperationManager({ store, now: () => 3_000, tryAcquireOperationLock: acquireOperationLock });
 
     expect(await manager.interruptOrphans()).toBe(1);
     expect(store.values.get(UUIDS[0])).toMatchObject({ status: 'interrupted', results: seed[0].results });
     expect(store.values.get(UUIDS[1]).status).toBe('succeeded');
   });
 
-  it('keeps active operations owned by a live process and interrupts only dead or invalid owners', async () => {
+  it('reuses a foreign lock-owned operation without caching it and refreshes its terminal state from disk', async () => {
     const request = { checkpointId: 'cp-a', sessions: [], historical: false };
     const seed = [
       { id: UUIDS[0], status: 'running', request, requestHash: restoreRequestHash(request), ownerPid: 101, results: [] },
-      { id: UUIDS[1], status: 'pending', request, requestHash: 'hash-b', ownerPid: 202, results: [] },
-      { id: UUIDS[2], status: 'running', request, requestHash: 'hash-c', ownerPid: 0, results: [] },
     ];
     const store = operationStore(seed);
-    const isProcessAlive = vi.fn((ownerPid) => ownerPid === 101);
-    const manager = createOperationManager({ store, now: () => 3_000, isProcessAlive });
+    const ids = [UUIDS[1]];
+    const manager = createOperationManager({
+      store,
+      now: () => 3_000,
+      randomUUID: () => ids.shift(),
+      tryAcquireOperationLock: async () => null,
+    });
 
-    expect(await manager.interruptOrphans()).toBe(2);
+    expect(await manager.interruptOrphans()).toBe(0);
     expect(store.values.get(UUIDS[0]).status).toBe('running');
-    expect(store.values.get(UUIDS[1]).status).toBe('interrupted');
-    expect(store.values.get(UUIDS[2]).status).toBe('interrupted');
-    expect(isProcessAlive).toHaveBeenCalledTimes(2);
     expect(await manager.start(request, vi.fn())).toMatchObject({ operationId: UUIDS[0], reused: true, status: 'running' });
+
+    store.values.set(UUIDS[0], { ...seed[0], status: 'succeeded', completedAt: new Date(3_000).toISOString() });
+    expect(await manager.get(UUIDS[0])).toMatchObject({ status: 'succeeded' });
+    expect(await manager.start(request, async () => ({ status: 'succeeded', results: [] })))
+      .toMatchObject({ operationId: UUIDS[1], reused: false });
+  });
+
+  it('interrupts a PID-reused running operation after acquiring the filesystem lock barrier', async () => {
+    const request = { checkpointId: 'cp-a', sessions: [], historical: false };
+    const seed = [{
+      id: UUIDS[0], status: 'running', request, requestHash: restoreRequestHash(request), ownerPid: process.pid, results: [],
+    }];
+    const store = operationStore(seed);
+    const manager = createOperationManager({
+      store,
+      now: () => 3_000,
+      tryAcquireOperationLock: acquireOperationLock,
+    });
+
+    expect(await manager.interruptOrphans()).toBe(1);
+    expect(store.values.get(UUIDS[0])).toMatchObject({ status: 'interrupted' });
+  });
+
+  it('does not overwrite a foreign terminal result observed after a stale running list row', async () => {
+    const request = { checkpointId: 'cp-a', sessions: [], historical: false };
+    const stale = {
+      id: UUIDS[0], status: 'running', request, requestHash: restoreRequestHash(request), ownerPid: 101, results: [],
+    };
+    const store = operationStore([stale]);
+    store.listOperations = async () => [{ status: 'ok', id: UUIDS[0], value: structuredClone(stale) }];
+    store.values.set(UUIDS[0], { ...stale, status: 'succeeded', completedAt: new Date(3_000).toISOString() });
+    const manager = createOperationManager({
+      store,
+      now: () => 3_000,
+      randomUUID: () => UUIDS[1],
+    });
+
+    expect(await manager.start(request, async () => ({ status: 'succeeded', results: [] })))
+      .toMatchObject({ operationId: UUIDS[1], reused: false });
+    expect(store.values.get(UUIDS[0]).status).toBe('succeeded');
+  });
+
+  it('rechecks disk after observing lock release so a just-persisted terminal result wins', async () => {
+    const request = { checkpointId: 'cp-a', sessions: [], historical: false };
+    const running = {
+      id: UUIDS[0], status: 'running', request, requestHash: restoreRequestHash(request), ownerPid: 101, results: [],
+    };
+    const store = operationStore([running]);
+    const manager = createOperationManager({
+      store,
+      now: () => 3_000,
+      tryAcquireOperationLock: async () => {
+        store.values.set(UUIDS[0], { ...running, status: 'succeeded', completedAt: new Date(3_000).toISOString() });
+        return { release: async () => {} };
+      },
+    });
+
+    expect(await manager.interruptOrphans()).toBe(0);
+    expect(store.values.get(UUIDS[0]).status).toBe('succeeded');
+  });
+
+  it('fails closed when filesystem lock ownership cannot be read', async () => {
+    const request = { checkpointId: 'cp-a', sessions: [], historical: false };
+    const running = {
+      id: UUIDS[0], status: 'running', request, requestHash: restoreRequestHash(request), ownerPid: 101, results: [],
+    };
+    const store = operationStore([running]);
+    const manager = createOperationManager({
+      store,
+      now: () => 3_000,
+      tryAcquireOperationLock: async () => { throw new Error('lock owner read failed'); },
+    });
+
+    expect(await manager.interruptOrphans()).toBe(0);
+    expect(store.values.get(UUIDS[0]).status).toBe('running');
+  });
+
+  it('keeps the first persisted terminal result when later runner cleanup throws', async () => {
+    const store = operationStore();
+    const manager = createOperationManager({ store, now: () => 3_000, randomUUID: () => UUIDS[0] });
+
+    const operation = await manager.run({ checkpointId: 'cp-a' }, async ({ onTerminal }) => {
+      await onTerminal({ status: 'succeeded', results: [] });
+      throw new Error('late cleanup failed');
+    });
+
+    expect(operation).toMatchObject({ status: 'succeeded', error: null });
+    expect(store.writes.filter((row) => row.status === 'succeeded')).toHaveLength(1);
+    expect(store.writes.some((row) => row.status === 'failed')).toBe(false);
+  });
+
+  it('gives a fresh foreign pending operation a short grace to acquire its matching filesystem lock', async () => {
+    const request = { checkpointId: 'cp-a', sessions: [], historical: false };
+    let clock = 3_000;
+    let ownsLock = false;
+    const seed = [{
+      id: UUIDS[0], status: 'pending', request, requestHash: restoreRequestHash(request), ownerPid: 101,
+      createdAt: new Date(clock - 10).toISOString(), results: [],
+    }];
+    const store = operationStore(seed);
+    const wait = vi.fn(async (ms) => { clock += ms; ownsLock = true; });
+    const manager = createOperationManager({
+      store,
+      now: () => clock,
+      pendingGraceMs: 50,
+      wait,
+      tryAcquireOperationLock: async () => (ownsLock ? null : { release: async () => {} }),
+    });
+
+    expect(await manager.interruptOrphans()).toBe(0);
+    expect(wait).toHaveBeenCalledWith(40);
+    expect(store.values.get(UUIDS[0]).status).toBe('pending');
+  });
+
+  it('interrupts a fresh pending operation after its grace expires without a matching lock owner', async () => {
+    const request = { checkpointId: 'cp-a', sessions: [], historical: false };
+    let clock = 3_000;
+    const seed = [{
+      id: UUIDS[0], status: 'pending', request, requestHash: restoreRequestHash(request), ownerPid: 101,
+      createdAt: new Date(clock - 10).toISOString(), results: [],
+    }];
+    const store = operationStore(seed);
+    const manager = createOperationManager({
+      store,
+      now: () => clock,
+      pendingGraceMs: 50,
+      wait: async (ms) => { clock += ms; },
+      tryAcquireOperationLock: acquireOperationLock,
+    });
+
+    expect(await manager.interruptOrphans()).toBe(1);
+    expect(store.values.get(UUIDS[0]).status).toBe('interrupted');
   });
 
   it('releases request deduplication when persisting running state fails', async () => {
@@ -165,6 +299,276 @@ function workspaceFixture({ recoveryPending = [LOGICAL.sessionOk, LOGICAL.sessio
 }
 
 describe('workspace runtime orchestration', () => {
+  it('keeps a restore pending until its operation identity owns the filesystem lock', async () => {
+    const { store } = workspaceFixture({ recoveryPending: [] });
+    let releaseLock;
+    const lockGate = new Promise((resolve) => { releaseLock = resolve; });
+    let releaseExecutor;
+    const executorGate = new Promise((resolve) => { releaseExecutor = resolve; });
+    const runtime = createWorkspaceRuntime({
+      store,
+      tmux: { captureTopology: async () => ({ status: 'ok', sessions: [], windows: [] }) },
+      lock: {
+        readOwner: async () => null,
+        withLock: async (_owner, fn) => { await lockGate; return fn(); },
+      },
+      checkpointer: { start: async () => {}, stop: async () => {}, reconcile: async () => ({ status: 'written' }) },
+      executor: async () => { await executorGate; return { status: 'succeeded', results: [], mapping: null }; },
+      randomUUID: () => UUIDS[0],
+    });
+
+    const started = await runtime.startRestore({ checkpointId: 'latest' });
+    await flush();
+    expect(store.values.get(started.operationId).status).toBe('pending');
+    releaseLock();
+    await flush();
+    expect(store.values.get(started.operationId).status).toBe('running');
+    releaseExecutor();
+    await flush();
+  });
+
+  it('does not execute a restore that was interrupted before it acquired the filesystem lock', async () => {
+    const { store } = workspaceFixture({ recoveryPending: [] });
+    const executor = vi.fn(async () => ({ status: 'succeeded', results: [], mapping: null }));
+    const runtime = createWorkspaceRuntime({
+      store,
+      tmux: { captureTopology: async () => ({ status: 'ok', sessions: [], windows: [] }) },
+      lock: {
+        tryAcquire: async () => null,
+        withLock: async ({ operationId }, fn) => {
+          const pending = store.values.get(operationId);
+          store.values.set(operationId, {
+            ...pending,
+            status: 'interrupted',
+            error: 'restore interrupted by process restart; retry the restore',
+          });
+          return fn();
+        },
+      },
+      checkpointer: { start: async () => {}, stop: async () => {}, reconcile: async () => ({ status: 'unchanged' }) },
+      executor,
+      randomUUID: () => UUIDS[0],
+    });
+
+    const started = await runtime.startRestore({ checkpointId: 'latest' });
+    await flush();
+    expect(await runtime.getOperation(started.operationId)).toMatchObject({ status: 'interrupted' });
+    expect(executor).not.toHaveBeenCalled();
+  });
+
+  it('durably persists the first terminal restore result before releasing its filesystem lock', async () => {
+    const { store } = workspaceFixture({ recoveryPending: [] });
+    let lockHeld = false;
+    const terminalWrites = [];
+    const writeOperation = store.writeOperation;
+    store.writeOperation = async (operation) => {
+      if (['succeeded', 'partial', 'failed'].includes(operation.status)) terminalWrites.push(lockHeld);
+      return writeOperation(operation);
+    };
+    const runtime = createWorkspaceRuntime({
+      store,
+      tmux: { captureTopology: async () => ({ status: 'ok', sessions: [], windows: [] }) },
+      lock: {
+        readOwner: async () => null,
+        withLock: async (_owner, fn) => {
+          lockHeld = true;
+          try { return await fn(); } finally { lockHeld = false; }
+        },
+      },
+      checkpointer: { start: async () => {}, stop: async () => {}, reconcile: async () => ({ status: 'written' }) },
+      executor: async () => ({ status: 'succeeded', results: [], mapping: null }),
+      randomUUID: () => UUIDS[0],
+    });
+
+    expect(await runtime.restoreNow({ checkpointId: 'latest' })).toMatchObject({ status: 'succeeded' });
+    expect(terminalWrites[0]).toBe(true);
+  });
+
+  it('keeps a foreign observer from interrupting while terminal persistence is still fsyncing under lock', async () => {
+    const { store } = workspaceFixture({ recoveryPending: [] });
+    let lockOwner = null;
+    let releaseTerminalWrite;
+    const terminalWriteGate = new Promise((resolve) => { releaseTerminalWrite = resolve; });
+    let reportTerminalWrite;
+    const terminalWriteStarted = new Promise((resolve) => { reportTerminalWrite = resolve; });
+    const writeOperation = store.writeOperation;
+    store.writeOperation = async (operation) => {
+      if (['succeeded', 'partial', 'failed'].includes(operation.status)) {
+        reportTerminalWrite();
+        await terminalWriteGate;
+      }
+      return writeOperation(operation);
+    };
+    const lock = {
+      readOwner: async () => lockOwner,
+      withLock: async (owner, fn) => {
+        lockOwner = { ...owner, pid: process.pid };
+        try { return await fn(); } finally { lockOwner = null; }
+      },
+    };
+    const runtime = createWorkspaceRuntime({
+      store,
+      tmux: { captureTopology: async () => ({ status: 'ok', sessions: [], windows: [] }) },
+      lock,
+      checkpointer: { start: async () => {}, stop: async () => {}, reconcile: async () => ({ status: 'written' }) },
+      executor: async () => ({ status: 'succeeded', results: [], mapping: null }),
+      randomUUID: () => UUIDS[0],
+    });
+    const observer = createOperationManager({
+      store,
+      tryAcquireOperationLock: async () => (lockOwner ? null : { release: async () => {} }),
+    });
+
+    const restoring = runtime.restoreNow({ checkpointId: 'latest' });
+    await terminalWriteStarted;
+    expect(store.values.get(UUIDS[0]).status).toBe('running');
+    expect(await observer.interruptOrphans()).toBe(0);
+
+    releaseTerminalWrite();
+    expect(await restoring).toMatchObject({ status: 'succeeded' });
+    expect(lockOwner).toBe(null);
+    expect(await observer.interruptOrphans()).toBe(0);
+    expect(store.values.get(UUIDS[0]).status).toBe('succeeded');
+  });
+
+  it('persists a locked restore failure before releasing its filesystem lock', async () => {
+    const { store } = workspaceFixture({ recoveryPending: [] });
+    let lockHeld = false;
+    const failedWrites = [];
+    const writeOperation = store.writeOperation;
+    store.writeOperation = async (operation) => {
+      if (operation.status === 'failed') failedWrites.push(lockHeld);
+      return writeOperation(operation);
+    };
+    const runtime = createWorkspaceRuntime({
+      store,
+      tmux: { captureTopology: async () => ({ status: 'ok', sessions: [], windows: [] }) },
+      lock: {
+        readOwner: async () => null,
+        withLock: async (_owner, fn) => {
+          lockHeld = true;
+          try { return await fn(); } finally { lockHeld = false; }
+        },
+      },
+      checkpointer: { start: async () => {}, stop: async () => {}, reconcile: async () => ({ status: 'written' }) },
+      executor: async () => { throw new Error('restore mutation failed'); },
+      randomUUID: () => UUIDS[0],
+    });
+
+    expect(await runtime.restoreNow({ checkpointId: 'latest' })).toMatchObject({
+      status: 'failed', error: 'restore mutation failed',
+    });
+    expect(failedWrites).toEqual([true]);
+  });
+
+  it('persists running-state write failures as failed before releasing the filesystem lock', async () => {
+    const { store } = workspaceFixture({ recoveryPending: [] });
+    let lockHeld = false;
+    let failRunning = true;
+    const failedWrites = [];
+    const writeOperation = store.writeOperation;
+    store.writeOperation = async (operation) => {
+      if (operation.status === 'running' && failRunning) {
+        failRunning = false;
+        throw new Error('running state write failed');
+      }
+      if (operation.status === 'failed') failedWrites.push(lockHeld);
+      return writeOperation(operation);
+    };
+    const runtime = createWorkspaceRuntime({
+      store,
+      tmux: { captureTopology: async () => ({ status: 'ok', sessions: [], windows: [] }) },
+      lock: {
+        readOwner: async () => null,
+        withLock: async (_owner, fn) => {
+          lockHeld = true;
+          try { return await fn(); } finally { lockHeld = false; }
+        },
+      },
+      checkpointer: { start: async () => {}, stop: async () => {}, reconcile: async () => ({ status: 'written' }) },
+      executor: vi.fn(async () => ({ status: 'succeeded', results: [], mapping: null })),
+      randomUUID: () => UUIDS[0],
+    });
+
+    expect(await runtime.restoreNow({ checkpointId: 'latest' })).toMatchObject({
+      status: 'failed', error: 'running state write failed',
+    });
+    expect(failedWrites).toEqual([true]);
+  });
+
+  it('treats a foreign running operation as active while the filesystem lock barrier is held', async () => {
+    const request = { checkpointId: 'cp-a', sessions: [], historical: false };
+    const operation = {
+      id: UUIDS[0], status: 'running', request, requestHash: restoreRequestHash(request), ownerPid: 515, results: [],
+    };
+    const store = operationStore([operation]);
+    const lock = { tryAcquire: vi.fn(async () => null) };
+    const runtime = createWorkspaceRuntime({
+      store,
+      tmux: {},
+      lock,
+      checkpointer: { start: vi.fn(async () => {}), stop: vi.fn() },
+    });
+
+    expect(await runtime.start()).toEqual([0, undefined]);
+    expect(lock.tryAcquire).toHaveBeenCalled();
+    expect(store.values.get(UUIDS[0]).status).toBe('running');
+  });
+
+  it('finishes the orphan sweep before starting the checkpointer that competes for the writer lock', async () => {
+    const request = { checkpointId: 'cp-a', sessions: [], historical: false };
+    const operation = {
+      id: UUIDS[0], status: 'running', request, requestHash: restoreRequestHash(request), ownerPid: 515, results: [],
+    };
+    const store = operationStore([operation]);
+    let checkpointerStarted = false;
+    const release = vi.fn(async () => {});
+    const lock = {
+      tryAcquire: vi.fn(async () => (checkpointerStarted ? null : { release })),
+    };
+    const checkpointer = {
+      start: vi.fn(async () => { checkpointerStarted = true; }),
+      stop: vi.fn(),
+    };
+    const runtime = createWorkspaceRuntime({ store, tmux: {}, lock, checkpointer });
+
+    expect(await runtime.start()).toEqual([1, undefined]);
+    expect(store.values.get(UUIDS[0]).status).toBe('interrupted');
+    expect(release).toHaveBeenCalledOnce();
+    expect(checkpointer.start).toHaveBeenCalledOnce();
+  });
+
+  it('starts workspace protection after a failed orphan sweep, then propagates the sweep error', async () => {
+    const store = operationStore();
+    const order = [];
+    store.listOperations = async () => {
+      order.push('sweep');
+      throw new Error('operation directory unreadable');
+    };
+    const checkpointer = {
+      start: vi.fn(async () => { order.push('checkpointer'); }),
+      stop: vi.fn(),
+    };
+    const runtime = createWorkspaceRuntime({ store, tmux: {}, lock: {}, checkpointer });
+
+    await expect(runtime.start()).rejects.toThrow(/operation directory unreadable/);
+    expect(order).toEqual(['sweep', 'checkpointer']);
+    expect(checkpointer.start).toHaveBeenCalledOnce();
+  });
+
+  it('reports both orphan-sweep and workspace-protection startup failures', async () => {
+    const store = operationStore();
+    store.listOperations = async () => { throw new Error('operation directory unreadable'); };
+    const checkpointer = {
+      start: vi.fn(async () => { throw new Error('protection timer failed'); }),
+      stop: vi.fn(),
+    };
+    const runtime = createWorkspaceRuntime({ store, tmux: {}, lock: {}, checkpointer });
+
+    await expect(runtime.start()).rejects.toThrow(/operation directory unreadable.*protection timer failed/i);
+    expect(checkpointer.start).toHaveBeenCalledOnce();
+  });
+
   it.each([
     ['ok', async () => ({ status: 'ok', value: { capturedAt: '2026-07-20T01:23:00.000Z' } }), { status: 'protected', lastSuccessfulCaptureAt: '2026-07-20T01:23:00.000Z', errorCode: null }],
     ['empty', async () => ({ status: 'empty' }), { status: 'unprotected', lastSuccessfulCaptureAt: null, errorCode: null }],

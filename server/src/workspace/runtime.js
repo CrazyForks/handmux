@@ -113,7 +113,12 @@ export function createWorkspaceRuntime({
   home,
   restoreGuardAttempts = 3,
 } = {}) {
-  const operations = createOperationManager({ store, now, randomUUID });
+  const operations = createOperationManager({
+    store,
+    now,
+    randomUUID,
+    tryAcquireOperationLock: (owner) => lock.tryAcquire(owner),
+  });
 
   async function resolveOperationRequest(requestInput = {}) {
     const request = normalizeRestoreRequest(requestInput);
@@ -191,37 +196,45 @@ export function createWorkspaceRuntime({
     };
   }
 
-  async function performRestore(operationId, request, onProgress) {
+  async function performRestore(operationId, request, onProgress, onRunning, onTerminal) {
     let result;
     let restoreError;
     try {
       result = await lock.withLock({ operationId }, async () => {
-        // The preview may be stale by now. Capture and plan again while holding the writer lock so a name
-        // created after preview receives the next non-destructive `-restored` suffix.
-        const state = await guardedPlanRestore(request);
-        const restored = await executor({
-          plan: state.plan,
-          checkpoint: state.checkpoint,
-          tmux,
-          agents,
-          onProgress,
-          access,
-          home,
-        });
-        const resolvedIds = restored.results
-          .filter((row) => row.status === 'restored' || row.status === 'already-present')
-          .map((row) => row.logicalId);
-        const mapping = buildRecoveryMapping(state.checkpoint.id, state.recovery?.mapping, [
-          restored.mapping,
-          mappingForAlreadyPresent(state.checkpoint, state.live, restored.results),
-        ], now);
-        if (mapping && typeof store.mergeRecoveryMapping === 'function') {
-          await store.mergeRecoveryMapping(state.checkpoint.id, mapping);
+        try {
+          await onRunning();
+          // The preview may be stale by now. Capture and plan again while holding the writer lock so a name
+          // created after preview receives the next non-destructive `-restored` suffix.
+          const state = await guardedPlanRestore(request);
+          const restored = await executor({
+            plan: state.plan,
+            checkpoint: state.checkpoint,
+            tmux,
+            agents,
+            onProgress,
+            access,
+            home,
+          });
+          const resolvedIds = restored.results
+            .filter((row) => row.status === 'restored' || row.status === 'already-present')
+            .map((row) => row.logicalId);
+          const mapping = buildRecoveryMapping(state.checkpoint.id, state.recovery?.mapping, [
+            restored.mapping,
+            mappingForAlreadyPresent(state.checkpoint, state.live, restored.results),
+          ], now);
+          if (mapping && typeof store.mergeRecoveryMapping === 'function') {
+            await store.mergeRecoveryMapping(state.checkpoint.id, mapping);
+          }
+          // Persist migration data before resolving pending ids. If the second write fails, retry planning
+          // still sees the session and will recognize it as already-present instead of losing its mapping.
+          if (resolvedIds.length > 0) await store.resolveSessions(state.checkpoint.id, resolvedIds);
+          const lockedResult = { ...restored, mapping };
+          await onTerminal(lockedResult);
+          return lockedResult;
+        } catch (error) {
+          await onTerminal(error);
+          throw error;
         }
-        // Persist migration data before resolving pending ids. If the second write fails, retry planning
-        // still sees the session and will recognize it as already-present instead of losing its mapping.
-        if (resolvedIds.length > 0) await store.resolveSessions(state.checkpoint.id, resolvedIds);
-        return { ...restored, mapping };
       });
     } catch (error) {
       restoreError = error;
@@ -245,20 +258,45 @@ export function createWorkspaceRuntime({
     return result;
   }
 
+  async function start() {
+    let interrupted;
+    let sweepError;
+    try {
+      interrupted = await operations.interruptOrphans();
+    } catch (error) {
+      sweepError = error;
+    }
+    let started;
+    let startError;
+    try {
+      started = await checkpointer.start();
+    } catch (error) {
+      startError = error;
+    }
+    if (sweepError && startError) {
+      const sweepMessage = sweepError instanceof Error ? sweepError.message : String(sweepError);
+      const startMessage = startError instanceof Error ? startError.message : String(startError);
+      throw new AggregateError([sweepError, startError], `${sweepMessage}; workspace protection start failed: ${startMessage}`);
+    }
+    if (sweepError) throw sweepError;
+    if (startError) throw startError;
+    return [interrupted, started];
+  }
+
   return {
-    start: () => Promise.all([operations.interruptOrphans(), checkpointer.start()]),
+    start,
     stop: () => checkpointer.stop(),
     requestReconcile: () => checkpointer.requestReconcile(),
     confirmEmpty: () => checkpointer.confirmEmpty(),
     listCheckpoints: () => store.listCheckpoints(),
     getProtectionStatus,
     getRestorePlan,
-    startRestore: async (request = {}) => operations.start(await resolveOperationRequest(request), ({ operationId, request: normalized, onProgress }) => (
-      performRestore(operationId, normalized, onProgress)
-    )),
+    startRestore: async (request = {}) => operations.start(await resolveOperationRequest(request), ({ operationId, request: normalized, onProgress, onRunning, onTerminal }) => (
+      performRestore(operationId, normalized, onProgress, onRunning, onTerminal)
+    ), { deferRunning: true }),
     getOperation: (id) => operations.get(id),
-    restoreNow: async (request = {}) => operations.run(await resolveOperationRequest(request), ({ operationId, request: normalized, onProgress }) => (
-      performRestore(operationId, normalized, onProgress)
-    )),
+    restoreNow: async (request = {}) => operations.run(await resolveOperationRequest(request), ({ operationId, request: normalized, onProgress, onRunning, onTerminal }) => (
+      performRestore(operationId, normalized, onProgress, onRunning, onTerminal)
+    ), { deferRunning: true }),
   };
 }

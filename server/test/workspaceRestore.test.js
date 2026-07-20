@@ -103,6 +103,7 @@ function fakeTmux({ failCreateWindowFor, failAgent = false, failLayout = false, 
       if (failCleanup) throw new Error('injected cleanup failure');
     },
     async killCreatedWindow(target) { call('mutate', 'killCreatedWindow', target); },
+    revokeCreatedTargets() { call('internal', 'revokeCreatedTargets', null); },
   };
 }
 
@@ -134,6 +135,7 @@ describe('workspace restore executor', () => {
     expect(tempCalls[1].input.windowLogicalId).toBe(ID.wB);
     expect(tmux.calls.filter((call) => call.input?.windowLogicalId === ID.wShared)).toHaveLength(1);
     expect(tmux.calls).toContainEqual(expect.objectContaining({ method: 'linkWindow', source: tempCalls[0].windowId, target: tempCalls[1].sessionId }));
+    expect(tmux.calls.at(-1)).toMatchObject({ method: 'revokeCreatedTargets' });
 
     const renameIndex = tmux.calls.findIndex((call) => call.method === 'renameCreatedSession' && call.target === tempCalls[0].sessionId);
     const agentIndex = tmux.calls.findIndex((call) => call.method === 'startAgent');
@@ -241,6 +243,6 @@ describe('workspace restore executor', () => {
 
     expect(result).toMatchObject({ status: 'succeeded', restored: 0, alreadyPresent: 2, failed: 0 });
     expect(result.results.every((row) => row.status === 'already-present')).toBe(true);
-    expect(tmux.calls).toEqual([]);
+    expect(tmux.calls).toEqual([{ kind: 'internal', method: 'revokeCreatedTargets', target: null }]);
   });
 });

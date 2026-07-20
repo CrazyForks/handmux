@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
-import { launchAgentRequest, validateAgentRequest } from '../src/workspace/agentRunner.js';
+import { createAgentRunner, launchAgentRequest, publishAgentReadiness, validateAgentRequest } from '../src/workspace/agentRunner.js';
 
 const ID = 'aaaaaaaa-0000-4000-8000-000000000001';
 
@@ -43,5 +43,30 @@ describe('workspace agent runner', () => {
       await expect(launched.ready).resolves.toMatchObject({ status: 'failed', error: expect.stringMatching(/not found|exited 127/i) });
       vi.useRealTimers();
     }
+  });
+
+  it('kills and awaits an already-spawned child when readiness status persistence fails', async () => {
+    vi.useFakeTimers();
+    const child = childProcess();
+    child.kill = vi.fn((signal) => { child.emit('exit', null, signal); return true; });
+    const launched = launchAgentRequest({ cmd: 'claude', args: ['--resume', ID] }, { spawn: () => child, readinessMs: 10 });
+    child.emit('spawn');
+    await vi.advanceTimersByTimeAsync(10);
+
+    await expect(publishAgentReadiness(launched, async () => { throw new Error('status disk full'); }))
+      .rejects.toThrow(/status disk full/);
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+    await expect(launched.completion).resolves.toEqual({ code: null, signal: 'SIGTERM' });
+    vi.useRealTimers();
+  });
+
+  it('reports request cleanup failures instead of silently retaining a replayable resume request', async () => {
+    const fs = {
+      unlink: vi.fn(async () => { throw Object.assign(new Error('request cleanup EACCES'), { code: 'EACCES' }); }),
+    };
+    const runner = createAgentRunner({ home: '/safe-home', fs });
+
+    await expect(runner.cancel('%7')).rejects.toThrow(/cleanup EACCES/i);
+    expect(fs.unlink).toHaveBeenCalled();
   });
 });

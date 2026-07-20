@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createWorkspaceTmux, createdTargetGuard } from '../src/workspace/tmuxAdapter.js';
 
 const IDS = {
@@ -228,8 +228,54 @@ describe('workspace restore command safety', () => {
     expect(calls.filter((args) => args[0] === 'send-keys')).toEqual([
       ['send-keys', '-t', '%32', '-l', '--', 'handmux-agent-runner'],
       ['send-keys', '-t', '%32', 'Enter'],
+      ['send-keys', '-t', '%32', 'C-c'],
     ].map((args) => args.map((value) => value === '%32' ? temp.paneId : value)));
     expect(calls.filter((args) => args[0] === 'send-keys').flat().join(' ')).not.toContain(IDS.server);
+  });
+
+  it.each([
+    ['status read failure', async () => { throw new Error('status read failed'); }],
+    ['readiness timeout', async () => ({ status: 'failed', error: 'agent readiness timed out' })],
+  ])('interrupts the fixed foreground runner when %s occurs', async (_label, waitReady) => {
+    const calls = [];
+    const cancel = vi.fn(async () => {});
+    const tmux = createWorkspaceTmux({
+      run: async (args) => { calls.push(args); return args[0] === 'new-session' ? '$10\t@20\t%30\t0\n' : ''; },
+      randomUUID: () => 'abcdef12-0000-4000-8000-000000000000',
+      agentRunner: { command: 'handmux-agent-runner', prepare: async () => {}, waitReady, cancel },
+    });
+    const temp = await tmux.createTemporarySession({
+      cwd: '/work', sessionLogicalId: IDS.sessionA, windowLogicalId: IDS.window,
+      paneLogicalId: IDS.paneA, windowName: 'main', windowIndex: 0,
+    });
+
+    await expect(tmux.startAgent(temp.paneId, 'claude', ['--resume', IDS.server])).rejects.toThrow(/status read failed|timed out/i);
+    expect(calls).toContainEqual(['send-keys', '-t', temp.paneId, 'C-c']);
+    expect(cancel).toHaveBeenCalledWith(temp.paneId);
+    expect(calls.flat().join(' ')).not.toContain(IDS.server);
+  });
+
+  it('aggregates foreground interrupt and request cleanup failures with the readiness failure', async () => {
+    const tmux = createWorkspaceTmux({
+      run: async (args) => {
+        if (args[0] === 'new-session') return '$10\t@20\t%30\t0\n';
+        if (args.at(-1) === 'C-c') throw new Error('foreground interrupt failed');
+        return '';
+      },
+      randomUUID: () => 'abcdef12-0000-4000-8000-000000000000',
+      agentRunner: {
+        command: 'handmux-agent-runner', prepare: async () => {},
+        waitReady: async () => ({ status: 'failed', error: 'agent readiness timed out' }),
+        cancel: async () => { throw new Error('request cleanup failed'); },
+      },
+    });
+    const temp = await tmux.createTemporarySession({
+      cwd: '/work', sessionLogicalId: IDS.sessionA, windowLogicalId: IDS.window,
+      paneLogicalId: IDS.paneA, windowName: 'main', windowIndex: 0,
+    });
+
+    await expect(tmux.startAgent(temp.paneId, 'codex', ['resume', IDS.server]))
+      .rejects.toThrow(/timed out.*foreground interrupt failed.*request cleanup failed/i);
   });
 
   it('accepts canonical UUIDs without version constraints and rejects whitespace-padded values before tmux', async () => {
@@ -328,6 +374,58 @@ describe('workspace restore command safety', () => {
     expect(calls.some((args) => args[0] === cleanupCommand)).toBe(true);
   });
 
+  it.each([
+    ['empty', ''],
+    ['malformed', '$10\t@20\n'],
+  ])('kills only the allowlisted temporary session name when new-session returns %s output', async (_label, output) => {
+    const calls = [];
+    const tmux = createWorkspaceTmux({
+      run: async (args) => { calls.push(args); return args[0] === 'new-session' ? output : ''; },
+      randomUUID: () => 'abcdef12-0000-4000-8000-000000000000',
+    });
+
+    await expect(tmux.createTemporarySession({
+      cwd: '/work', sessionLogicalId: IDS.sessionA, windowLogicalId: IDS.window,
+      paneLogicalId: IDS.paneA, windowName: 'main', windowIndex: 0,
+    })).rejects.toThrow(/created session|format/i);
+    expect(calls.filter((args) => args[0] === 'kill-session')).toEqual([
+      ['kill-session', '-t', '=hm-r-abcdef12'],
+    ]);
+  });
+
+  it('aggregates exact-name fallback cleanup failure after malformed successful new-session output', async () => {
+    const calls = [];
+    const tmux = createWorkspaceTmux({
+      run: async (args) => {
+        calls.push(args);
+        if (args[0] === 'new-session') return '$10\t@20\n';
+        if (args[0] === 'kill-session') throw new Error('fallback cleanup failed');
+        return '';
+      },
+      randomUUID: () => 'abcdef12-0000-4000-8000-000000000000',
+    });
+
+    await expect(tmux.createTemporarySession({ cwd: '/work', sessionLogicalId: IDS.sessionA }))
+      .rejects.toThrow(/format.*fallback cleanup failed/i);
+    expect(calls).toContainEqual(['kill-session', '-t', '=hm-r-abcdef12']);
+  });
+
+  it('does not kill by temporary name when new-session itself rejects, including a name collision', async () => {
+    const calls = [];
+    const tmux = createWorkspaceTmux({
+      run: async (args) => {
+        calls.push(args);
+        if (args[0] === 'new-session') throw new Error('duplicate session: hm-r-abcdef12');
+        return '';
+      },
+      randomUUID: () => 'abcdef12-0000-4000-8000-000000000000',
+    });
+
+    await expect(tmux.createTemporarySession({ cwd: '/work', sessionLogicalId: IDS.sessionA }))
+      .rejects.toThrow(/duplicate session/i);
+    expect(calls.some((args) => args[0] === 'kill-session')).toBe(false);
+  });
+
   it('reports both the create follow-up failure and cleanup failure', async () => {
     const calls = [];
     const tmux = createWorkspaceTmux({
@@ -369,6 +467,25 @@ describe('workspace restore command safety', () => {
     expect(kill).toBeGreaterThan(clear);
     const before = calls.length;
     await expect(tmux.selectPane('%30')).rejects.toThrow(/was not created/);
+    expect(calls).toHaveLength(before);
+  });
+
+  it('revokes every created-target capability after a restore batch so reused runtime ids are rejected', async () => {
+    const calls = [];
+    const tmux = createWorkspaceTmux({
+      run: async (args) => { calls.push(args); return args[0] === 'new-session' ? '$10\t@20\t%30\t0\n' : ''; },
+      randomUUID: () => 'abcdef12-0000-4000-8000-000000000000',
+    });
+    await tmux.createTemporarySession({
+      cwd: '/work', sessionLogicalId: IDS.sessionA, windowLogicalId: IDS.window,
+      paneLogicalId: IDS.paneA, windowName: 'main', windowIndex: 0,
+    });
+    tmux.revokeCreatedTargets();
+
+    const before = calls.length;
+    await expect(tmux.applyLayout('@20', 'layout-after-runtime-id-reuse')).rejects.toThrow(/was not created/);
+    await expect(tmux.selectPane('%30')).rejects.toThrow(/was not created/);
+    await expect(tmux.renameCreatedSession('$10', 'reused')).rejects.toThrow(/was not created/);
     expect(calls).toHaveLength(before);
   });
 });

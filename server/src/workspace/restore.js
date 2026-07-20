@@ -236,27 +236,31 @@ export async function executeRestore({
   const results = [];
   const dispositions = dispositionMap(plan);
   const restoredWindows = new Map();
-  for (const item of plan.sessions) {
-    let result;
-    if (item.action === 'already-present') {
-      result = { logicalId: item.logicalId, sourceName: item.sourceName, status: 'already-present' };
-    } else if (item.action === 'unsupported') {
-      result = { logicalId: item.logicalId, sourceName: item.sourceName, status: 'failed', stage: 'plan', error: item.reason };
-    } else {
-      try {
-        result = await restoreOneSession({ item, checkpoint, tmux, agents, access, home, dispositions, restoredWindows });
-      } catch (error) {
-        result = {
-          logicalId: item.logicalId,
-          sourceName: item.sourceName,
-          status: 'failed',
-          stage: error.stage || 'topology',
-          error: message(error),
-        };
+  try {
+    for (const item of plan.sessions) {
+      let result;
+      if (item.action === 'already-present') {
+        result = { logicalId: item.logicalId, sourceName: item.sourceName, status: 'already-present' };
+      } else if (item.action === 'unsupported') {
+        result = { logicalId: item.logicalId, sourceName: item.sourceName, status: 'failed', stage: 'plan', error: item.reason };
+      } else {
+        try {
+          result = await restoreOneSession({ item, checkpoint, tmux, agents, access, home, dispositions, restoredWindows });
+        } catch (error) {
+          result = {
+            logicalId: item.logicalId,
+            sourceName: item.sourceName,
+            status: 'failed',
+            stage: error.stage || 'topology',
+            error: message(error),
+          };
+        }
       }
+      results.push(result);
+      await notify(onProgress, results, result, plan.sessions.length);
     }
-    results.push(result);
-    await notify(onProgress, results, result, plan.sessions.length);
+    return summarizeRestore(results);
+  } finally {
+    tmux.revokeCreatedTargets?.();
   }
-  return summarizeRestore(results);
 }
