@@ -11,6 +11,24 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.17.7',
+    date: '2026-07-20',
+    highlight: {
+      zh: '单实例启动兜底 · WSL 状态命令修复',
+      en: 'Single-instance startup guard · WSL status fix',
+    },
+    items: {
+      zh: [
+        '修复安装开机自启后升级、重启可能产生两个后台实例,导致端口占用、URL 不出现或 stop 后仍可访问的问题;启停命令现在统一管理同一个服务,发现重复副本会列出 PID 并全部回收。',
+        'handmux status 现在显示实际运行版本,升级后可区分已安装版本;修复了 WSL 中内容显示完毕却不返回命令行的问题。',
+      ],
+      en: [
+        'Fixed upgrades or restarts creating two background instances after autostart was installed, which could occupy the port, hide the URL, or remain reachable after stop; lifecycle commands now manage one service and list/reap every duplicate PID.',
+        'handmux status now shows the actual running version and distinguishes a newly installed version; fixed WSL terminals not returning to the prompt after status output completed.',
+      ],
+    },
+  },
+  {
     version: '0.17.6',
     date: '2026-07-20',
     highlight: {
