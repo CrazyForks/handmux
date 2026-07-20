@@ -21,6 +21,7 @@ import { createWorkspaceTmux } from './workspace/tmuxAdapter.js';
 import { createEnvironmentProvider } from './workspace/environment.js';
 import { createWorkspaceLock } from './workspace/lock.js';
 import { createGracefulShutdown, createWorkspaceBackground } from './workspace/checkpointer.js';
+import { createWorkspaceRuntime } from './workspace/runtime.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -47,12 +48,19 @@ const observeEnvironment = createEnvironmentProvider({
   },
 });
 const stateFile = process.env.CLAUDE_STATE_FILE || claudeStatePath(home);
-const workspace = createWorkspaceBackground({
+const workspaceBackground = createWorkspaceBackground({
   store: workspaceStore,
   tmux: workspaceTmux,
   observeEnvironment,
   lock: workspaceLock,
   stateFile,
+});
+const workspace = createWorkspaceRuntime({
+  store: workspaceStore,
+  tmux: workspaceTmux,
+  lock: workspaceLock,
+  checkpointer: workspaceBackground,
+  home,
 });
 
 // The inbox is driven by a JSON state file the Claude hooks maintain (server/hooks/handmux-notify.sh →

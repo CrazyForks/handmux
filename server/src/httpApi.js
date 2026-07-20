@@ -23,6 +23,7 @@ import { previewRoutes } from './routes/previews.js';
 import { notificationRoutes } from './routes/notifications.js';
 import { transcriptRoutes } from './routes/transcript.js';
 import { DEFAULT_SHORTCUTS } from './shortcutConfig.js';
+import { workspaceRoutes } from './routes/workspace.js';
 
 // Re-exported for tests (test/keys.test.js) and any caller that imported it by this path historically.
 export { isAllowedKey } from './routes/terminal.js';
@@ -54,6 +55,7 @@ export function createApiRouter({
   r.use(systemRoutes(deps));
   r.use(previewRoutes(deps));
   r.use(transcriptRoutes(deps));
+  if (workspace) r.use(workspaceRoutes(deps));
 
   return r;
 }
