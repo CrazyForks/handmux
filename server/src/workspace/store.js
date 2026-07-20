@@ -3,6 +3,7 @@ import path from 'node:path';
 import { ensurePrivateDir, writeJsonAtomic } from './atomicJson.js';
 import { workspacePaths } from './paths.js';
 import { canonicalizeSnapshot, fingerprintSnapshot, sealPayload, validateCheckpoint } from './schema.js';
+import { validateRecoveryMapping } from './mapping.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RECOVERY_WINDOW_MS = 60 * 60 * 1000;
@@ -102,8 +103,7 @@ function validateRecovery(value, checkpointId) {
   if (value.resolvedAt !== null && (typeof value.resolvedAt !== 'string' || Number.isNaN(Date.parse(value.resolvedAt)))) throw new Error('invalid recovery resolvedAt');
   if (value.resolvedAt !== null && value.pendingSessionIds.length > 0) throw new Error('resolved recovery cannot contain pending session ids');
   if (value.mapping !== null) {
-    if (!value.mapping || typeof value.mapping !== 'object' || Array.isArray(value.mapping)) throw new Error('invalid recovery mapping');
-    if (value.mapping.checkpointId !== checkpointId) throw new Error('recovery mapping checkpoint id mismatch');
+    validateRecoveryMapping(value.mapping, checkpointId);
   }
   return value;
 }
@@ -286,8 +286,7 @@ export function createWorkspaceStore({ home, now = Date.now, fs = fsp }) {
   async function mergeRecoveryMapping(checkpointId, mapping) {
     const recovery = await readRecovery(checkpointId);
     if (recovery.status !== 'ok') return recovery;
-    if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) throw new Error('recovery mapping must be an object');
-    if (mapping.checkpointId !== checkpointId) throw new Error('recovery mapping checkpoint id mismatch');
+    validateRecoveryMapping(mapping, checkpointId);
     const value = { ...recovery.value, mapping };
     validateRecovery(value, checkpointId);
     await writeJsonAtomic(path.join(paths.recoveryDir, `${checkpointId}.json`), value, { fs });

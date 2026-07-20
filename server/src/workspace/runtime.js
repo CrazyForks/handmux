@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { buildRestorePlan } from './planner.js';
 import { executeRestore } from './restore.js';
 import { createOperationManager, normalizeRestoreRequest } from './operations.js';
+import { buildRecoveryMapping } from './mapping.js';
 
 function unwrapCheckpoint(result) {
   if (result?.status !== 'ok' || !result.value) {
@@ -36,31 +37,6 @@ function blankMapping() {
     runtime: { sessions: {}, windows: {}, panes: {} },
     logical: { sessions: {}, windows: {}, panes: {} },
   };
-}
-
-function mappingPayload(mapping) {
-  return {
-    names: { ...(mapping?.names || {}) },
-    runtime: {
-      sessions: { ...(mapping?.runtime?.sessions || {}) },
-      windows: { ...(mapping?.runtime?.windows || {}) },
-      panes: { ...(mapping?.runtime?.panes || {}) },
-    },
-    logical: {
-      sessions: { ...(mapping?.logical?.sessions || {}) },
-      windows: { ...(mapping?.logical?.windows || {}) },
-      panes: { ...(mapping?.logical?.panes || {}) },
-    },
-  };
-}
-
-function mergeMapping(target, source) {
-  const value = mappingPayload(source);
-  Object.assign(target.names, value.names);
-  for (const kind of ['sessions', 'windows', 'panes']) {
-    Object.assign(target.runtime[kind], value.runtime[kind]);
-    Object.assign(target.logical[kind], value.logical[kind]);
-  }
 }
 
 function mapRuntime(mapping, kind, source, logical, runtime) {
@@ -101,19 +77,26 @@ function sorted(value) {
   return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sorted(value[key])]));
 }
 
-function hasMapping(mapping) {
-  return Object.keys(mapping.names).length > 0
-    || ['sessions', 'windows', 'panes'].some((kind) => Object.keys(mapping.runtime[kind]).length > 0);
+function restoreGuard(live) {
+  const topology = {
+    status: live.status,
+    tmuxVersion: live.tmuxVersion || null,
+    active: live.active || null,
+    sessions: live.sessions || [],
+    windows: live.windows || [],
+  };
+  return {
+    topologyFingerprint: crypto.createHash('sha256').update(JSON.stringify(sorted(topology))).digest('hex'),
+    identities: {
+      sessions: (live.sessions || []).map(({ id, runtimeId, name }) => [id, runtimeId, name]).sort(),
+      windows: (live.windows || []).map(({ id, runtimeId, name }) => [id, runtimeId, name]).sort(),
+      panes: (live.windows || []).flatMap((window) => (window.panes || []).map(({ id, runtimeId }) => [id, runtimeId])).sort(),
+    },
+  };
 }
 
-function cumulativeMapping(checkpointId, previous, additions, now) {
-  const combined = blankMapping();
-  mergeMapping(combined, previous);
-  for (const addition of additions) mergeMapping(combined, addition);
-  if (!hasMapping(combined)) return null;
-  const identity = { checkpointId, ...combined };
-  const id = crypto.createHash('sha256').update(JSON.stringify(sorted(identity))).digest('hex');
-  return { id, checkpointId, restoredAt: new Date(now()).toISOString(), ...combined };
+function sameRestoreGuard(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 export function createWorkspaceRuntime({
@@ -128,8 +111,16 @@ export function createWorkspaceRuntime({
   agents,
   access,
   home,
+  restoreGuardAttempts = 3,
 } = {}) {
   const operations = createOperationManager({ store, now, randomUUID });
+
+  async function resolveOperationRequest(requestInput = {}) {
+    const request = normalizeRestoreRequest(requestInput);
+    if (request.checkpointId !== 'latest') return request;
+    const { checkpoint } = unwrapCheckpoint(await store.readLatestCheckpoint());
+    return { ...request, checkpointId: checkpoint.id };
+  }
 
   async function planRestore(requestInput = {}) {
     const request = normalizeRestoreRequest(requestInput);
@@ -145,6 +136,28 @@ export function createWorkspaceRuntime({
     return { request, checkpoint, recovery, live, plan };
   }
 
+  async function guardedPlanRestore(requestInput = {}) {
+    const request = normalizeRestoreRequest(requestInput);
+    const { checkpoint, warnings } = await readCheckpoint(store, request.checkpointId);
+    const recovery = await readRecovery(store, checkpoint.id, request.historical);
+    let live = await captureLive(tmux);
+    for (let attempt = 0; attempt < restoreGuardAttempts; attempt += 1) {
+      const plan = planner(checkpoint, live, {
+        sessionNames: request.sessions,
+        recovery,
+        historical: request.historical,
+        warnings,
+      });
+      const before = restoreGuard(live);
+      const verified = await captureLive(tmux);
+      if (sameRestoreGuard(before, restoreGuard(verified))) {
+        return { request, checkpoint, recovery, live: verified, plan };
+      }
+      live = verified;
+    }
+    throw new Error(`tmux topology changed during restore planning ${restoreGuardAttempts} times; retry restore`);
+  }
+
   async function getRestorePlan(request = {}) {
     const state = await planRestore(request);
     const serverNow = new Date(now()).toISOString();
@@ -158,6 +171,26 @@ export function createWorkspaceRuntime({
     return Object.freeze({ ...state.plan, mapping: state.recovery?.mapping || null, serverNow, promptEligible });
   }
 
+  async function getProtectionStatus() {
+    let live;
+    try {
+      live = await store.readLive();
+    } catch {
+      return { status: 'degraded', lastSuccessfulCaptureAt: null, errorCode: 'live-unavailable' };
+    }
+    if (live?.status === 'ok') {
+      return { status: 'protected', lastSuccessfulCaptureAt: live.value?.capturedAt || null, errorCode: null };
+    }
+    if (live?.status === 'empty') {
+      return { status: 'unprotected', lastSuccessfulCaptureAt: null, errorCode: null };
+    }
+    return {
+      status: 'degraded',
+      lastSuccessfulCaptureAt: null,
+      errorCode: live?.status === 'corrupt' ? 'live-corrupt' : 'live-unavailable',
+    };
+  }
+
   async function performRestore(operationId, request, onProgress) {
     let result;
     let restoreError;
@@ -165,7 +198,7 @@ export function createWorkspaceRuntime({
       result = await lock.withLock({ operationId }, async () => {
         // The preview may be stale by now. Capture and plan again while holding the writer lock so a name
         // created after preview receives the next non-destructive `-restored` suffix.
-        const state = await planRestore(request);
+        const state = await guardedPlanRestore(request);
         const restored = await executor({
           plan: state.plan,
           checkpoint: state.checkpoint,
@@ -178,7 +211,7 @@ export function createWorkspaceRuntime({
         const resolvedIds = restored.results
           .filter((row) => row.status === 'restored' || row.status === 'already-present')
           .map((row) => row.logicalId);
-        const mapping = cumulativeMapping(state.checkpoint.id, state.recovery?.mapping, [
+        const mapping = buildRecoveryMapping(state.checkpoint.id, state.recovery?.mapping, [
           restored.mapping,
           mappingForAlreadyPresent(state.checkpoint, state.live, restored.results),
         ], now);
@@ -193,17 +226,20 @@ export function createWorkspaceRuntime({
     } catch (error) {
       restoreError = error;
     }
-    let reconcileError;
+    let reconcileWarning;
     try {
-      await checkpointer.reconcile('restore-complete');
+      const reconciled = await checkpointer.reconcile('restore-complete');
+      if (!['written', 'unchanged'].includes(reconciled?.status)) {
+        reconcileWarning = `live reconcile ${reconciled?.status || 'unknown'}; workspace protection may be degraded`;
+      }
     } catch (error) {
-      reconcileError = error;
+      reconcileWarning = `live reconcile failed: ${error?.message || String(error)}`;
     }
     if (restoreError) throw restoreError;
-    if (reconcileError) {
+    if (reconcileWarning) {
       result = {
         ...result,
-        warnings: [...(result.warnings || []), `live reconcile failed: ${reconcileError?.message || String(reconcileError)}`],
+        warnings: [...(result.warnings || []), reconcileWarning],
       };
     }
     return result;
@@ -215,12 +251,13 @@ export function createWorkspaceRuntime({
     requestReconcile: () => checkpointer.requestReconcile(),
     confirmEmpty: () => checkpointer.confirmEmpty(),
     listCheckpoints: () => store.listCheckpoints(),
+    getProtectionStatus,
     getRestorePlan,
-    startRestore: (request = {}) => operations.start(request, ({ operationId, request: normalized, onProgress }) => (
+    startRestore: async (request = {}) => operations.start(await resolveOperationRequest(request), ({ operationId, request: normalized, onProgress }) => (
       performRestore(operationId, normalized, onProgress)
     )),
     getOperation: (id) => operations.get(id),
-    restoreNow: (request = {}) => operations.run(request, ({ operationId, request: normalized, onProgress }) => (
+    restoreNow: async (request = {}) => operations.run(await resolveOperationRequest(request), ({ operationId, request: normalized, onProgress }) => (
       performRestore(operationId, normalized, onProgress)
     )),
   };

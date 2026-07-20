@@ -11,6 +11,15 @@ function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function processIsAlive(ownerPid) {
+  try {
+    process.kill(ownerPid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === 'EPERM';
+  }
+}
+
 export function normalizeRestoreRequest(request = {}) {
   const checkpointId = typeof request.checkpointId === 'string' && request.checkpointId ? request.checkpointId : 'latest';
   const rawSessions = Array.isArray(request.sessions) ? request.sessions : request.sessions ? [request.sessions] : [];
@@ -27,6 +36,7 @@ export function createOperationManager({
   now = Date.now,
   randomUUID = crypto.randomUUID,
   pid = process.pid,
+  isProcessAlive = processIsAlive,
 } = {}) {
   const values = new Map();
   const activeByHash = new Map();
@@ -143,6 +153,18 @@ export function createOperationManager({
     let interrupted = 0;
     for (const row of rows) {
       if (row.status !== 'ok' || !ACTIVE.has(row.value?.status)) continue;
+      const ownerPid = row.value.ownerPid;
+      let alive = false;
+      if (Number.isInteger(ownerPid) && ownerPid > 0) {
+        try { alive = await isProcessAlive(ownerPid); } catch { alive = false; }
+      }
+      if (alive) {
+        values.set(row.value.id, row.value);
+        if (row.value.requestHash === restoreRequestHash(row.value.request)) {
+          activeByHash.set(row.value.requestHash, row.value.id);
+        }
+        continue;
+      }
       const operation = {
         ...row.value,
         status: 'interrupted',

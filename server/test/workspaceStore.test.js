@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createWorkspaceStore, selectRetainedCheckpoints } from '../src/workspace/store.js';
 import { ensurePrivateDir, writeJsonAtomic } from '../src/workspace/atomicJson.js';
 import { sealPayload } from '../src/workspace/schema.js';
+import { buildRecoveryMapping } from '../src/workspace/mapping.js';
 
 const NOW = Date.parse('2026-07-20T12:00:00.000Z');
 const homes = [];
@@ -305,11 +306,11 @@ describe('workspace recovery and operations', () => {
     await store.writeOperation(operation);
 
     expect(await store.listOperations()).toEqual([{ status: 'ok', id: operation.id, value: operation }]);
-    const mapping = {
-      id: 'map-a', checkpointId: 'env-a', restoredAt: new Date(NOW).toISOString(), names: { jly: 'jly-restored' },
+    const mapping = buildRecoveryMapping('env-a', null, [{
+      names: { jly: 'jly-restored' },
       runtime: { sessions: { '$1': '$9' }, windows: { '@1': '@9' }, panes: { '%1': '%9' } },
-      logical: { sessions: { 's-enva': '$9' }, windows: { 'w-enva': '@9' }, panes: { 'p-enva': '%9' } },
-    };
+      logical: { sessions: {}, windows: {}, panes: {} },
+    }], () => NOW);
     await store.mergeRecoveryMapping('env-a', mapping);
     expect(await store.readRecovery('env-a')).toMatchObject({ status: 'ok', value: { checkpointId: 'env-a', mapping } });
   });
@@ -331,7 +332,12 @@ describe('workspace recovery and operations', () => {
     await store.archiveEnvironment({ endedReason: 'boot-changed', detectedAt: new Date(NOW).toISOString() });
     const recoveryFile = path.join(store.paths.recoveryDir, 'env-a.json');
     const recovery = JSON.parse(await fs.readFile(recoveryFile, 'utf8'));
-    await writeJsonAtomic(recoveryFile, { ...recovery, mapping: { checkpointId: 'env-other' } });
+    const mapping = buildRecoveryMapping('env-other', null, [{
+      names: { jly: 'jly-restored' },
+      runtime: { sessions: {}, windows: {}, panes: {} },
+      logical: { sessions: {}, windows: {}, panes: {} },
+    }], () => NOW);
+    await writeJsonAtomic(recoveryFile, { ...recovery, mapping });
 
     expect(await store.readRecovery('env-a')).toMatchObject({ status: 'corrupt', error: expect.stringMatching(/mapping.*checkpoint/i) });
   });

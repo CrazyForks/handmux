@@ -202,11 +202,15 @@ async function restoreOneSession({
       mapping,
     };
   } catch (error) {
+    let cleanupError;
     if (temp && !topologyComplete) {
-      try { await tmux.killCreatedSession(temp.sessionId); } catch { /* retain original failure */ }
+      try { await tmux.killCreatedSession(temp.sessionId); } catch (failure) { cleanupError = failure; }
     }
-    error.stage ||= 'topology';
-    throw error;
+    const failure = cleanupError
+      ? new Error(`${message(error)}; cleanup failed: ${message(cleanupError)}`)
+      : error;
+    failure.stage ||= error?.stage || 'topology';
+    throw failure;
   }
 }
 

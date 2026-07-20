@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { createAgentRunner } from './agentRunner.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NO_SERVER_RE = /^(?:no server running on(?: .+)?|no sessions)$/i;
@@ -73,6 +74,17 @@ function requireCreatedRuntime(value, prefix, label) {
   return runtime(value, prefix, label);
 }
 
+function errorText(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function withCleanupError(error, cleanupError) {
+  if (!cleanupError) return error;
+  const combined = new Error(`${errorText(error)}; cleanup failed: ${errorText(cleanupError)}`);
+  combined.cause = error;
+  return combined;
+}
+
 export function createdTargetGuard(created) {
   return (target) => {
     if (!created.has(target)) throw new Error(`workspace target was not created by this restore: ${target}`);
@@ -80,10 +92,103 @@ export function createdTargetGuard(created) {
   };
 }
 
-export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID } = {}) {
+export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID, agentRunner = createAgentRunner(), readOnly = false } = {}) {
   if (typeof run !== 'function') throw new Error('workspace tmux run is required');
   const created = new Set();
   const guard = createdTargetGuard(created);
+  const sessionWindows = new Map();
+  const windowSession = new Map();
+  const windowPanes = new Map();
+  const paneWindow = new Map();
+
+  function ensureWritable() {
+    if (readOnly) throw new Error('workspace tmux adapter is read-only');
+  }
+
+  function trackWindow(sessionId, windowId, paneId) {
+    const windows = sessionWindows.get(sessionId) || new Set();
+    windows.add(windowId);
+    sessionWindows.set(sessionId, windows);
+    windowSession.set(windowId, sessionId);
+    windowPanes.set(windowId, new Set([paneId]));
+    paneWindow.set(paneId, windowId);
+  }
+
+  function trackPane(targetPaneId, paneId) {
+    const windowId = paneWindow.get(targetPaneId);
+    if (!windowId) throw new Error(`workspace pane owner is unavailable: ${targetPaneId}`);
+    windowPanes.get(windowId).add(paneId);
+    paneWindow.set(paneId, windowId);
+  }
+
+  function forgetWindow(windowId) {
+    for (const paneId of windowPanes.get(windowId) || []) {
+      created.delete(paneId);
+      paneWindow.delete(paneId);
+    }
+    windowPanes.delete(windowId);
+    const sessionId = windowSession.get(windowId);
+    if (sessionId) sessionWindows.get(sessionId)?.delete(windowId);
+    windowSession.delete(windowId);
+    created.delete(windowId);
+  }
+
+  function forgetSession(sessionId) {
+    for (const windowId of sessionWindows.get(sessionId) || []) forgetWindow(windowId);
+    sessionWindows.delete(sessionId);
+    created.delete(sessionId);
+  }
+
+  async function cleanupSteps(steps) {
+    const failures = [];
+    for (const step of steps) {
+      try { await step(); } catch (error) { failures.push(errorText(error)); }
+    }
+    if (failures.length) throw new Error(failures.join('; '));
+  }
+
+  async function cleanupSession(sessionId, windowId, paneId) {
+    let killed = false;
+    try {
+      await cleanupSteps([
+        () => run(['set-option', '-u', '-p', '-t', paneId, '@handmux_pane_id']),
+        () => run(['set-option', '-u', '-w', '-t', windowId, '@handmux_window_id']),
+        () => run(['set-option', '-u', '-t', sessionId, '@handmux_session_id']),
+        async () => { await run(['kill-session', '-t', sessionId]); killed = true; },
+      ]);
+    } finally {
+      if (killed) forgetSession(sessionId);
+    }
+  }
+
+  async function cleanupWindow(windowId, paneId) {
+    let killed = false;
+    try {
+      await cleanupSteps([
+        () => run(['set-option', '-u', '-p', '-t', paneId, '@handmux_pane_id']),
+        () => run(['set-option', '-u', '-w', '-t', windowId, '@handmux_window_id']),
+        async () => { await run(['kill-window', '-t', windowId]); killed = true; },
+      ]);
+    } finally {
+      if (killed) forgetWindow(windowId);
+    }
+  }
+
+  async function cleanupPane(paneId) {
+    let killed = false;
+    try {
+      await cleanupSteps([
+        () => run(['set-option', '-u', '-p', '-t', paneId, '@handmux_pane_id']),
+        async () => { await run(['kill-pane', '-t', paneId]); killed = true; },
+      ]);
+    } finally {
+      if (killed) {
+        created.delete(paneId);
+        windowPanes.get(paneWindow.get(paneId))?.delete(paneId);
+        paneWindow.delete(paneId);
+      }
+    }
+  }
 
   async function observeEnvironment() {
     let current;
@@ -97,6 +202,7 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID } = {}
     if (isUuid(current)) return { status: 'present', tmuxServerId: current };
     const tmuxServerId = randomUUID();
     if (!isUuid(tmuxServerId)) return { status: 'unknown' };
+    if (readOnly) return { status: 'present', tmuxServerId };
     try {
       await run(['set-option', '-g', '@handmux_server_id', tmuxServerId]);
       return { status: 'present', tmuxServerId };
@@ -110,7 +216,7 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID } = {}
     for (const item of [...items].sort(byRuntime)) {
       const accepted = allocator.accept(item.optionId);
       item.id = accepted || allocator.fresh();
-      if (!accepted) await run(['set-option', ...scopeArgs, '-t', item.runtimeId, option, item.id]);
+      if (!accepted && !readOnly) await run(['set-option', ...scopeArgs, '-t', item.runtimeId, option, item.id]);
     }
   }
 
@@ -218,6 +324,7 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID } = {}
   }
 
   async function createTemporarySession({ cwd, sessionLogicalId, windowLogicalId, paneLogicalId, windowName, windowIndex }) {
+    ensureWritable();
     requireLogicalId(sessionLogicalId, 'sessionLogicalId');
     const hasSeed = [windowLogicalId, paneLogicalId, windowName, windowIndex].some((value) => value !== undefined);
     if (hasSeed) {
@@ -239,16 +346,26 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID } = {}
     requireCreatedRuntime(paneId, '%', 'created pane id');
     const seedIndex = index(seedIndexValue, 'created window index');
     created.add(sessionId); created.add(windowId); created.add(paneId);
-    if (hasSeed && seedIndex !== windowIndex) await run(['move-window', '-s', guard(windowId), '-t', `${guard(sessionId)}:${windowIndex}`]);
-    await run(['set-option', '-t', guard(sessionId), '@handmux_session_id', sessionLogicalId]);
-    if (hasSeed) {
-      await run(['set-option', '-w', '-t', guard(windowId), '@handmux_window_id', windowLogicalId]);
-      await run(['set-option', '-p', '-t', guard(paneId), '@handmux_pane_id', paneLogicalId]);
+    trackWindow(sessionId, windowId, paneId);
+    try {
+      const targetIndex = hasSeed ? windowIndex : 9999;
+      if (seedIndex !== targetIndex) await run(['move-window', '-s', guard(windowId), '-t', `${guard(sessionId)}:${targetIndex}`]);
+      if (hasSeed) {
+        await run(['set-option', '-p', '-t', guard(paneId), '@handmux_pane_id', paneLogicalId]);
+        await run(['set-option', '-w', '-t', guard(windowId), '@handmux_window_id', windowLogicalId]);
+      }
+      // Set the session id last: after this succeeds the helper has no remaining fallible setup step.
+      await run(['set-option', '-t', guard(sessionId), '@handmux_session_id', sessionLogicalId]);
+    } catch (error) {
+      let cleanupError;
+      try { await cleanupSession(sessionId, windowId, paneId); } catch (failure) { cleanupError = failure; }
+      throw withCleanupError(error, cleanupError);
     }
     return { sessionId, windowId, paneId, name };
   }
 
   async function createWindow(sessionId, { name, index: windowIndex, cwd, windowLogicalId, paneLogicalId }) {
+    ensureWritable();
     guard(sessionId);
     if (!Number.isInteger(windowIndex) || windowIndex < 0) throw new Error('window index must be a non-negative integer');
     requireLogicalId(windowLogicalId, 'windowLogicalId');
@@ -259,48 +376,90 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID } = {}
     requireCreatedRuntime(windowId, '@', 'created window id');
     requireCreatedRuntime(paneId, '%', 'created pane id');
     created.add(windowId); created.add(paneId);
-    await run(['set-option', '-w', '-t', guard(windowId), '@handmux_window_id', windowLogicalId]);
-    await run(['set-option', '-p', '-t', guard(paneId), '@handmux_pane_id', paneLogicalId]);
+    trackWindow(sessionId, windowId, paneId);
+    try {
+      await run(['set-option', '-p', '-t', guard(paneId), '@handmux_pane_id', paneLogicalId]);
+      await run(['set-option', '-w', '-t', guard(windowId), '@handmux_window_id', windowLogicalId]);
+    } catch (error) {
+      let cleanupError;
+      try { await cleanupWindow(windowId, paneId); } catch (failure) { cleanupError = failure; }
+      throw withCleanupError(error, cleanupError);
+    }
     return { windowId, paneId };
   }
 
   async function splitPane(targetPaneId, { cwd, paneLogicalId }) {
+    ensureWritable();
     guard(targetPaneId);
     requireLogicalId(paneLogicalId, 'paneLogicalId');
     const paneId = text(await run(['split-window', '-d', '-P', '-F', '#{pane_id}', '-t', targetPaneId, '-c', cwd])).trim();
     requireCreatedRuntime(paneId, '%', 'created pane id');
     created.add(paneId);
-    await run(['set-option', '-p', '-t', guard(paneId), '@handmux_pane_id', paneLogicalId]);
+    trackPane(targetPaneId, paneId);
+    try {
+      await run(['set-option', '-p', '-t', guard(paneId), '@handmux_pane_id', paneLogicalId]);
+    } catch (error) {
+      let cleanupError;
+      try { await cleanupPane(paneId); } catch (failure) { cleanupError = failure; }
+      throw withCleanupError(error, cleanupError);
+    }
     return paneId;
   }
 
   async function linkWindow(windowId, sessionId, windowIndex, { existing = false } = {}) {
+    ensureWritable();
     if (existing) runtime(windowId, '@', 'existing window id');
     else guard(windowId);
     guard(sessionId);
     if (!Number.isInteger(windowIndex) || windowIndex < 0) throw new Error('window index must be a non-negative integer');
     await run(['link-window', '-s', windowId, '-t', `${sessionId}:${windowIndex}`]);
   }
-  async function applyLayout(windowId, layout) { await run(['select-layout', '-t', guard(windowId), layout]); }
-  async function selectPane(paneId) { await run(['select-pane', '-t', guard(paneId)]); }
-  async function selectWindow(windowId) { await run(['select-window', '-t', guard(windowId)]); }
+  async function applyLayout(windowId, layout) { ensureWritable(); await run(['select-layout', '-t', guard(windowId), layout]); }
+  async function selectPane(paneId) { ensureWritable(); await run(['select-pane', '-t', guard(paneId)]); }
+  async function selectWindow(windowId) { ensureWritable(); await run(['select-window', '-t', guard(windowId)]); }
   async function selectWindowInSession(sessionId, windowIndex) {
+    ensureWritable();
     guard(sessionId);
     if (!Number.isInteger(windowIndex) || windowIndex < 0) throw new Error('window index must be a non-negative integer');
     await run(['select-window', '-t', `${sessionId}:${windowIndex}`]);
   }
-  async function renameCreatedSession(sessionId, name) { await run(['rename-session', '-t', guard(sessionId), name]); }
-  async function killCreatedSession(sessionId) { await run(['kill-session', '-t', guard(sessionId)]); }
-  async function killCreatedWindow(windowId) { await run(['kill-window', '-t', guard(windowId)]); }
+  async function renameCreatedSession(sessionId, name) { ensureWritable(); await run(['rename-session', '-t', guard(sessionId), name]); }
+  async function killCreatedSession(sessionId) {
+    ensureWritable();
+    guard(sessionId);
+    let killed = false;
+    try {
+      await cleanupSteps([
+        () => run(['set-option', '-u', '-t', sessionId, '@handmux_session_id']),
+        async () => { await run(['kill-session', '-t', sessionId]); killed = true; },
+      ]);
+    } finally {
+      if (killed) forgetSession(sessionId);
+    }
+  }
+  async function killCreatedWindow(windowId) {
+    ensureWritable();
+    await run(['kill-window', '-t', guard(windowId)]);
+    forgetWindow(windowId);
+  }
 
   async function startAgent(paneId, cmd, args = []) {
+    ensureWritable();
     guard(paneId);
     const valid = cmd === 'claude'
       ? args.length === 2 && args[0] === '--resume' && isUuid(args[1])
       : cmd === 'codex' && args.length === 2 && args[0] === 'resume' && isUuid(args[1]);
     if (!valid) throw new Error('unsafe agent command token');
-    await run(['send-keys', '-t', paneId, '-l', '--', [cmd, ...args].join(' ')]);
-    await run(['send-keys', '-t', paneId, 'Enter']);
+    await agentRunner.prepare({ paneId, cmd, args });
+    try {
+      await run(['send-keys', '-t', paneId, '-l', '--', agentRunner.command]);
+      await run(['send-keys', '-t', paneId, 'Enter']);
+      const ready = await agentRunner.waitReady(paneId);
+      if (ready?.status !== 'ready') throw new Error(ready?.error || 'agent failed before readiness');
+    } catch (error) {
+      await agentRunner.cancel?.(paneId).catch(() => {});
+      throw error;
+    }
   }
 
   async function topologyFingerprint() {

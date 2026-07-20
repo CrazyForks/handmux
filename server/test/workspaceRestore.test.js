@@ -61,7 +61,7 @@ function plan(actions = [
   };
 }
 
-function fakeTmux({ failCreateWindowFor, failAgent = false, failLayout = false } = {}) {
+function fakeTmux({ failCreateWindowFor, failAgent = false, failLayout = false, failCleanup = false } = {}) {
   const calls = [];
   let nextSession = 10;
   let nextWindow = 20;
@@ -98,7 +98,10 @@ function fakeTmux({ failCreateWindowFor, failAgent = false, failLayout = false }
       call('mutate', 'startAgent', target, { cmd, args });
       if (failAgent) throw new Error('agent executable unavailable');
     },
-    async killCreatedSession(target) { call('mutate', 'killCreatedSession', target); },
+    async killCreatedSession(target) {
+      call('mutate', 'killCreatedSession', target);
+      if (failCleanup) throw new Error('injected cleanup failure');
+    },
     async killCreatedWindow(target) { call('mutate', 'killCreatedWindow', target); },
   };
 }
@@ -166,6 +169,17 @@ describe('workspace restore executor', () => {
     const temps = tmux.calls.filter((call) => call.method === 'createTemporarySession');
     expect(tmux.calls.filter((call) => call.method === 'killCreatedSession').map((call) => call.target)).toEqual([temps[0].sessionId]);
     expect(tmux.calls).toContainEqual(expect.objectContaining({ method: 'renameCreatedSession', target: temps[1].sessionId, name: 'gamma' }));
+  });
+
+  it('reports both topology and cleanup failures instead of leaving a silent partial logical session', async () => {
+    const tmux = fakeTmux({ failCreateWindowFor: ID.wA, failCleanup: true });
+    const result = await executeRestore({
+      plan: plan([{ id: ID.sA, name: 'alpha', target: 'alpha' }]),
+      checkpoint: checkpoint(), tmux, agents, access: async () => {}, home: '/home/me',
+    });
+    expect(result.results[0]).toMatchObject({
+      status: 'failed', stage: 'topology', error: expect.stringMatching(/topology failure.*cleanup failure/i),
+    });
   });
 
   it('honours a pre-existing shared-window disposition without laying out or sending to that window', async () => {
