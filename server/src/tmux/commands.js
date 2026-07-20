@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import os from 'node:os';
+import { parseTmuxRows, tmuxFormat } from './format.js';
 
 export const isPaneId = (s) => typeof s === 'string' && /^%\d+$/.test(s);
 export const isWindowId = (s) => typeof s === 'string' && /^@\d+$/.test(s);
@@ -32,8 +33,8 @@ const lines = (out) => out.split('\n').filter((l) => l.length > 0);
 
 export async function listSessions() {
   try {
-    const out = await runTmux(['list-sessions', '-F', '#{session_id}\t#{session_name}']);
-    return lines(out).map((l) => { const [id, name] = l.split('\t'); return { id, name }; });
+    const out = await runTmux(['list-sessions', '-F', tmuxFormat(['session_id', 'session_name'])]);
+    return parseTmuxRows(out, 2, 'session').map(([id, name]) => ({ id, name }));
   } catch (e) {
     // tmux exits non-zero with "no server running" or "no sessions" when nothing is up yet.
     const msg = e.message || '';
@@ -43,17 +44,17 @@ export async function listSessions() {
 }
 
 export async function listWindows(sessionId) {
-  const out = await runTmux(['list-windows', '-t', sessionId, '-F', '#{window_id}\t#{window_name}\t#{window_active}\t#{window_panes}\t#{window_width}\t#{window_height}']);
-  return lines(out).map((l) => {
-    const [id, name, active, panes, width, height] = l.split('\t');
+  const out = await runTmux(['list-windows', '-t', sessionId, '-F', tmuxFormat([
+    'window_id', 'window_name', 'window_active', 'window_panes', 'window_width', 'window_height',
+  ])]);
+  return parseTmuxRows(out, 6, 'window').map(([id, name, active, panes, width, height]) => {
     return { id, name, active: active === '1', panes: Number(panes), width: Number(width), height: Number(height) };
   });
 }
 
 export async function listPanes(windowId) {
-  const out = await runTmux(['list-panes', '-t', windowId, '-F', '#{pane_id}\t#{pane_active}\t#{pane_width}\t#{pane_height}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_left}\t#{pane_top}']);
-  return lines(out).map((l) => {
-    const [id, active, width, height, command, cwd, left, top] = l.split('\t');
+  const out = await runTmux(['list-panes', '-t', windowId, '-F', tmuxFormat(['pane_id', 'pane_active', 'pane_width', 'pane_height', 'pane_current_command', 'pane_current_path', 'pane_left', 'pane_top'])]);
+  return parseTmuxRows(out, 8, 'pane').map(([id, active, width, height, command, cwd, left, top]) => {
     return { id, active: active === '1', width: Number(width), height: Number(height), command, cwd, left: Number(left), top: Number(top) };
   });
 }
@@ -77,10 +78,9 @@ export async function listPaneIds(target) {
 // still EXISTS) and (b) resolve each recorded pane to its session/window for the inbox roster without a
 // per-pane display-message. The hook only records the pane id; location comes from here, always fresh.
 export async function listLivePanes() {
-  return lines(await runTmux(['list-panes', '-a', '-F',
-    '#{pane_id}\t#{pane_current_command}\t#{pane_tty}\t#{session_name}\t#{window_id}\t#{window_name}']))
-    .map((l) => {
-      const [id, cmd, tty, session, window, windowName] = l.split('\t');
+  return parseTmuxRows(await runTmux(['list-panes', '-a', '-F',
+    tmuxFormat(['pane_id', 'pane_current_command', 'pane_tty', 'session_name', 'window_id', 'window_name'])]), 6, 'live pane')
+    .map(([id, cmd, tty, session, window, windowName]) => {
       return { id, cmd, tty, session, window, windowName };
     });
 }
@@ -110,8 +110,8 @@ export async function capturePlain(paneId) {
 // client translate a swipe into wheel events the app scrolls on (sendWheel) instead of a dead swipe.
 export async function paneInfo(paneId) {
   const out = await runTmux(['display-message', '-p', '-t', paneId,
-    '#{pane_width}\t#{pane_height}\t#{cursor_x}\t#{cursor_y}\t#{cursor_flag}\t#{alternate_on}\t#{mouse_any_flag}\t#{mouse_sgr_flag}']);
-  const [width, height, cx, cy, cflag, alt, mAny, mSgr] = out.trim().split('\t');
+    tmuxFormat(['pane_width', 'pane_height', 'cursor_x', 'cursor_y', 'cursor_flag', 'alternate_on', 'mouse_any_flag', 'mouse_sgr_flag'])]);
+  const [[width, height, cx, cy, cflag, alt, mAny, mSgr] = []] = parseTmuxRows(out, 8, 'pane info');
   return {
     width: Number(width), height: Number(height),
     cursorX: Number(cx), cursorY: Number(cy), cursorVisible: cflag === '1',
@@ -148,8 +148,8 @@ export function wheelSeq(dir, count, { sgr = true, col = 1, row = 1 } = {}) {
 // gives us only $TMUX_PANE; this turns "%263" into the session/window the phone navigates by.
 export async function paneLocation(paneId) {
   const out = await runTmux(['display-message', '-p', '-t', paneId,
-    '#{session_name}\t#{window_id}\t#{window_name}']);
-  const [session, windowId, windowName] = out.trim().split('\t');
+    tmuxFormat(['session_name', 'window_id', 'window_name'])]);
+  const [[session, windowId, windowName] = []] = parseTmuxRows(out, 3, 'pane location');
   return { session, window: windowId, windowName };
 }
 

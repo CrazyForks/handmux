@@ -8,6 +8,7 @@
 import { execFile } from 'node:child_process';
 import { promises as fsp } from 'node:fs';
 import path from 'node:path';
+import { parseTmuxRows } from '../tmux/format.js';
 
 // Tolerant promisified execFile: resolves '' on any error (no server, missing binary, non-zero exit).
 // Detection is best-effort and must never throw the whole request.
@@ -70,13 +71,11 @@ export function parseAgentProcs(psOut, agents) {
   return out;
 }
 
-// Parse `tmux list-panes -a -F '#{pane_tty}\t#{pane_pid}'` → the set of pane ttys and pane (shell) pids.
+// Parse q-escaped `tmux list-panes` rows → the set of pane ttys and pane (shell) pids.
 export function parsePaneMembership(tmuxOut) {
   const ttys = new Set();
   const pids = new Set();
-  for (const line of String(tmuxOut).split('\n')) {
-    if (!line) continue;
-    const [tty, pid] = line.split('\t');
+  for (const [tty, pid] of parseTmuxRows(tmuxOut, 2, 'pane membership')) {
     const nt = normTty(tty);
     if (nt) ttys.add(nt);
     const n = Number(pid);

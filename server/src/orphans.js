@@ -19,6 +19,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { AGENTS, getAgent } from './agents/index.js';
 import { isSessionId } from './tmux/commands.js';
+import { tmuxFormat } from './tmux/format.js';
 import {
   defaultRun, parseAgentProcs, parsePaneMembership, findOrphans,
   takeoverSessionName, sanitizeSessionName, freeSessionName, isShell, lsofCwd, isSessionUuid,
@@ -120,7 +121,7 @@ export async function scanOrphans({
 } = {}) {
   const [psOut, tmuxOut] = await Promise.all([
     run('ps', ['-Ao', 'pid=,ppid=,stat=,etime=,tty=,args=']),
-    run('tmux', ['list-panes', '-a', '-F', '#{pane_tty}\t#{pane_pid}']),
+    run('tmux', ['list-panes', '-a', '-F', tmuxFormat(['pane_tty', 'pane_pid'])]),
   ]);
   const orphans = findOrphans(parseAgentProcs(psOut, agents), parsePaneMembership(tmuxOut));
   const results = [];

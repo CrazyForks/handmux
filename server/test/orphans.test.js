@@ -22,9 +22,9 @@ const PS = [
 ].join('\n');
 
 const PANES = [
-  '/dev/ttys018\t10357',   // pid 10368's parent shell → in tmux
-  '/dev/ttys036\t5561',    // pid 5572's parent shell → in tmux
-  '/dev/ttys000\t35089',
+  '/dev/ttys018|10357',   // pid 10368's parent shell → in tmux
+  '/dev/ttys036|5561',    // pid 5572's parent shell → in tmux
+  '/dev/ttys000|35089',
 ].join('\n');
 
 describe('process parsing', () => {
@@ -134,7 +134,9 @@ describe('scanOrphans (injected run)', () => {
     const projectsDir = path.join(home, 'projects');
     const cwd = '/home/user/zxy';
     seed(projectsDir, cwd, 'eeeeeeee-0000-0000-0000-000000000005', { lastUser: 'refactor parser', mtime: 2_000_000 });
+    const calls = [];
     const run = async (cmd, args) => {
+      calls.push([cmd, args]);
       if (cmd === 'ps') return PS;
       if (cmd === 'tmux') return PANES;
       if (cmd === 'lsof' && args.includes('4717')) return `p4717\nfcwd\nn${cwd}\n`;
@@ -149,6 +151,7 @@ describe('scanOrphans (injected run)', () => {
     });
     // startedAt = now - etime (4717's etime '02:03:04' = 7384s)
     expect(rows[0].startedAt).toBe(NOW - 7384 * 1000);
+    expect(calls).toContainEqual(['tmux', ['list-panes', '-a', '-F', '#{q:pane_tty}|#{q:pane_pid}']]);
   });
 });
 

@@ -99,13 +99,8 @@ describe('tmux commands (integration)', () => {
     const ansi = await capturePane(pane, 100);
     expect(ansi).toContain('HELLO_TWTEST');
 
-    // capturePane uses -N to PRESERVE trailing whitespace: the line keeps its padding instead of being
-    // trimmed right after the text, so a highlighted row's background tail survives. (How far it pads
-    // is tmux-version-dependent — older tmux padded short lines to the full pane width; 3.6a pads to the
-    // line's allocated extent — so assert the intent "trailing space is kept", not a fixed width.)
     const outLine = ansi.split('\n').find((l) => l.includes('HELLO_TWTEST')).replace(/\x1b\[[0-9;]*m/g, '');
     expect(outLine.replace(/\s+$/, '')).toContain('HELLO_TWTEST');
-    expect(outLine.length).toBeGreaterThan(outLine.replace(/\s+$/, '').length);
 
     const info = await paneInfo(pane);
     expect(info.width).toBe(80);

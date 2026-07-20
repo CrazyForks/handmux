@@ -258,7 +258,7 @@ describe('scanOrphans + takeover across agents', () => {
     seedRollout(sessionsDir, { y: '2026', m: '06', d: '29', id, cwd, lastUser: 'wire codex', mtime: 2_000_000 });
 
     const PS = '  777 1 S+ 02:03:04 ttys010 codex';
-    const PANES = '/dev/ttys000\t35089';
+    const PANES = '/dev/ttys000|35089';
     const run = async (cmd, args) => {
       if (cmd === 'ps') return PS;
       if (cmd === 'tmux') return PANES;

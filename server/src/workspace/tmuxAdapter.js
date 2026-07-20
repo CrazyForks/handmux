@@ -1,13 +1,14 @@
 import crypto from 'node:crypto';
 import { createAgentRunner } from './agentRunner.js';
+import { parseTmuxRows, tmuxFormat } from '../tmux/format.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NO_SERVER_RE = /^(?:no server running on(?: .+)?|no sessions)$/i;
 const MISSING_OPTION_RE = /invalid option|unknown option|not set/i;
-const SESSION_FORMAT = '#{session_id}\t#{session_name}\t#{session_last_attached}\t#{@handmux_session_id}';
-const WINDOW_FORMAT = '#{session_id}\t#{window_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{window_layout}\t#{@handmux_window_id}';
-const PANE_FORMAT = '#{window_id}\t#{pane_id}\t#{pane_index}\t#{pane_active}\t#{pane_current_path}\t#{@handmux_pane_id}';
-const ACTIVE_FORMAT = '#{session_id}\t#{window_id}\t#{pane_id}';
+const SESSION_FORMAT = tmuxFormat(['session_id', 'session_name', 'session_last_attached', '@handmux_session_id']);
+const WINDOW_FORMAT = tmuxFormat(['session_id', 'window_id', 'window_index', 'window_name', 'window_active', 'window_layout', '@handmux_window_id']);
+const PANE_FORMAT = tmuxFormat(['window_id', 'pane_id', 'pane_index', 'pane_active', 'pane_current_path', '@handmux_pane_id']);
+const ACTIVE_FORMAT = tmuxFormat(['session_id', 'window_id', 'pane_id']);
 
 const text = (value) => String(value && typeof value === 'object' && 'stdout' in value ? value.stdout : value ?? '');
 const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
@@ -22,13 +23,7 @@ function isNoServer(error) {
 function isMissingOption(error) { return MISSING_OPTION_RE.test(String(error?.stderr || error?.message || error || '')); }
 
 function rows(output, columns, label) {
-  const value = text(output);
-  if (!value.trim()) return [];
-  return value.replace(/\n$/, '').split('\n').map((line) => {
-    const fields = line.split('\t');
-    if (fields.length !== columns) throw new Error(`invalid ${label} format`);
-    return fields;
-  });
+  return parseTmuxRows(text(output), columns, label);
 }
 
 function index(value, label) {
@@ -72,6 +67,21 @@ function requireLogicalId(value, label) {
 
 function requireCreatedRuntime(value, prefix, label) {
   return runtime(value, prefix, label);
+}
+
+function isTmuxLayout(value) {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 8192) return false;
+  if (!/^[0-9a-f]{4},\d+x\d+,\d+,\d+(?:,\d+|[\[{])/i.test(value)) return false;
+  if (!/^[0-9a-fx,{}\[\]]+$/i.test(value)) return false;
+  const stack = [];
+  for (const char of value) {
+    if (char === '{' || char === '[') stack.push(char);
+    else if (char === '}' || char === ']') {
+      const expected = char === '}' ? '{' : '[';
+      if (stack.pop() !== expected) return false;
+    }
+  }
+  return stack.length === 0;
 }
 
 function errorText(error) {
@@ -245,7 +255,8 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID, agent
       if (sessionFields.length === 0) return { status: 'empty', tmuxVersion: 'unknown', active: null, sessions: [], windows: [] };
 
       const sessions = sessionFields.map(([runtimeId, name, lastAttached, optionId]) => ({
-        runtimeId: runtime(runtimeId, '$', 'session runtime id'), name, lastAttached: index(lastAttached, 'session last attached'), optionId,
+        runtimeId: runtime(runtimeId, '$', 'session runtime id'), name,
+        lastAttached: index(lastAttached === '' ? '0' : lastAttached, 'session last attached'), optionId,
         windowLinks: [], activeWindowId: null,
       }));
       if (new Set(sessions.map((item) => item.runtimeId)).size !== sessions.length) throw new Error('duplicate session runtime id');
@@ -287,14 +298,24 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID, agent
       }
 
       const paneFields = rows(await run(['list-panes', '-a', '-F', PANE_FORMAT]), 6, 'pane');
-      const panes = paneFields.map(([windowRuntimeId, runtimeId, paneIndex, isActive, cwd, optionId]) => {
+      const paneByRuntime = new Map();
+      for (const [windowRuntimeId, runtimeId, paneIndex, isActive, cwd, optionId] of paneFields) {
         if (!windowByRuntime.has(windowRuntimeId)) throw new Error('pane references unknown window');
-        return {
+        const pane = {
           windowRuntimeId, runtimeId: runtime(runtimeId, '%', 'pane runtime id'), index: index(paneIndex, 'pane index'),
           active: active(isActive, 'pane active'), cwd, optionId, agent: null,
         };
-      });
-      if (new Set(panes.map((item) => item.runtimeId)).size !== panes.length) throw new Error('duplicate pane runtime id');
+        const existing = paneByRuntime.get(pane.runtimeId);
+        if (existing) {
+          const fields = (item) => [item.windowRuntimeId, item.index, item.active, item.cwd, item.optionId];
+          if (JSON.stringify(fields(existing)) !== JSON.stringify(fields(pane))) {
+            throw new Error('duplicate pane runtime id has conflicting fields');
+          }
+        } else {
+          paneByRuntime.set(pane.runtimeId, pane);
+        }
+      }
+      const panes = [...paneByRuntime.values()];
       await assignLogicalIds(panes, '@handmux_pane_id', ['-p']);
 
       const canonicalSessions = sessions.sort(byId);
@@ -343,7 +364,7 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID, agent
     }
     const name = `hm-r-${randomUUID().replaceAll('-', '').slice(0, 8)}`;
     if (!/^hm-r-[0-9a-f]{8}$/i.test(name)) throw new Error('could not allocate temporary session name');
-    const args = ['new-session', '-d', '-P', '-F', '#{session_id}\t#{window_id}\t#{pane_id}\t#{window_index}', '-s', name];
+    const args = ['new-session', '-d', '-P', '-F', tmuxFormat(['session_id', 'window_id', 'pane_id', 'window_index']), '-s', name];
     if (hasSeed) args.push('-n', windowName);
     args.push('-c', cwd);
     const output = await run(args);
@@ -389,7 +410,7 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID, agent
     if (!Number.isInteger(windowIndex) || windowIndex < 0) throw new Error('window index must be a non-negative integer');
     requireLogicalId(windowLogicalId, 'windowLogicalId');
     requireLogicalId(paneLogicalId, 'paneLogicalId');
-    const parsed = rows(await run(['new-window', '-d', '-P', '-F', '#{window_id}\t#{pane_id}', '-t', `${sessionId}:${windowIndex}`, '-n', name, '-c', cwd]), 2, 'created window')[0];
+    const parsed = rows(await run(['new-window', '-d', '-P', '-F', tmuxFormat(['window_id', 'pane_id']), '-t', `${sessionId}:${windowIndex}`, '-n', name, '-c', cwd]), 2, 'created window')[0];
     if (!parsed) throw new Error('tmux did not return created window ids');
     const [windowId, paneId] = parsed;
     requireCreatedRuntime(windowId, '@', 'created window id');
@@ -433,7 +454,12 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID, agent
     if (!Number.isInteger(windowIndex) || windowIndex < 0) throw new Error('window index must be a non-negative integer');
     await run(['link-window', '-s', windowId, '-t', `${sessionId}:${windowIndex}`]);
   }
-  async function applyLayout(windowId, layout) { ensureWritable(); await run(['select-layout', '-t', guard(windowId), layout]); }
+  async function applyLayout(windowId, layout) {
+    ensureWritable();
+    const target = guard(windowId);
+    if (!isTmuxLayout(layout)) throw new Error('invalid workspace layout');
+    await run(['select-layout', '-t', target, layout]);
+  }
   async function selectPane(paneId) { ensureWritable(); await run(['select-pane', '-t', guard(paneId)]); }
   async function selectWindow(windowId) { ensureWritable(); await run(['select-window', '-t', guard(windowId)]); }
   async function selectWindowInSession(sessionId, windowIndex) {

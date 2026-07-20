@@ -40,7 +40,8 @@
     "handmux": "node bin/handmux.js",
     "bundle": "node scripts/bundle-web.mjs",
     "prepack": "node scripts/bundle-web.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:workspace-docker": "HANDMUX_WORKSPACE_DOCKER=1 vitest run test/workspaceDocker.test.js"
   },
   "dependencies": {
     "@clack/prompts": "0.11.0",

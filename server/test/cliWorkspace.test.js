@@ -373,10 +373,10 @@ describe('standalone runtime composition', () => {
       calls.push(args);
       if (args[0] === 'show-options') return `${serverId}\n`;
       if (args[0] === '-V') return 'tmux 3.6a\n';
-      if (args[0] === 'list-sessions') return '$1\tapi\t1\t\n';
-      if (args[0] === 'list-windows') return '$1\t@1\t0\tmain\t1\t80x24,0,0,1\t\n';
-      if (args[0] === 'list-panes') return '@1\t%1\t0\t1\t/tmp\t\n';
-      if (args[0] === 'display-message') return '$1\t@1\t%1\n';
+      if (args[0] === 'list-sessions') return '$1|api|1|\n';
+      if (args[0] === 'list-windows') return '$1|@1|0|main|1|80x24,0,0,1|\n';
+      if (args[0] === 'list-panes') return '@1|%1|0|1|/tmp|\n';
+      if (args[0] === 'display-message') return '$1|@1|%1\n';
       throw new Error(`unexpected tmux command: ${args.join(' ')}`);
     });
     const store = { paths: { lockDir: '/fake/workspaces/restore.lock' } };
