@@ -39,6 +39,11 @@ describe('workspace recovery prompt policy', () => {
     expect(recoveryPromptMode(activePlan({ pendingCount: 0 }), { liveSessionCount: 2 })).toBe('none');
   });
 
+  it('treats only literal true as ignored or autoShown in persisted device state', () => {
+    expect(recoveryPromptMode(activePlan(), { ignored: 'false', liveSessionCount: 1 })).toBe('card');
+    expect(recoveryPromptMode(activePlan(), { autoShown: 'false', liveSessionCount: 0 })).toBe('auto-dialog');
+  });
+
   it.each([
     ['boot-changed', 'workspace.bootDetected'],
     ['tmux-changed', 'workspace.tmuxDetected'],

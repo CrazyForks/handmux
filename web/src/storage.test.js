@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   applyWorkspaceRestoreMapping,
   getBoundSessions,
@@ -10,6 +10,7 @@ import {
 const read = (key) => JSON.parse(localStorage.getItem(key));
 
 beforeEach(() => localStorage.clear());
+afterEach(() => vi.restoreAllMocks());
 
 describe('workspace prompt state', () => {
   it('keeps auto-shown and ignored state scoped to one checkpoint', () => {
@@ -30,6 +31,40 @@ describe('workspace prompt state', () => {
 });
 
 describe('workspace runtime mapping', () => {
+  it('does not cascade a value mapping when its parent key belongs to the current tmux server', () => {
+    localStorage.setItem('tw_win', JSON.stringify({ '$1': '@1', '$7': '@1' }));
+    localStorage.setItem('tw_pane', JSON.stringify({ '@1': '%1', '@7': '%1' }));
+
+    expect(applyWorkspaceRestoreMapping({
+      id: 'checkpoint-a-runtime-reuse',
+      runtime: {
+        sessions: { '$1': '$9' },
+        windows: { '@1': '@9' },
+        panes: { '%1': '%9' },
+      },
+    })).toBe(true);
+
+    expect(read('tw_win')).toEqual({ '$7': '@1', '$9': '@9' });
+    expect(read('tw_pane')).toEqual({ '@7': '%1', '@9': '%9' });
+  });
+
+  it('normalizes malformed bound-session storage before applying a mapping', () => {
+    localStorage.setItem('tw_bound', JSON.stringify({ project: true }));
+    localStorage.setItem('tw_last_session', '$1');
+    expect(getBoundSessions()).toEqual([]);
+
+    expect(() => applyWorkspaceRestoreMapping({
+      id: 'checkpoint-a-malformed-bound',
+      runtime: { sessions: { '$1': '$9' }, windows: {}, panes: {} },
+      names: { project: 'project-restored' },
+    })).not.toThrow();
+    expect(localStorage.getItem('tw_last_session')).toBe('$9');
+    expect(getBoundSessions()).toEqual([]);
+
+    localStorage.setItem('tw_bound', JSON.stringify(['project', 7, null]));
+    expect(getBoundSessions()).toEqual(['project']);
+  });
+
   it('migrates only known workspace keys and preserves a same-name current binding', () => {
     localStorage.setItem('tw_last_session', '$1');
     localStorage.setItem('tw_win', JSON.stringify({ '$1': '@1', '$current': '@current' }));
@@ -44,7 +79,7 @@ describe('workspace runtime mapping', () => {
     localStorage.setItem('tw_chat_draft', 'do not replace $1, @1, or %1 here');
 
     const mapping = {
-      id: 'checkpoint-a:mapping-1',
+      id: 'checkpoint-a-mapping-1',
       runtime: {
         sessions: { '$1': '$9' },
         windows: { '@1': '@9' },
@@ -82,7 +117,7 @@ describe('workspace runtime mapping', () => {
     localStorage.setItem('tw_pane', JSON.stringify({ '@1': '%1', '@2': '%2' }));
 
     expect(applyWorkspaceRestoreMapping({
-      id: 'checkpoint-a:partial-1',
+      id: 'checkpoint-a-partial-1',
       runtime: {
         sessions: { '$1': '$10' },
         windows: { '@1': '@10' },
@@ -92,7 +127,7 @@ describe('workspace runtime mapping', () => {
     expect(read('tw_win')).toEqual({ '$10': '@10', '$2': '@2' });
 
     expect(applyWorkspaceRestoreMapping({
-      id: 'checkpoint-a:partial-2',
+      id: 'checkpoint-a-partial-2',
       runtime: {
         sessions: { '$1': '$10', '$2': '$20' },
         windows: { '@1': '@10', '@2': '@20' },
@@ -107,5 +142,76 @@ describe('workspace runtime mapping', () => {
     localStorage.setItem('tw_last_session', '$1');
     expect(applyWorkspaceRestoreMapping({ runtime: { sessions: { '$1': '$9' } } })).toBe(false);
     expect(localStorage.getItem('tw_last_session')).toBe('$1');
+  });
+
+  it.each([
+    ['unsafe id', { id: '../mapping', runtime: { sessions: { '$1': '$9' } } }],
+    ['non-plain runtime', { id: 'mapping-a', runtime: [] }],
+    ['non-plain runtime kind', { id: 'mapping-a', runtime: { sessions: [] } }],
+    ['unknown runtime kind', { id: 'mapping-a', runtime: { other: { '$1': '$9' } } }],
+    ['malformed runtime source', { id: 'mapping-a', runtime: { sessions: { session1: '$9' } } }],
+    ['malformed runtime target after a valid entry', {
+      id: 'mapping-a',
+      runtime: { sessions: { '$1': '$9' }, windows: { '@1': '@not-numeric' } },
+    }],
+    ['non-plain names', { id: 'mapping-a', names: [] }],
+    ['malformed name target', { id: 'mapping-a', names: { project: 7 } }],
+  ])('atomically rejects %s with zero localStorage writes', (_label, mapping) => {
+    localStorage.setItem('tw_last_session', '$1');
+    localStorage.setItem('tw_win', 'corrupt json');
+    localStorage.setItem('tw_bound', JSON.stringify(['project']));
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    setItem.mockClear();
+
+    expect(applyWorkspaceRestoreMapping(mapping)).toBe(false);
+    expect(setItem).not.toHaveBeenCalled();
+    expect(localStorage.getItem('tw_last_session')).toBe('$1');
+    expect(localStorage.getItem('tw_win')).toBe('corrupt json');
+    expect(localStorage.getItem('tw_workspace_applied_mappings')).toBeNull();
+    setItem.mockRestore();
+  });
+
+  it('supports a names-only mapping without touching runtime-keyed storage', () => {
+    localStorage.setItem('tw_bound', JSON.stringify(['project']));
+    localStorage.setItem('tw_win', 'corrupt json');
+
+    expect(applyWorkspaceRestoreMapping({
+      id: 'mapping-names-only',
+      names: { project: 'project-restored' },
+    })).toBe(true);
+    expect(getBoundSessions()).toEqual(['project', 'project-restored']);
+    expect(localStorage.getItem('tw_win')).toBe('corrupt json');
+  });
+
+  it('touches only keys belonging to a non-empty runtime kind', () => {
+    localStorage.setItem('tw_win', 'corrupt json');
+    localStorage.setItem('tw_pane', 'corrupt json');
+    localStorage.setItem('tw_pane_base', JSON.stringify({ '%1': '/old' }));
+    localStorage.setItem('tw_inbox_seen', JSON.stringify({ '%1': 100 }));
+
+    expect(applyWorkspaceRestoreMapping({
+      id: 'mapping-panes-only',
+      runtime: { panes: { '%1': '%9' } },
+    })).toBe(true);
+    expect(localStorage.getItem('tw_win')).toBe('corrupt json');
+    expect(localStorage.getItem('tw_pane')).toBe('corrupt json');
+    expect(read('tw_pane_base')).toEqual({ '%9': '/old' });
+    expect(read('tw_inbox_seen')).toEqual({ '%9': 100 });
+  });
+
+  it('does not record an empty mapping or rewrite corrupt known keys', () => {
+    localStorage.setItem('tw_win', 'corrupt json');
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    setItem.mockClear();
+
+    expect(applyWorkspaceRestoreMapping({
+      id: 'mapping-empty',
+      runtime: { sessions: {}, windows: {}, panes: {} },
+      names: {},
+    })).toBe(false);
+    expect(setItem).not.toHaveBeenCalled();
+    expect(localStorage.getItem('tw_win')).toBe('corrupt json');
+    expect(localStorage.getItem('tw_workspace_applied_mappings')).toBeNull();
+    setItem.mockRestore();
   });
 });

@@ -22,6 +22,13 @@ const GIT_REPOS_KEY = 'tw_git_repos';          // { [windowId]: absPath[] } —
 const GIT_DIRS_KEY = 'tw_git_dirs';            // { [windowId]: absPath[] } — dirs the user picked repos from (history, newest first) bound git repos per window absolute paths (order = tab order)
 const WORKSPACE_PROMPT_KEY = 'tw_workspace_prompt';
 const WORKSPACE_APPLIED_MAPPINGS_KEY = 'tw_workspace_applied_mappings';
+const SAFE_MAPPING_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const RUNTIME_ID_PATTERNS = {
+  sessions: /^\$\d+$/,
+  windows: /^@\d+$/,
+  panes: /^%\d+$/,
+};
+const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t);
@@ -31,7 +38,10 @@ export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
 // device has pinned. We store names (not ids): a tmux name is stable and user-chosen, while
 // the id ($0) churns across tmux restarts.
 export function getBoundSessions() {
-  try { return JSON.parse(localStorage.getItem(BOUND_KEY)) || []; }
+  try {
+    const value = JSON.parse(localStorage.getItem(BOUND_KEY));
+    return Array.isArray(value) ? value.filter((name) => typeof name === 'string') : [];
+  }
   catch { return []; }
 }
 export function addBoundSession(name) {
@@ -103,64 +113,108 @@ function getAppliedWorkspaceMappings() {
   } catch { return []; }
 }
 
-function runtimeMap(value, prefix) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  return Object.fromEntries(Object.entries(value).filter(([source, actual]) => (
-    typeof source === 'string' && source.startsWith(prefix)
-    && typeof actual === 'string' && actual.startsWith(prefix)
-  )));
+function isPlainObject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function validateWorkspaceMapping(mapping) {
+  try {
+    if (!isPlainObject(mapping) || typeof mapping.id !== 'string' || !SAFE_MAPPING_ID.test(mapping.id)) return null;
+    if (mapping.runtime !== undefined && !isPlainObject(mapping.runtime)) return null;
+    if (mapping.names !== undefined && !isPlainObject(mapping.names)) return null;
+
+    const rawRuntime = mapping.runtime || {};
+    if (Object.keys(rawRuntime).some((kind) => !hasOwn(RUNTIME_ID_PATTERNS, kind))) return null;
+    const runtime = { sessions: {}, windows: {}, panes: {} };
+    for (const [kind, pattern] of Object.entries(RUNTIME_ID_PATTERNS)) {
+      const rawKind = rawRuntime[kind];
+      if (rawKind === undefined) continue;
+      if (!isPlainObject(rawKind)) return null;
+      for (const [source, actual] of Object.entries(rawKind)) {
+        if (!pattern.test(source) || typeof actual !== 'string' || !pattern.test(actual)) return null;
+        runtime[kind][source] = actual;
+      }
+    }
+
+    const names = {};
+    for (const [source, actual] of Object.entries(mapping.names || {})) {
+      if (!source || typeof actual !== 'string' || !actual) return null;
+      names[source] = actual;
+    }
+    const hasEntries = Object.keys(names).length > 0
+      || Object.values(runtime).some((kind) => Object.keys(kind).length > 0);
+    return hasEntries ? { id: mapping.id, runtime, names } : null;
+  } catch { return null; }
+}
+
+function readStoredPlainMap(key) {
+  const raw = localStorage.getItem(key);
+  if (raw === null) return null;
+  try {
+    const value = JSON.parse(raw);
+    return isPlainObject(value) ? { raw, value } : null;
+  } catch { return null; }
 }
 
 function remapMapKey(key, keyMapping, valueMapping = {}) {
-  if (localStorage.getItem(key) === null) return;
-  const current = readMap(key);
+  const stored = readStoredPlainMap(key);
+  if (!stored) return;
+  const current = stored.value;
+  const matched = Object.keys(keyMapping).filter((oldKey) => hasOwn(current, oldKey));
+  if (matched.length === 0) return;
   const next = {};
   for (const [oldKey, oldValue] of Object.entries(current)) {
-    if (Object.prototype.hasOwnProperty.call(keyMapping, oldKey)) continue;
-    next[oldKey] = typeof oldValue === 'string' && Object.prototype.hasOwnProperty.call(valueMapping, oldValue)
-      ? valueMapping[oldValue]
-      : oldValue;
+    if (hasOwn(keyMapping, oldKey)) continue;
+    next[oldKey] = oldValue;
   }
-  for (const [oldKey, actualKey] of Object.entries(keyMapping)) {
-    if (!Object.prototype.hasOwnProperty.call(current, oldKey)) continue;
+  for (const oldKey of matched) {
+    const actualKey = keyMapping[oldKey];
     const oldValue = current[oldKey];
-    next[actualKey] = typeof oldValue === 'string' && Object.prototype.hasOwnProperty.call(valueMapping, oldValue)
+    next[actualKey] = typeof oldValue === 'string' && hasOwn(valueMapping, oldValue)
       ? valueMapping[oldValue]
       : oldValue;
   }
-  localStorage.setItem(key, JSON.stringify(next));
+  const serialized = JSON.stringify(next);
+  if (serialized !== stored.raw) localStorage.setItem(key, serialized);
 }
 
 function remapKnownWorkspaceKeys(runtime) {
-  const sessions = runtimeMap(runtime?.sessions, '$');
-  const windows = runtimeMap(runtime?.windows, '@');
-  const panes = runtimeMap(runtime?.panes, '%');
+  const { sessions, windows, panes } = runtime;
 
-  const lastSession = localStorage.getItem(LAST_SESSION_KEY);
-  if (lastSession && Object.prototype.hasOwnProperty.call(sessions, lastSession)) {
-    localStorage.setItem(LAST_SESSION_KEY, sessions[lastSession]);
+  if (Object.keys(sessions).length > 0) {
+    const lastSession = localStorage.getItem(LAST_SESSION_KEY);
+    if (lastSession && hasOwn(sessions, lastSession)) {
+      localStorage.setItem(LAST_SESSION_KEY, sessions[lastSession]);
+    }
+    remapMapKey(WIN_BY_SESSION_KEY, sessions, windows);
   }
-  remapMapKey(WIN_BY_SESSION_KEY, sessions, windows);
-  remapMapKey(PANE_BY_WINDOW_KEY, windows, panes);
-  for (const key of [GIT_REPOS_KEY, GIT_DIRS_KEY, BROWSE_DIR_KEY, PREVIEW_DIR_KEY]) {
-    remapMapKey(key, windows);
+  if (Object.keys(windows).length > 0) {
+    remapMapKey(PANE_BY_WINDOW_KEY, windows, panes);
+    for (const key of [GIT_REPOS_KEY, GIT_DIRS_KEY, BROWSE_DIR_KEY, PREVIEW_DIR_KEY]) {
+      remapMapKey(key, windows);
+    }
   }
-  for (const key of [PANE_BASE_KEY, INBOX_SEEN_KEY]) remapMapKey(key, panes);
+  if (Object.keys(panes).length > 0) {
+    for (const key of [PANE_BASE_KEY, INBOX_SEEN_KEY]) remapMapKey(key, panes);
+  }
 }
 
 export function applyWorkspaceRestoreMapping(mapping) {
-  if (!mapping?.id || typeof mapping.id !== 'string') return false;
+  const validated = validateWorkspaceMapping(mapping);
+  if (!validated) return false;
   const applied = getAppliedWorkspaceMappings();
-  if (applied.includes(mapping.id)) return false;
+  if (applied.includes(validated.id)) return false;
 
-  remapKnownWorkspaceKeys(mapping.runtime);
-  if (mapping.names && typeof mapping.names === 'object' && !Array.isArray(mapping.names)) {
+  remapKnownWorkspaceKeys(validated.runtime);
+  if (Object.keys(validated.names).length > 0) {
     const bound = getBoundSessions();
-    for (const [source, actual] of Object.entries(mapping.names)) {
-      if (bound.includes(source) && typeof actual === 'string' && actual) addBoundSession(actual);
+    for (const [source, actual] of Object.entries(validated.names)) {
+      if (bound.includes(source)) addBoundSession(actual);
     }
   }
-  localStorage.setItem(WORKSPACE_APPLIED_MAPPINGS_KEY, JSON.stringify([...applied, mapping.id]));
+  localStorage.setItem(WORKSPACE_APPLIED_MAPPINGS_KEY, JSON.stringify([...applied, validated.id]));
   return true;
 }
 
