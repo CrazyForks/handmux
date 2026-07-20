@@ -1,4 +1,5 @@
 import fsp from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { AGENTS } from '../agents/index.js';
 import { canonicalizeSnapshot, WORKSPACE_SCHEMA_VERSION } from './schema.js';
 
@@ -6,7 +7,7 @@ function agentMap(agents) {
   return new Map(agents.map((agent) => [agent.id, agent]));
 }
 
-export async function readAgentBindings(stateFile, agents = AGENTS, readFile = fsp.readFile, access = fsp.access) {
+export async function readAgentBindings(stateFile, agents = AGENTS, readFile = fsp.readFile, access = fsp.access, stat = fsp.stat) {
   let state;
   try {
     state = JSON.parse(await readFile(stateFile, 'utf8'));
@@ -27,7 +28,10 @@ export async function readAgentBindings(stateFile, agents = AGENTS, readFile = f
     const transcriptPath = payload.transcript_path;
     const driver = known.get(id);
     if (!driver.sessions?.isId(sessionId) || typeof transcriptPath !== 'string' || !transcriptPath) continue;
-    try { await access(transcriptPath); } catch { continue; }
+    try {
+      await access(transcriptPath, constants.R_OK);
+      if (!(await stat(transcriptPath)).isFile()) continue;
+    } catch { continue; }
     bindings.set(paneRuntimeId, { id, sessionId, transcriptPath });
   }
   return bindings;
@@ -54,6 +58,7 @@ export async function captureWorkspace({
   agents = AGENTS,
   readFile = fsp.readFile,
   access = fsp.access,
+  stat = fsp.stat,
   now = Date.now,
 }) {
   try {
@@ -61,7 +66,7 @@ export async function captureWorkspace({
     if (isUnknownFingerprint(before)) return { status: 'unknown' };
     const topology = await tmux.captureTopology();
     if (!topology || topology.status === 'unknown') return { status: 'unknown' };
-    const bindings = await readAgentBindings(stateFile, agents, readFile, access);
+    const bindings = await readAgentBindings(stateFile, agents, readFile, access, stat);
     const after = await tmux.topologyFingerprint();
     if (isUnknownFingerprint(after)) return { status: 'unknown' };
     if (before !== after) return { status: 'changed-during-capture' };

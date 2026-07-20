@@ -19,7 +19,7 @@ function snapshot(environmentId, capturedAt = '2026-07-20T10:00:00.000Z') {
     environment: { id: environmentId, bootIdentity: `boot-${suffix}`, tmuxServerId: `server-${suffix}` },
     tmuxVersion: '3.6a',
     active: { sessionId: `s-${suffix}`, windowId: `w-${suffix}`, paneId: `p-${suffix}` },
-    sessions: [{ id: `s-${suffix}`, runtimeId: '$1', name: suffix, windowIds: [`w-${suffix}`], activeWindowId: `w-${suffix}` }],
+    sessions: [{ id: `s-${suffix}`, runtimeId: '$1', name: suffix, windowLinks: [{ windowId: `w-${suffix}`, index: 0 }], activeWindowId: `w-${suffix}` }],
     windows: [{ id: `w-${suffix}`, runtimeId: '@1', name: suffix, index: 0, layout: 'layout', activePaneId: `p-${suffix}`, panes: [pane(`p-${suffix}`)] }],
   };
 }
@@ -92,7 +92,7 @@ describe('workspace live store', () => {
       token: 'top-secret',
       environment: { ...base.environment, token: 'environment-secret' },
       active: { ...base.active, command: 'active-secret' },
-      sessions: [{ ...base.sessions[0], token: 'session-secret' }],
+      sessions: [{ ...base.sessions[0], token: 'session-secret', windowLinks: [{ ...base.sessions[0].windowLinks[0], token: 'link-secret' }] }],
       windows: [{
         ...base.windows[0],
         command: 'window-secret',

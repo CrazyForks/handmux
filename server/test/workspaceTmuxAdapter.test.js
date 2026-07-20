@@ -62,6 +62,14 @@ describe('workspace tmux environment and topology', () => {
     const tmux = createWorkspaceTmux({ run: async (args) => { calls.push(args); return IDS.server; } });
     expect(await tmux.observeEnvironment()).toEqual({ status: 'present', tmuxServerId: IDS.server });
     expect(calls).toEqual([['show-options', '-gv', '@handmux_server_id']]);
+
+    const paddedCalls = [];
+    const padded = createWorkspaceTmux({
+      run: async (args) => { paddedCalls.push(args); return args[0] === 'show-options' ? ` ${IDS.server} \n` : ''; },
+      randomUUID: () => IDS.sessionA,
+    });
+    expect(await padded.observeEnvironment()).toEqual({ status: 'present', tmuxServerId: IDS.sessionA });
+    expect(paddedCalls).toContainEqual(['set-option', '-g', '@handmux_server_id', IDS.sessionA]);
   });
 
   it('uses tab formats, preserves links, and repairs duplicate logical ids without rewriting the first owner', async () => {
@@ -83,8 +91,8 @@ describe('workspace tmux environment and topology', () => {
     expect(topology).toMatchObject({ status: 'ok', tmuxVersion: '3.6a' });
     expect(topology.windows).toHaveLength(1);
     expect(topology.sessions).toEqual([
-      { id: IDS.sessionA, runtimeId: '$1', name: 'alpha', windowIds: [IDS.window], activeWindowId: IDS.window },
-      { id: IDS.sessionB, runtimeId: '$2', name: 'beta', windowIds: [IDS.window], activeWindowId: IDS.window },
+      { id: IDS.sessionA, runtimeId: '$1', name: 'alpha', windowLinks: [{ windowId: IDS.window, index: 1 }], activeWindowId: IDS.window },
+      { id: IDS.sessionB, runtimeId: '$2', name: 'beta', windowLinks: [{ windowId: IDS.window, index: 4 }], activeWindowId: IDS.window },
     ]);
     expect(topology.windows[0].panes.map((pane) => pane.id)).toEqual([IDS.paneA, IDS.paneB]);
     expect(topology.active).toEqual({ sessionId: IDS.sessionA, windowId: IDS.window, paneId: IDS.paneA });
@@ -108,6 +116,11 @@ describe('workspace tmux environment and topology', () => {
       run: async () => { throw new Error('operation timed out'); },
     });
     expect(await failed.captureTopology()).toMatchObject({ status: 'unknown' });
+
+    for (const message of ['failed to connect to server: Permission denied', 'failed to connect to server']) {
+      const connectionFailure = createWorkspaceTmux({ run: async () => { throw new Error(message); } });
+      expect(await connectionFailure.captureTopology()).toMatchObject({ status: 'unknown' });
+    }
   });
 });
 
@@ -120,7 +133,7 @@ describe('workspace restore command safety', () => {
     const calls = [];
     const run = async (args) => {
       calls.push(args);
-      if (args[0] === 'new-session') return '$10\t@20\t%30\n';
+      if (args[0] === 'new-session') return '$10\t@20\t%30\t0\n';
       if (args[0] === 'new-window') return '@21\t%31\n';
       if (args[0] === 'split-window') return '%32\n';
       return '';
@@ -128,6 +141,7 @@ describe('workspace restore command safety', () => {
     const tmux = createWorkspaceTmux({ run, randomUUID: () => 'abcdef12-0000-4000-8000-000000000000' });
     const temp = await tmux.createTemporarySession({
       cwd: '/work dir', sessionLogicalId: IDS.sessionA, windowLogicalId: IDS.window, paneLogicalId: IDS.paneA,
+      windowName: 'first window', windowIndex: 3,
     });
     expect(temp).toEqual({ sessionId: '$10', windowId: '@20', paneId: '%30', name: 'hm-r-abcdef12' });
     const second = await tmux.createWindow('$10', {
@@ -139,7 +153,8 @@ describe('workspace restore command safety', () => {
     await tmux.applyLayout('@21', 'abcd,80x24,0,0,1');
     await tmux.startAgent('%32', 'codex', ['resume', IDS.server]);
 
-    expect(calls).toContainEqual(['new-session', '-d', '-P', '-F', '#{session_id}\t#{window_id}\t#{pane_id}', '-s', 'hm-r-abcdef12', '-c', '/work dir']);
+    expect(calls).toContainEqual(['new-session', '-d', '-P', '-F', '#{session_id}\t#{window_id}\t#{pane_id}\t#{window_index}', '-s', 'hm-r-abcdef12', '-n', 'first window', '-c', '/work dir']);
+    expect(calls).toContainEqual(['move-window', '-s', '@20', '-t', '$10:3']);
     expect(calls).toContainEqual(['new-window', '-d', '-P', '-F', '#{window_id}\t#{pane_id}', '-t', '$10:7', '-n', 'two words', '-c', '/other dir']);
     expect(calls).toContainEqual(['link-window', '-s', '@21', '-t', '$10:8']);
     expect(calls).toContainEqual(['send-keys', '-t', '%32', '-l', '--', `codex resume ${IDS.server}`]);
@@ -150,7 +165,28 @@ describe('workspace restore command safety', () => {
     await expect(tmux.killCreatedSession('$pre-existing')).rejects.toThrow(/was not created/);
     await expect(tmux.startAgent('%32', 'codex;rm', ['x'])).rejects.toThrow(/unsafe agent command token/);
     await expect(tmux.startAgent('%32', 'codex', ['resume', 'x y'])).rejects.toThrow(/unsafe agent command token/);
+    await expect(tmux.startAgent('%32', 'codex', ['resume', ` ${IDS.server} `])).rejects.toThrow(/unsafe agent command token/);
     expect(calls).toHaveLength(before);
     for (const args of calls) expect(Array.isArray(args)).toBe(true);
+  });
+
+  it('accepts canonical UUIDs without version constraints and rejects whitespace-padded values before tmux', async () => {
+    const calls = [];
+    const anyCanonicalUuid = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+    const tmux = createWorkspaceTmux({
+      run: async (args) => {
+        calls.push(args);
+        if (args[0] === 'new-session') return '$1\t@1\t%1\t0\n';
+        return '';
+      },
+      randomUUID: () => 'abcdef12-0000-0000-0000-000000000000',
+    });
+    await expect(tmux.createTemporarySession({
+      cwd: '/work', sessionLogicalId: anyCanonicalUuid, windowLogicalId: IDS.window,
+      paneLogicalId: IDS.paneA, windowName: 'main', windowIndex: 0,
+    })).resolves.toMatchObject({ sessionId: '$1' });
+    const before = calls.length;
+    await expect(tmux.startAgent('%1', 'codex', ['resume', ` ${anyCanonicalUuid}`])).rejects.toThrow(/unsafe agent command token/);
+    expect(calls).toHaveLength(before);
   });
 });

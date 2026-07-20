@@ -26,9 +26,12 @@ function projectSnapshot(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return input;
   const environment = projectObject(input.environment, ['id', 'bootIdentity', 'tmuxServerId']);
   const active = input.active === null ? null : projectObject(input.active, ['sessionId', 'windowId', 'paneId']);
-  const sessions = Array.isArray(input.sessions)
-    ? input.sessions.map((session) => projectObject(session, ['id', 'runtimeId', 'name', 'windowIds', 'activeWindowId']))
-    : input.sessions;
+  const sessions = Array.isArray(input.sessions) ? input.sessions.map((session) => {
+    const projected = projectObject(session, ['id', 'runtimeId', 'name', 'windowLinks', 'activeWindowId']);
+    if (!projected || typeof projected !== 'object' || Array.isArray(projected) || !Array.isArray(projected.windowLinks)) return projected;
+    projected.windowLinks = projected.windowLinks.map((link) => projectObject(link, ['windowId', 'index']));
+    return projected;
+  }) : input.sessions;
   const windows = Array.isArray(input.windows) ? input.windows.map((window) => {
     const projected = projectObject(window, ['id', 'runtimeId', 'name', 'index', 'layout', 'activePaneId', 'panes']);
     if (!projected || typeof projected !== 'object' || Array.isArray(projected) || !Array.isArray(projected.panes)) return projected;

@@ -10,7 +10,7 @@ const topology = {
   status: 'ok',
   tmuxVersion: '3.6a',
   active: { sessionId: 's-a', windowId: 'w-a', paneId: 'p-a' },
-  sessions: [{ id: 's-a', runtimeId: '$1', name: 'dev', windowIds: ['w-a'], activeWindowId: 'w-a' }],
+  sessions: [{ id: 's-a', runtimeId: '$1', name: 'dev', windowLinks: [{ windowId: 'w-a', index: 0 }], activeWindowId: 'w-a' }],
   windows: [{
     id: 'w-a', runtimeId: '@1', name: 'main', index: 0, layout: 'layout-a', activePaneId: 'p-a',
     panes: [
@@ -19,6 +19,7 @@ const topology = {
       { id: 'p-c', runtimeId: '%3', index: 2, cwd: '/work/c', agent: null },
       { id: 'p-d', runtimeId: '%4', index: 3, cwd: '/work/d', agent: null },
       { id: 'p-e', runtimeId: '%5', index: 4, cwd: '/work/e', agent: null },
+      { id: 'p-f', runtimeId: '%6', index: 5, cwd: '/work/f', agent: null },
     ],
   }],
 };
@@ -35,7 +36,8 @@ describe('canonical workspace capture', () => {
       '%2': { agent: 'codex', payload: { session_id: UUID.codex, transcript_path: '/transcripts/b.jsonl' } },
       '%3': { agent: 'codex', payload: { session_id: 'bad', transcript_path: '/transcripts/c.jsonl' } },
       '%4': { agent: 'unknown', payload: { session_id: UUID.claude, transcript_path: '/transcripts/d.jsonl' } },
-      '%5': { agent: 'claude', payload: { session_id: UUID.claude, transcript_path: '/transcripts/unreadable.jsonl' } },
+      '%5': { agent: 'claude', payload: { session_id: UUID.claude, transcript_path: '/transcripts/directory' } },
+      '%6': { agent: 'claude', payload: { session_id: UUID.claude, transcript_path: '/transcripts/unreadable.jsonl' } },
     };
     const tmux = {
       topologyFingerprint: async () => 'same',
@@ -50,7 +52,11 @@ describe('canonical workspace capture', () => {
         expect(file).toBe('/state.json');
         return JSON.stringify(state);
       },
-      access: async (file) => { if (file.includes('unreadable')) throw new Error('EACCES'); },
+      access: async (file, mode) => {
+        expect(mode).toBe(4);
+        if (file.includes('unreadable')) throw new Error('EACCES');
+      },
+      stat: async (file) => ({ isFile: () => !file.includes('directory') }),
       now: () => Date.parse('2026-07-20T02:00:00.000Z'),
     });
 
@@ -67,6 +73,7 @@ describe('canonical workspace capture', () => {
       ['p-c', null],
       ['p-d', null],
       ['p-e', null],
+      ['p-f', null],
     ]);
   });
 

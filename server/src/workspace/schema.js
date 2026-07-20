@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 
 export const WORKSPACE_SCHEMA_VERSION = 1;
 const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+const byLink = (a, b) => a.index - b.index || (a.windowId < b.windowId ? -1 : a.windowId > b.windowId ? 1 : 0);
 const hash = (value) => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
 function requireObject(value, label) {
@@ -42,8 +43,14 @@ function validateShape(input) {
     const label = `sessions[${index}]`;
     requireObject(session, label);
     for (const field of ['id', 'runtimeId', 'name', 'activeWindowId']) requireString(session[field], `${label}.${field}`);
-    requireArray(session.windowIds, `${label}.windowIds`);
-    for (const windowId of session.windowIds) requireString(windowId, `${label}.windowIds entry`);
+    if (session.windowIds !== undefined) throw new Error(`${label}.windowIds is unsupported; use windowLinks`);
+    requireArray(session.windowLinks, `${label}.windowLinks`);
+    for (const [linkIndex, link] of session.windowLinks.entries()) {
+      const linkLabel = `${label}.windowLinks[${linkIndex}]`;
+      requireObject(link, linkLabel);
+      requireString(link.windowId, `${linkLabel}.windowId`);
+      requireIndex(link.index, `${linkLabel}.index`);
+    }
   }
 
   for (const [windowIndex, window] of input.windows.entries()) {
@@ -68,11 +75,14 @@ function validateReferences(input, sessions, windows) {
   const sessionsById = new Map(sessions.map((session) => [session.id, session]));
 
   for (const session of sessions) {
-    if (new Set(session.windowIds).size !== session.windowIds.length) throw new Error(`duplicate windowIds in session ${session.id}`);
-    for (const windowId of session.windowIds) {
-      if (!windowsById.has(windowId)) throw new Error(`dangling windowIds reference ${windowId}`);
+    const windowIds = session.windowLinks.map((link) => link.windowId);
+    const windowIndexes = session.windowLinks.map((link) => link.index);
+    if (new Set(windowIds).size !== windowIds.length) throw new Error(`duplicate window link in session ${session.id}`);
+    if (new Set(windowIndexes).size !== windowIndexes.length) throw new Error(`duplicate window link index in session ${session.id}`);
+    for (const { windowId } of session.windowLinks) {
+      if (!windowsById.has(windowId)) throw new Error(`dangling windowLinks reference ${windowId}`);
     }
-    if (!session.windowIds.includes(session.activeWindowId)) throw new Error(`dangling activeWindowId reference ${session.activeWindowId}`);
+    if (!windowIds.includes(session.activeWindowId)) throw new Error(`dangling activeWindowId reference ${session.activeWindowId}`);
   }
 
   for (const window of windows) {
@@ -81,7 +91,7 @@ function validateReferences(input, sessions, windows) {
 
   const activeSession = sessionsById.get(input.active.sessionId);
   if (!activeSession) throw new Error(`dangling active.sessionId reference ${input.active.sessionId}`);
-  if (!activeSession.windowIds.includes(input.active.windowId)) throw new Error(`dangling active.windowId reference ${input.active.windowId}`);
+  if (!activeSession.windowLinks.some((link) => link.windowId === input.active.windowId)) throw new Error(`dangling active.windowId reference ${input.active.windowId}`);
   const activeWindow = windowsById.get(input.active.windowId);
   if (!activeWindow?.panes.some((pane) => pane.id === input.active.paneId)) throw new Error(`dangling active.paneId reference ${input.active.paneId}`);
 }
@@ -89,7 +99,7 @@ function validateReferences(input, sessions, windows) {
 export function canonicalizeSnapshot(input) {
   if (input?.schemaVersion !== WORKSPACE_SCHEMA_VERSION) throw new Error('unsupported workspace schema');
   validateShape(input);
-  const sessions = input.sessions.map((s) => ({ ...s, windowIds: [...s.windowIds] })).sort(byId);
+  const sessions = input.sessions.map((s) => ({ ...s, windowLinks: s.windowLinks.map((link) => ({ ...link })).sort(byLink) })).sort(byId);
   const windows = input.windows.map((w) => ({ ...w, panes: [...w.panes].sort(byId) })).sort(byId);
   for (const [label, ids] of [
     ['session', sessions.map((x) => x.id)],
