@@ -163,6 +163,16 @@ describe('workspace restore planner', () => {
     expect(Object.isFrozen(plan.windows[0])).toBe(true);
   });
 
+  it('fails closed on a malformed live window runtime id without freezing it', () => {
+    const runtimeId = { value: '@8' };
+    const current = live([], [{ id: 'w-api', runtimeId, panes: [] }]);
+
+    expect(() => buildRestorePlan(checkpoint(), current, { historical: true, sessionNames: ['api'] }))
+      .toThrow(/invalid live window runtime id/i);
+    expect(Object.isFrozen(runtimeId)).toBe(false);
+    runtimeId.mutated = true;
+  });
+
   it('marks malformed session topology unsupported instead of planning a partial restore', () => {
     const source = checkpoint();
     source.sessions[2].windowLinks = [{ windowId: 'w-missing', index: 0 }];
@@ -231,6 +241,41 @@ describe('workspace restore planner', () => {
     activeExtra.nested.value = 'mutated';
     detectedAt.value = 'mutated';
     expect(plan.active).toEqual({ sessionId: 's-api', windowId: 'w-api', paneId: 'p-api' });
+  });
+
+  it('fails malformed session and link fields closed without freezing caller-owned objects', () => {
+    const source = checkpoint();
+    const logicalId = { value: 's-api' };
+    const sourceName = { value: 'api' };
+    const activeWindowId = { value: 'w-api' };
+    const windowId = { value: 'w-api' };
+    const index = { value: 0 };
+    const sourceSession = source.sessions[0];
+    const sourceLink = sourceSession.windowLinks[0];
+    sourceSession.id = logicalId;
+    sourceSession.name = sourceName;
+    sourceSession.activeWindowId = activeWindowId;
+    sourceLink.windowId = windowId;
+    sourceLink.index = index;
+    source.sessions = [sourceSession];
+
+    const plan = buildRestorePlan(source, live(), { historical: true });
+
+    expect(plan.sessions[0]).not.toBe(sourceSession);
+    expect(plan.sessions[0].windowLinks[0]).not.toBe(sourceLink);
+    expect(plan.sessions[0]).toEqual({
+      logicalId: null,
+      sourceName: null,
+      activeWindowId: null,
+      windowLinks: [{ windowId: null, index: null }, { windowId: 'w-shared', index: 1 }],
+      action: 'unsupported',
+      reason: 'invalid-session-id',
+    });
+    for (const callerValue of [logicalId, sourceName, activeWindowId, windowId, index]) {
+      expect(Object.isFrozen(callerValue)).toBe(false);
+      callerValue.mutated = true;
+    }
+    expect(plan.windows).toEqual([]);
   });
 
   it('deep-freezes the plan and snapshots every pre-existing runtime id', () => {

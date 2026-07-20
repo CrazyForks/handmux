@@ -13,6 +13,14 @@ function stringOrNull(value) {
   return typeof value === 'string' ? value : null;
 }
 
+function nonEmptyStringOrNull(value) {
+  return typeof value === 'string' && value ? value : null;
+}
+
+function indexOrNull(value) {
+  return Number.isInteger(value) && value >= 0 ? value : null;
+}
+
 function restoredName(sourceName, names) {
   if (!names.has(sourceName)) return sourceName;
   const restored = `${sourceName}-restored`;
@@ -55,7 +63,7 @@ function unwrapCheckpoint(input) {
 function linkedOwners(sessions) {
   const owners = new Map();
   for (const session of sessions) {
-    if (!Array.isArray(session.windowLinks)) continue;
+    if (!Array.isArray(session?.windowLinks)) continue;
     for (const link of session.windowLinks) {
       if (typeof link?.windowId !== 'string') continue;
       if (!owners.has(link.windowId)) owners.set(link.windowId, new Set());
@@ -89,12 +97,26 @@ function topologyIssue(session, windowsById, owners, supportsLinkedWindows) {
 }
 
 function sourceProjection(session) {
-  return {
-    activeWindowId: session.activeWindowId,
-    windowLinks: Array.isArray(session.windowLinks)
-      ? session.windowLinks.map(({ windowId, index }) => ({ windowId, index }))
-      : [],
+  const validSession = session && typeof session === 'object' && !Array.isArray(session);
+  const rawLinks = validSession && Array.isArray(session.windowLinks) ? session.windowLinks : [];
+  const source = {
+    logicalId: nonEmptyStringOrNull(validSession ? session.id : null),
+    sourceName: nonEmptyStringOrNull(validSession ? session.name : null),
+    activeWindowId: nonEmptyStringOrNull(validSession ? session.activeWindowId : null),
+    windowLinks: rawLinks.map((link) => ({
+      windowId: nonEmptyStringOrNull(link && typeof link === 'object' && !Array.isArray(link) ? link.windowId : null),
+      index: indexOrNull(link && typeof link === 'object' && !Array.isArray(link) ? link.index : null),
+    })),
   };
+  let issue = null;
+  if (!validSession) issue = 'invalid-session';
+  else if (source.logicalId === null) issue = 'invalid-session-id';
+  else if (source.sourceName === null) issue = 'invalid-session-name';
+  else if (source.activeWindowId === null) issue = 'invalid-active-window-id';
+  else if (!Array.isArray(session.windowLinks)) issue = 'invalid-window-links';
+  else if (source.windowLinks.some((link) => link.windowId === null)) issue = 'invalid-window-link';
+  else if (source.windowLinks.some((link) => link.index === null)) issue = 'invalid-window-link-index';
+  return { source, issue };
 }
 
 function activeProjection(active) {
@@ -122,9 +144,17 @@ function windowDispositions(items, live) {
     if (item.action !== 'create' && item.action !== 'create-renamed') continue;
     for (const { windowId } of item.windowLinks) {
       if (dispositions.has(windowId)) continue;
-      dispositions.set(windowId, liveWindows.has(windowId)
-        ? { logicalId: stringOrNull(windowId), action: 'reuse', runtimeId: stringOrNull(liveWindows.get(windowId)) }
-        : { logicalId: stringOrNull(windowId), action: 'create', ownerSessionId: stringOrNull(item.logicalId) });
+      if (liveWindows.has(windowId)) {
+        const runtimeId = nonEmptyStringOrNull(liveWindows.get(windowId));
+        if (runtimeId === null) throw new Error('invalid live window runtime id');
+        dispositions.set(windowId, { logicalId: nonEmptyStringOrNull(windowId), action: 'reuse', runtimeId });
+      } else {
+        dispositions.set(windowId, {
+          logicalId: nonEmptyStringOrNull(windowId),
+          action: 'create',
+          ownerSessionId: nonEmptyStringOrNull(item.logicalId),
+        });
+      }
     }
   }
   return [...dispositions.values()];
@@ -154,24 +184,25 @@ export function buildRestorePlan(checkpointInput, live, {
     : null;
   const requestedNames = new Set(Array.isArray(sessionNames) ? sessionNames : [sessionNames]);
   const selected = checkpoint.sessions.filter((session) => {
-    if (!historical && pendingIds && !pendingIds.has(session.id)) return false;
-    return requestedNames.size === 0 || requestedNames.has(session.name);
+    if (!historical && pendingIds && !pendingIds.has(session?.id)) return false;
+    return requestedNames.size === 0 || requestedNames.has(session?.name);
   });
 
   const currentSessions = Array.isArray(live?.sessions) ? live.sessions : [];
   const logicalIds = new Set(currentSessions.map((session) => session.id));
   const names = new Set(currentSessions.map((session) => session.name));
   const sessions = selected.map((session) => {
-    const source = { logicalId: session.id, sourceName: session.name, ...sourceProjection(session) };
-    if (logicalIds.has(session.id)) return { ...source, action: 'already-present' };
-    const reason = topologyIssue(session, windowsById, owners, supportsLinkedWindows);
+    const { source, issue } = sourceProjection(session);
+    if (issue) return { ...source, action: 'unsupported', reason: issue };
+    if (logicalIds.has(source.logicalId)) return { ...source, action: 'already-present' };
+    const reason = topologyIssue(source, windowsById, owners, supportsLinkedWindows);
     if (reason) return { ...source, action: 'unsupported', reason };
-    const targetName = restoredName(session.name, names);
+    const targetName = restoredName(source.sourceName, names);
     names.add(targetName);
     return {
       ...source,
       targetName,
-      action: targetName === session.name ? 'create' : 'create-renamed',
+      action: targetName === source.sourceName ? 'create' : 'create-renamed',
     };
   });
 
