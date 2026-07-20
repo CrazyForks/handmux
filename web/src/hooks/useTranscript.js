@@ -5,7 +5,7 @@
 //   - RECENT window (polled, 1500ms): `{since: recentHash, limit: 20}` — hash-gated conditional poll, a
 //     204/null keeps the last state. New messages MERGE into `messages` keyed by `k` (the server's stable
 //     global ordinal, also the dedup key), kept sorted ascending.
-//   - HISTORY page (`loadOlder()`, scroll-up only, never polled): `{before: oldestK, limit: 10}` — fetched
+//   - HISTORY page (`loadOlder()`, scroll-up only, never polled): `{before: oldestK, limit: 20}` — fetched
 //     on demand, prepended (merged by `k`) ahead of the recent window. Resident messages are capped at
 //     MAX_TRANSCRIPT_MESSAGES so leaving the lens open cannot grow phone memory without bound.
 // `oldestK`/`hasMoreOlder` seed from the FIRST successful recent response (its `firstSeq`/`hasMore`) and
@@ -17,6 +17,7 @@ import { fetchTranscript } from '../api.js';
 
 // Merge `incoming` into the current k-keyed message map and return a new ascending-by-k array.
 export const MAX_TRANSCRIPT_MESSAGES = 500;
+export const TRANSCRIPT_PAGE_SIZE = 20;
 
 export function mergeByK(existing, incoming) {
   const byK = new Map(existing.map((m) => [m.k, m]));
@@ -54,9 +55,9 @@ export function useTranscript(pane, enabled) {
     setLoaded(false);
   }, [pane]);
 
-  // Initial + polling window: 20 (was 10) so a short first screen still fills — small transcripts / fresh
-  // sessions were leaving blank space below with 10. History pages (loadOlder) stay 10 per scroll-up.
-  const fetch = useCallback(() => fetchTranscript(pane, { since: hashRef.current, limit: 20 }), [pane]);
+  // Recent polling and scroll-up history use the same 20-message page size. Auto-fill in ChatView pulls
+  // additional history pages when even 20 compact messages do not fill the phone viewport.
+  const fetch = useCallback(() => fetchTranscript(pane, { since: hashRef.current, limit: TRANSCRIPT_PAGE_SIZE }), [pane]);
   const apply = useCallback((r) => {
     if (!r) return; // 204 / null → keep last
     setLoaded(true); // first real response: from now on an empty list means an empty SESSION, not loading
@@ -96,7 +97,7 @@ export function useTranscript(pane, enabled) {
     loadingOlderRef.current = true;
     setLoadingOlder(true);
     try {
-      const limit = Math.min(10, MAX_TRANSCRIPT_MESSAGES - messagesRef.current.length);
+      const limit = Math.min(TRANSCRIPT_PAGE_SIZE, MAX_TRANSCRIPT_MESSAGES - messagesRef.current.length);
       const r = await fetchTranscript(pane, { before: oldestKRef.current, limit });
       if (!r) return;
       const incoming = Array.isArray(r.messages) ? r.messages : [];

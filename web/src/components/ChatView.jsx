@@ -610,16 +610,25 @@ export default function ChatView({ pane, kind, msg, onAuthFail, slashEcho, onSla
 
   // Auto-fill: when every loaded message is small the whole window is shorter than the viewport, so the
   // user CAN'T scroll up to trigger loadOlder — the page just sits half-empty with older history
-  // unreachable. Pull the previous page ourselves until the viewport fills or history runs out. The
-  // clientHeight>0 guard keeps jsdom (0-height geometry) from auto-pulling in every test.
+  // unreachable. Pull the previous page ourselves until the viewport fills or history runs out. A first
+  // measurement can legitimately be 0 while the lens/layout settles, so observe later viewport resizes too;
+  // otherwise that one missed measurement leaves history unreachable for the whole mount.
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || loadingOlder || !hasMoreOlder || messages.length === 0) return;
-    if (el.clientHeight > 0 && el.scrollHeight <= el.clientHeight) {
-      prevScrollHeightRef.current = el.scrollHeight;
-      pendingPrependRef.current = true;
-      loadOlder();
-    }
+    if (!el) return undefined;
+    const fill = () => {
+      if (loadingOlder || !hasMoreOlder || messages.length === 0) return;
+      if (el.clientHeight > 0 && el.scrollHeight <= el.clientHeight) {
+        prevScrollHeightRef.current = el.scrollHeight;
+        pendingPrependRef.current = true;
+        loadOlder();
+      }
+    };
+    fill();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(fill);
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [messages, hasMoreOlder, loadingOlder, loadOlder]);
 
   // First mount / pane switch: land at the bottom immediately (no animation to fight).

@@ -575,7 +575,47 @@ describe('ChatView', () => {
       await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     });
     await screen.findByText('older page'); // pulled with no scrolling at all
-    expect(spy).toHaveBeenCalledWith('%0', expect.objectContaining({ before: 10, limit: 10 }));
+    expect(spy).toHaveBeenCalledWith('%0', expect.objectContaining({ before: 10, limit: 20 }));
     // and it stops: hasMore is now false, so no third fetch chain forms
+  });
+
+  it('auto-pulls after a zero-height first layout later becomes visible', async () => {
+    const observers = [];
+    const OriginalResizeObserver = global.ResizeObserver;
+    global.ResizeObserver = class {
+      constructor(callback) { this.callback = callback; observers.push(this); }
+      observe() {}
+      disconnect() {}
+    };
+    try {
+      const spy = vi.spyOn(api, 'fetchTranscript');
+      let resolveFirst;
+      spy.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }));
+      const { container } = render(<ChatView pane="%0" kind="done" />);
+      const el = container.querySelector('.chat-scroll');
+      setGeometry(el, { scrollTop: 0, scrollHeight: 0, clientHeight: 0 });
+      spy.mockResolvedValueOnce({
+        messages: [{ k: 5, i: 5, role: 'assistant', type: 'text', text: 'older after layout' }],
+        hasMore: false, firstSeq: 5,
+      });
+      await act(async () => {
+        resolveFirst({
+          messages: [{ k: 10, i: 10, role: 'assistant', type: 'text', text: 'latest' }],
+          hash: 'h1', hasMore: true, firstSeq: 10,
+        });
+        await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+      });
+      expect(spy).toHaveBeenCalledTimes(1); // the zero-height one-shot measurement cannot pull yet
+
+      setGeometry(el, { scrollTop: 0, scrollHeight: 200, clientHeight: 600 });
+      await act(async () => {
+        observers.at(-1).callback();
+        await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+      });
+      await screen.findByText('older after layout');
+      expect(spy).toHaveBeenCalledWith('%0', expect.objectContaining({ before: 10, limit: 20 }));
+    } finally {
+      global.ResizeObserver = OriginalResizeObserver;
+    }
   });
 });

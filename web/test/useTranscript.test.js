@@ -58,8 +58,8 @@ describe('useTranscript', () => {
     expect(result.current.messages.map((m) => m.k)).toEqual([5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
     expect(result.current.hasMoreOlder).toBe(false);
 
-    // the loadOlder call itself must have asked for `before: oldestK` (=10), limit 10
-    expect(spy).toHaveBeenCalledWith('%0', expect.objectContaining({ before: 10, limit: 10 }));
+    // recent and history pages use the same 20-message batch size
+    expect(spy).toHaveBeenCalledWith('%0', expect.objectContaining({ before: 10, limit: 20 }));
   });
 
   it('a session switch (e.g. /clear → new jsonl) REPLACES messages — k restarts at 0, so merging would strand the old tail', async () => {
