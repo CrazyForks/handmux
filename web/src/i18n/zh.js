@@ -550,4 +550,13 @@ export default {
   'workspace.error.agent-unavailable': 'Agent 无法续接；请打开已恢复的 shell 后手动重试',
   'workspace.error.tmux-unavailable': 'tmux 不可用；请确认 tmux 已运行后重试',
   'workspace.error.restore-failed': '会话未恢复；请检查 handmux 日志后重试',
+  'workspace.error.navigation-failed': '无法打开已恢复的会话；正在重试',
+  'workspace.error.operation-not-found': '此恢复任务已不可用；请重新恢复此备份',
+  'workspace.sessionWarning': '{session}：{reason}',
+  'workspace.warning.cwd-fallback': '工作目录不可用；已在主目录中恢复',
+  'workspace.warning.layout-fallback': '窗格布局无法完整恢复；已保留默认布局',
+  'workspace.warning.agent-warning': 'Agent 未能自动续接；已恢复的 shell 仍可使用',
+  'workspace.warning.live-reconcile-failed': '实时工作区状态核对失败；请检查 handmux 日志',
+  'workspace.warning.workspace-unavailable': '工作区存储暂时不可用；请检查磁盘空间和权限',
+  'workspace.warning.restore-warning': '恢复时出现了可继续处理的提醒；请检查恢复结果',
 };

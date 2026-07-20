@@ -21,6 +21,7 @@ import {
   getStates, getOrphans, takeoverOrphan,
   getServerVersion,
   getWorkspaceProtectionStatus, getWorkspaceRestorePlan, startWorkspaceRestore, getWorkspaceRestoreOperation,
+  ApiError,
   splitPane as apiSplitPane, closePane as apiClosePane,
 } from './api.js';
 import { runSplitPane, runClosePane } from './paneActions.js';
@@ -222,11 +223,17 @@ export default function App() {
   const recoveryPlanRef = useRef(null); recoveryPlanRef.current = recoveryPlan;
   const restoreInFlightRef = useRef(false);
   const liveSessionCountRef = useRef(null);
+  const lastRecoveryCheckpointRef = useRef(null);
 
   const onAuthFail = useCallback(() => setNeedToken(true), []);
   // Shared catch prelude: bounce to the token prompt on an auth failure, and report whether it WAS one so
   // each handler keeps its own non-auth control flow (swallow / return / rethrow). See authGuard.js.
   const handledAuth = useCallback((e) => authHandled(e, onAuthFail), [onAuthFail]);
+  const clearRecoveryOperation = useCallback(() => {
+    restoreInFlightRef.current = false;
+    setRecoverySubmitting(false);
+    setRecoveryOperation(null);
+  }, []);
   const closeRecovery = useCallback(() => {
     const checkpointId = recoveryPlanRef.current?.checkpointId;
     if (checkpointId) markWorkspaceAutoShown(checkpointId);
@@ -234,10 +241,14 @@ export default function App() {
   }, []);
   const ignoreRecovery = useCallback(() => {
     const checkpointId = recoveryPlanRef.current?.checkpointId;
-    if (checkpointId) ignoreWorkspaceCheckpoint(checkpointId);
+    if (checkpointId) {
+      ignoreWorkspaceCheckpoint(checkpointId);
+      lastRecoveryCheckpointRef.current = checkpointId;
+    }
+    clearRecoveryOperation();
     setRecoveryDialogOpen(false);
     setRecoveryPlan(null);
-  }, []);
+  }, [clearRecoveryOperation]);
 
   // The in-app preview subsystem (registry state, active-preview derivation, start/stop/renew/open),
   // extracted verbatim into a hook — it coordinates with Settings' history entry via settingsOpen.
@@ -397,12 +408,15 @@ export default function App() {
   // Open a session: load its windows (prefer remembered → active → first), then that window's
   // panes (prefer remembered → active → first). Writes the session name into the URL hash so
   // the location deep-links back here. Returns false if the session has no windows/panes.
-  const openSession = useCallback(async (session, target = null) => {
+  const openSession = useCallback(async (session, target = null, { isCancelled = () => false } = {}) => {
+    if (isCancelled()) return false;
     const windows = await getWindows(session.id);
+    if (isCancelled()) return false;
     if (!windows.length) return false;
     const window = (target?.window && windows.find((w) => w.id === target.window))
       || windows.find((w) => w.id === pickId(windows, getLastWindow(session.id)));
     const panes = await getPanes(window.id);
+    if (isCancelled()) return false;
     if (!panes.length) return false;
     const paneId = (target?.pane && panes.some((p) => p.id === target.pane))
       ? target.pane
@@ -427,19 +441,23 @@ export default function App() {
 
   const consumeRecoveryPlan = useCallback((plan, liveSessionCount) => {
     if (plan?.mapping) applyRecoveryMapping(plan.mapping);
+    const checkpointId = plan?.checkpointId || null;
+    const changedCheckpoint = Boolean(checkpointId
+      && lastRecoveryCheckpointRef.current
+      && lastRecoveryCheckpointRef.current !== checkpointId);
+    if (changedCheckpoint) clearRecoveryOperation();
+    if (checkpointId) lastRecoveryCheckpointRef.current = checkpointId;
     // Never let a concurrent 15s plan poll dismiss an operation that is still running. Its terminal
     // operation response owns the final card/dialog transition.
     if (restoreInFlightRef.current) return;
     const prompt = getWorkspacePromptState(plan?.checkpointId);
     const mode = recoveryPromptMode(plan, { ...prompt, liveSessionCount });
     if (mode === 'none') {
+      clearRecoveryOperation();
       setRecoveryPlan(null);
       setRecoveryDialogOpen(false);
       return;
     }
-    const changedCheckpoint = recoveryPlanRef.current?.checkpointId
-      && recoveryPlanRef.current.checkpointId !== plan.checkpointId;
-    if (changedCheckpoint) setRecoveryOperation(null);
     setRecoveryPlan(plan);
     if (mode === 'auto-dialog') {
       markWorkspaceAutoShown(plan.checkpointId);
@@ -447,9 +465,10 @@ export default function App() {
     } else if (changedCheckpoint) {
       setRecoveryDialogOpen(false);
     }
-  }, [applyRecoveryMapping]);
+  }, [applyRecoveryMapping, clearRecoveryOperation]);
 
-  const navigateToRestoredSession = useCallback(async (result, plan, sessions) => {
+  const navigateToRestoredSession = useCallback(async (result, plan, sessions, isCancelled = () => false) => {
+    if (isCancelled()) return false;
     const restored = (result?.results || []).filter((row) => row.status === 'restored');
     if (restored.length === 0 || !Array.isArray(sessions)) return false;
     const active = restored.find((row) => row.logicalId === plan?.active?.sessionId);
@@ -464,8 +483,14 @@ export default function App() {
       window: logical.windows?.[plan?.active?.windowId],
       pane: logical.panes?.[plan?.active?.paneId],
     } : null;
+    const opened = await openSession(
+      session,
+      target?.window || target?.pane ? target : null,
+      { isCancelled },
+    );
+    if (!opened || isCancelled()) return false;
     setDrawerOpen(false);
-    return openSession(session, target?.window || target?.pane ? target : null);
+    return true;
   }, [openSession]);
 
   const startRecovery = useCallback(async () => {
@@ -493,34 +518,52 @@ export default function App() {
 
   const recoveryOperationId = recoveryOperation?.id;
   useEffect(() => {
-    if (!recoveryOperationId) return undefined;
+    if (!recoveryOperationId || needToken) return undefined;
     let cancelled = false;
     let timer = null;
     const schedule = () => {
       if (!cancelled) timer = setTimeout(poll, 1000);
     };
     const finish = async (result) => {
+      if (cancelled) return true;
       const finishedPlan = recoveryPlanRef.current;
       const finishedCheckpointId = finishedPlan?.checkpointId;
-      restoreInFlightRef.current = false;
-      setRecoverySubmitting(false);
-      setRecoveryOperation(result.status === 'succeeded' ? null : result);
+      setRecoveryOperation(result);
       applyRecoveryMapping(result.mapping);
 
+      const restoredCount = (result.results || []).filter((row) => row.status === 'restored').length;
       let sessions = null;
-      try {
-        sessions = await getSessions();
-        liveSessionCountRef.current = Array.isArray(sessions) ? sessions.length : 0;
-        await navigateToRestoredSession(result, finishedPlan, sessions);
-      } catch (error) {
-        handledAuth(error);
+      let navigated = restoredCount === 0;
+      if (restoredCount > 0) {
+        try {
+          sessions = await getSessions();
+          if (cancelled) return true;
+          liveSessionCountRef.current = Array.isArray(sessions) ? sessions.length : 0;
+          navigated = await navigateToRestoredSession(result, finishedPlan, sessions, () => cancelled);
+          if (cancelled) return true;
+        } catch (error) {
+          if (cancelled || handledAuth(error)) return true;
+        }
+        if (!navigated) {
+          setRecoveryOperation({ ...result, errorCode: 'navigation-failed' });
+          return false;
+        }
       }
 
+      const hasWarnings = (result.warningCodes || []).length > 0
+        || (result.results || []).some((row) => (row.warningCodes || []).length > 0);
+      const autoClear = result.status === 'succeeded' && !hasWarnings && navigated;
+      restoreInFlightRef.current = false;
+      setRecoverySubmitting(false);
+      if (!autoClear) return true;
+
+      setRecoveryOperation(null);
       if (result.status === 'succeeded') {
         setRecoveryPlan(null);
         setRecoveryDialogOpen(false);
       }
 
+      if (cancelled) return true;
       const [planResult, protectionResult] = await Promise.allSettled([
         getWorkspaceRestorePlan(),
         getWorkspaceProtectionStatus(),
@@ -540,6 +583,7 @@ export default function App() {
       } else if (planResult.status === 'rejected') {
         handledAuth(planResult.reason);
       }
+      return true;
     };
     const poll = async () => {
       try {
@@ -547,19 +591,38 @@ export default function App() {
         if (cancelled) return;
         setRecoveryOperation(result);
         if (['succeeded', 'partial', 'failed', 'interrupted'].includes(result.status)) {
-          await finish(result);
+          const complete = await finish(result);
+          if (cancelled) return;
+          if (!complete) schedule();
           return;
         }
       } catch (error) {
         // A transport failure does not discard the persisted operation id. Keep polling that exact id;
         // a 401 still returns to the token prompt through the normal auth path.
-        handledAuth(error);
+        if (cancelled || handledAuth(error)) return;
+        if (
+          error instanceof ApiError &&
+          error.status >= 400 &&
+          error.status < 500
+        ) {
+          restoreInFlightRef.current = false;
+          setRecoverySubmitting(false);
+          setRecoveryOperation({
+            id: recoveryOperationId,
+            status: 'failed',
+            errorCode:
+              error.status === 404 ? 'operation-not-found' : 'restore-failed',
+            progress: { completed: 0, total: 0 },
+            results: [],
+          });
+          return;
+        }
       }
       schedule();
     };
     poll();
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [recoveryOperationId, applyRecoveryMapping, consumeRecoveryPlan, navigateToRestoredSession, handledAuth]);
+  }, [recoveryOperationId, needToken, applyRecoveryMapping, consumeRecoveryPlan, navigateToRestoredSession, handledAuth]);
 
   // Switch to another window within the current session (its active pane). Session/hash unchanged.
   const selectWindow = useCallback(async (window) => {

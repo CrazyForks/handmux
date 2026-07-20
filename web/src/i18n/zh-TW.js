@@ -471,4 +471,13 @@ export default {
   'workspace.error.agent-unavailable': 'Agent 無法續接；請開啟已還原的 shell 後手動重試',
   'workspace.error.tmux-unavailable': 'tmux 無法使用；請確認 tmux 已執行後重試',
   'workspace.error.restore-failed': '工作階段未還原；請檢查 handmux 日誌後重試',
+  'workspace.error.navigation-failed': '無法開啟已還原的工作階段；正在重試',
+  'workspace.error.operation-not-found': '此還原任務已無法使用；請重新還原此備份',
+  'workspace.sessionWarning': '{session}：{reason}',
+  'workspace.warning.cwd-fallback': '工作目錄無法使用；已在主目錄中還原',
+  'workspace.warning.layout-fallback': '窗格配置無法完整還原；已保留預設配置',
+  'workspace.warning.agent-warning': 'Agent 未能自動續接；已還原的 shell 仍可使用',
+  'workspace.warning.live-reconcile-failed': '即時工作區狀態核對失敗；請檢查 handmux 日誌',
+  'workspace.warning.workspace-unavailable': '工作區儲存暫時無法使用；請檢查磁碟空間和權限',
+  'workspace.warning.restore-warning': '還原時出現可繼續處理的提醒；請檢查還原結果',
 };

@@ -551,4 +551,13 @@ export default {
   'workspace.error.agent-unavailable': 'the agent could not resume; open the restored shell and retry manually',
   'workspace.error.tmux-unavailable': 'tmux is unavailable; make sure tmux is running and retry',
   'workspace.error.restore-failed': 'the session was not restored; check the handmux log and retry',
+  'workspace.error.navigation-failed': 'the restored session could not be opened; retrying',
+  'workspace.error.operation-not-found': 'this restore operation is no longer available; retry the backup',
+  'workspace.sessionWarning': '{session}: {reason}',
+  'workspace.warning.cwd-fallback': 'the working directory was unavailable; restored in the home directory',
+  'workspace.warning.layout-fallback': 'the pane layout could not be fully restored; the default layout was kept',
+  'workspace.warning.agent-warning': 'the agent did not resume automatically; the restored shell is still available',
+  'workspace.warning.live-reconcile-failed': 'live workspace reconciliation failed; check the handmux log',
+  'workspace.warning.workspace-unavailable': 'workspace storage is temporarily unavailable; check disk space and permissions',
+  'workspace.warning.restore-warning': 'the restore completed with a warning that may need attention',
 };

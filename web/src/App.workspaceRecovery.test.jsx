@@ -71,6 +71,7 @@ vi.mock('./components/Terminal.jsx', async () => {
 });
 
 import App from './App.jsx';
+import { ApiError, UnauthorizedError } from './api.js';
 import { getWorkspacePromptState } from './storage.js';
 
 const ACTIVE_SESSION = '10000000-0000-4000-8000-000000000001';
@@ -112,6 +113,13 @@ const flush = async (ms = 0) => {
     await vi.advanceTimersByTimeAsync(ms);
     await Promise.resolve();
   });
+};
+
+const deferred = () => {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
 };
 
 async function renderApp() {
@@ -198,7 +206,7 @@ describe('App workspace recovery', () => {
     expect(screen.queryByRole('dialog', { name: '恢复上次工作区' })).toBeNull();
   });
 
-  it('posts once, reconnects to the same operationId after a failed poll, applies mapping before refresh, and opens the active restored pane', async () => {
+  it('posts once, retries 5xx and transport failures with the same operationId, applies mapping, and opens the active restored pane', async () => {
     const mapping = {
       id: 'mapping-success',
       names: { project: 'project-restored' },
@@ -221,6 +229,7 @@ describe('App workspace recovery', () => {
     api.getPanes.mockResolvedValue([{ id: '%11', width: 80 }, { id: '%12', width: 80 }]);
     api.getWorkspaceRestoreOperation
       .mockResolvedValueOnce({ id: 'operation-a', status: 'pending', progress: { completed: 0, total: 3 }, results: [] })
+      .mockRejectedValueOnce(new ApiError('/private/server failure', 503, 'workspace unavailable'))
       .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValueOnce({ id: 'operation-a', status: 'running', progress: { completed: 2, total: 3 }, results: [] })
       .mockResolvedValueOnce({
@@ -240,20 +249,235 @@ describe('App workspace recovery', () => {
     await flush();
     expect(screen.queryByRole('dialog', { name: '恢复上次工作区' })).toBeNull();
 
-    await flush(1_000); // disconnected poll; operationId must be retained
+    await flush(1_000); // 503 poll; operationId must be retained
+    await flush(1_000); // disconnected transport poll; operationId must still be retained
     await flush(1_000); // running 2 / 3
     fireEvent.click(container.querySelector('.workspace-recovery-card'));
     await flush();
     expect(screen.getByText('正在恢复 2 / 3…')).toBeTruthy();
     await flush(1_000); // succeeded
 
-    expect(api.getWorkspaceRestoreOperation).toHaveBeenCalledTimes(4);
+    expect(api.getWorkspaceRestoreOperation).toHaveBeenCalledTimes(5);
     expect(api.getWorkspaceRestoreOperation.mock.calls.every(([id]) => id === 'operation-a')).toBe(true);
     expect(storage.applyWorkspaceRestoreMapping).toHaveBeenCalledWith(mapping);
     expect(storage.applyWorkspaceRestoreMapping.mock.invocationCallOrder[0])
       .toBeLessThan(api.getSessions.mock.invocationCallOrder[1]);
     expect(screen.getByTestId('terminal-pane').textContent).toBe('%12');
     expect(container.querySelector('.workspace-recovery-card')).toBeNull();
+  });
+
+  it('keeps a succeeded operation visible when safe server warnings need attention', async () => {
+    const mapping = {
+      id: 'mapping-warning', names: { project: 'project-restored' },
+      runtime: { sessions: {}, windows: {}, panes: {} },
+      logical: { sessions: { [ACTIVE_SESSION]: '$30' }, windows: {}, panes: {} },
+    };
+    api.getWorkspaceRestorePlan.mockResolvedValue(activePlan());
+    api.getSessions.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: '$30', name: 'project-restored' }]);
+    api.getWindows.mockResolvedValue([{ id: '@30', name: 'main' }]);
+    api.getPanes.mockResolvedValue([{ id: '%30', width: 80 }]);
+    api.getWorkspaceRestoreOperation.mockResolvedValueOnce({
+      id: 'operation-a', status: 'succeeded', progress: { completed: 1, total: 1 }, mapping,
+      warningCodes: ['live-reconcile-failed'],
+      results: [{
+        logicalId: ACTIVE_SESSION, sourceName: 'project', targetName: 'project-restored', status: 'restored',
+        warningCodes: ['agent-warning'], warningMessage: '/private/agent-secret',
+      }],
+    });
+
+    const { container } = await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: '恢复' }));
+    await flush();
+    await flush();
+
+    expect(screen.getByRole('dialog', { name: '恢复上次工作区' })).toBeTruthy();
+    expect(container.querySelector('.workspace-recovery-card')).toBeTruthy();
+    expect(screen.getByText(/实时工作区状态核对失败/)).toBeTruthy();
+    expect(screen.getByText(/project：Agent 未能自动续接/)).toBeTruthy();
+    expect(screen.queryByText(/private\/agent-secret/)).toBeNull();
+    expect(api.getWorkspaceRestoreOperation).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains the same terminal operation and retries navigation after a transient open failure', async () => {
+    const mapping = {
+      id: 'mapping-retry', names: { project: 'project-restored' },
+      runtime: { sessions: {}, windows: {}, panes: {} },
+      logical: { sessions: { [ACTIVE_SESSION]: '$40' }, windows: {}, panes: {} },
+    };
+    const terminal = {
+      id: 'operation-a', status: 'succeeded', progress: { completed: 1, total: 1 }, mapping,
+      warningCodes: [],
+      results: [{ logicalId: ACTIVE_SESSION, sourceName: 'project', targetName: 'project-restored', status: 'restored', warningCodes: [] }],
+    };
+    api.getWorkspaceRestorePlan.mockResolvedValueOnce(activePlan()).mockResolvedValueOnce(resolvedPlan());
+    api.getSessions
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('/private/session refresh failed'))
+      .mockResolvedValue([{ id: '$40', name: 'project-restored' }]);
+    api.getWindows
+      .mockRejectedValueOnce(new Error('/private/window refresh failed'))
+      .mockResolvedValue([{ id: '@40', name: 'main' }]);
+    api.getPanes.mockResolvedValue([{ id: '%40', width: 80 }]);
+    api.getWorkspaceRestoreOperation.mockResolvedValue(terminal);
+
+    const { container } = await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: '恢复' }));
+    await flush();
+    await flush();
+    expect(screen.getByRole('dialog', { name: '恢复上次工作区' })).toBeTruthy();
+    expect(screen.getByText(/无法打开已恢复的会话；正在重试/)).toBeTruthy();
+    expect(screen.queryByText(/private\/session refresh failed/)).toBeNull();
+    expect(container.querySelector('.workspace-recovery-card')).toBeTruthy();
+
+    await flush(1_000);
+    await flush();
+    expect(screen.getByRole('dialog', { name: '恢复上次工作区' })).toBeTruthy();
+    expect(screen.getByText(/无法打开已恢复的会话；正在重试/)).toBeTruthy();
+    expect(screen.queryByText(/private\/window refresh failed/)).toBeNull();
+
+    await flush(1_000);
+    await flush();
+    expect(api.getWorkspaceRestoreOperation).toHaveBeenCalledTimes(3);
+    expect(api.getWorkspaceRestoreOperation.mock.calls.every(([id]) => id === 'operation-a')).toBe(true);
+    expect(screen.getByTestId('terminal-pane').textContent).toBe('%40');
+    expect(container.querySelector('.workspace-recovery-card')).toBeNull();
+  });
+
+  it('stops operation polling immediately after an auth failure', async () => {
+    api.getWorkspaceRestorePlan.mockResolvedValue(activePlan());
+    api.getWorkspaceRestoreOperation.mockRejectedValue(new UnauthorizedError());
+    await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: '恢复' }));
+    await flush();
+    await flush();
+    expect(api.getWorkspaceRestoreOperation).toHaveBeenCalledTimes(1);
+
+    await flush(5_000);
+    expect(api.getWorkspaceRestoreOperation).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops on operation 404 and renders only the safe operation-not-found copy', async () => {
+    api.getWorkspaceRestorePlan.mockResolvedValue(activePlan());
+    api.getWorkspaceRestoreOperation.mockRejectedValue(new ApiError('/private/missing operation', 404, 'operation not found'));
+    await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: '恢复' }));
+    await flush();
+    await flush();
+    expect(screen.getByText(/此恢复任务已不可用/)).toBeTruthy();
+    expect(screen.queryByText(/private\/missing/)).toBeNull();
+
+    await flush(5_000);
+    expect(api.getWorkspaceRestoreOperation).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops other non-auth 4xx polls with a safe generic error', async () => {
+    api.getWorkspaceRestorePlan.mockResolvedValue(activePlan());
+    api.getWorkspaceRestoreOperation.mockRejectedValue(new ApiError('/private/conflict', 409, 'secret conflict'));
+    await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: '恢复' }));
+    await flush();
+    await flush();
+    expect(screen.getByText(/会话未恢复；请检查 handmux 日志后重试/)).toBeTruthy();
+    expect(screen.queryByText(/private|secret conflict/)).toBeNull();
+
+    await flush(5_000);
+    expect(api.getWorkspaceRestoreOperation).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels an unresolved operation poll on logout without applying its late response', async () => {
+    const pending = deferred();
+    api.getWorkspaceRestorePlan.mockResolvedValue(activePlan());
+    api.getWorkspaceRestoreOperation.mockReturnValueOnce(pending.promise);
+    await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: '恢复' }));
+    await flush();
+    expect(api.getWorkspaceRestoreOperation).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(document.querySelector('.drawer-logout'));
+    await flush();
+    pending.resolve({
+      id: 'operation-a', status: 'succeeded', progress: { completed: 1, total: 1 },
+      mapping: { id: 'late-mapping' }, results: [], warningCodes: [],
+    });
+    await flush();
+    await flush(5_000);
+    expect(storage.applyWorkspaceRestoreMapping).not.toHaveBeenCalled();
+    expect(api.getWorkspaceRestoreOperation).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not navigate or request plan status when logout cancels a terminal session refresh', async () => {
+    const sessionRefresh = deferred();
+    api.getWorkspaceRestorePlan.mockResolvedValueOnce(activePlan());
+    api.getSessions.mockResolvedValueOnce([]).mockReturnValueOnce(sessionRefresh.promise);
+    api.getWorkspaceRestoreOperation.mockResolvedValueOnce({
+      id: 'operation-a', status: 'succeeded', progress: { completed: 1, total: 1 }, warningCodes: [],
+      mapping: { id: 'mapping-cancelled' },
+      results: [{ logicalId: ACTIVE_SESSION, sourceName: 'project', targetName: 'project-restored', status: 'restored', warningCodes: [] }],
+    });
+    await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: '恢复' }));
+    await flush();
+    expect(api.getSessions).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(document.querySelector('.drawer-logout'));
+    await flush();
+    sessionRefresh.resolve([{ id: '$50', name: 'project-restored' }]);
+    await flush();
+    expect(api.getWindows).not.toHaveBeenCalled();
+    expect(api.getWorkspaceRestorePlan).toHaveBeenCalledTimes(1);
+    expect(api.getWorkspaceProtectionStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['windows', 'panes'])('checks cancellation after restored-session %s refresh', async (stage) => {
+    const pending = deferred();
+    const mapping = {
+      id: `mapping-cancelled-${stage}`, names: { project: 'project-restored' },
+      runtime: { sessions: {}, windows: {}, panes: {} },
+      logical: { sessions: { [ACTIVE_SESSION]: '$60' }, windows: {}, panes: {} },
+    };
+    api.getWorkspaceRestorePlan.mockResolvedValueOnce(activePlan());
+    api.getSessions.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: '$60', name: 'project-restored' }]);
+    if (stage === 'windows') api.getWindows.mockReturnValueOnce(pending.promise);
+    else {
+      api.getWindows.mockResolvedValueOnce([{ id: '@60', name: 'main' }]);
+      api.getPanes.mockReturnValueOnce(pending.promise);
+    }
+    api.getWorkspaceRestoreOperation.mockResolvedValueOnce({
+      id: 'operation-a', status: 'succeeded', progress: { completed: 1, total: 1 }, warningCodes: [], mapping,
+      results: [{ logicalId: ACTIVE_SESSION, sourceName: 'project', targetName: 'project-restored', status: 'restored', warningCodes: [] }],
+    });
+    await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: '恢复' }));
+    await flush();
+    fireEvent.click(document.querySelector('.drawer-logout'));
+    await flush();
+    pending.resolve(stage === 'windows' ? [{ id: '@60', name: 'main' }] : [{ id: '%60', width: 80 }]);
+    await flush();
+
+    if (stage === 'windows') expect(api.getPanes).not.toHaveBeenCalled();
+    expect(api.getWorkspaceRestorePlan).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('terminal-pane')).toBeNull();
+  });
+
+  it('ignores late plan/protection results after logout cancels terminal finalization', async () => {
+    const planStatus = deferred();
+    const protectionStatus = deferred();
+    api.getWorkspaceRestorePlan.mockResolvedValueOnce(activePlan()).mockReturnValueOnce(planStatus.promise);
+    api.getWorkspaceProtectionStatus.mockResolvedValueOnce({ status: 'protected' }).mockReturnValueOnce(protectionStatus.promise);
+    api.getWorkspaceRestoreOperation.mockResolvedValueOnce({
+      id: 'operation-a', status: 'succeeded', progress: { completed: 1, total: 1 }, warningCodes: [], mapping: null,
+      results: [{ logicalId: ACTIVE_SESSION, sourceName: 'project', status: 'already-present', warningCodes: [] }],
+    });
+    await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: '恢复' }));
+    await flush();
+    expect(api.getWorkspaceRestorePlan).toHaveBeenCalledTimes(2);
+    fireEvent.click(document.querySelector('.drawer-logout'));
+    await flush();
+    planStatus.resolve(resolvedPlan({ mapping: { id: 'late-plan-mapping' } }));
+    protectionStatus.resolve({ status: 'degraded', errorCode: 'live-corrupt' });
+    await flush();
+    expect(storage.applyWorkspaceRestoreMapping).not.toHaveBeenCalled();
   });
 
   it('keeps the card on partial, enters the first restored session when the active one failed, and shows safe per-session errors', async () => {
@@ -332,6 +556,47 @@ describe('App workspace recovery', () => {
     await flush(15_000);
     expect(screen.getByRole('dialog', { name: '恢复上次工作区' })).toBeTruthy();
     expect(screen.queryByText('工作区已恢复。')).toBeNull();
+  });
+
+  it('clears terminal operation state on ignore before accepting a newer checkpoint', async () => {
+    const nextPlan = activePlan({ checkpointId: 'checkpoint-b', capturedAt: '2026-07-20T02:42:00.000Z' });
+    api.getWorkspaceRestorePlan.mockResolvedValueOnce(activePlan()).mockResolvedValue(nextPlan);
+    api.getWorkspaceRestoreOperation.mockResolvedValueOnce({
+      id: 'operation-a', status: 'failed', errorCode: 'tmux-unavailable',
+      progress: { completed: 1, total: 1 }, results: [], warningCodes: [], mapping: null,
+    });
+    await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: '恢复' }));
+    await flush();
+    expect(screen.getByText(/tmux 不可用/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '忽略此备份' }));
+    await flush();
+
+    await flush(15_000);
+    expect(screen.getByRole('dialog', { name: '恢复上次工作区' })).toBeTruthy();
+    expect(screen.queryByText(/tmux 不可用/)).toBeNull();
+  });
+
+  it('clears terminal operation state when mode none resolves a checkpoint before the next one', async () => {
+    const nextPlan = activePlan({ checkpointId: 'checkpoint-b', capturedAt: '2026-07-20T02:42:00.000Z' });
+    api.getWorkspaceRestorePlan
+      .mockResolvedValueOnce(activePlan())
+      .mockResolvedValueOnce(resolvedPlan())
+      .mockResolvedValue(nextPlan);
+    api.getWorkspaceRestoreOperation.mockResolvedValueOnce({
+      id: 'operation-a', status: 'failed', errorCode: 'tmux-unavailable',
+      progress: { completed: 1, total: 1 }, results: [], warningCodes: [], mapping: null,
+    });
+    await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: '恢复' }));
+    await flush();
+    expect(screen.getByText(/tmux 不可用/)).toBeTruthy();
+
+    await flush(15_000);
+    expect(screen.queryByRole('dialog', { name: '恢复上次工作区' })).toBeNull();
+    await flush(15_000);
+    expect(screen.getByRole('dialog', { name: '恢复上次工作区' })).toBeTruthy();
+    expect(screen.queryByText(/tmux 不可用/)).toBeNull();
   });
 
   it('shows a sanitized degraded protection warning in Settings and removes it after protection recovers', async () => {

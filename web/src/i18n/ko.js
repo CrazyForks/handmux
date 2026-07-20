@@ -432,4 +432,13 @@ export default {
   'workspace.error.agent-unavailable': 'Agent를 재개할 수 없습니다. 복원된 shell을 열고 수동으로 다시 시도하세요',
   'workspace.error.tmux-unavailable': 'tmux를 사용할 수 없습니다. tmux 실행 여부를 확인한 뒤 다시 시도하세요',
   'workspace.error.restore-failed': '세션을 복원하지 못했습니다. handmux 로그를 확인한 뒤 다시 시도하세요',
+  'workspace.error.navigation-failed': '복원된 세션을 열 수 없습니다. 다시 시도 중입니다',
+  'workspace.error.operation-not-found': '이 복원 작업을 더 이상 사용할 수 없습니다. 백업 복원을 다시 시작하세요',
+  'workspace.sessionWarning': '{session}: {reason}',
+  'workspace.warning.cwd-fallback': '작업 디렉터리를 사용할 수 없어 홈 디렉터리에 복원했습니다',
+  'workspace.warning.layout-fallback': '창 분할 배치를 완전히 복원하지 못해 기본 배치를 유지했습니다',
+  'workspace.warning.agent-warning': 'Agent를 자동으로 재개하지 못했습니다. 복원된 셸은 계속 사용할 수 있습니다',
+  'workspace.warning.live-reconcile-failed': '현재 작업 공간 상태를 대조하지 못했습니다. handmux 로그를 확인하세요',
+  'workspace.warning.workspace-unavailable': '작업 공간 저장소를 일시적으로 사용할 수 없습니다. 디스크 공간과 권한을 확인하세요',
+  'workspace.warning.restore-warning': '복원 중 확인이 필요한 경고가 발생했습니다',
 };

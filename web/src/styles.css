@@ -478,7 +478,14 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .workspace-recovery-card .workspace-recovery-partial { color: #d7a29e; }
 
 .workspace-restore-backdrop { z-index: 30; background: rgba(0,0,0,.62); }
-.workspace-restore-dialog { z-index: 31; max-width: 380px; }
+.workspace-restore-dialog {
+  z-index: 31; max-width: 380px;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  margin-block: auto; height: max-content; transform: translateX(-50%);
+  max-height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 24px);
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 24px);
+}
 .workspace-restore-close { width: 44px; height: 44px; margin: -7px -7px -7px 0; }
 .workspace-restore-body { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .workspace-restore-reason { color: #f0f1f3; font-size: 15px; font-weight: 600; }
@@ -499,7 +506,11 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
   background: rgba(255,69,58,.10); color: #e3aaa6; font-size: 12px; line-height: 1.5;
 }
 div.workspace-restore-errors { padding-left: 10px; }
-.workspace-restore-actions { flex: none; display: flex; flex-direction: column; gap: 4px; margin-top: 14px; }
+.workspace-restore-warnings {
+  margin: 12px 0 0; padding: 9px 10px 9px 26px; border-radius: 8px;
+  background: rgba(255,159,10,.10); color: #e0b066; font-size: 12px; line-height: 1.5;
+}
+.workspace-restore-actions { flex: none; display: flex; flex-direction: column; gap: 4px; margin-top: 14px; padding-bottom: env(safe-area-inset-bottom, 0px); }
 .workspace-restore-primary, .workspace-restore-ignore {
   min-height: 44px; border: none; border-radius: 9px; font-size: 14px; font-weight: 600; touch-action: manipulation;
 }

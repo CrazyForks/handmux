@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
 
 import WorkspaceRestoreDialog from './WorkspaceRestoreDialog.jsx';
 import en from '../i18n/en.js';
@@ -7,6 +8,7 @@ import zh from '../i18n/zh.js';
 import zhTW from '../i18n/zh-TW.js';
 import ja from '../i18n/ja.js';
 import ko from '../i18n/ko.js';
+const styles = readFileSync('src/styles.css', 'utf8');
 
 const plan = (overrides = {}) => ({
   checkpointId: 'checkpoint-a',
@@ -43,7 +45,7 @@ describe('WorkspaceRestoreDialog', () => {
     expect(screen.queryByText('检测到电脑已重启')).toBeNull();
   });
 
-  it('shows honest progress and only localized, per-session terminal failures', () => {
+  it('counts only restored results in partial progress and shows localized per-session failures', () => {
     render(<WorkspaceRestoreDialog open plan={plan()} onClose={() => {}} onIgnore={() => {}} onRestore={() => {}}
       operation={{
         status: 'partial',
@@ -53,8 +55,31 @@ describe('WorkspaceRestoreDialog', () => {
           { sourceName: 'web', status: 'failed', errorCode: 'tmux-unavailable', errorMessage: '/Users/secret must not render' },
         ],
       }} />);
-    expect(screen.getByText('已恢复 2 / 3')).toBeTruthy();
+    expect(screen.getByText('已恢复 1 / 3')).toBeTruthy();
     expect(screen.getByText(/web：tmux 不可用；请确认 tmux 已运行后重试/)).toBeTruthy();
+    expect(screen.queryByText(/Users\/secret/)).toBeNull();
+  });
+
+  it('renders top-level and per-session safe warning codes without raw server text', () => {
+    render(<WorkspaceRestoreDialog open plan={plan()} onClose={() => {}} onIgnore={() => {}} onRestore={() => {}}
+      operation={{
+        status: 'succeeded',
+        progress: { completed: 2, total: 2 },
+        warningCodes: ['live-reconcile-failed', 'workspace-unavailable'],
+        warningMessage: '/Users/secret/top-level warning',
+        results: [{
+          sourceName: 'api', status: 'restored',
+          warningCodes: ['cwd-fallback', 'layout-fallback', 'agent-warning', 'restore-warning'],
+          warningMessage: '/Users/secret/per-result warning',
+        }],
+      }} />);
+
+    expect(screen.getByText(/实时工作区状态核对失败/)).toBeTruthy();
+    expect(screen.getByText(/工作区存储暂时不可用/)).toBeTruthy();
+    expect(screen.getByText(/api：工作目录不可用/)).toBeTruthy();
+    expect(screen.getByText(/api：窗格布局无法完整恢复/)).toBeTruthy();
+    expect(screen.getByText(/api：Agent 未能自动续接/)).toBeTruthy();
+    expect(screen.getByText(/api：恢复时出现了可继续处理的提醒/)).toBeTruthy();
     expect(screen.queryByText(/Users\/secret/)).toBeNull();
   });
 
@@ -65,6 +90,40 @@ describe('WorkspaceRestoreDialog', () => {
     fireEvent.click(restore);
     fireEvent.click(restore);
     expect(onRestore).toHaveBeenCalledTimes(1);
+  });
+
+  it('focuses inside, traps Tab in both directions, and restores the trigger on close', () => {
+    const trigger = document.createElement('button');
+    trigger.textContent = 'open recovery';
+    document.body.appendChild(trigger);
+    trigger.focus();
+    const { rerender } = render(<WorkspaceRestoreDialog open plan={plan()}
+      onClose={() => {}} onIgnore={() => {}} onRestore={() => {}} />);
+    const dialog = screen.getByRole('dialog');
+    const close = screen.getByRole('button', { name: '关闭' });
+    const ignore = screen.getByRole('button', { name: '忽略此备份' });
+    expect(dialog.getAttribute('tabindex')).toBe('-1');
+    expect(document.activeElement).toBe(close);
+
+    ignore.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(document.activeElement).toBe(close);
+    close.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(ignore);
+
+    rerender(<WorkspaceRestoreDialog open={false} plan={plan()}
+      onClose={() => {}} onIgnore={() => {}} onRestore={() => {}} />);
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
+  });
+
+  it('accounts for top and bottom safe areas in dialog height and fixed actions', () => {
+    expect(styles).toContain('max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 24px)');
+    expect(styles).toContain('top: calc(env(safe-area-inset-top, 0px) + 12px)');
+    expect(styles).toContain('bottom: calc(env(safe-area-inset-bottom, 0px) + 12px)');
+    expect(styles).toMatch(/\.workspace-restore-actions\s*\{[^}]*padding-bottom:\s*env\(safe-area-inset-bottom, 0px\)/s);
+    expect(styles).toMatch(/\.workspace-restore-primary, \.workspace-restore-ignore\s*\{[^}]*min-height:\s*44px/s);
   });
 
   it('ships every workspace key in all five locales without English fallback', () => {

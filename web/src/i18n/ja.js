@@ -432,4 +432,13 @@ export default {
   'workspace.error.agent-unavailable': 'Agent を再開できません；復元した shell を開いて手動で再試行してください',
   'workspace.error.tmux-unavailable': 'tmux を利用できません；tmux が起動中か確認して再試行してください',
   'workspace.error.restore-failed': 'セッションを復元できませんでした；handmux ログを確認して再試行してください',
+  'workspace.error.navigation-failed': '復元したセッションを開けません。再試行しています',
+  'workspace.error.operation-not-found': 'この復元処理は利用できません。バックアップの復元をやり直してください',
+  'workspace.sessionWarning': '{session}：{reason}',
+  'workspace.warning.cwd-fallback': '作業ディレクトリを使用できなかったため、ホームディレクトリに復元しました',
+  'workspace.warning.layout-fallback': 'ペイン配置を完全に復元できなかったため、既定の配置を維持しました',
+  'workspace.warning.agent-warning': 'Agent を自動再開できませんでした。復元したシェルは利用できます',
+  'workspace.warning.live-reconcile-failed': '現在のワークスペース状態を照合できませんでした。handmux ログを確認してください',
+  'workspace.warning.workspace-unavailable': 'ワークスペースストレージを一時的に利用できません。空き容量と権限を確認してください',
+  'workspace.warning.restore-warning': '復元は完了しましたが、確認が必要な警告があります',
 };
