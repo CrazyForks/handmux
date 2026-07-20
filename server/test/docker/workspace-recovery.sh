@@ -246,6 +246,14 @@ async function phaseB() {
   process.env.PATH = `${HOME}/fake-bin:${process.env.PATH}`;
   await fsp.writeFile(STATE_B, '{}\n', { mode: 0o600 });
 
+  const core = createCore('boot-b', STATE_B);
+  const bootedWithoutTmux = await core.checkpointer.start();
+  assert.equal(bootedWithoutTmux.status, 'written');
+  assert.equal(await checkpointCount(core.store), 1);
+  const emptyLive = await core.store.readLive();
+  assert.equal(emptyLive.status, 'ok');
+  assert.equal(emptyLive.value.sessions.length, 0, 'boot change must retain recovery before tmux returns');
+
   await runTmux(['new-session', '-d', '-s', 'new-work', '-n', 'current', '-c', '/workspace/shared']);
   await runTmux(['set-option', '-g', 'allow-rename', 'off']);
   await runTmux(['set-window-option', '-g', 'automatic-rename', 'off']);
@@ -253,7 +261,6 @@ async function phaseB() {
   await runTmux(['set-environment', '-g', 'PATH', process.env.PATH]);
   assert.equal(await tmuxText(['show-environment', '-g', 'PATH']), `PATH=${process.env.PATH}`);
 
-  const core = createCore('boot-b', STATE_B);
   const preRestore = await core.tmux.captureTopology();
   assert.equal(preRestore.status, 'ok');
   const existingNewWork = sessionIdentity(preRestore, 'new-work');
@@ -268,10 +275,10 @@ async function phaseB() {
   });
   const unknownResult = await unknown.reconcile('unknown-provider');
   assert.equal(unknownResult.status, 'unknown');
-  assert.equal(await checkpointCount(core.store), 0, 'unknown provider must not archive');
+  assert.equal(await checkpointCount(core.store), 1, 'unknown provider must not archive');
 
-  const changed = await core.checkpointer.start();
-  assert.equal(changed.status, 'written');
+  const attached = await core.checkpointer.reconcile('tmux-attached');
+  assert.equal(attached.status, 'written');
   assert.equal(await checkpointCount(core.store), 1);
   const checkpointResult = await core.store.readLatestCheckpoint();
   assert.equal(checkpointResult.status, 'ok');

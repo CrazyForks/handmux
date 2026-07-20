@@ -25,7 +25,7 @@ async function readRecovery(store, checkpointId, historical) {
 }
 
 async function captureLive(tmux) {
-  const live = await tmux.captureTopology();
+  const live = await tmux.captureTopology({ readOnly: true });
   if (live?.status === 'ok') return live;
   if (live?.status === 'empty') return { ...live, sessions: [], windows: [] };
   throw new Error(live?.error || 'current tmux topology is unavailable');

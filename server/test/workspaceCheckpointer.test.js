@@ -229,6 +229,28 @@ describe('workspace checkpointer', () => {
     expect(d.store.writeLive).toHaveBeenCalledWith(empty);
   });
 
+  it('archives the old live state when a boot change finds no tmux server yet', async () => {
+    const emptyEnvironment = { id: 'env-new-empty', bootIdentity: newEnvironment.bootIdentity, tmuxServerId: null };
+    const empty = snapshot(emptyEnvironment, '2026-07-20T12:00:00.000Z', true);
+    const d = deps({
+      store: {
+        readLive: vi.fn(async () => ({ status: 'ok', value: snapshot(oldEnvironment) })),
+        archiveEnvironment: vi.fn(async () => ({ status: 'ok' })),
+        writeLive: vi.fn(async () => {}),
+      },
+      observeEnvironment: vi.fn(async () => ({ ...emptyEnvironment, status: 'absent' })),
+      capture: vi.fn(async () => ({ status: 'empty', snapshot: empty })),
+    });
+
+    await expect(createCheckpointer(d).reconcile('timer')).resolves.toMatchObject({ status: 'written', snapshot: empty });
+
+    expect(d.store.archiveEnvironment).toHaveBeenCalledWith({
+      endedReason: 'boot-changed',
+      detectedAt: '2026-07-20T12:00:00.000Z',
+    });
+    expect(d.store.writeLive).toHaveBeenCalledWith(empty);
+  });
+
   it('archives the old environment successfully before initializing the new live state', async () => {
     const d = deps({
       store: {

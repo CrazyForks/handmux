@@ -30,9 +30,11 @@ async function reconcileOnce(deps, cause) {
     }
     if (change.status === 'unknown') return change;
 
-    // An absent tmux server is not proof of an intentionally empty workspace. The sole exception is an
-    // API deletion that just succeeded and explicitly asks us to confirm emptiness.
-    if (observed.status === 'absent' && cause !== 'confirmed-empty') return { status: 'unknown' };
+    // An absent tmux server is not proof of an intentionally empty workspace. A changed boot identity
+    // is the exception: it proves the old environment ended, even before tmux comes back.
+    if (observed.status === 'absent' && cause !== 'confirmed-empty' && change.status !== 'changed') {
+      return { status: 'unknown' };
+    }
 
     const captured = await deps.capture(snapshotEnvironment(change.current ?? observed));
     if (captured.status === 'changed-during-capture') {
@@ -40,7 +42,7 @@ async function reconcileOnce(deps, cause) {
       return captured;
     }
     if (captured.status !== 'ok' && captured.status !== 'empty') return captured;
-    if (captured.status === 'empty' && cause !== 'confirmed-empty' && observed.status !== 'present') {
+    if (captured.status === 'empty' && cause !== 'confirmed-empty' && observed.status !== 'present' && change.status !== 'changed') {
       return { status: 'unknown' };
     }
     if (change.status === 'changed') {

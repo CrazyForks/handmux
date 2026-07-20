@@ -119,10 +119,13 @@ describe('workspace tmux environment and topology', () => {
   });
 
   it('reports no server as empty but query and format failures as unknown', async () => {
-    const absent = createWorkspaceTmux({
-      run: async () => { throw new Error('no server running on /tmp/tmux.sock'); },
-    });
-    expect(await absent.captureTopology()).toMatchObject({ status: 'empty', sessions: [], windows: [] });
+    for (const message of [
+      'no server running on /tmp/tmux.sock',
+      'error connecting to /tmp/tmux-0/handmux-workspace-test (No such file or directory)',
+    ]) {
+      const absent = createWorkspaceTmux({ run: async () => { throw new Error(message); } });
+      expect(await absent.captureTopology()).toMatchObject({ status: 'empty', sessions: [], windows: [] });
+    }
 
     const failed = createWorkspaceTmux({
       run: async () => { throw new Error('operation timed out'); },
@@ -135,11 +138,10 @@ describe('workspace tmux environment and topology', () => {
     }
   });
 
-  it('captures with ephemeral ids in read-only mode without issuing any tmux mutation', async () => {
+  it('captures with stable ephemeral ids when a writable adapter is asked to read-only capture', async () => {
     const calls = [];
     const generated = [IDS.server, IDS.sessionA, IDS.window, IDS.paneA];
     const tmux = createWorkspaceTmux({
-      readOnly: true,
       randomUUID: () => generated.shift(),
       run: async (args) => {
         calls.push(args);
@@ -153,13 +155,15 @@ describe('workspace tmux environment and topology', () => {
       },
     });
 
-    expect(await tmux.captureTopology()).toMatchObject({
+    const first = await tmux.captureTopology({ readOnly: true });
+    const second = await tmux.captureTopology({ readOnly: true });
+    expect(first).toMatchObject({
       status: 'ok',
-      sessions: [{ id: IDS.sessionA }],
-      windows: [{ id: IDS.window, panes: [{ id: IDS.paneA }] }],
+      sessions: [{ id: expect.stringMatching(/^[0-9a-f-]{36}$/i) }],
+      windows: [{ id: expect.stringMatching(/^[0-9a-f-]{36}$/i), panes: [{ id: expect.stringMatching(/^[0-9a-f-]{36}$/i) }] }],
     });
+    expect(second).toEqual(first);
     expect(calls.every((args) => ['show-options', '-V', 'list-sessions', 'list-windows', 'list-panes', 'display-message'].includes(args[0]))).toBe(true);
-    await expect(tmux.createTemporarySession({ cwd: '/work', sessionLogicalId: IDS.sessionB })).rejects.toThrow(/read-only/i);
     expect(calls.every((args) => !['set-option', 'move-window', 'new-session', 'kill-session'].includes(args[0]))).toBe(true);
   });
 });

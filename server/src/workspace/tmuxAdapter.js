@@ -3,7 +3,7 @@ import { createAgentRunner } from './agentRunner.js';
 import { parseTmuxRows, tmuxFormat } from '../tmux/format.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const NO_SERVER_RE = /^(?:no server running on(?: .+)?|no sessions)$/i;
+const NO_SERVER_RE = /^(?:no server running on(?: .+)?|no sessions|error connecting to .+ \(no such file or directory\))$/i;
 const MISSING_OPTION_RE = /invalid option|unknown option|not set/i;
 const SESSION_FORMAT = tmuxFormat(['session_id', 'session_name', 'session_last_attached', '@handmux_session_id']);
 const WINDOW_FORMAT = tmuxFormat(['session_id', 'window_id', 'window_index', 'window_name', 'window_active', 'window_layout', '@handmux_window_id']);
@@ -63,6 +63,11 @@ function logicalAllocator(randomUUID) {
 function requireLogicalId(value, label) {
   if (!isUuid(value)) throw new Error(`${label} must be a UUID`);
   return value;
+}
+
+function ephemeralLogicalId(option, runtimeId) {
+  const hash = crypto.createHash('sha256').update(`${option}\0${runtimeId}`).digest('hex');
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
 }
 
 function requireCreatedRuntime(value, prefix, label) {
@@ -208,7 +213,7 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID, agent
     }
   }
 
-  async function observeEnvironment() {
+  async function observeEnvironment({ readOnly: observeReadOnly = readOnly } = {}) {
     let current;
     try {
       current = text(await run(['show-options', '-gv', '@handmux_server_id'])).replace(/\r?\n$/, '');
@@ -220,7 +225,7 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID, agent
     if (isUuid(current)) return { status: 'present', tmuxServerId: current };
     const tmuxServerId = randomUUID();
     if (!isUuid(tmuxServerId)) return { status: 'unknown' };
-    if (readOnly) return { status: 'present', tmuxServerId };
+    if (observeReadOnly) return { status: 'present', tmuxServerId };
     try {
       await run(['set-option', '-g', '@handmux_server_id', tmuxServerId]);
       return { status: 'present', tmuxServerId };
@@ -229,18 +234,22 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID, agent
     }
   }
 
-  async function assignLogicalIds(items, option, scopeArgs) {
+  async function assignLogicalIds(items, option, scopeArgs, { readOnly: assignReadOnly = readOnly } = {}) {
     const allocator = logicalAllocator(randomUUID);
     for (const item of [...items].sort(byRuntime)) {
       const accepted = allocator.accept(item.optionId);
-      item.id = accepted || allocator.fresh();
-      if (!accepted && !readOnly) await run(['set-option', ...scopeArgs, '-t', item.runtimeId, option, item.id]);
+      const generated = !accepted && (assignReadOnly
+        ? allocator.accept(ephemeralLogicalId(option, item.runtimeId))
+        : allocator.fresh());
+      item.id = accepted || generated;
+      if (!item.id) throw new Error(`could not allocate a read-only logical id for ${item.runtimeId}`);
+      if (!accepted && !assignReadOnly) await run(['set-option', ...scopeArgs, '-t', item.runtimeId, option, item.id]);
     }
   }
 
-  async function captureTopology() {
+  async function captureTopology({ readOnly: captureReadOnly = readOnly } = {}) {
     try {
-      const environment = await observeEnvironment();
+      const environment = await observeEnvironment({ readOnly: captureReadOnly });
       if (environment.status === 'absent') return { status: 'empty', tmuxVersion: 'unknown', active: null, sessions: [], windows: [] };
       if (environment.status !== 'present') return { status: 'unknown', error: 'tmux environment unavailable' };
 
@@ -260,7 +269,7 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID, agent
         windowLinks: [], activeWindowId: null,
       }));
       if (new Set(sessions.map((item) => item.runtimeId)).size !== sessions.length) throw new Error('duplicate session runtime id');
-      await assignLogicalIds(sessions, '@handmux_session_id', []);
+      await assignLogicalIds(sessions, '@handmux_session_id', [], { readOnly: captureReadOnly });
       const sessionByRuntime = new Map(sessions.map((item) => [item.runtimeId, item]));
 
       const windowFields = rows(await run(['list-windows', '-a', '-F', WINDOW_FORMAT]), 7, 'window');
@@ -282,7 +291,7 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID, agent
         if (optionIds.size > 1) throw new Error('linked window has conflicting logical ids');
         return { runtimeId, optionId: optionIds.values().next().value || '', links };
       });
-      await assignLogicalIds(windows, '@handmux_window_id', ['-w']);
+      await assignLogicalIds(windows, '@handmux_window_id', ['-w'], { readOnly: captureReadOnly });
       const windowByRuntime = new Map(windows.map((item) => [item.runtimeId, item]));
 
       for (const window of windows) {
@@ -316,7 +325,7 @@ export function createWorkspaceTmux({ run, randomUUID = crypto.randomUUID, agent
         }
       }
       const panes = [...paneByRuntime.values()];
-      await assignLogicalIds(panes, '@handmux_pane_id', ['-p']);
+      await assignLogicalIds(panes, '@handmux_pane_id', ['-p'], { readOnly: captureReadOnly });
 
       const canonicalSessions = sessions.sort(byId);
       const canonicalWindows = windows.map((window) => {

@@ -299,6 +299,16 @@ function workspaceFixture({ recoveryPending = [LOGICAL.sessionOk, LOGICAL.sessio
 }
 
 describe('workspace runtime orchestration', () => {
+  it('captures the current topology read-only when building a restore preview', async () => {
+    const { store } = workspaceFixture();
+    const tmux = { captureTopology: vi.fn(async () => ({ status: 'ok', sessions: [], windows: [] })) };
+    const runtime = createWorkspaceRuntime({ store, tmux, lock: {}, checkpointer: {} });
+
+    await runtime.getRestorePlan({ checkpointId: 'latest' });
+
+    expect(tmux.captureTopology).toHaveBeenCalledWith({ readOnly: true });
+  });
+
   it('keeps a restore pending until its operation identity owns the filesystem lock', async () => {
     const { store } = workspaceFixture({ recoveryPending: [] });
     let releaseLock;
