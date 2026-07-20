@@ -221,6 +221,66 @@ describe('reportBound', () => {
     const call = global.fetch.mock.calls.find((c) => String(c[0]).includes('/api/push/bound'));
     expect(call).toBeUndefined();
   });
+
+  it('returns after a finite wait when the service worker never becomes ready', async () => {
+    vi.useFakeTimers();
+    global.navigator.serviceWorker = { ready: new Promise(() => {}) };
+    const { reportBound } = await import('../src/push.js');
+    const result = reportBound();
+    await vi.advanceTimersByTimeAsync(10000);
+    await expect(result).resolves.toBeUndefined();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('disableNotifications', () => {
+  it('clears the local switch immediately even when serviceWorker.ready never resolves', async () => {
+    vi.useFakeTimers();
+    global.navigator.serviceWorker = { ready: new Promise(() => {}) };
+    const { disableNotifications } = await import('../src/push.js');
+    await expect(disableNotifications()).resolves.toBeUndefined();
+    expect(localStorage.getItem('tw_notify')).toBe('0');
+    await vi.advanceTimersByTimeAsync(10000); // let the bounded background cleanup settle
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('still unsubscribes locally when the server cleanup request stalls', async () => {
+    vi.useFakeTimers();
+    const sub = { endpoint: 'E', unsubscribe: vi.fn(async () => true) };
+    global.navigator.serviceWorker = { ready: Promise.resolve({ pushManager: { getSubscription: async () => sub } }) };
+    global.fetch = vi.fn((_url, { signal }) => new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+    }));
+    const { disableNotifications } = await import('../src/push.js');
+    await disableNotifications();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(sub.unsubscribe).toHaveBeenCalledOnce();
+    expect(global.fetch.mock.calls[0][1].signal.aborted).toBe(true);
+  });
+});
+
+describe('other bounded push operations', () => {
+  it('returns from best-effort notification clearing when the worker never becomes ready', async () => {
+    vi.useFakeTimers();
+    global.navigator.serviceWorker = { ready: new Promise(() => {}) };
+    const { clearPaneNotification } = await import('../src/push.js');
+    const result = clearPaneNotification('%1');
+    await vi.advanceTimersByTimeAsync(10000);
+    await expect(result).resolves.toBeUndefined();
+  });
+
+  it('aborts a stalled test-push request', async () => {
+    vi.useFakeTimers();
+    global.fetch = vi.fn((_url, { signal }) => new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+    }));
+    const { sendTestPush } = await import('../src/push.js');
+    const result = sendTestPush();
+    const assertion = expect(result).rejects.toMatchObject({ code: 'push.reportTimeout' });
+    await vi.advanceTimersByTimeAsync(10000);
+    await assertion;
+    expect(global.fetch.mock.calls[0][1].signal.aborted).toBe(true);
+  });
 });
 
 describe('notification inbox failures', () => {
@@ -253,5 +313,60 @@ describe('notification inbox failures', () => {
       : response(false, {}, 503));
     const { deleteNotification } = await import('../src/push.js');
     await expect(deleteNotification('n1')).rejects.toThrow();
+  });
+
+  it('rejects when the inbox service worker never becomes ready', async () => {
+    vi.useFakeTimers();
+    global.navigator.serviceWorker = { ready: new Promise(() => {}) };
+    const { getNotifications } = await import('../src/push.js');
+    const result = getNotifications();
+    const assertion = expect(result).rejects.toMatchObject({ code: 'push.swTimeout' });
+    await vi.advanceTimersByTimeAsync(10000);
+    await assertion;
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('aborts a stalled device-key lookup before loading the inbox', async () => {
+    vi.useFakeTimers();
+    global.fetch = vi.fn((_url, { signal }) => new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+    }));
+    const { getNotifications } = await import('../src/push.js');
+    const result = getNotifications();
+    const assertion = expect(result).rejects.toMatchObject({ code: 'push.configTimeout' });
+    await vi.advanceTimersByTimeAsync(10000);
+    await assertion;
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch.mock.calls[0][1].signal.aborted).toBe(true);
+  });
+
+  it('aborts a stalled inbox fetch after resolving the device key', async () => {
+    vi.useFakeTimers();
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(response(true, { pushKey: 'K' }))
+      .mockImplementationOnce((_url, { signal }) => new Promise((resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      }));
+    const { getNotifications } = await import('../src/push.js');
+    const result = getNotifications();
+    const assertion = expect(result).rejects.toMatchObject({ code: 'push.configTimeout' });
+    await vi.advanceTimersByTimeAsync(10000);
+    await assertion;
+    expect(global.fetch.mock.calls[1][1].signal.aborted).toBe(true);
+  });
+
+  it('aborts a stalled notification delete', async () => {
+    vi.useFakeTimers();
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(response(true, { pushKey: 'K' }))
+      .mockImplementationOnce((_url, { signal }) => new Promise((resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      }));
+    const { deleteNotification } = await import('../src/push.js');
+    const result = deleteNotification('n1');
+    const assertion = expect(result).rejects.toMatchObject({ code: 'push.reportTimeout' });
+    await vi.advanceTimersByTimeAsync(10000);
+    await assertion;
+    expect(global.fetch.mock.calls[1][1].signal.aborted).toBe(true);
   });
 });

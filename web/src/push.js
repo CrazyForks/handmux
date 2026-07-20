@@ -78,6 +78,18 @@ async function fetchWithTimeout(url, options, key) {
   }
 }
 
+const readyServiceWorker = () => withTimeout(
+  navigator.serviceWorker.ready,
+  LOCAL_STEP_TIMEOUT_MS,
+  'push.swTimeout',
+);
+
+const currentSubscription = (reg) => withTimeout(
+  reg.pushManager.getSubscription(),
+  PUSH_SERVICE_TIMEOUT_MS,
+  'push.browserTimeout',
+);
+
 // VAPID public key arrives as URL-safe base64; PushManager.subscribe wants a Uint8Array.
 function urlBase64ToUint8Array(b64) {
   const pad = '='.repeat((4 - (b64.length % 4)) % 4);
@@ -112,11 +124,7 @@ export async function enableNotifications() {
     if (error?.code === 'push.swRegisterTimeout') throw error;
     throw setupError('push.swRegisterFailed', { reason: error?.message || t('push.unknownReason') });
   }
-  const reg = await withTimeout(
-    navigator.serviceWorker.ready,
-    LOCAL_STEP_TIMEOUT_MS,
-    'push.swTimeout',
-  );
+  const reg = await readyServiceWorker();
   const res = await fetchWithTimeout(
     '/api/push/vapid',
     { headers: authHeaders(), cache: 'no-store' },
@@ -125,11 +133,7 @@ export async function enableNotifications() {
   if (!res.ok) throw new Error(t('push.noVapid'));
   const { key } = await res.json();
 
-  let sub = await withTimeout(
-    reg.pushManager.getSubscription(),
-    PUSH_SERVICE_TIMEOUT_MS,
-    'push.browserTimeout',
-  );
+  let sub = await currentSubscription(reg);
   if (!sub) {
     sub = await withTimeout(
       reg.pushManager.subscribe({
@@ -167,19 +171,28 @@ export async function enableNotifications() {
 }
 
 export async function disableNotifications() {
-  try {
-    const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.getSubscription();
-    if (sub) {
-      await fetch('/api/push/unsubscribe', {
-        method: 'POST',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ endpoint: sub.endpoint }),
-      });
-      await sub.unsubscribe();
-    }
-  } catch { /* best effort — clearing the local flag is what matters */ }
+  // The switch is local product state, so turn it off synchronously and never make Settings wait on a
+  // browser push service. Remote + browser cleanup continues best-effort, but every boundary is finite.
   setNotifyFlag(false);
+  void (async () => {
+    try {
+      const reg = await readyServiceWorker();
+      const sub = await currentSubscription(reg);
+      if (!sub) return;
+      await Promise.allSettled([
+        fetchWithTimeout('/api/push/unsubscribe', {
+          method: 'POST',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        }, 'push.reportTimeout'),
+        withTimeout(
+          Promise.resolve().then(() => sub.unsubscribe()),
+          PUSH_SERVICE_TIMEOUT_MS,
+          'push.browserTimeout',
+        ),
+      ]);
+    } catch { /* best effort — the local switch is already off */ }
+  })();
 }
 
 // Re-report this device's bound-session set after the user binds/unbinds a session, so server-side
@@ -187,19 +200,23 @@ export async function disableNotifications() {
 export async function reportBound() {
   if (!notifyEnabled() || !pushSupported()) return;
   try {
-    const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.getSubscription();
+    const reg = await readyServiceWorker();
+    const sub = await currentSubscription(reg);
     if (!sub) return;
-    await fetch('/api/push/bound', {
+    await fetchWithTimeout('/api/push/bound', {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ endpoint: sub.endpoint, boundSessions: getBoundSessions() }),
-    });
+    }, 'push.reportTimeout');
   } catch { /* best effort */ }
 }
 
 export async function sendTestPush() {
-  const r = await fetch('/api/push/test', { method: 'POST', headers: authHeaders() });
+  const r = await fetchWithTimeout(
+    '/api/push/test',
+    { method: 'POST', headers: authHeaders() },
+    'push.reportTimeout',
+  );
   if (!r.ok) throw new Error(t('push.sendFailed'));
   return r.json();
 }
@@ -210,14 +227,14 @@ export async function sendTestPush() {
 async function resolveScriptPushKey(strict) {
   if (!pushSupported()) return null;
   try {
-    const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.getSubscription();
+    const reg = await readyServiceWorker();
+    const sub = await currentSubscription(reg);
     if (!sub) return null;
-    const r = await fetch('/api/push/key', {
+    const r = await fetchWithTimeout('/api/push/key', {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ endpoint: sub.endpoint }),
-    });
+    }, 'push.configTimeout');
     if (r.status === 401) throw new UnauthorizedError();
     if (!r.ok) {
       if (strict) throw new Error('push key lookup failed');
@@ -236,8 +253,12 @@ export const getScriptPushKey = () => resolveScriptPushKey(false);
 export async function clearPaneNotification(pane) {
   if (!pushSupported()) return;
   try {
-    const reg = await navigator.serviceWorker.ready;
-    const notes = await reg.getNotifications({ tag: `pane-${pane}` });
+    const reg = await readyServiceWorker();
+    const notes = await withTimeout(
+      reg.getNotifications({ tag: `pane-${pane}` }),
+      LOCAL_STEP_TIMEOUT_MS,
+      'push.swTimeout',
+    );
     notes.forEach((n) => n.close());
   } catch { /* best effort */ }
 }
@@ -248,7 +269,11 @@ export async function clearPaneNotification(pane) {
 export async function getNotifications() {
   const key = await resolveScriptPushKey(true);
   if (!key) return [];
-  const r = await fetch(`/api/notifications?device=${encodeURIComponent(key)}`, { headers: authHeaders(), cache: 'no-store' });
+  const r = await fetchWithTimeout(
+    `/api/notifications?device=${encodeURIComponent(key)}`,
+    { headers: authHeaders(), cache: 'no-store' },
+    'push.configTimeout',
+  );
   if (r.status === 401) throw new UnauthorizedError();
   if (!r.ok) throw new Error('notification inbox load failed');
   return (await r.json()).items || [];
@@ -257,7 +282,11 @@ export async function getNotifications() {
 export async function deleteNotification(id) {
   const key = await resolveScriptPushKey(true);
   if (!key) throw new Error('notification device unavailable');
-  const r = await fetch(`/api/notifications/${encodeURIComponent(id)}?device=${encodeURIComponent(key)}`, { method: 'DELETE', headers: authHeaders() });
+  const r = await fetchWithTimeout(
+    `/api/notifications/${encodeURIComponent(id)}?device=${encodeURIComponent(key)}`,
+    { method: 'DELETE', headers: authHeaders() },
+    'push.reportTimeout',
+  );
   if (r.status === 401) throw new UnauthorizedError();
   if (!r.ok || (await r.json()).ok !== true) throw new Error('notification delete failed');
   return true;

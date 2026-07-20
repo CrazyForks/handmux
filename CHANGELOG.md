@@ -9,6 +9,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ### Fixed
 - 长对话转录轮询改为只切取手机实际请求的分页，不再每轮遍历和复制整段会话，降低超长会话对服务端 CPU 和内存的瞬时压力。
+- 关闭通知现在会立即关闭本地开关，后台完成有限时的订阅清理；通知收件箱、删除、设备 key、测试推送与后台状态同步也不再因浏览器或网络无响应而无限等待。
 
 ## [0.17.5] - 2026-07-20
 
