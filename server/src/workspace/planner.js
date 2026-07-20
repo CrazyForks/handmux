@@ -9,6 +9,10 @@ function uniqueStrings(values) {
   return [...new Set(values.filter((value) => typeof value === 'string' && value))];
 }
 
+function stringOrNull(value) {
+  return typeof value === 'string' ? value : null;
+}
+
 function restoredName(sourceName, names) {
   if (!names.has(sourceName)) return sourceName;
   const restored = `${sourceName}-restored`;
@@ -93,6 +97,15 @@ function sourceProjection(session) {
   };
 }
 
+function activeProjection(active) {
+  if (active === null || active === undefined) return null;
+  return {
+    sessionId: stringOrNull(active.sessionId),
+    windowId: stringOrNull(active.windowId),
+    paneId: stringOrNull(active.paneId),
+  };
+}
+
 function selectedTopology(items, windowsById) {
   const windowIds = new Set();
   for (const item of items) {
@@ -100,6 +113,21 @@ function selectedTopology(items, windowsById) {
     for (const link of item.windowLinks) windowIds.add(link.windowId);
   }
   return [...windowIds].map((id) => windowsById.get(id)).filter(Boolean);
+}
+
+function windowDispositions(items, live) {
+  const liveWindows = new Map((Array.isArray(live?.windows) ? live.windows : []).map((window) => [window.id, window.runtimeId]));
+  const dispositions = new Map();
+  for (const item of items) {
+    if (item.action !== 'create' && item.action !== 'create-renamed') continue;
+    for (const { windowId } of item.windowLinks) {
+      if (dispositions.has(windowId)) continue;
+      dispositions.set(windowId, liveWindows.has(windowId)
+        ? { logicalId: stringOrNull(windowId), action: 'reuse', runtimeId: stringOrNull(liveWindows.get(windowId)) }
+        : { logicalId: stringOrNull(windowId), action: 'create', ownerSessionId: stringOrNull(item.logicalId) });
+    }
+  }
+  return [...dispositions.values()];
 }
 
 export function buildRestorePlan(checkpointInput, live, {
@@ -114,6 +142,9 @@ export function buildRestorePlan(checkpointInput, live, {
   const checkpoint = unwrapped.checkpoint;
   if (!checkpoint || !Array.isArray(checkpoint.sessions) || !Array.isArray(checkpoint.windows)) {
     throw new Error('invalid checkpoint for restore planning');
+  }
+  if (recovery !== null && recovery?.checkpointId !== checkpoint.id) {
+    throw new Error('recovery checkpoint id mismatch');
   }
 
   const windowsById = new Map(checkpoint.windows.map((window) => [window.id, window]));
@@ -155,18 +186,19 @@ export function buildRestorePlan(checkpointInput, live, {
   const checkpointTopology = countTopology(checkpoint.windows);
   const planTopology = countTopology(selectedTopology(sessions, windowsById));
   const plan = {
-    checkpointId: checkpoint.id,
-    capturedAt: checkpoint.capturedAt,
-    archivedAt: checkpoint.archivedAt,
-    changeReason: checkpoint.environment?.endedReason ?? null,
-    detectedAt: recovery?.detectedAt ?? null,
-    expiresAt: recovery?.expiresAt ?? null,
+    checkpointId: stringOrNull(checkpoint.id),
+    capturedAt: stringOrNull(checkpoint.capturedAt),
+    archivedAt: stringOrNull(checkpoint.archivedAt),
+    changeReason: stringOrNull(checkpoint.environment?.endedReason),
+    detectedAt: stringOrNull(recovery?.detectedAt),
+    expiresAt: stringOrNull(recovery?.expiresAt),
     resolved: Boolean(recovery?.resolvedAt),
     pendingCount: pendingIds?.size ?? null,
     summary: { sessions: checkpoint.sessions.length, ...checkpointTopology },
     planSummary: { ...actions, ...planTopology },
     sessions,
-    active: checkpoint.active === null || checkpoint.active === undefined ? null : { ...checkpoint.active },
+    windows: windowDispositions(sessions, live),
+    active: activeProjection(checkpoint.active),
     preExistingRuntimeIds: runtimeIds(live),
     warnings: warningList(unwrapped.warnings, checkpoint.warnings, checkpoint.warning, warnings, warning),
   };

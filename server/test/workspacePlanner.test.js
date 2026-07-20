@@ -99,6 +99,18 @@ describe('workspace restore planner', () => {
     });
   });
 
+  it('fails closed when recovery belongs to a different checkpoint', () => {
+    const recovery = {
+      checkpointId: 'cp-other',
+      detectedAt: '2026-07-20T02:00:00.000Z',
+      expiresAt: '2026-07-20T03:00:00.000Z',
+      pendingSessionIds: ['s-api'],
+      resolvedAt: null,
+    };
+
+    expect(() => buildRestorePlan(checkpoint(), live(), { recovery })).toThrow(/recovery checkpoint id mismatch/i);
+  });
+
   it('counts a linked window once and fails closed when linked windows are unsupported', () => {
     const supported = buildRestorePlan(checkpoint(), live(), { sessionNames: ['api', 'docs'], historical: true });
     const unsupported = buildRestorePlan(checkpoint(), live(), {
@@ -116,6 +128,39 @@ describe('workspace restore planner', () => {
     expect(unsupported.planSummary).toEqual({
       create: 0, renamed: 0, alreadyPresent: 0, unsupported: 2, windows: 0, panes: 0, agents: 0,
     });
+  });
+
+  it('reuses a live shared window for a missing owner without assigning the already-present owner', () => {
+    const current = live(
+      [liveSession('s-api', '$8', 'api')],
+      [
+        { id: 'w-api', runtimeId: '@8', panes: [pane('live-api', '%8')] },
+        { id: 'w-shared', runtimeId: '@9', panes: [pane('live-shared', '%9')] },
+      ],
+    );
+
+    const plan = buildRestorePlan(checkpoint(), current, { historical: true, sessionNames: ['api', 'docs'] });
+
+    expect(plan.sessions.map(({ logicalId, action }) => ({ logicalId, action }))).toEqual([
+      { logicalId: 's-api', action: 'already-present' },
+      { logicalId: 's-docs', action: 'create' },
+    ]);
+    expect(plan.windows).toEqual([
+      { logicalId: 'w-docs', action: 'create', ownerSessionId: 's-docs' },
+      { logicalId: 'w-shared', action: 'reuse', runtimeId: '@9' },
+    ]);
+  });
+
+  it('creates a window shared by two missing owners once under the first creating session', () => {
+    const plan = buildRestorePlan(checkpoint(), live(), { historical: true, sessionNames: ['api', 'docs'] });
+
+    expect(plan.windows).toEqual([
+      { logicalId: 'w-api', action: 'create', ownerSessionId: 's-api' },
+      { logicalId: 'w-shared', action: 'create', ownerSessionId: 's-api' },
+      { logicalId: 'w-docs', action: 'create', ownerSessionId: 's-docs' },
+    ]);
+    expect(Object.isFrozen(plan.windows)).toBe(true);
+    expect(Object.isFrozen(plan.windows[0])).toBe(true);
   });
 
   it('marks malformed session topology unsupported instead of planning a partial restore', () => {
@@ -155,6 +200,37 @@ describe('workspace restore planner', () => {
       active: { sessionId: 's-api', windowId: 'w-api', paneId: 'p-api' },
       warnings: ['latest pointer is corrupt; using cp-a'],
     });
+  });
+
+  it('projects active and metadata primitives without freezing caller-owned nested objects', () => {
+    const source = checkpoint();
+    const capturedAt = { value: source.capturedAt };
+    const activeExtra = { nested: { value: 'caller-owned' } };
+    const detectedAt = { value: '2026-07-20T02:00:00.000Z' };
+    source.capturedAt = capturedAt;
+    source.active.extra = activeExtra;
+    const recovery = {
+      checkpointId: 'cp-a',
+      detectedAt,
+      expiresAt: '2026-07-20T03:00:00.000Z',
+      pendingSessionIds: ['s-api'],
+      resolvedAt: null,
+    };
+
+    const plan = buildRestorePlan(source, live(), { recovery });
+
+    expect(plan.active).not.toBe(source.active);
+    expect(plan.active).toEqual({ sessionId: 's-api', windowId: 'w-api', paneId: 'p-api' });
+    expect(plan.capturedAt).toBeNull();
+    expect(plan.detectedAt).toBeNull();
+    expect(Object.isFrozen(capturedAt)).toBe(false);
+    expect(Object.isFrozen(activeExtra)).toBe(false);
+    expect(Object.isFrozen(detectedAt)).toBe(false);
+
+    capturedAt.value = 'mutated';
+    activeExtra.nested.value = 'mutated';
+    detectedAt.value = 'mutated';
+    expect(plan.active).toEqual({ sessionId: 's-api', windowId: 'w-api', paneId: 'p-api' });
   });
 
   it('deep-freezes the plan and snapshots every pre-existing runtime id', () => {
