@@ -3,8 +3,12 @@
 import express from 'express';
 import { isPaneId, isWindowId, isSessionId, isValidSessionName, isValidStartupCmd } from '../tmux/commands.js';
 
-export function sessionRoutes({ commands, docs }) {
+export function sessionRoutes({ commands, docs, workspace }) {
   const r = express.Router();
+
+  function notify(method) {
+    try { Promise.resolve(workspace?.[method]?.()).catch(() => {}); } catch { /* optional best effort */ }
+  }
 
   r.get('/sessions', async (req, res, next) => {
     try { res.json(await commands.listSessions()); } catch (e) { next(e); }
@@ -27,6 +31,7 @@ export function sessionRoutes({ commands, docs }) {
         startDir = out.real;
       }
       const id = await commands.newSession(name, startDir, cmd || undefined);
+      notify('requestReconcile');
       res.status(201).json({ id, name });
     } catch (e) { next(e); }
   });
@@ -55,6 +60,7 @@ export function sessionRoutes({ commands, docs }) {
         startDir = await commands.paneCurrentPath(pane); // old behavior: inherit the pane's dir
       }
       const id = await commands.newWindow(session, startDir, wname || undefined, cmd || undefined);
+      notify('requestReconcile');
       res.status(201).json({ id });
     } catch (e) { next(e); }
   });
@@ -71,6 +77,7 @@ export function sessionRoutes({ commands, docs }) {
         return res.status(409).json({ error: 'exists' });
       }
       await commands.renameSession(id, name);
+      notify('requestReconcile');
       res.json({ id, name });
     } catch (e) { next(e); }
   });
@@ -83,6 +90,7 @@ export function sessionRoutes({ commands, docs }) {
     if (!isValidSessionName(name)) return res.status(400).json({ error: 'bad window name' });
     try {
       await commands.renameWindow(id, name);
+      notify('requestReconcile');
       res.json({ id, name });
     } catch (e) { next(e); }
   });
@@ -95,6 +103,7 @@ export function sessionRoutes({ commands, docs }) {
     // server-side — the client only ever swaps adjacent windows of the open session.
     try {
       await commands.swapWindows(a, b);
+      notify('requestReconcile');
       res.json({ ok: true });
     } catch (e) { next(e); }
   });
@@ -105,6 +114,7 @@ export function sessionRoutes({ commands, docs }) {
       // Killing the only window takes the whole session down with it — that's allowed and intended.
       // The client warns ("确认后将删除整个会话") before sending, so there's no last-window guard here.
       await commands.killWindow(req.query.window);
+      notify('confirmEmpty');
       res.status(204).end();
     } catch (e) { next(e); }
   });
@@ -130,6 +140,7 @@ export function sessionRoutes({ commands, docs }) {
     try {
       const cwd = await commands.paneCurrentPath(pane); // new pane inherits the pane's dir
       const id = await commands.splitPane(pane, dir, cwd);
+      notify('requestReconcile');
       res.status(201).json({ id });
     } catch (e) { next(e); }
   });
@@ -143,6 +154,7 @@ export function sessionRoutes({ commands, docs }) {
         return res.status(409).json({ error: 'last pane' });
       }
       await commands.killPane(req.query.pane);
+      notify('requestReconcile');
       res.status(204).end();
     } catch (e) { next(e); }
   });

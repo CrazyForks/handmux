@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { tmpHome } from './tmphome.js';
 import { classifyEvent, createClaudeEvents, permissionResolved, resolvedPermissionKind, isLocalCommandStdout } from '../src/claudeEvents.js';
 import fs from 'node:fs';
@@ -105,6 +105,31 @@ const rec = (src, payload = {}, ts = 1000) => ({ ts, src, host: 'h', payload });
 
 describe('createClaudeEvents getStates (reads the hook state file)', () => {
   const push = { sendToSession: async () => ({ sent: 0 }) };
+
+  it('notifies state changes only after the debounced watcher refresh completes', async () => {
+    let watchCallback;
+    let timerCallback;
+    let finishList;
+    const listed = new Promise((resolve) => { finishList = resolve; });
+    const onStateChange = vi.fn();
+    const ev = createClaudeEvents({
+      commands: { listLivePanes: () => listed },
+      push,
+      file: '/virtual/claude-state.json',
+      onStateChange,
+      watch: (_dir, callback) => { watchCallback = callback; return { close() {} }; },
+      mkdir: () => {},
+      setTimer: (callback) => { timerCallback = callback; return 1; },
+      clearTimer: () => {},
+    });
+    ev.start();
+    watchCallback('rename', 'claude-state.json');
+    timerCallback();
+    expect(onStateChange).not.toHaveBeenCalled();
+    finishList([]);
+    await vi.waitFor(() => expect(onStateChange).toHaveBeenCalledOnce());
+    ev.stop();
+  });
 
   it('classifies a recorded pane and resolves its tmux location', async () => {
     const file = stateFile({ '%1': rec('stop', { last_assistant_message: 'done' }) });

@@ -16,6 +16,11 @@ import { applyAppName, applyManifestName } from './appName.js';
 import { homedir } from 'node:os';
 import { createPreviews } from './previews.js';
 import { createPreview } from './previewServer.js';
+import { createWorkspaceStore } from './workspace/store.js';
+import { createWorkspaceTmux } from './workspace/tmuxAdapter.js';
+import { createEnvironmentProvider } from './workspace/environment.js';
+import { createWorkspaceLock } from './workspace/lock.js';
+import { createGracefulShutdown, createWorkspaceBackground } from './workspace/checkpointer.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -27,21 +32,44 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const cfg = loadConfig();
 const token = loadToken();
 const uploadExts = loadUploadExts();
+const home = homedir();
+
+// One writer set is shared by background capture today and the restore runtime added on top of it. The
+// lock is filesystem-backed because the CLI may restore while this daemon is alive in another process.
+const workspaceStore = createWorkspaceStore({ home });
+const workspaceTmux = createWorkspaceTmux({ run: commands.runTmux });
+const workspaceLock = createWorkspaceLock({ dir: workspaceStore.paths.lockDir });
+const observeEnvironment = createEnvironmentProvider({
+  tmuxServerIdProvider: async () => {
+    const observed = await workspaceTmux.observeEnvironment();
+    if (observed.status === 'unknown') throw new Error('tmux environment unavailable');
+    return observed.tmuxServerId;
+  },
+});
+const stateFile = process.env.CLAUDE_STATE_FILE || claudeStatePath(home);
+const workspace = createWorkspaceBackground({
+  store: workspaceStore,
+  tmux: workspaceTmux,
+  observeEnvironment,
+  lock: workspaceLock,
+  stateFile,
+});
 
 // The inbox is driven by a JSON state file the Claude hooks maintain (server/hooks/handmux-notify.sh →
 // handmux-write.js). We only READ it. start() watches it so idle/permission push fires even when no
 // client is polling; getStates reads it fresh on each /states.
-const events = createClaudeEvents({ commands, push });
+const events = createClaudeEvents({ commands, push, file: stateFile, onStateChange: workspace.requestReconcile });
 events.start();
+workspace.start().catch(() => {});
 
 // Keep an already-opted-in user's Claude hooks in step with this handmux version on restart: newly-added
 // lifecycle events (e.g. SessionStart, which rebinds the 对话 lens after /clear) and a refreshed
 // handmux-write.cjs land via `./deploy.sh` alone — no phone re-enable. A strict no-op unless our hooks are
 // already installed; best-effort and must never block or crash startup (pure fs, no subprocess).
 try {
-  syncHooks(homedir(), {
+  syncHooks(home, {
     srcDir: path.resolve(here, '../hooks'),
-    stateFile: process.env.CLAUDE_STATE_FILE || claudeStatePath(homedir()),
+    stateFile,
   });
 } catch { /* best effort — hook sync never fails startup */ }
 
@@ -49,14 +77,14 @@ try {
 // base domain, e.g. preview.example.com); unset → static only. One registry instance is shared by the
 // API (register/list/remove), the /preview static layer, and the Host-based dynamic proxy.
 const previewDomain = process.env.HANDMUX_PREVIEW_DOMAIN || null;
-const previews = createPreviews({ home: homedir(), dynamicEnabled: !!previewDomain });
+const previews = createPreviews({ home, dynamicEnabled: !!previewDomain });
 const preview = createPreview({ previews, token, domain: previewDomain });
 
 const app = express();
 // Host-based dispatch FIRST: a request to <name>.<domain> is reverse-proxied to its dynamic preview;
 // every other Host falls straight through (next()) to the app below, unaffected.
 app.use(preview.dynamicProxy);
-app.use('/api', createApiRouter({ token, events, uploadExts, previews, previewDomain, shortcuts: cfg.shortcuts }));
+app.use('/api', createApiRouter({ token, events, uploadExts, previews, previewDomain, shortcuts: cfg.shortcuts, workspace }));
 app.use('/preview', preview.router);
 app.use(preview.refererFallback);
 
@@ -108,3 +136,8 @@ const server = app.listen(cfg.port, cfg.host, () => {
 });
 // WebSocket/HMR for dynamic previews: route raw Upgrade by Host to the right loopback port.
 server.on('upgrade', preview.onUpgrade);
+
+const shutdown = createGracefulShutdown({ events, workspace, server });
+const handleSignal = () => { shutdown().catch(() => {}); };
+process.on('SIGINT', handleSignal);
+process.on('SIGTERM', handleSignal);

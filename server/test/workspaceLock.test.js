@@ -1,0 +1,85 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { createWorkspaceLock } from '../src/workspace/lock.js';
+
+const homes = [];
+
+async function lockPath() {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'handmux-lock-'));
+  homes.push(home);
+  return path.join(home, 'workspace.lock');
+}
+
+async function seedLock(dir, owner, ageMs = 0) {
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, 'owner.json'), JSON.stringify(owner));
+  if (ageMs) {
+    const at = new Date(Date.now() - ageMs);
+    await fs.utimes(dir, at, at);
+  }
+}
+
+afterEach(async () => {
+  await Promise.all(homes.splice(0).map((home) => fs.rm(home, { recursive: true, force: true })));
+});
+
+describe('workspace filesystem lock', () => {
+  it('uses atomic mkdir so only one concurrent contender acquires it', async () => {
+    const dir = await lockPath();
+    const first = createWorkspaceLock({ dir, pid: 101, isProcessAlive: () => true });
+    const second = createWorkspaceLock({ dir, pid: 202, isProcessAlive: () => true });
+
+    const handles = await Promise.all([
+      first.tryAcquire({ operationId: 'capture-a' }),
+      second.tryAcquire({ operationId: 'capture-b' }),
+    ]);
+
+    expect(handles.filter(Boolean)).toHaveLength(1);
+    await handles.find(Boolean).release();
+  });
+
+  it('never reclaims an old lock whose PID is still alive', async () => {
+    const dir = await lockPath();
+    await seedLock(dir, { pid: 404, startedAt: '2026-07-20T00:00:00.000Z', operationId: 'restore-live' }, 60_000);
+    const lock = createWorkspaceLock({ dir, staleGraceMs: 1_000, isProcessAlive: (pid) => pid === 404 });
+
+    expect(await lock.tryAcquire({ operationId: 'capture' })).toBeNull();
+    expect(JSON.parse(await fs.readFile(path.join(dir, 'owner.json'), 'utf8')).operationId).toBe('restore-live');
+  });
+
+  it('reclaims a dead PID only after the stale grace has elapsed', async () => {
+    const dir = await lockPath();
+    const now = Date.parse('2026-07-20T00:00:10.000Z');
+    await seedLock(dir, { pid: 505, startedAt: new Date(now - 500).toISOString(), operationId: 'recent-dead' });
+    const lock = createWorkspaceLock({ dir, pid: 606, now: () => now, staleGraceMs: 1_000, isProcessAlive: () => false });
+
+    expect(await lock.tryAcquire({ operationId: 'capture' })).toBeNull();
+    await fs.writeFile(path.join(dir, 'owner.json'), JSON.stringify({
+      pid: 505,
+      startedAt: new Date(now - 2_000).toISOString(),
+      operationId: 'stale-dead',
+    }));
+    const handle = await lock.tryAcquire({ operationId: 'capture' });
+    expect(handle).toBeTruthy();
+    expect(handle.owner).toMatchObject({ pid: 606, operationId: 'capture' });
+    await handle.release();
+  });
+
+  it('times out with the current owner details instead of hiding the contention', async () => {
+    const dir = await lockPath();
+    await seedLock(dir, { pid: 707, startedAt: '2026-07-20T00:00:00.000Z', operationId: 'restore-707' });
+    let clock = 0;
+    const lock = createWorkspaceLock({
+      dir,
+      now: () => (clock += 10),
+      timeoutMs: 15,
+      retryMs: 1,
+      wait: async () => {},
+      isProcessAlive: () => true,
+    });
+
+    await expect(lock.acquire({ operationId: 'capture' })).rejects.toThrow(/restore-707.*707|707.*restore-707/);
+  });
+});

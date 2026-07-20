@@ -32,6 +32,7 @@ export function createApiRouter({
   uploadExts = DEFAULT_UPLOAD_EXTS, maxUploadBytes = MAX_TRANSFER_BYTES,
   asrEnv = process.env, previews, previewDomain = null,
   shortcuts = DEFAULT_SHORTCUTS,
+  workspace,
   home = homedir(), stateFile = process.env.CLAUDE_STATE_FILE || claudeStatePath(homedir()),
 } = {}) {
   const r = express.Router();
@@ -41,7 +42,7 @@ export function createApiRouter({
 
   const deps = {
     token, commands, docs, git, push, notifications, claudeEvents,
-    uploadExts, maxUploadBytes, asrEnv, previews, previewDomain, shortcuts, home, stateFile,
+    uploadExts, maxUploadBytes, asrEnv, previews, previewDomain, shortcuts, home, stateFile, workspace,
   };
 
   r.use(sessionRoutes(deps));

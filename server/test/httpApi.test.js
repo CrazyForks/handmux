@@ -8,9 +8,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-function appWith(commands) {
+function appWith(commands, workspace) {
   const app = express();
-  app.use('/api', createApiRouter({ token: 'good', commands }));
+  app.use('/api', createApiRouter({ token: 'good', commands, workspace }));
   return app;
 }
 const auth = (r) => r.set('Authorization', 'Bearer good');
@@ -45,6 +45,50 @@ const baseCommands = {
 };
 
 describe('REST API', () => {
+  it('notifies workspace capture after successful mutations, with immediate empty confirmation for window deletion', async () => {
+    const workspace = { requestReconcile: vi.fn(), confirmEmpty: vi.fn(async () => {}) };
+    const app = appWith({
+      ...baseCommands,
+      listSessions: vi.fn(async () => []),
+      newSession: vi.fn(async () => '$7'),
+      newWindow: vi.fn(async () => '@9'),
+      renameSession: vi.fn(async () => {}),
+      renameWindow: vi.fn(async () => {}),
+      swapWindows: vi.fn(async () => {}),
+      splitPane: vi.fn(async () => '%91'),
+      killPane: vi.fn(async () => {}),
+      killWindow: vi.fn(async () => {}),
+    }, workspace);
+
+    await auth(request(app).post('/api/sessions')).send({ name: 'new' }).expect(201);
+    await auth(request(app).post('/api/windows')).send({ session: '$0', pane: '%1' }).expect(201);
+    await auth(request(app).patch('/api/sessions')).send({ id: '$0', name: 'renamed' }).expect(200);
+    await auth(request(app).patch('/api/windows')).send({ id: '@1', name: 'renamed' }).expect(200);
+    await auth(request(app).post('/api/windows/swap')).send({ a: '@1', b: '@2' }).expect(200);
+    await auth(request(app).post('/api/panes/split')).send({ pane: '%1', dir: 'h' }).expect(201);
+    await auth(request(app).delete('/api/panes?pane=%2')).expect(204);
+    await auth(request(app).delete('/api/windows?window=@2')).expect(204);
+
+    expect(workspace.requestReconcile).toHaveBeenCalledTimes(7);
+    expect(workspace.confirmEmpty).toHaveBeenCalledOnce();
+  });
+
+  it('keeps successful API responses when optional workspace notifications fail', async () => {
+    const workspace = {
+      requestReconcile: vi.fn(() => { throw new Error('capture unavailable'); }),
+      confirmEmpty: vi.fn(async () => { throw new Error('capture unavailable'); }),
+    };
+    const app = appWith({
+      ...baseCommands,
+      listSessions: vi.fn(async () => []),
+      newSession: vi.fn(async () => '$7'),
+      killWindow: vi.fn(async () => {}),
+    }, workspace);
+
+    await auth(request(app).post('/api/sessions')).send({ name: 'new' }).expect(201);
+    await auth(request(app).delete('/api/windows?window=@2')).expect(204);
+  });
+
   it('requires auth', async () => {
     await request(appWith(baseCommands)).get('/api/sessions').expect(401);
   });

@@ -143,7 +143,20 @@ function readStateFile(file) {
 //   file: the hook-maintained JSON state file (DEFAULT_STATE_FILE).
 // The hook is the sole writer; the server reads the file fresh on every getStates and on every file
 // change (the watcher, for push). No persisted state of our own — the file IS the persistence.
-export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, now = () => Date.now(), statMtime = defaultStatMtime, readTail = defaultReadTail, run = defaultRun } = {}) {
+export function createClaudeEvents({
+  commands,
+  push,
+  file = DEFAULT_STATE_FILE,
+  now = () => Date.now(),
+  statMtime = defaultStatMtime,
+  readTail = defaultReadTail,
+  run = defaultRun,
+  onStateChange = () => {},
+  watch = fs.watch,
+  mkdir = fs.mkdirSync,
+  setTimer = setTimeout,
+  clearTimer = clearTimeout,
+} = {}) {
   // Short-lived executable-identity verdicts. Each poll still checks the foreground pid signature; the
   // cache only avoids repeating lsof while that exact process set is unchanged.
   const commVerdicts = new Map();
@@ -300,16 +313,20 @@ export function createClaudeEvents({ commands, push, file = DEFAULT_STATE_FILE, 
     prime(); // boot baseline: don't replay the file's resting 需要你/已完成 as fresh push (see prime())
     const dir = path.dirname(file);
     const base = path.basename(file);
-    try { fs.mkdirSync(dir, { recursive: true }); } catch { /* ignore */ }
+    try { mkdir(dir, { recursive: true }); } catch { /* ignore */ }
     try {
-      watcher = fs.watch(dir, (_evt, fname) => {
+      watcher = watch(dir, (_evt, fname) => {
         if (fname && fname !== base) return;
-        clearTimeout(deb);
-        deb = setTimeout(() => { getStates().catch(() => {}); }, 120);
+        clearTimer(deb);
+        deb = setTimer(() => {
+          getStates()
+            .then(() => onStateChange())
+            .catch(() => {});
+        }, 120);
       });
     } catch { /* fs.watch unsupported → push falls back to evaluation on each /states poll */ }
   }
-  function stop() { if (watcher) { watcher.close(); watcher = null; } clearTimeout(deb); }
+  function stop() { if (watcher) { watcher.close(); watcher = null; } clearTimer(deb); }
 
   // The chat lens's pane→session bind: the hook state file records THIS pane's exact session (session_id +
   // transcript_path), authoritative over the terminal-side cwd→newest-jsonl guess (which collapses distinct
