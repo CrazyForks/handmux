@@ -83,7 +83,7 @@ handmux start --tunnel cloudflare   # instant public URL (cloudflared auto-insta
 
 ## Workspace recovery
 
-handmux continuously maintains two redundant copies of the latest workspace metadata. They are not browsing history: ordinary changes and deliberate deletions simply update the current state. A selectable checkpoint is archived only when the computer or tmux environment changes. Every checkpoint from the latest 24 hours is kept; older history is then trimmed to the newest 10, while the latest valid checkpoint never expires just because of age.
+handmux continuously maintains two redundant copies of the latest workspace metadata. They are not browsing history: ordinary changes and deletions handmux can confirm simply update the current state. A selectable checkpoint is archived only when the computer or tmux environment changes. If the final tmux session disappears outside handmux, tmux cannot distinguish an intentional deletion from a crash, so handmux retains the last state to preserve crash recovery. Every checkpoint from the latest 24 hours is kept; older history is then trimmed to the newest 10, while the latest valid checkpoint never expires just because of age.
 
 After such a restart, the phone shows **Restore last workspace** for one hour when a checkpoint has work left to restore; if tmux has no sessions it opens the confirmation directly. Choosing **Ignore this backup** suppresses that checkpoint only on that phone; an ordinary close does not. The CLI remains available after the phone prompt expires:
 
@@ -94,7 +94,7 @@ handmux restore --list                           # list retained checkpoints
 handmux restore --checkpoint <id> --session api  # select history / restore one session
 ```
 
-Restore is additive and idempotent. It never stops or changes a current session; a name collision becomes `name-restored`, then `name-restored-2`. Windows, panes, working directories and layouts are rebuilt where safe. Only verified Claude Code/Codex sessions are resumed from their persisted session IDs; ordinary panes reopen as shells in their saved directories, without replaying commands or scrollback. Metadata lives under `~/.handmux/workspaces/`; it can include paths, tmux names/layout and agent session IDs, but not pane output.
+Restore is additive and idempotent. It never stops, renames, replaces, or changes the topology of a current session; a name collision becomes `name-restored`, then `name-restored-2`. Windows, panes, working directories and layouts are rebuilt where safe. Only verified Claude Code/Codex sessions are resumed from their persisted session IDs; ordinary panes reopen as shells in their saved directories, without replaying commands or scrollback. Metadata lives under `~/.handmux/workspaces/`; it can include paths, tmux names/layout and agent session IDs, but not pane output.
 
 ## Script push
 

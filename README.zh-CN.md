@@ -83,7 +83,7 @@ handmux start --tunnel cloudflare   # 即时公网地址(自动装 cloudflared)
 
 ## 工作区恢复
 
-handmux 会持续维护最新工作区元数据的两份容灾副本。它们不是操作历史:日常变动和主动删除只会更新当前状态。只有电脑或 tmux 环境换代时才归档可选择的 checkpoint。最近 24 小时内的全部保留;更早历史再裁到最新 10 份,最新有效 checkpoint 不会只因过期而消失。
+handmux 会持续维护最新工作区元数据的两份容灾副本。它们不是操作历史:日常变动和 handmux 能确认的主动删除只会更新当前状态。只有电脑或 tmux 环境换代时才归档可选择的 checkpoint。若最后一个 tmux 会话在 handmux 外消失，tmux 无法区分主动删除与崩溃；为保留崩溃恢复能力，handmux 会保留最后状态。最近 24 小时内的全部保留;更早历史再裁到最新 10 份,最新有效 checkpoint 不会只因过期而消失。
 
 重启后若 checkpoint 里还有内容待恢复,手机会在一小时内显示「恢复上次工作区」;若 tmux 当前没有任何会话,则直接打开确认弹窗。在手机上忽略后,该 checkpoint 只在这台手机上不再提示。手机提示过期后,CLI 仍一直可用:
 
@@ -94,7 +94,7 @@ handmux restore --list                           # 列出保留的 checkpoint
 handmux restore --checkpoint <id> --session api  # 选历史 / 只恢复一个会话
 ```
 
-恢复是只新增、可重复执行的:不会停止或修改当前会话;同名时依次改为 `name-restored`、`name-restored-2`。在安全可表达的范围内重建窗口、窗格、工作目录和布局。只有经过验证的 Claude Code / Codex 会话会用已持久化的 session ID 续接;普通 pane 只在原目录打开 shell,不会重放命令或保存的终端输出。元数据位于 `~/.handmux/workspaces/`,可能包含路径、tmux 名称/布局和 agent session ID,但不包含 pane 输出。
+恢复是只新增、可重复执行的:不会停止、改名、替换或改变当前会话的拓扑;同名时依次改为 `name-restored`、`name-restored-2`。在安全可表达的范围内重建窗口、窗格、工作目录和布局。只有经过验证的 Claude Code / Codex 会话会用已持久化的 session ID 续接;普通 pane 只在原目录打开 shell,不会重放命令或保存的终端输出。元数据位于 `~/.handmux/workspaces/`,可能包含路径、tmux 名称/布局和 agent session ID,但不包含 pane 输出。
 
 ## 脚本推送
 
