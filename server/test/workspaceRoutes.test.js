@@ -13,7 +13,7 @@ const WINDOW_ID = '20000000-0000-4000-8000-000000000011';
 const PANE_ID = '20000000-0000-4000-8000-000000000021';
 
 const mapping = buildRecoveryMapping('checkpoint-a', null, [{
-  names: { api: 'api-restored' },
+  names: { 'project/api': 'team\\api' },
   runtime: { sessions: { '$1': '$10' }, windows: { '@1': '@10' }, panes: { '%1': '%10' } },
   logical: { sessions: { [SESSION_OK]: '$10' }, windows: { [WINDOW_ID]: '@10' }, panes: { [PANE_ID]: '%10' } },
 }], () => Date.parse('2026-07-20T02:03:00.000Z'));
@@ -206,7 +206,12 @@ describe('workspace API routes', () => {
         id: OPERATION_ID,
         kind: 'workspace-restore',
         status: 'partial',
-        request: { checkpointId: 'checkpoint-a', sessions: ['api', 'web'], historical: false, extra: '/Users/secret/request' },
+        request: {
+          checkpointId: 'checkpoint-a',
+          sessions: ['project/api', 'team\\api', 'docs & notes'],
+          historical: false,
+          extra: '/Users/secret/request',
+        },
         requestHash: 'secret-request-hash',
         ownerPid: 4242,
         createdAt: '2026-07-20T02:00:00.000Z',
@@ -217,8 +222,8 @@ describe('workspace API routes', () => {
         results: [
           {
             logicalId: SESSION_OK,
-            sourceName: 'api',
-            targetName: 'api-restored',
+            sourceName: 'project/api',
+            targetName: 'team\\api',
             status: 'restored',
             warnings: ['/Users/secret/project was missing'],
             cwd: '/Users/secret/project',
@@ -227,7 +232,7 @@ describe('workspace API routes', () => {
           },
           {
             logicalId: SESSION_FAILED,
-            sourceName: 'web',
+            sourceName: 'docs & notes',
             status: 'failed',
             stage: 'topology',
             error: 'tmux command failed at /Users/secret/project; stack-secret',
@@ -246,7 +251,11 @@ describe('workspace API routes', () => {
     expect(terminal.body).toEqual({
       id: OPERATION_ID,
       status: 'partial',
-      request: { checkpointId: 'checkpoint-a', sessions: ['api', 'web'], historical: false },
+      request: {
+        checkpointId: 'checkpoint-a',
+        sessions: ['project/api', 'team\\api', 'docs & notes'],
+        historical: false,
+      },
       createdAt: '2026-07-20T02:00:00.000Z',
       updatedAt: '2026-07-20T02:03:00.000Z',
       startedAt: '2026-07-20T02:01:00.000Z',
@@ -255,8 +264,8 @@ describe('workspace API routes', () => {
       results: [
         {
           logicalId: SESSION_OK,
-          sourceName: 'api',
-          targetName: 'api-restored',
+          sourceName: 'project/api',
+          targetName: 'team\\api',
           status: 'restored',
           stage: null,
           errorCode: null,
@@ -265,7 +274,7 @@ describe('workspace API routes', () => {
         },
         {
           logicalId: SESSION_FAILED,
-          sourceName: 'web',
+          sourceName: 'docs & notes',
           targetName: null,
           status: 'failed',
           stage: 'topology',
