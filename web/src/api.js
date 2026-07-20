@@ -130,6 +130,7 @@ export const getConfig = () => req('/api/config', { timeoutMs: 8000 });
 // { current, latest, updateAvailable } — is the installed CLI behind the latest npm release? Checked once
 // per app launch; when true the phone hints the user to run `handmux update` on their computer.
 export const getServerVersion = () => req('/api/version', { timeoutMs: 8000 });
+export const getWorkspaceProtectionStatus = () => req('/api/workspace/status', { timeoutMs: 8000 });
 export const getWorkspaceRestorePlan = (checkpointId = 'latest') =>
   req(`/api/workspace/restore-plan?checkpoint=${encodeURIComponent(checkpointId)}`, { timeoutMs: 8000 });
 export const startWorkspaceRestore = (body = { checkpointId: 'latest' }) =>

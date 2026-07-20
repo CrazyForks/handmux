@@ -443,7 +443,7 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .input-text:focus { outline: none; }
 .input-text::placeholder { color: #6b7280; }
 .token-prompt button { padding: 8px 14px; border: none; border-radius: 8px; background: var(--blue); color: #fff; }
-.drawer { position: fixed; top: 0; left: 0; width: 78%; max-width: 320px; height: 100%; background: #232427; transform: translateX(-100%); transition: transform .2s; z-index: 10; padding: 12px; display: flex; flex-direction: column; overflow: hidden; }
+.drawer { position: fixed; top: 0; left: 0; width: 78%; max-width: 320px; height: 100%; background: #232427; transform: translateX(-100%); transition: transform .2s; z-index: 10; padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; overflow: hidden; }
 .drawer.open { transform: translateX(0); }
 .drawer-list { flex: 1; min-height: 0; overflow-y: auto; }
 /* Logout pinned at the drawer's bottom — a low-traffic action kept out of the way. */
@@ -460,6 +460,56 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 /* Open the bind modal — the only way to add a session, since the list is user-curated. */
 .drawer-bind { width: 100%; margin-top: 8px; padding: 10px; border: none; border-radius: 8px; background: #2b3550; color: #cdddff; font-size: 14px; touch-action: manipulation; }
 .drawer-bind:active { background: #344168; }
+
+/* Workspace recovery: a quiet, full-width Drawer card plus a centered system-style confirmation.
+   The card stays in the scroll area (before logout), while the dialog actions remain reachable on short
+   screens. Every new control meets the 44px touch target and uses the existing dark iOS palette. */
+.workspace-recovery-card {
+  width: 100%; min-height: 44px; margin-top: 12px; padding: 12px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  border: .5px solid rgba(var(--blue-rgb), .32); border-radius: 12px;
+  background: rgba(var(--blue-rgb), .09); color: #dce9ff; text-align: left;
+  font: inherit; touch-action: manipulation;
+}
+.workspace-recovery-card:active { background: rgba(var(--blue-rgb), .17); }
+.workspace-recovery-card strong { font-size: 13px; font-weight: 600; }
+.workspace-recovery-card > span { color: #929aa6; font-size: 11.5px; line-height: 1.4; }
+.workspace-recovery-card .workspace-recovery-action { color: var(--blue); font-size: 13px; font-weight: 600; margin-top: 3px; }
+.workspace-recovery-card .workspace-recovery-partial { color: #d7a29e; }
+
+.workspace-restore-backdrop { z-index: 30; background: rgba(0,0,0,.62); }
+.workspace-restore-dialog { z-index: 31; max-width: 380px; }
+.workspace-restore-close { width: 44px; height: 44px; margin: -7px -7px -7px 0; }
+.workspace-restore-body { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.workspace-restore-reason { color: #f0f1f3; font-size: 15px; font-weight: 600; }
+.workspace-restore-time { margin-top: 4px; color: #8f949c; font-size: 12px; font-variant-numeric: tabular-nums; }
+.workspace-restore-summary { margin-top: 14px; color: #d9dce1; font-size: 13px; font-variant-numeric: tabular-nums; }
+.workspace-restore-plan { margin-top: 6px; color: #aebed3; font-size: 13px; font-weight: 600; }
+.workspace-restore-note { margin-top: 12px; color: #8f949c; font-size: 12px; line-height: 1.5; }
+.workspace-restore-renames { margin: 6px 0 0; padding-left: 20px; color: #c8ced8; font-size: 12px; line-height: 1.55; }
+.workspace-restore-progress, .workspace-restore-success {
+  margin-top: 14px; padding: 9px 10px; border-radius: 8px;
+  background: rgba(var(--blue-rgb), .12); color: #8fc4ff; font-size: 13px;
+  font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.workspace-restore-progress.partial { background: rgba(255,159,10,.10); color: #e0b066; }
+.workspace-restore-success { background: rgba(var(--green-rgb), .10); color: #7eda98; }
+.workspace-restore-errors {
+  margin: 12px 0 0; padding: 9px 10px 9px 26px; border-radius: 8px;
+  background: rgba(255,69,58,.10); color: #e3aaa6; font-size: 12px; line-height: 1.5;
+}
+div.workspace-restore-errors { padding-left: 10px; }
+.workspace-restore-actions { flex: none; display: flex; flex-direction: column; gap: 4px; margin-top: 14px; }
+.workspace-restore-primary, .workspace-restore-ignore {
+  min-height: 44px; border: none; border-radius: 9px; font-size: 14px; font-weight: 600; touch-action: manipulation;
+}
+.workspace-restore-primary { background: var(--blue); color: #fff; }
+.workspace-restore-primary:active { background: var(--blue-press); }
+.workspace-restore-primary:disabled, .workspace-restore-ignore:disabled { opacity: .48; }
+.workspace-restore-ignore { background: transparent; color: #d4837e; font-weight: 500; }
+.workspace-restore-ignore:active { background: rgba(255,69,58,.08); }
+.settings-protection-warning { margin-top: 4px; }
+.settings-protection-title { color: #ff918a; font-size: 13px; font-weight: 600; }
 .token-prompt { max-width: 360px; margin: 80px auto; display: flex; flex-direction: column; gap: 12px; padding: 0 16px; }
 .token-prompt input { padding: 10px; border-radius: 8px; border: 1px solid #444; background: #1a1b1e; color: #fff; }
 .loading { padding: 40px; text-align: center; color: #888; }

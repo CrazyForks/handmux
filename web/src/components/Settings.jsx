@@ -16,6 +16,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   hooksStatus = null, onEnableHooks = null,
   notifUnread = false, onOpenInbox,
   updateInfo = null, windowId = null,
+  workspaceProtection = null,
   activePreview = null, pane = null, lastPreviewDir = null, dynamicEnabled = false,
   getColCount = null,
   onStartPreview, onStartDynamicPreview, onOpenPreview, onRenew, onStop }) {
@@ -130,6 +131,8 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
     setCols(getColCount?.() ?? null);
   };
   const restoreCol = () => { colReadRef.current += 1; onColRestore?.(); setCols(null); };
+  const protectionReason = ['live-corrupt', 'live-unavailable'].includes(workspaceProtection?.errorCode)
+    ? workspaceProtection.errorCode : 'unknown';
 
   return (
     <>
@@ -142,6 +145,13 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
 
         <div className="settings-body">
         <div className="settings-group">{t('settings.group_global')}</div>
+
+        {workspaceProtection?.status === 'degraded' && (
+          <div className="settings-section settings-protection-warning" role="status">
+            <div className="settings-protection-title">{t('workspace.protectionTitle')}</div>
+            <div className="settings-hint">{t(`workspace.protection.${protectionReason}`)}</div>
+          </div>
+        )}
 
         <div className="settings-section">
           <div className="settings-label">{t('settings.language')}</div>

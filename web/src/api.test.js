@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  getWorkspaceProtectionStatus,
   getWorkspaceRestoreOperation,
   getWorkspaceRestorePlan,
   startWorkspaceRestore,
@@ -17,6 +18,14 @@ const jsonRes = (status, body) => ({
 });
 
 describe('workspace restore api', () => {
+  it('gets the current workspace protection status', async () => {
+    const fetchMock = vi.fn(async () => jsonRes(200, { status: 'protected' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getWorkspaceProtectionStatus()).resolves.toEqual({ status: 'protected' });
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/workspace/status');
+  });
+
   it('gets the server-authored latest restore plan', async () => {
     const fetchMock = vi.fn(async () => jsonRes(200, { checkpointId: 'checkpoint-a' }));
     vi.stubGlobal('fetch', fetchMock);

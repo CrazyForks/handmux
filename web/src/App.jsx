@@ -10,6 +10,8 @@ import {
   getVersionSeen, setVersionSeen,
   getReadInboxIds, addReadInboxId, pruneReadInboxIds, getNotifSeenTs, setNotifSeenTs,
   getPreviewDir, getIdeas, getChatTone, setChatTone, getChatLensEnabled, setChatLensEnabled,
+  getWorkspacePromptState, markWorkspaceAutoShown, ignoreWorkspaceCheckpoint,
+  applyWorkspaceRestoreMapping,
 } from './storage.js';
 import { LATEST_RELEASE } from './changelog.js';
 import {
@@ -18,6 +20,7 @@ import {
   renameSession, renameWindow, deleteWindow, swapWindows, fetchDoc, fetchImageUrl,
   getStates, getOrphans, takeoverOrphan,
   getServerVersion,
+  getWorkspaceProtectionStatus, getWorkspaceRestorePlan, startWorkspaceRestore, getWorkspaceRestoreOperation,
   splitPane as apiSplitPane, closePane as apiClosePane,
 } from './api.js';
 import { runSplitPane, runClosePane } from './paneActions.js';
@@ -45,6 +48,7 @@ import ChatView from './components/ChatView.jsx';
 import { slashEchoFor } from './slashCommands.js';
 import TokenPrompt from './components/TokenPrompt.jsx';
 import Settings from './components/Settings.jsx';
+import WorkspaceRestoreDialog from './components/WorkspaceRestoreDialog.jsx';
 import UsagePage from './components/UsagePage.jsx';
 import Inbox from './components/Inbox.jsx';
 import OrphanTakeoverSheet from './components/OrphanTakeoverSheet.jsx';
@@ -72,6 +76,7 @@ import { readRoute, writeSessionHash } from './hashRoute.js';
 import { hasShareFlag, takeSharedFile, clearShareFlag } from './shareIntake.js';
 import { windowManageSubtitle, paneManageSubtitle } from './manageLabels.js';
 import { DEFAULT_SERVER_SHORTCUTS } from './shortcutMerge.js';
+import { recoveryPromptMode } from './workspaceRecovery.js';
 
 const COL_STEP = 10; // columns added/removed per ⊟/⊞ tap
 
@@ -115,6 +120,11 @@ export default function App() {
   const [recent, setRecent] = useState([]); // current session's recent commands (keyed by session name)
   const [current, setCurrent] = useState(null); // { session, windows, window, panes, paneId }
   const [booting, setBooting] = useState(true);
+  const [recoveryPlan, setRecoveryPlan] = useState(null);
+  const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false);
+  const [recoveryOperation, setRecoveryOperation] = useState(null);
+  const [recoverySubmitting, setRecoverySubmitting] = useState(false);
+  const [workspaceProtection, setWorkspaceProtection] = useState(null);
   const [states, setStates] = useState({}); // pane → {session,window,kind,…} from /api/states
   const [lens, setLens] = useState('terminal'); // 'terminal' | 'chat' — per-pane, remembered in localStorage
   useEffect(() => {
@@ -209,11 +219,25 @@ export default function App() {
   const dockRef = useRef(null); // imperative handle into BottomDock — idea panel fills its input box
   const tmuxColsRef = useRef(null); // target col count, so taps accumulate (term.cols lags ~1s)
   const savedLayoutRef = useRef(null); // window_layout captured before our first resize, for ↺
+  const recoveryPlanRef = useRef(null); recoveryPlanRef.current = recoveryPlan;
+  const restoreInFlightRef = useRef(false);
+  const liveSessionCountRef = useRef(null);
 
   const onAuthFail = useCallback(() => setNeedToken(true), []);
   // Shared catch prelude: bounce to the token prompt on an auth failure, and report whether it WAS one so
   // each handler keeps its own non-auth control flow (swallow / return / rethrow). See authGuard.js.
   const handledAuth = useCallback((e) => authHandled(e, onAuthFail), [onAuthFail]);
+  const closeRecovery = useCallback(() => {
+    const checkpointId = recoveryPlanRef.current?.checkpointId;
+    if (checkpointId) markWorkspaceAutoShown(checkpointId);
+    setRecoveryDialogOpen(false);
+  }, []);
+  const ignoreRecovery = useCallback(() => {
+    const checkpointId = recoveryPlanRef.current?.checkpointId;
+    if (checkpointId) ignoreWorkspaceCheckpoint(checkpointId);
+    setRecoveryDialogOpen(false);
+    setRecoveryPlan(null);
+  }, []);
 
   // The in-app preview subsystem (registry state, active-preview derivation, start/stop/renew/open),
   // extracted verbatim into a hook — it coordinates with Settings' history entry via settingsOpen.
@@ -254,6 +278,7 @@ export default function App() {
   // mid-navigation).
   useBackButton(previewSheetOpen, () => setPreviewSheetOpen(false));
   useBackButton(drawerOpen, () => setDrawerOpen(false));
+  useBackButton(recoveryDialogOpen, closeRecovery);
   useBackButton(inboxOpen, () => setInboxOpen(false));
   useBackButton(usageOpen, () => setUsageOpen(false));
   useBackButton(bindOpen, () => setBindOpen(false));
@@ -391,6 +416,150 @@ export default function App() {
     savedLayoutRef.current = null;
     return true;
   }, []);
+
+  const applyRecoveryMapping = useCallback((mapping) => {
+    if (!mapping) return;
+    applyWorkspaceRestoreMapping(mapping);
+    // A restored `-restored` name may have been added to the persisted bindings by the mapping.
+    // Refresh React state from that same source so the Drawer reflects it immediately.
+    setBound(getBoundSessions());
+  }, []);
+
+  const consumeRecoveryPlan = useCallback((plan, liveSessionCount) => {
+    if (plan?.mapping) applyRecoveryMapping(plan.mapping);
+    // Never let a concurrent 15s plan poll dismiss an operation that is still running. Its terminal
+    // operation response owns the final card/dialog transition.
+    if (restoreInFlightRef.current) return;
+    const prompt = getWorkspacePromptState(plan?.checkpointId);
+    const mode = recoveryPromptMode(plan, { ...prompt, liveSessionCount });
+    if (mode === 'none') {
+      setRecoveryPlan(null);
+      setRecoveryDialogOpen(false);
+      return;
+    }
+    const changedCheckpoint = recoveryPlanRef.current?.checkpointId
+      && recoveryPlanRef.current.checkpointId !== plan.checkpointId;
+    if (changedCheckpoint) setRecoveryOperation(null);
+    setRecoveryPlan(plan);
+    if (mode === 'auto-dialog') {
+      markWorkspaceAutoShown(plan.checkpointId);
+      setRecoveryDialogOpen(true);
+    } else if (changedCheckpoint) {
+      setRecoveryDialogOpen(false);
+    }
+  }, [applyRecoveryMapping]);
+
+  const navigateToRestoredSession = useCallback(async (result, plan, sessions) => {
+    const restored = (result?.results || []).filter((row) => row.status === 'restored');
+    if (restored.length === 0 || !Array.isArray(sessions)) return false;
+    const active = restored.find((row) => row.logicalId === plan?.active?.sessionId);
+    const chosen = active || restored[0];
+    const logical = result?.mapping?.logical || {};
+    const runtimeSessionId = logical.sessions?.[chosen.logicalId];
+    const session = sessions.find((row) => row.id === runtimeSessionId)
+      || sessions.find((row) => row.name === chosen.targetName)
+      || sessions.find((row) => row.name === result?.mapping?.names?.[chosen.sourceName]);
+    if (!session) return false;
+    const target = active ? {
+      window: logical.windows?.[plan?.active?.windowId],
+      pane: logical.panes?.[plan?.active?.paneId],
+    } : null;
+    setDrawerOpen(false);
+    return openSession(session, target?.window || target?.pane ? target : null);
+  }, [openSession]);
+
+  const startRecovery = useCallback(async () => {
+    const plan = recoveryPlanRef.current;
+    if (!plan || restoreInFlightRef.current) return;
+    restoreInFlightRef.current = true;
+    setRecoverySubmitting(true);
+    try {
+      const started = await startWorkspaceRestore({ checkpointId: plan.checkpointId });
+      if (!started?.operationId) throw new Error('restore operation id missing');
+      setRecoveryOperation({
+        id: started.operationId,
+        status: started.status || 'pending',
+        progress: { completed: 0, total: (plan.planSummary?.create || 0) + (plan.planSummary?.renamed || 0) },
+        results: [],
+      });
+    } catch (error) {
+      restoreInFlightRef.current = false;
+      setRecoverySubmitting(false);
+      if (!handledAuth(error)) {
+        setRecoveryOperation({ status: 'failed', errorCode: 'restore-failed', progress: { completed: 0, total: 0 }, results: [] });
+      }
+    }
+  }, [handledAuth]);
+
+  const recoveryOperationId = recoveryOperation?.id;
+  useEffect(() => {
+    if (!recoveryOperationId) return undefined;
+    let cancelled = false;
+    let timer = null;
+    const schedule = () => {
+      if (!cancelled) timer = setTimeout(poll, 1000);
+    };
+    const finish = async (result) => {
+      const finishedPlan = recoveryPlanRef.current;
+      const finishedCheckpointId = finishedPlan?.checkpointId;
+      restoreInFlightRef.current = false;
+      setRecoverySubmitting(false);
+      setRecoveryOperation(result.status === 'succeeded' ? null : result);
+      applyRecoveryMapping(result.mapping);
+
+      let sessions = null;
+      try {
+        sessions = await getSessions();
+        liveSessionCountRef.current = Array.isArray(sessions) ? sessions.length : 0;
+        await navigateToRestoredSession(result, finishedPlan, sessions);
+      } catch (error) {
+        handledAuth(error);
+      }
+
+      if (result.status === 'succeeded') {
+        setRecoveryPlan(null);
+        setRecoveryDialogOpen(false);
+      }
+
+      const [planResult, protectionResult] = await Promise.allSettled([
+        getWorkspaceRestorePlan(),
+        getWorkspaceProtectionStatus(),
+      ]);
+      if (cancelled) return;
+      if (protectionResult.status === 'fulfilled') setWorkspaceProtection(protectionResult.value);
+      else handledAuth(protectionResult.reason);
+      if (planResult.status === 'fulfilled' && liveSessionCountRef.current !== null) {
+        const refreshedPlan = planResult.value;
+        // Plan resolution and operation completion are separate server writes. If this refresh
+        // briefly sees the just-completed checkpoint as eligible, do not resurrect its prompt.
+        if (result.status === 'succeeded' && refreshedPlan?.checkpointId === finishedCheckpointId) {
+          applyRecoveryMapping(refreshedPlan.mapping);
+        } else {
+          consumeRecoveryPlan(refreshedPlan, liveSessionCountRef.current);
+        }
+      } else if (planResult.status === 'rejected') {
+        handledAuth(planResult.reason);
+      }
+    };
+    const poll = async () => {
+      try {
+        const result = await getWorkspaceRestoreOperation(recoveryOperationId);
+        if (cancelled) return;
+        setRecoveryOperation(result);
+        if (['succeeded', 'partial', 'failed', 'interrupted'].includes(result.status)) {
+          await finish(result);
+          return;
+        }
+      } catch (error) {
+        // A transport failure does not discard the persisted operation id. Keep polling that exact id;
+        // a 401 still returns to the token prompt through the normal auth path.
+        handledAuth(error);
+      }
+      schedule();
+    };
+    poll();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [recoveryOperationId, applyRecoveryMapping, consumeRecoveryPlan, navigateToRestoredSession, handledAuth]);
 
   // Switch to another window within the current session (its active pane). Session/hash unchanged.
   const selectWindow = useCallback(async (window) => {
@@ -1029,6 +1198,33 @@ export default function App() {
     return () => clearTimeout(id);
   }, [handoffToast]);
 
+  // Workspace recovery is a light authenticated poll: the server owns expiry/eligibility, while this
+  // browser owns only per-checkpoint autoShown/ignored state. allSettled keeps the protection warning
+  // fresh even when there is no checkpoint (restore-plan may legitimately be unavailable).
+  usePollingLoop({
+    fetch: async () => {
+      const [sessions, plan, protection] = await Promise.allSettled([
+        getSessions(), getWorkspaceRestorePlan(), getWorkspaceProtectionStatus(),
+      ]);
+      for (const row of [sessions, plan, protection]) if (row.status === 'rejected') handledAuth(row.reason);
+      return {
+        sessions: sessions.status === 'fulfilled' ? sessions.value : undefined,
+        plan: plan.status === 'fulfilled' ? plan.value : undefined,
+        protection: protection.status === 'fulfilled' ? protection.value : undefined,
+      };
+    },
+    apply: ({ sessions, plan, protection }) => {
+      if (protection !== undefined) setWorkspaceProtection(protection);
+      if (Array.isArray(sessions)) liveSessionCountRef.current = sessions.length;
+      if (plan?.mapping && liveSessionCountRef.current === null) applyRecoveryMapping(plan.mapping);
+      if (plan !== undefined && liveSessionCountRef.current !== null) {
+        consumeRecoveryPlan(plan, liveSessionCountRef.current);
+      }
+    },
+    intervalMs: 15000,
+    enabled: !needToken,
+  });
+
   // Initial open: resolve the target session by precedence hash > last > first, then open it.
   // The URL hash (#session-name) deep-links to a session; otherwise the last-opened session;
   // otherwise the first. openSession itself restores that session's remembered window/pane.
@@ -1176,6 +1372,7 @@ export default function App() {
       <Settings
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+        workspaceProtection={workspaceProtection}
         chatTone={chatTone}
         onChatTone={pickChatTone}
         chatLensEnabled={chatLensOn}
@@ -1229,6 +1426,18 @@ export default function App() {
         onLogout={logout}
         orphans={orphans}
         onTakeoverRequest={setTakeoverTarget}
+        recoveryPlan={recoveryPlan}
+        recoveryOperation={recoveryOperation}
+        onOpenRecovery={() => setRecoveryDialogOpen(true)}
+      />
+      <WorkspaceRestoreDialog
+        open={recoveryDialogOpen}
+        plan={recoveryPlan}
+        operation={recoveryOperation}
+        submitting={recoverySubmitting}
+        onRestore={startRecovery}
+        onIgnore={ignoreRecovery}
+        onClose={closeRecovery}
       />
       <BindSession
         open={bindOpen}

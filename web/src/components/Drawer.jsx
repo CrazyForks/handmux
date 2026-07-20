@@ -6,10 +6,12 @@
 import { useState } from 'react';
 import { t } from '../i18n';
 import { relTime } from '../inbox.js';
+import WorkspaceRecoveryCard from './WorkspaceRecoveryCard.jsx';
 
 export default function Drawer({
   open, currentSessionName, bound, onSelectSession, onUnbind, onBind, onClose, onLogout,
   orphans = [], onTakeoverRequest,
+  recoveryPlan = null, recoveryOperation = null, onOpenRecovery,
 }) {
   const [orphOpen, setOrphOpen] = useState(false);
   return (
@@ -73,6 +75,9 @@ export default function Drawer({
                 </>
               )}
             </div>
+          )}
+          {recoveryPlan && (
+            <WorkspaceRecoveryCard plan={recoveryPlan} operation={recoveryOperation} onOpen={onOpenRecovery} />
           )}
         </div>
         <button className="drawer-logout" onClick={onLogout}>{t('drawer.logout')}</button>
