@@ -4,6 +4,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Changed
+- 对话视图的权限确认卡改为左侧取消、右侧确认；取消需在 2 秒内再点一次才会执行，避免误触中断当前请求。
+
 ## [0.17.5] - 2026-07-20
 
 ### Fixed

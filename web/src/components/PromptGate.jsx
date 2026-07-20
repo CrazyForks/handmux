@@ -15,10 +15,20 @@ import { sendText, sendKeys, UnauthorizedError } from '../api.js';
 export default function PromptGate({ pane, prompt, onAuthFail, onAct }) {
   const first = prompt.cursor ?? prompt.options[0]?.n ?? null;
   const [sel, setSel] = useState(first);
+  const [cancelSig, setCancelSig] = useState(null);
   // Reset the local selection whenever the underlying screen changes (a new question / the review screen),
-  // keyed by a signature of the prompt so a stale pick never carries across steps.
+  // keyed by a signature of the prompt so a stale pick never carries across steps. Cancellation stores that
+  // same signature: a new screen is synchronously unarmed, without waiting for this effect to run.
   const sig = `${prompt.title}|${prompt.options.map((o) => `${o.n}:${o.label}`).join(',')}`;
+  const cancelArmed = cancelSig === sig;
   useEffect(() => { setSel(prompt.cursor ?? prompt.options[0]?.n ?? null); }, [sig]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A stray touch on the left button must not interrupt the agent. The first tap only arms cancellation;
+  // if the user does not deliberately tap it again soon, return to the safe idle state automatically.
+  useEffect(() => {
+    if (!cancelArmed) return undefined;
+    const timer = setTimeout(() => setCancelSig(null), 2000);
+    return () => clearTimeout(timer);
+  }, [cancelArmed]);
 
   const send = async (fn) => {
     try { await fn(); onAct?.(); }
@@ -26,6 +36,12 @@ export default function PromptGate({ pane, prompt, onAuthFail, onAct }) {
   };
   const pick = (n) => send(() => sendText(pane, String(n), false)); // bare digit = the menu hotkey
   const cancel = () => send(() => sendKeys(pane, ['Escape']));
+  const requestCancel = (action = cancel) => {
+    if (!cancelArmed) { setCancelSig(sig); return; }
+    setCancelSig(null);
+    action();
+  };
+  const cancelLabel = cancelArmed ? '再点一次取消' : '取消';
 
   // The multi-question review screen: options are Submit answers / Cancel — show it as a plain confirm.
   if (prompt.submit) {
@@ -35,8 +51,8 @@ export default function PromptGate({ pane, prompt, onAuthFail, onAct }) {
       <div className="chat-gate">
         <div className="chat-gate-prompt">复核并提交你的回答?</div>
         <div className="chat-gate-actions">
-          <button type="button" className="chat-gate-btn primary" onClick={() => pick(submitN)}>提交</button>
-          <button type="button" className="chat-gate-btn" onClick={() => (cancelOpt ? pick(cancelOpt.n) : cancel())}>取消</button>
+          <button type="button" className="chat-gate-btn" onClick={() => requestCancel(() => (cancelOpt ? pick(cancelOpt.n) : cancel()))}>{cancelLabel}</button>
+          <button type="button" className="chat-gate-btn primary" onClick={() => { setCancelSig(null); pick(submitN); }}>提交</button>
         </div>
       </div>
     );
@@ -50,15 +66,15 @@ export default function PromptGate({ pane, prompt, onAuthFail, onAct }) {
       <div className="chat-gate-options" role="radiogroup">
         {prompt.options.map((o) => (
           <button key={o.n} type="button" role="radio" aria-checked={sel === o.n}
-            className={`chat-gate-opt${sel === o.n ? ' on' : ''}`} onClick={() => setSel(o.n)}>
+            className={`chat-gate-opt${sel === o.n ? ' on' : ''}`} onClick={() => { setCancelSig(null); setSel(o.n); }}>
             <span className="chat-gate-opt-label">{o.label}</span>
             {o.description && <span className="chat-gate-opt-desc">{o.description}</span>}
           </button>
         ))}
       </div>
       <div className="chat-gate-actions">
-        <button type="button" className="chat-gate-btn primary" disabled={sel == null} onClick={() => pick(sel)}>确认</button>
-        <button type="button" className="chat-gate-btn" onClick={cancel}>取消</button>
+        <button type="button" className="chat-gate-btn" onClick={() => requestCancel()}>{cancelLabel}</button>
+        <button type="button" className="chat-gate-btn primary" disabled={sel == null} onClick={() => { setCancelSig(null); pick(sel); }}>确认</button>
       </div>
     </div>
   );

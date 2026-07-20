@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 
 vi.mock('../src/api.js', () => ({
   sendText: vi.fn(async () => ({ ok: true })),
@@ -42,11 +42,32 @@ describe('PromptGate', () => {
     expect(onAct).toHaveBeenCalled();
   });
 
-  it('取消 sends Escape', async () => {
+  it('puts 取消 on the left and 确认 on the right', () => {
+    const { container } = render(<PromptGate pane="%1" prompt={askPrompt} />);
+    const labels = [...container.querySelectorAll('.chat-gate-actions button')].map((button) => button.textContent);
+    expect(labels).toEqual(['取消', '确认']);
+  });
+
+  it('取消 needs two taps so one stray tap cannot send Escape', async () => {
     render(<PromptGate pane="%1" prompt={askPrompt} />);
     fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect(sendKeys).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '再点一次取消' }));
     await Promise.resolve();
     expect(sendKeys).toHaveBeenCalledWith('%1', ['Escape']);
+  });
+
+  it('取消的二次确认会自动失效', () => {
+    vi.useFakeTimers();
+    try {
+      render(<PromptGate pane="%1" prompt={askPrompt} />);
+      fireEvent.click(screen.getByRole('button', { name: '取消' }));
+      act(() => vi.advanceTimersByTime(2500));
+      expect(screen.getByRole('button', { name: '取消' })).toBeTruthy();
+      expect(sendKeys).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows "第 i/N 题" progress for a multi-question step', () => {
@@ -64,13 +85,15 @@ describe('PromptGate', () => {
     expect(c2.querySelector('.chat-gate-leadin')).toBeNull();
   });
 
-  it('the review screen renders 提交/取消 and 提交 sends the "Submit answers" digit', async () => {
+  it('the review screen renders left 取消 / right 提交 and 提交 sends the "Submit answers" digit', async () => {
     const review = {
       kind: 'question', title: 'review', submit: true, multi: true, step: 2, total: 2,
       options: [{ n: 1, label: 'Submit answers', description: '' }, { n: 2, label: 'Cancel', description: '' }],
     };
-    render(<PromptGate pane="%1" prompt={review} />);
+    const { container } = render(<PromptGate pane="%1" prompt={review} />);
     expect(screen.queryByRole('radio')).toBeNull(); // not a radio list — a plain confirm
+    const labels = [...container.querySelectorAll('.chat-gate-actions button')].map((button) => button.textContent);
+    expect(labels).toEqual(['取消', '提交']);
     fireEvent.click(screen.getByRole('button', { name: '提交' }));
     await Promise.resolve();
     expect(sendText).toHaveBeenCalledWith('%1', '1', false);
