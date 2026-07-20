@@ -71,6 +71,7 @@ handmux start --tunnel cloudflare   # 即时公网地址(自动装 cloudflared)
 - **对话视图（实验性）**——把 Claude 会话当成聊天来看、来驱动,而不是终端:气泡 + Markdown 正文、带彩色 diff 的工具卡、点按即答的问题卡、暖色配色。实验性功能,可能不稳定:在设置里开启「启用对话视图(实验性功能)」后,从窗口栏切换视图。
 - **命令 / 聊天双模式**——底部一栏两种模式:直接敲进终端,或用自然语言发给 agent。`handmux shortcuts` 可直接添加按键或文字,文字明确是否回车,排序时可一次移动到任意位置;手机仍可在 ⚙ 面板增加和编辑本机项。修改会立即应用到正在运行的 server,手机每次回到前台自动读取,无需重启或轮询。
 - **脚本推送**——用 `handmux push` 从脚本或 CI 步骤推消息到手机,可指定全部设备、某个会话或某台设备。
+- **工作区恢复**——handmux 静默保存重建最新 tmux 工作区所需的元数据。电脑或 tmux server 重启后,可从手机或 `handmux restore` 把旧工作区恢复到新会话旁边,绝不替换现有会话。
 - **Git 查看器**——改动 / 提交历史 / 任意分支 / 全屏彩色 diff,多仓库分页,只读不动工作区。
 - **站点预览**——挑目录预览静态站,或按端口预览正跑的 HTTP/HTTPS 服务(路由 / 接口 / HMR 全保留)。
 - **文档**——终端里点路径即开;Markdown 排版、字号缩放、逐句高亮朗读。
@@ -79,6 +80,21 @@ handmux start --tunnel cloudflare   # 即时公网地址(自动装 cloudflared)
 - **想法 · 随想随记**——不错过任何点子:每窗口一份想法清单,灵感一冒就记(能语音速记),一点填进输入框。
 - **专治弱网**——退避重连、掉线横幅、离线兜底页、后台暂停轮询;光标不乱跳。
 - **零安装 PWA**——浏览器直接跑,可加主屏全屏运行;多语言(English、简体 / 繁體中文、日本語、한국어)。
+
+## 工作区恢复
+
+handmux 会持续维护最新工作区元数据的两份容灾副本。它们不是操作历史:日常变动和主动删除只会更新当前状态。只有电脑或 tmux 环境换代时才归档可选择的 checkpoint。最近 24 小时内的全部保留;更早历史再裁到最新 10 份,最新有效 checkpoint 不会只因过期而消失。
+
+重启后若 checkpoint 里还有内容待恢复,手机会在一小时内显示「恢复上次工作区」;若 tmux 当前没有任何会话,则直接打开确认弹窗。在手机上忽略后,该 checkpoint 只在这台手机上不再提示。手机提示过期后,CLI 仍一直可用:
+
+```bash
+handmux restore --dry-run                         # 预览最新恢复计划
+handmux restore                                  # 恢复;TTY 交互选择,非 TTY 用最新
+handmux restore --list                           # 列出保留的 checkpoint
+handmux restore --checkpoint <id> --session api  # 选历史 / 只恢复一个会话
+```
+
+恢复是只新增、可重复执行的:不会停止或修改当前会话;同名时依次改为 `name-restored`、`name-restored-2`。在安全可表达的范围内重建窗口、窗格、工作目录和布局。只有经过验证的 Claude Code / Codex 会话会用已持久化的 session ID 续接;普通 pane 只在原目录打开 shell,不会重放命令或保存的终端输出。元数据位于 `~/.handmux/workspaces/`,可能包含路径、tmux 名称/布局和 agent session ID,但不包含 pane 输出。
 
 ## 脚本推送
 

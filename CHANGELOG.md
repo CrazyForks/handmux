@@ -6,6 +6,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ### Added
 - 新增 `handmux shortcuts` 交互式向导，可分别配置命令 / 聊天模式的必备常用项；可直接选择添加按键或文字，文字可设置是否附带 Enter，排序时可一次移动到任意位置。配置项在手机端只读并固定排在本机自定义项之前。
+- 自动维护最新 tmux 工作区的双份元数据，并在电脑或 tmux 环境换代时归档可恢复 checkpoint；手机可在重启后一小时内非破坏性恢复，CLI 可随时列出、预览或按 checkpoint / session 恢复历史。
+- 恢复会安全重建 session、linked window、pane、工作目录与布局，并只对经过验证的 Claude Code / Codex 会话执行 resume；同名会话自动使用 `-restored` 后缀，当前会话与普通 pane 命令不会被修改或重放。
 
 ### Changed
 - 窗口管理与分屏管理弹窗现在使用明确标题，并在标题下以小字显示当前终端的列×行尺寸。
@@ -13,6 +15,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ### Fixed
 - 优化动态预览续期策略：打开预览后不再自动续期；需要延长时可手动点「续期」或重新打开本机链接。
+- tmux 3.0+ 的旧版 client/server 不再因控制字符格式分隔符而错误解析工作区；从未 attach 的 session 和 linked window 的重复 pane 输出也会被兼容处理，矛盾数据仍安全拒绝。
 
 ## [0.17.8] - 2026-07-20
 

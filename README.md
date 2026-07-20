@@ -71,6 +71,7 @@ handmux start --tunnel cloudflare   # instant public URL (cloudflared auto-insta
 - **Chat view (experimental)** — read and drive a Claude session as a chat instead of a terminal: bubbles with Markdown, tool cards with colored diffs, question cards you answer with a tap, warm colour tones. Experimental — may be unstable: enable it in Settings → 启用对话视图 / Enable chat view, then switch views from the window bar.
 - **Command & chat modes** — one bottom bar, two modes: type straight into the terminal, or talk to the agent in natural language. `handmux shortcuts` directly adds a key or text item, makes Enter behavior explicit, and moves an item to any position in one step; phone-local additions stay editable in the ⚙ panel. Changes apply to a running server immediately, and the phone reloads them whenever it returns to the foreground—no restart or polling required.
 - **Script push** — notify your phone from any script or CI step with `handmux push`; target all devices, a named session, or a specific device.
+- **Workspace recovery** — handmux silently keeps the metadata needed to rebuild your latest tmux workspace. After a computer or tmux-server restart, restore it beside any new sessions from the phone or with `handmux restore`; existing sessions are never replaced.
 - **Git viewer** — changes / commit history / any branch / full-screen colored diff, multi-repo tabs, read-only, never touches your tree.
 - **Site preview** — a static folder, or a running HTTP/HTTPS service by port (routing / APIs / live-reload intact), in a phone or desktop viewport.
 - **Docs** — tap a path in the terminal to open it; Markdown rendered, font zoom, sentence-by-sentence read-aloud.
@@ -79,6 +80,21 @@ handmux start --tunnel cloudflare   # instant public URL (cloudflared auto-insta
 - **Ideas — catch every one** — a thought the moment it strikes: a per-window idea/to-do list, jot one by voice and drop it straight into the prompt.
 - **Built for flaky networks** — backoff reconnect, connection-lost banner, offline page, polling that pauses in the background; a reflow-safe cursor.
 - **Zero-install PWA** — runs in the browser; add to home screen for full-screen. Multilingual — English, 简体 / 繁體中文, 日本語, 한국어.
+
+## Workspace recovery
+
+handmux continuously maintains two redundant copies of the latest workspace metadata. They are not browsing history: ordinary changes and deliberate deletions simply update the current state. A selectable checkpoint is archived only when the computer or tmux environment changes. Every checkpoint from the latest 24 hours is kept; older history is then trimmed to the newest 10, while the latest valid checkpoint never expires just because of age.
+
+After such a restart, the phone shows **Restore last workspace** for one hour when a checkpoint has work left to restore; if tmux has no sessions it opens the confirmation directly. Choosing **Ignore this backup** suppresses that checkpoint only on that phone; an ordinary close does not. The CLI remains available after the phone prompt expires:
+
+```bash
+handmux restore --dry-run                         # preview the latest plan
+handmux restore                                  # restore; TTY picker, otherwise latest
+handmux restore --list                           # list retained checkpoints
+handmux restore --checkpoint <id> --session api  # select history / restore one session
+```
+
+Restore is additive and idempotent. It never stops or changes a current session; a name collision becomes `name-restored`, then `name-restored-2`. Windows, panes, working directories and layouts are rebuilt where safe. Only verified Claude Code/Codex sessions are resumed from their persisted session IDs; ordinary panes reopen as shells in their saved directories, without replaying commands or scrollback. Metadata lives under `~/.handmux/workspaces/`; it can include paths, tmux names/layout and agent session IDs, but not pane output.
 
 ## Script push
 
