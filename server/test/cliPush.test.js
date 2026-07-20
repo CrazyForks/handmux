@@ -51,4 +51,42 @@ describe('runPush', () => {
     expect(JSON.parse(captured.opts.body)).toMatchObject({ title: 't', body: 'b', devices: ['k1'] });
     expect(logs.join(' ')).toMatch(/1/);
   });
+
+  it('returns non-zero when no notification was delivered', async () => {
+    writeState({ localUrl: 'http://localhost:12345', token: 'tok' }, home);
+    const fetchImpl = async () => ({ ok: true, json: async () => ({ configured: true, sent: 0, failed: 0, gone: 0 }) });
+    const logs = []; const errs = [];
+    const code = await runPush({ argv: ['push', 't', 'b'], home, fetchImpl, log: (m) => logs.push(m), err: (m) => errs.push(m) });
+    expect(code).not.toBe(0);
+    expect(logs).toEqual([]);
+    expect(errs.join(' ')).toMatch(/no notification|sent: 0/i);
+  });
+
+  it('returns non-zero with complete counts when every delivery fails', async () => {
+    writeState({ localUrl: 'http://localhost:12345', token: 'tok' }, home);
+    const fetchImpl = async () => ({ ok: true, json: async () => ({ configured: true, sent: 0, failed: 2, gone: 1 }) });
+    const errs = [];
+    const code = await runPush({ argv: ['push', 't', 'b'], home, fetchImpl, log: () => {}, err: (m) => errs.push(m) });
+    expect(code).not.toBe(0);
+    expect(errs.join(' ')).toMatch(/sent: 0.*failed: 2.*gone: 1/i);
+  });
+
+  it('returns non-zero and reports partial delivery', async () => {
+    writeState({ localUrl: 'http://localhost:12345', token: 'tok' }, home);
+    const fetchImpl = async () => ({ ok: true, json: async () => ({ configured: true, sent: 2, failed: 1, gone: 1 }) });
+    const logs = []; const errs = [];
+    const code = await runPush({ argv: ['push', 't', 'b'], home, fetchImpl, log: (m) => logs.push(m), err: (m) => errs.push(m) });
+    expect(code).not.toBe(0);
+    expect(logs).toEqual([]);
+    expect(errs.join(' ')).toMatch(/partial.*sent: 2.*failed: 1.*gone: 1/i);
+  });
+
+  it('returns zero only when at least one delivery succeeds and none fail', async () => {
+    writeState({ localUrl: 'http://localhost:12345', token: 'tok' }, home);
+    const fetchImpl = async () => ({ ok: true, json: async () => ({ configured: true, sent: 2, failed: 0, gone: 0 }) });
+    const logs = [];
+    const code = await runPush({ argv: ['push', 't', 'b'], home, fetchImpl, log: (m) => logs.push(m), err: () => {} });
+    expect(code).toBe(0);
+    expect(logs.join(' ')).toMatch(/sent: 2.*failed: 0.*gone: 0/i);
+  });
 });

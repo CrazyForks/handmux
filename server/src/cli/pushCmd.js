@@ -48,7 +48,13 @@ export async function runPush({ argv, home, fetchImpl = globalThis.fetch, log = 
     if (!res.ok) { err(`push failed: ${res.status}`); return 1; }
     const out = await res.json();
     if (out.configured === false) { err('push is not configured (no VAPID keys) — run `handmux setup`.'); return 1; }
-    log(`pushed (sent: ${out.sent})`);
+    const sent = Number.isFinite(out.sent) ? out.sent : 0;
+    const failed = Number.isFinite(out.failed) ? out.failed : 0;
+    const gone = Number.isFinite(out.gone) ? out.gone : 0;
+    const counts = `sent: ${sent}, failed: ${failed}, gone: ${gone}`;
+    if (sent === 0) { err(`no notification delivered (${counts})`); return 1; }
+    if (failed > 0) { err(`push partially failed (${counts})`); return 1; }
+    log(`pushed (${counts})`);
     return 0;
   } catch (e) { err(`push failed: ${e.message}`); return 1; }
 }
