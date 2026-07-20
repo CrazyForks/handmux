@@ -4,7 +4,7 @@ import express from 'express';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { transcriptRoutes } from '../src/routes/transcript.js';
+import { pageTranscript, transcriptRoutes } from '../src/routes/transcript.js';
 import { encodeProjectDir } from '../src/agents/scanUtils.js';
 import { claudeContextDir } from '../src/usage.js';
 
@@ -38,6 +38,47 @@ function fixtureSession(cwd) {
 // Stub claudeEvents whose paneSession always returns null — exercises the fallback (cwd→newest) path,
 // same as the pre-Task-14 behavior all the existing tests assert on.
 const noHook = { paneSession: () => null };
+
+describe('pageTranscript', () => {
+  const parsed = Array.from({ length: N }, (_, k) => ({ text: `msg-${k}` }));
+
+  it('returns the recent page with stable global ordinals', () => {
+    expect(pageTranscript(parsed, null, 4)).toEqual({
+      messages: [
+        { text: 'msg-11', k: 11 }, { text: 'msg-12', k: 12 },
+        { text: 'msg-13', k: 13 }, { text: 'msg-14', k: 14 },
+      ],
+      firstSeq: 11,
+      hasMore: true,
+    });
+  });
+
+  it('uses before as an exclusive, bounded history cursor', () => {
+    expect(pageTranscript(parsed, 11, 4)).toEqual({
+      messages: [
+        { text: 'msg-7', k: 7 }, { text: 'msg-8', k: 8 },
+        { text: 'msg-9', k: 9 }, { text: 'msg-10', k: 10 },
+      ],
+      firstSeq: 7,
+      hasMore: true,
+    });
+    expect(pageTranscript(parsed, -5, 4)).toEqual({ messages: [], firstSeq: null, hasMore: false });
+    expect(pageTranscript(parsed, 999, 4).messages.map((m) => m.k)).toEqual([11, 12, 13, 14]);
+  });
+
+  it('touches only the requested page, never every message in a long transcript', () => {
+    const accessed = [];
+    const long = new Proxy(Array.from({ length: 1000 }, (_, k) => ({ text: `msg-${k}` })), {
+      get(target, prop, receiver) {
+        if (typeof prop === 'string' && /^\d+$/.test(prop)) accessed.push(Number(prop));
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const page = pageTranscript(long, null, 10);
+    expect(page.messages.map((m) => m.k)).toEqual([990, 991, 992, 993, 994, 995, 996, 997, 998, 999]);
+    expect(accessed).toEqual([990, 991, 992, 993, 994, 995, 996, 997, 998, 999]);
+  });
+});
 
 describe('GET /api/transcript', () => {
   it('409s for an explicitly requested Codex lens before cwd fallback can read a Claude session', async () => {

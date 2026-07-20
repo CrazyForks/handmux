@@ -6,8 +6,9 @@
 //     client whether/where an older page starts.
 //   - History page (scroll-up, not polled): ?pane=&before=<k>&limit=10 — the last `limit` messages with
 //     `k < before`, no hash.
-// `k` = each message's global ordinal from `all.map((m,k)=>({...m,k}))` — stable because the jsonl is
-// append-only, so it doubles as the client's dedup key. The underlying reader asynchronously scans once,
+// `k` = each message's global ordinal in the parsed transcript — stable because the jsonl is append-only,
+// so it doubles as the client's dedup key. Only the requested page is copied and decorated with `k`; the
+// full parsed transcript is never mapped/filtered on every poll. The underlying reader asynchronously scans once,
 // then parses only appended complete lines; replacement/truncation resets it. `limit` clamps to [1,100],
 // default 10. Mounted under /api.
 import express from 'express';
@@ -19,6 +20,21 @@ import { resolveEncodedDirSession, encodeProjectDir } from '../agents/scanUtils.
 import { transcriptReader } from '../transcriptReader.js';
 import { parsePendingPrompt } from '../pendingPrompt.js';
 import { readClaudeContext } from '../usage.js';
+
+// Pure index-based projection: O(page size), not O(transcript size). `before` stays exclusive, including
+// for unusual fractional cursors (the old `k < before` filter included indices through ceil(before) - 1).
+export function pageTranscript(parsed, before, limit) {
+  const length = parsed.length;
+  const rawEnd = before == null ? length : (Number.isNaN(before) ? 0 : Math.ceil(before));
+  const end = Math.min(Math.max(rawEnd, 0), length);
+  const start = Math.max(0, end - Math.max(0, Math.trunc(limit)));
+  const messages = parsed.slice(start, end).map((message, offset) => ({ ...message, k: start + offset }));
+  return {
+    messages,
+    firstSeq: messages.length ? start : null,
+    hasMore: start > 0,
+  };
+}
 
 export function transcriptRoutes({ commands, claudeEvents, reader = transcriptReader }) {
   const r = express.Router();
@@ -86,11 +102,7 @@ export function transcriptRoutes({ commands, claudeEvents, reader = transcriptRe
       const empty = { messages: [], hash: '', session: sessionId || null, hasMore: false, firstSeq: null };
       if (!file) return res.json(empty);
       const parsed = await reader.read(file);
-      const all = parsed.map((m, k) => ({ ...m, k })); // k = stable global ordinal
-      const pool = before == null ? all : all.filter((m) => m.k < before);
-      const messages = pool.slice(-limit);
-      const firstSeq = messages.length ? messages[0].k : null;
-      const hasMore = pool.length > messages.length;
+      const { messages, firstSeq, hasMore } = pageTranscript(parsed, before, limit);
       if (before == null) {
         const hash = createHash('sha1').update(JSON.stringify(messages)).digest('hex').slice(0, 16);
         if (req.query.since === hash) return res.status(204).end();
