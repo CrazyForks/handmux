@@ -3,6 +3,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 const OWNER_FILE = 'owner.json';
+const SAFE_TOKEN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function defaultProcessAlive(pid) {
   try {
@@ -53,19 +54,21 @@ export function createWorkspaceLock({
   async function reclaimIfStale(record) {
     if (!record) return true;
     const owner = record.value;
+    if (!SAFE_TOKEN.test(owner?.token)) return false;
     const startedAt = Date.parse(owner?.startedAt);
     const age = now() - (Number.isFinite(startedAt) ? startedAt : record.mtimeMs);
     if (age < staleGraceMs) return false;
     if (Number.isInteger(owner?.pid) && await isProcessAlive(owner.pid)) return false;
 
-    const staleDir = `${dir}.stale-${pid}-${randomUUID()}`;
+    // Every contender that observed this owner uses the SAME destination. The winner leaves the renamed
+    // directory as a tombstone, so a loser cannot later rename a newly-created lock out of the way.
+    const staleDir = `${dir}.stale.${owner.token}`;
     try {
       await fs.rename(dir, staleDir);
     } catch (error) {
       if (error?.code === 'ENOENT') return true;
       return false;
     }
-    await fs.rm(staleDir, { recursive: true, force: true });
     return true;
   }
 
@@ -73,6 +76,7 @@ export function createWorkspaceLock({
     await fs.mkdir(path.dirname(dir), { recursive: true, mode: 0o700 });
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const token = randomUUID();
+      if (!SAFE_TOKEN.test(token)) throw new Error('workspace lock token must be a UUID');
       const owner = { pid, startedAt: new Date(now()).toISOString(), operationId, token };
       try {
         await fs.mkdir(dir, { mode: 0o700 });

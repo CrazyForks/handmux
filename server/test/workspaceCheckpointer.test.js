@@ -61,6 +61,42 @@ describe('workspace checkpointer', () => {
     expect(d.setTimeout).toHaveBeenLastCalledWith(expect.any(Function), 2_000);
   });
 
+  it('queues confirmed-empty behind a running reconcile and resolves only after the confirmation run', async () => {
+    let finishTimer;
+    let finishConfirmation;
+    const timerCapture = new Promise((resolve) => { finishTimer = resolve; });
+    const confirmationCapture = new Promise((resolve) => { finishConfirmation = resolve; });
+    const emptyEnvironment = { id: 'env-empty', bootIdentity: 'boot-new', tmuxServerId: null };
+    const empty = snapshot(emptyEnvironment, '2026-07-20T12:00:00.000Z', true);
+    const d = deps({
+      store: {
+        readLive: vi.fn(async () => ({ status: 'empty' })),
+        writeLive: vi.fn(async () => {}),
+        archiveEnvironment: vi.fn(),
+      },
+      observeEnvironment: vi.fn()
+        .mockResolvedValueOnce({ ...newEnvironment, status: 'present' })
+        .mockResolvedValueOnce({ ...emptyEnvironment, status: 'absent' }),
+      capture: vi.fn()
+        .mockImplementationOnce(() => timerCapture)
+        .mockImplementationOnce(() => confirmationCapture),
+    });
+    const checkpointer = createCheckpointer(d);
+    const timerRun = checkpointer.reconcile('timer');
+    await vi.waitFor(() => expect(d.capture).toHaveBeenCalledTimes(1));
+
+    let confirmationSettled = false;
+    const confirmation = checkpointer.confirmEmpty().finally(() => { confirmationSettled = true; });
+    finishTimer({ status: 'unknown' });
+    await timerRun;
+    await vi.waitFor(() => expect(d.capture).toHaveBeenCalledTimes(2));
+    expect(confirmationSettled).toBe(false);
+    finishConfirmation({ status: 'empty', snapshot: empty });
+
+    await expect(confirmation).resolves.toMatchObject({ status: 'written' });
+    expect(d.store.writeLive).toHaveBeenCalledWith(empty);
+  });
+
   it('does zero writes when the canonical fingerprint is unchanged', async () => {
     const before = snapshot(newEnvironment, '2026-07-20T10:00:00.000Z');
     const after = snapshot(newEnvironment, '2026-07-20T12:00:00.000Z');
@@ -77,6 +113,30 @@ describe('workspace checkpointer', () => {
 
     expect(d.store.writeLive).not.toHaveBeenCalled();
     expect(d.store.archiveEnvironment).not.toHaveBeenCalled();
+  });
+
+  it('projects a present observation before capture so status never changes the persisted fingerprint', async () => {
+    let live = { status: 'empty' };
+    const store = {
+      readLive: vi.fn(async () => live),
+      writeLive: vi.fn(async (value) => { live = { status: 'ok', value }; }),
+      archiveEnvironment: vi.fn(),
+    };
+    const capture = vi.fn(async (environment) => ({ status: 'ok', snapshot: snapshot(environment) }));
+    const d = deps({
+      store,
+      capture,
+      observeEnvironment: vi.fn(async () => ({ ...newEnvironment, status: 'present' })),
+    });
+    const checkpointer = createCheckpointer(d);
+
+    await checkpointer.reconcile('timer');
+    await checkpointer.reconcile('timer');
+
+    expect(capture).toHaveBeenCalledWith(newEnvironment);
+    expect(store.writeLive).toHaveBeenCalledTimes(1);
+    expect(live.value.environment).toEqual(newEnvironment);
+    expect(live.value.environment).not.toHaveProperty('status');
   });
 
   it('never overwrites live state when environment observation or capture is unknown', async () => {
@@ -131,8 +191,26 @@ describe('workspace checkpointer', () => {
       endedReason: 'boot-changed',
       detectedAt: '2026-07-20T12:00:00.000Z',
     });
+    expect(d.capture.mock.invocationCallOrder[0]).toBeLessThan(d.store.archiveEnvironment.mock.invocationCallOrder[0]);
     expect(d.store.archiveEnvironment.mock.invocationCallOrder[0]).toBeLessThan(d.store.writeLive.mock.invocationCallOrder[0]);
     expect(d.store.writeLive).toHaveBeenCalledWith(expect.objectContaining({ environment: newEnvironment }));
+  });
+
+  it.each(['unknown', 'changed-during-capture'])('does not archive a replaced environment when new capture is %s', async (status) => {
+    const d = deps({
+      store: {
+        readLive: vi.fn(async () => ({ status: 'ok', value: snapshot(oldEnvironment) })),
+        archiveEnvironment: vi.fn(),
+        writeLive: vi.fn(),
+      },
+      observeEnvironment: vi.fn(async () => ({ ...newEnvironment, status: 'present' })),
+      capture: vi.fn(async () => ({ status })),
+    });
+
+    await createCheckpointer(d).reconcile('timer');
+
+    expect(d.store.archiveEnvironment).not.toHaveBeenCalled();
+    expect(d.store.writeLive).not.toHaveBeenCalled();
   });
 
   it('keeps old live untouched if archiving the replaced environment fails', async () => {

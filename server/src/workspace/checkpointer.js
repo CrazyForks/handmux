@@ -6,6 +6,14 @@ function sameSnapshot(left, right) {
   return fingerprintSnapshot(left) === fingerprintSnapshot(right);
 }
 
+function snapshotEnvironment(observed) {
+  return {
+    id: observed.id,
+    bootIdentity: observed.bootIdentity,
+    tmuxServerId: observed.tmuxServerId,
+  };
+}
+
 async function reconcileOnce(deps, cause) {
   const handle = await deps.lock.tryAcquire({ operationId: `checkpointer:${cause}` });
   if (!handle) return { status: 'locked' };
@@ -22,19 +30,11 @@ async function reconcileOnce(deps, cause) {
     }
     if (change.status === 'unknown') return change;
 
-    if (change.status === 'changed') {
-      const archived = await deps.store.archiveEnvironment({
-        endedReason: change.reason,
-        detectedAt: new Date(deps.now()).toISOString(),
-      });
-      if (archived.status !== 'ok' && archived.status !== 'empty') return archived;
-    }
-
     // An absent tmux server is not proof of an intentionally empty workspace. The sole exception is an
     // API deletion that just succeeded and explicitly asks us to confirm emptiness.
     if (observed.status === 'absent' && cause !== 'confirmed-empty') return { status: 'unknown' };
 
-    const captured = await deps.capture(change.current ?? observed);
+    const captured = await deps.capture(snapshotEnvironment(change.current ?? observed));
     if (captured.status === 'changed-during-capture') {
       deps.scheduleRetry?.();
       return captured;
@@ -42,6 +42,13 @@ async function reconcileOnce(deps, cause) {
     if (captured.status !== 'ok' && captured.status !== 'empty') return captured;
     if (captured.status === 'empty' && cause !== 'confirmed-empty' && observed.status !== 'present') {
       return { status: 'unknown' };
+    }
+    if (change.status === 'changed') {
+      const archived = await deps.store.archiveEnvironment({
+        endedReason: change.reason,
+        detectedAt: new Date(deps.now()).toISOString(),
+      });
+      if (archived.status !== 'ok' && archived.status !== 'empty') return archived;
     }
     if (live.status === 'ok' && sameSnapshot(live.value, captured.snapshot)) return { status: 'unchanged' };
     await deps.store.writeLive(captured.snapshot);
@@ -63,12 +70,42 @@ export function createCheckpointer({
   let interval = null;
   let debounce = null;
   let running = null;
+  let runningCause = null;
+  let pendingConfirmation = null;
+
+  function launch(cause) {
+    const current = reconcileOnce(deps, cause);
+    running = current;
+    runningCause = cause;
+    const settled = () => {
+      if (running !== current) return;
+      running = null;
+      runningCause = null;
+      if (pendingConfirmation) {
+        const pending = pendingConfirmation;
+        pendingConfirmation = null;
+        launch('confirmed-empty').then(pending.resolve, pending.reject);
+      }
+    };
+    current.then(settled, settled);
+    return current;
+  }
+
+  function confirmEmpty() {
+    if (!running) return launch('confirmed-empty');
+    if (runningCause === 'confirmed-empty') return running;
+    if (!pendingConfirmation) {
+      let resolve;
+      let reject;
+      const promise = new Promise((onResolve, onReject) => { resolve = onResolve; reject = onReject; });
+      pendingConfirmation = { promise, resolve, reject };
+    }
+    return pendingConfirmation.promise;
+  }
 
   function reconcile(cause = 'timer') {
-    if (!running) {
-      running = reconcileOnce(deps, cause).finally(() => { running = null; });
-    }
-    return running;
+    if (cause === 'confirmed-empty') return confirmEmpty();
+    return running || launch(cause);
   }
 
   function requestReconcile() {
@@ -87,13 +124,16 @@ export function createCheckpointer({
       return reconcile('start');
     },
     requestReconcile,
-    confirmEmpty() { return reconcile('confirmed-empty'); },
+    confirmEmpty,
     async stop() {
       if (interval) clearInterval(interval);
       if (debounce) clearTimeout(debounce);
       interval = null;
       debounce = null;
       await reconcile('shutdown').catch(() => {});
+      while (running || pendingConfirmation) {
+        await (running || pendingConfirmation.promise).catch(() => {});
+      }
     },
   };
 }

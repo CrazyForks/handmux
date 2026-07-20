@@ -52,7 +52,12 @@ describe('workspace filesystem lock', () => {
   it('reclaims a dead PID only after the stale grace has elapsed', async () => {
     const dir = await lockPath();
     const now = Date.parse('2026-07-20T00:00:10.000Z');
-    await seedLock(dir, { pid: 505, startedAt: new Date(now - 500).toISOString(), operationId: 'recent-dead' });
+    await seedLock(dir, {
+      pid: 505,
+      startedAt: new Date(now - 500).toISOString(),
+      operationId: 'recent-dead',
+      token: '10000000-0000-4000-8000-000000000001',
+    });
     const lock = createWorkspaceLock({ dir, pid: 606, now: () => now, staleGraceMs: 1_000, isProcessAlive: () => false });
 
     expect(await lock.tryAcquire({ operationId: 'capture' })).toBeNull();
@@ -60,11 +65,78 @@ describe('workspace filesystem lock', () => {
       pid: 505,
       startedAt: new Date(now - 2_000).toISOString(),
       operationId: 'stale-dead',
+      token: '10000000-0000-4000-8000-000000000001',
     }));
     const handle = await lock.tryAcquire({ operationId: 'capture' });
     expect(handle).toBeTruthy();
     expect(handle.owner).toMatchObject({ pid: 606, operationId: 'capture' });
     await handle.release();
+  });
+
+  it('lets only one contender rename an observed stale token and keeps its tombstone', async () => {
+    const dir = await lockPath();
+    const staleToken = '10000000-0000-4000-8000-000000000001';
+    await seedLock(dir, {
+      pid: 505,
+      startedAt: '2026-07-20T00:00:00.000Z',
+      operationId: 'stale-restore',
+      token: staleToken,
+    });
+    let ownerReads = 0;
+    let releaseReads;
+    const bothRead = new Promise((resolve) => { releaseReads = resolve; });
+    const gatedFs = new Proxy(fs, {
+      get(object, property) {
+        if (property !== 'readFile') return Reflect.get(object, property);
+        return async (file, ...args) => {
+          const value = await object.readFile(file, ...args);
+          if (file === path.join(dir, 'owner.json') && ++ownerReads <= 2) {
+            if (ownerReads === 2) releaseReads();
+            await bothRead;
+          }
+          return value;
+        };
+      },
+    });
+    const options = {
+      dir,
+      fs: gatedFs,
+      now: () => Date.parse('2026-07-20T00:01:00.000Z'),
+      staleGraceMs: 1_000,
+      isProcessAlive: () => false,
+    };
+    const first = createWorkspaceLock({ ...options, pid: 601 });
+    const second = createWorkspaceLock({ ...options, pid: 602 });
+
+    const handles = await Promise.all([
+      first.tryAcquire({ operationId: 'capture-a' }),
+      second.tryAcquire({ operationId: 'capture-b' }),
+    ]);
+
+    expect(handles.filter(Boolean)).toHaveLength(1);
+    const tombstone = `${dir}.stale.${staleToken}`;
+    expect(JSON.parse(await fs.readFile(path.join(tombstone, 'owner.json'), 'utf8'))).toMatchObject({ token: staleToken });
+    expect(JSON.parse(await fs.readFile(path.join(dir, 'owner.json'), 'utf8')).operationId).toMatch(/^capture-/);
+    await handles.find(Boolean).release();
+  });
+
+  it('does not derive a stale destination from an unsafe owner token', async () => {
+    const dir = await lockPath();
+    await seedLock(dir, {
+      pid: 505,
+      startedAt: '2026-07-20T00:00:00.000Z',
+      operationId: 'corrupt-owner',
+      token: '../../escape',
+    });
+    const lock = createWorkspaceLock({
+      dir,
+      now: () => Date.parse('2026-07-20T00:01:00.000Z'),
+      staleGraceMs: 1_000,
+      isProcessAlive: () => false,
+    });
+
+    expect(await lock.tryAcquire({ operationId: 'capture' })).toBeNull();
+    expect(JSON.parse(await fs.readFile(path.join(dir, 'owner.json'), 'utf8')).operationId).toBe('corrupt-owner');
   });
 
   it('times out with the current owner details instead of hiding the contention', async () => {
