@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { workspacePaths } from '../src/workspace/paths.js';
-import { canonicalizeSnapshot, fingerprintSnapshot, validateCheckpoint } from '../src/workspace/schema.js';
+import { canonicalizeSnapshot, fingerprintSnapshot, sealPayload, validateCheckpoint } from '../src/workspace/schema.js';
 
 const pane = (id, index = 0) => ({ id, runtimeId: `%${index + 1}`, index, cwd: `/work/${id}`, agent: null });
 const base = {
@@ -8,25 +8,81 @@ const base = {
   capturedAt: '2026-07-20T01:00:00.000Z',
   environment: { id: 'env-a', bootIdentity: 'boot-a', tmuxServerId: 'server-a' },
   tmuxVersion: '3.6a',
-  active: { sessionId: 's-a', windowId: 'w-a', paneId: 'p-a' },
-  sessions: [{ id: 's-a', runtimeId: '$1', name: 'api', windowIds: ['w-a'], activeWindowId: 'w-a' }],
-  windows: [{ id: 'w-a', runtimeId: '@1', name: 'main', index: 0, layout: 'layout-a', activePaneId: 'p-a', panes: [pane('p-a')] }],
+  active: { sessionId: 's-Z', windowId: 'w-Z', paneId: 'p-Z' },
+  sessions: [
+    { id: 's-Z', runtimeId: '$1', name: 'api', windowIds: ['w-Z'], activeWindowId: 'w-Z' },
+    { id: 's-a', runtimeId: '$2', name: 'web', windowIds: ['w-a'], activeWindowId: 'w-a' },
+  ],
+  windows: [
+    { id: 'w-Z', runtimeId: '@1', name: 'main', index: 0, layout: 'layout-Z', activePaneId: 'p-Z', panes: [pane('p-Z'), pane('p-a', 1)] },
+    { id: 'w-a', runtimeId: '@2', name: 'client', index: 1, layout: 'layout-a', activePaneId: 'p-b', panes: [pane('p-b', 2)] },
+  ],
 };
 
 describe('workspace schema', () => {
-  it('keeps runtime ordering out of the canonical fingerprint', () => {
-    const shuffled = { ...base, sessions: [...base.sessions].reverse(), windows: [...base.windows].reverse() };
+  it('keeps real runtime ordering out of the canonical fingerprint and uses code-point order', () => {
+    const shuffled = {
+      ...base,
+      sessions: [...base.sessions].reverse(),
+      windows: [...base.windows].reverse().map((window) => ({ ...window, panes: [...window.panes].reverse() })),
+    };
     expect(fingerprintSnapshot(shuffled)).toBe(fingerprintSnapshot(base));
+    const canonical = canonicalizeSnapshot(shuffled);
+    expect(canonical.sessions.map((session) => session.id)).toEqual(['s-Z', 's-a']);
+    expect(canonical.windows.map((window) => window.id)).toEqual(['w-Z', 'w-a']);
+    expect(canonical.windows[0].panes.map((item) => item.id)).toEqual(['p-Z', 'p-a']);
   });
 
   it('rejects duplicate logical ids and a bad payload hash', () => {
-    const duplicate = { ...base, windows: [{ ...base.windows[0], panes: [pane('p-a'), pane('p-a', 1)] }] };
+    const duplicate = {
+      ...base,
+      active: { ...base.active, paneId: 'p-a' },
+      windows: [{ ...base.windows[0], activePaneId: 'p-a', panes: [pane('p-a'), pane('p-a', 1)] }, base.windows[1]],
+    };
     expect(() => canonicalizeSnapshot(duplicate)).toThrow(/duplicate pane id/);
     expect(validateCheckpoint({ ...base, id: 'cp-a', archivedAt: base.capturedAt, payloadHash: 'bad' }).ok).toBe(false);
   });
 
+  it('strictly validates required snapshot fields and field types', () => {
+    for (const field of ['capturedAt', 'environment', 'active']) {
+      const invalid = { ...base };
+      delete invalid[field];
+      expect(() => canonicalizeSnapshot(invalid)).toThrow(new RegExp(field));
+    }
+    expect(() => canonicalizeSnapshot({ ...base, tmuxVersion: 36 })).toThrow(/tmuxVersion/);
+    expect(() => canonicalizeSnapshot({ ...base, environment: { ...base.environment, id: 42 } })).toThrow(/environment\.id/);
+    expect(() => canonicalizeSnapshot({ ...base, active: { ...base.active, paneId: null } })).toThrow(/active\.paneId/);
+    expect(() => canonicalizeSnapshot({ ...base, sessions: 'invalid' })).toThrow(/sessions/);
+    expect(() => canonicalizeSnapshot({ ...base, sessions: [{ ...base.sessions[0], windowIds: 'w-Z' }, base.sessions[1]] })).toThrow(/windowIds/);
+    expect(() => canonicalizeSnapshot({ ...base, windows: [{ ...base.windows[0], index: '0' }, base.windows[1]] })).toThrow(/index/);
+    expect(() => canonicalizeSnapshot({ ...base, windows: [{ ...base.windows[0], panes: 'invalid' }, base.windows[1]] })).toThrow(/panes/);
+    expect(() => canonicalizeSnapshot({ ...base, windows: [{ ...base.windows[0], panes: [{ ...base.windows[0].panes[0], cwd: 42 }] }, base.windows[1]] })).toThrow(/cwd/);
+  });
+
+  it('rejects dangling session, window, pane, and active references', () => {
+    const danglingWindow = {
+      ...base,
+      sessions: [{ ...base.sessions[0], windowIds: ['w-missing'] }, base.sessions[1]],
+    };
+    expect(() => canonicalizeSnapshot(danglingWindow)).toThrow(/windowIds/);
+
+    const danglingPane = {
+      ...base,
+      windows: [{ ...base.windows[0], activePaneId: 'p-missing' }, base.windows[1]],
+    };
+    expect(() => canonicalizeSnapshot(danglingPane)).toThrow(/activePaneId/);
+
+    const danglingActive = { ...base, active: { ...base.active, windowId: 'w-a' } };
+    expect(() => canonicalizeSnapshot(danglingActive)).toThrow(/active\.windowId/);
+
+    const checkpoint = sealPayload({ ...base, id: 'cp-a', archivedAt: base.capturedAt });
+    expect(validateCheckpoint(checkpoint).ok).toBe(true);
+    expect(validateCheckpoint({ ...checkpoint, capturedAt: undefined }).error).toMatch(/capturedAt/);
+  });
+
   it('places all private files below ~/.handmux/workspaces', () => {
-    expect(workspacePaths('/home/me').root).toBe('/home/me/.handmux/workspaces');
-    expect(workspacePaths('/home/me').liveCurrent).toMatch(/live\/current\.json$/);
+    const { root, ...privatePaths } = workspacePaths('/home/me');
+    expect(root).toBe('/home/me/.handmux/workspaces');
+    for (const value of Object.values(privatePaths)) expect(value.startsWith(`${root}/`)).toBe(true);
   });
 });
