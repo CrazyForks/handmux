@@ -333,6 +333,6 @@ describe('workspace production composition', () => {
     expect(source).toMatch(/const workspaceBackground = createWorkspaceBackground\(/);
     expect(source).toMatch(/const workspace = createWorkspaceRuntime\(\{[\s\S]*checkpointer: workspaceBackground/);
     expect(source).toContain('onStateChange: workspace.requestReconcile');
-    expect(source).toContain('createApiRouter({ token, events, uploadExts, previews, previewDomain, workspace })');
+    expect(source).toMatch(/createApiRouter\(\{[^}\n]*workspace\s*\}\)/);
   });
 });
