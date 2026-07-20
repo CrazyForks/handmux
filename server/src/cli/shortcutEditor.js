@@ -29,11 +29,11 @@ export function buildShortcutKey(modifier, base) {
   return { type: 'key', key, label: [...mod.labels, shownBase].join('+') };
 }
 
-export function moveShortcut(items, index, direction) {
-  const target = index + (direction < 0 ? -1 : 1);
-  if (index < 0 || target < 0 || index >= items.length || target >= items.length) return items;
+export function moveShortcut(items, index, target) {
+  if (index < 0 || target < 0 || index >= items.length || target >= items.length || target === index) return items;
   const next = items.slice();
-  [next[index], next[target]] = [next[target], next[index]];
+  const [item] = next.splice(index, 1);
+  next.splice(target, 0, item);
   return next;
 }
 
@@ -71,6 +71,15 @@ const itemLabel = (item) => item.type === 'key' ? item.label : item.text;
 const itemHint = (item) => item.type === 'key'
   ? t('shortcuts.key')
   : t(item.enter ? 'shortcuts.textEnter' : 'shortcuts.textOnly');
+const moveOptions = (items, index) => {
+  const remaining = items.filter((_item, i) => i !== index);
+  return items.flatMap((_item, target) => {
+    if (target === index) return [];
+    if (target === 0) return [{ value: target, label: t('shortcuts.moveFirst') }];
+    if (target === items.length - 1) return [{ value: target, label: t('shortcuts.moveLast', { n: items.length }) }];
+    return [{ value: target, label: t('shortcuts.moveAfter', { n: target + 1, item: itemLabel(remaining[target - 1]) }) }];
+  });
+};
 const validateText = (value) => {
   if (typeof value !== 'string' || !value.length || /[\r\n\x00-\x1f\x7f]/.test(value)) return t('shortcuts.badText');
   return undefined;
@@ -98,8 +107,8 @@ const baseOptions = (modifier) => {
   }));
 };
 
-async function editItem(mode, seed, ui) {
-  const type = await ui.ask(ui.select({
+async function editItem(mode, seed, ui, forcedType = null) {
+  const type = forcedType || await ui.ask(ui.select({
     message: t('shortcuts.type'), initialValue: seed?.type || 'text',
     options: [
       { value: 'text', label: t('shortcuts.text') },
@@ -135,13 +144,14 @@ async function editMode(mode, initial, ui) {
       message: modeLabel(mode),
       options: [
         ...items.map((item, index) => ({ value: `item:${index}`, label: itemLabel(item), hint: itemHint(item) })),
-        { value: 'add', label: t('shortcuts.add') },
+        { value: 'add-key', label: t('shortcuts.addKey') },
+        { value: 'add-text', label: t('shortcuts.addText') },
         { value: 'back', label: t('shortcuts.back') },
       ],
     }));
     if (choice === 'back') return items;
-    if (choice === 'add') {
-      const item = await editItem(mode, null, ui);
+    if (choice === 'add-key' || choice === 'add-text') {
+      const item = await editItem(mode, null, ui, choice === 'add-key' ? 'key' : 'text');
       if (!items.some((existing) => shortcutIdentity(existing) === shortcutIdentity(item))) items = [...items, item];
       continue;
     }
@@ -150,8 +160,7 @@ async function editMode(mode, initial, ui) {
       message: itemLabel(items[index]),
       options: [
         { value: 'edit', label: t('shortcuts.edit') },
-        ...(index > 0 ? [{ value: 'up', label: t('shortcuts.up') }] : []),
-        ...(index < items.length - 1 ? [{ value: 'down', label: t('shortcuts.down') }] : []),
+        ...(items.length > 1 ? [{ value: 'move', label: t('shortcuts.move') }] : []),
         { value: 'delete', label: t('shortcuts.delete') },
         { value: 'back', label: t('shortcuts.back') },
       ],
@@ -161,9 +170,12 @@ async function editMode(mode, initial, ui) {
       if (!items.some((item, i) => i !== index && shortcutIdentity(item) === shortcutIdentity(edited))) {
         items = items.map((item, i) => i === index ? edited : item);
       }
-    } else if (action === 'up') items = moveShortcut(items, index, -1);
-    else if (action === 'down') items = moveShortcut(items, index, 1);
-    else if (action === 'delete') items = items.filter((_item, i) => i !== index);
+    } else if (action === 'move') {
+      const target = await ui.ask(ui.select({
+        message: t('shortcuts.movePrompt'), options: moveOptions(items, index),
+      }));
+      items = moveShortcut(items, index, target);
+    } else if (action === 'delete') items = items.filter((_item, i) => i !== index);
   }
 }
 
