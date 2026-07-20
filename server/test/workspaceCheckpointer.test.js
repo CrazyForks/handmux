@@ -97,6 +97,59 @@ describe('workspace checkpointer', () => {
     expect(d.store.writeLive).toHaveBeenCalledWith(empty);
   });
 
+  it('queues a new confirmed-empty behind an already running confirmed-empty', async () => {
+    let finishFirst;
+    let finishSecond;
+    const firstCapture = new Promise((resolve) => { finishFirst = resolve; });
+    const secondCapture = new Promise((resolve) => { finishSecond = resolve; });
+    const emptyEnvironment = { id: 'env-empty', bootIdentity: 'boot-new', tmuxServerId: null };
+    const empty = snapshot(emptyEnvironment, '2026-07-20T12:00:00.000Z', true);
+    const d = deps({
+      store: {
+        readLive: vi.fn(async () => ({ status: 'empty' })),
+        writeLive: vi.fn(async () => {}),
+        archiveEnvironment: vi.fn(),
+      },
+      observeEnvironment: vi.fn(async () => ({ ...emptyEnvironment, status: 'absent' })),
+      capture: vi.fn()
+        .mockImplementationOnce(() => firstCapture)
+        .mockImplementationOnce(() => secondCapture),
+    });
+    const checkpointer = createCheckpointer(d);
+    const first = checkpointer.confirmEmpty();
+    await vi.waitFor(() => expect(d.capture).toHaveBeenCalledTimes(1));
+
+    let secondSettled = false;
+    const second = checkpointer.confirmEmpty().finally(() => { secondSettled = true; });
+    finishFirst({ status: 'empty', snapshot: empty });
+    await first;
+    await vi.waitFor(() => expect(d.capture).toHaveBeenCalledTimes(2));
+    expect(secondSettled).toBe(false);
+    finishSecond({ status: 'empty', snapshot: empty });
+
+    await expect(second).resolves.toMatchObject({ status: 'written' });
+    expect(d.store.writeLive).toHaveBeenCalledTimes(2);
+  });
+
+  it('stop blocks retries, event timers, and confirmations while the final reconcile settles', async () => {
+    let finishCapture;
+    const capture = new Promise((resolve) => { finishCapture = resolve; });
+    const d = deps({ capture: vi.fn(() => capture) });
+    const checkpointer = createCheckpointer(d);
+
+    const stopping = checkpointer.stop();
+    await vi.waitFor(() => expect(d.capture).toHaveBeenCalledOnce());
+    checkpointer.requestReconcile();
+    await expect(checkpointer.confirmEmpty()).resolves.toEqual({ status: 'stopped' });
+    finishCapture({ status: 'changed-during-capture' });
+    await stopping;
+    checkpointer.requestReconcile();
+    await expect(checkpointer.confirmEmpty()).resolves.toEqual({ status: 'stopped' });
+
+    expect(d.setTimeout).not.toHaveBeenCalled();
+    expect(d.capture).toHaveBeenCalledOnce();
+  });
+
   it('does zero writes when the canonical fingerprint is unchanged', async () => {
     const before = snapshot(newEnvironment, '2026-07-20T10:00:00.000Z');
     const after = snapshot(newEnvironment, '2026-07-20T12:00:00.000Z');

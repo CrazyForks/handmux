@@ -70,17 +70,17 @@ export function createCheckpointer({
   let interval = null;
   let debounce = null;
   let running = null;
-  let runningCause = null;
   let pendingConfirmation = null;
+  let stopping = false;
+  let stopped = false;
+  let stopPromise = null;
 
   function launch(cause) {
     const current = reconcileOnce(deps, cause);
     running = current;
-    runningCause = cause;
     const settled = () => {
       if (running !== current) return;
       running = null;
-      runningCause = null;
       if (pendingConfirmation) {
         const pending = pendingConfirmation;
         pendingConfirmation = null;
@@ -92,8 +92,8 @@ export function createCheckpointer({
   }
 
   function confirmEmpty() {
+    if (stopping || stopped) return Promise.resolve({ status: 'stopped' });
     if (!running) return launch('confirmed-empty');
-    if (runningCause === 'confirmed-empty') return running;
     if (!pendingConfirmation) {
       let resolve;
       let reject;
@@ -105,10 +105,12 @@ export function createCheckpointer({
 
   function reconcile(cause = 'timer') {
     if (cause === 'confirmed-empty') return confirmEmpty();
+    if (stopping || stopped) return Promise.resolve({ status: 'stopped' });
     return running || launch(cause);
   }
 
   function requestReconcile() {
+    if (stopping || stopped) return;
     clearTimeout(debounce);
     debounce = setTimeout(() => {
       debounce = null;
@@ -120,20 +122,30 @@ export function createCheckpointer({
   return {
     reconcile,
     start() {
+      if (stopping || stopped) return Promise.resolve({ status: 'stopped' });
       if (!interval) interval = setInterval(() => { reconcile('timer').catch(() => {}); }, 60_000);
       return reconcile('start');
     },
     requestReconcile,
     confirmEmpty,
-    async stop() {
-      if (interval) clearInterval(interval);
-      if (debounce) clearTimeout(debounce);
-      interval = null;
-      debounce = null;
-      await reconcile('shutdown').catch(() => {});
-      while (running || pendingConfirmation) {
-        await (running || pendingConfirmation.promise).catch(() => {});
-      }
+    stop() {
+      if (stopPromise) return stopPromise;
+      stopping = true;
+      stopPromise = (async () => {
+        if (interval) clearInterval(interval);
+        if (debounce) clearTimeout(debounce);
+        interval = null;
+        debounce = null;
+        while (running || pendingConfirmation) {
+          await (running || pendingConfirmation.promise).catch(() => {});
+        }
+        await launch('shutdown').catch(() => {});
+        while (running || pendingConfirmation) {
+          await (running || pendingConfirmation.promise).catch(() => {});
+        }
+        stopped = true;
+      })();
+      return stopPromise;
     },
   };
 }
