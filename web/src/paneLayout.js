@@ -56,8 +56,8 @@ function trackOffsets(edges, spans, inner) {
 }
 
 // The map mosaic: pixel rects on the fixed base box, one per pane, laid out by equal division of each
-// split. Returns { w, h, cells:[{ id, active, command, seq, left, top, width, height }] } (w/h always
-// the base size), or null when geometry is missing.
+// split. Cell width/height are rendered pixels; cols/rows preserve the real tmux terminal dimensions
+// for quiet metadata in roomy tiles. Returns null when geometry is missing.
 export function paneLayout(panes) {
   if (!hasGeometry(panes)) return null;
   const totalCols = Math.max(...panes.map((p) => p.left + p.width));
@@ -76,7 +76,11 @@ export function paneLayout(panes) {
     const x1 = xOff[xs.indexOf(p.left + p.width)].at;
     const y0 = yOff[ys.indexOf(p.top)].at;
     const y1 = yOff[ys.indexOf(p.top + p.height)].at;
-    return { id: p.id, active: !!p.active, command: p.command, seq, left: x0, top: y0, width: x1 - x0, height: y1 - y0 };
+    return {
+      id: p.id, active: !!p.active, command: p.command, seq,
+      left: x0, top: y0, width: x1 - x0, height: y1 - y0,
+      cols: p.width, rows: p.height,
+    };
   });
   return { w: MAP_W, h: MAP_H, cells };
 }

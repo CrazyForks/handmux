@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { notifyEnabled, enableNotifications, disableNotifications, pushSupported, getScriptPushKey } from '../push.js';
 import DirPicker from './DirPicker.jsx';
 import PushScriptSheet from './PushScriptSheet.jsx';
@@ -22,6 +22,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   const [font, setFont] = useState(null); // { size, auto } snapshot for display
   const [docHl, setDocHl] = useState(getDocHighlight()); // doc-path highlight toggle (default off)
   const [cols, setCols] = useState(null); // current pane's live col count (null = loading/unknown/restored)
+  const colReadRef = useRef(0); // request generation; Restore invalidates an in-flight live-width read
   const [langOpen, setLangOpen] = useState(false);
   const [notify, setNotify] = useState(notifyEnabled()); // device-notification toggle state
   const [notifyBusy, setNotifyBusy] = useState(false); // true while (un)subscribing — shows a spinner, disables the button
@@ -78,6 +79,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
 
   useEffect(() => {
     let active = true;
+    const requestId = ++colReadRef.current;
     if (open) {
       setFont(termRef.current?.getFontSize?.() ?? null);
       const fallback = getColCount?.() ?? null;
@@ -86,9 +88,9 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
         getPanes(windowId)
           .then((panes) => {
             const actual = panes.find((item) => item.id === pane)?.width;
-            if (active) setCols(actual ?? fallback);
+            if (active && requestId === colReadRef.current) setCols(Number.isFinite(actual) ? actual : null);
           })
-          .catch(() => { if (active) setCols(fallback); });
+          .catch(() => { if (active && requestId === colReadRef.current) setCols(null); });
       } else {
         setCols(fallback);
       }
@@ -127,7 +129,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
     onColAdjust?.(d, cols);
     setCols(getColCount?.() ?? null);
   };
-  const restoreCol = () => { onColRestore?.(); setCols(null); };
+  const restoreCol = () => { colReadRef.current += 1; onColRestore?.(); setCols(null); };
 
   return (
     <>

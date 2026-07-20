@@ -236,6 +236,8 @@ describe('WindowBar', () => {
     expect(cells[1].style.width).toBe('118px');
     expect(cells[0].textContent).toContain('zsh');
     expect(cells[1].textContent).toContain('node');
+    expect(cells[0].querySelector('.pmc-dims').textContent).toBe('40×24');
+    expect(cells[1].querySelector('.pmc-dims').textContent).toBe('40×24');
   });
 
   it('portals the pane map outside the horizontally scrolling window strip', () => {
@@ -377,6 +379,32 @@ describe('WindowBar', () => {
     expect(cells[1].className).toContain('is-narrow');
     expect(cells[1].textContent).not.toContain('htop'); // command dropped in the cramped cell
     expect(cells[1].textContent).toContain('②');        // but the seq badge keeps it identifiable
+    expect(cells[1].querySelector('.pmc-dims')).toBe(null);
+  });
+
+  it('hides dimensions when a short tile uses the flat one-row layout', () => {
+    const fiveRows = Array.from({ length: 5 }, (_, i) => ({
+      id: `%${i + 1}`, active: i === 0, command: 'zsh',
+      left: 0, top: i * 5, width: 80, height: 4,
+    }));
+    render({ ...base, panes: fiveRows, currentPaneId: '%1' });
+    openPaneMenu();
+    const cells = paneMapCells();
+    expect(cells[0].className).toContain('is-flat');
+    expect(cells[0].querySelector('.pmc-dims')).toBe(null);
+  });
+
+  it('hides dimensions in a medium tile before they can crowd primary content', () => {
+    const threeCols = [
+      { id: '%1', active: true, command: 'vim', left: 0, top: 0, width: 26, height: 24 },
+      { id: '%2', active: false, command: 'node', left: 27, top: 0, width: 26, height: 24 },
+      { id: '%3', active: false, command: 'zsh', left: 54, top: 0, width: 26, height: 24 },
+    ];
+    render({ ...base, panes: threeCols, currentPaneId: '%1' });
+    openPaneMenu();
+    const cells = paneMapCells();
+    expect(cells[0].className).not.toContain('is-narrow');
+    expect(cells[0].querySelector('.pmc-dims')).toBe(null);
   });
 
   it('clamps the map inside the viewport when the tab sits near the right edge', () => {

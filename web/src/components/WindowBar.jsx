@@ -35,19 +35,23 @@ function WindowTab({ window: win, active, agent, onSelect, onManage }) {
 // A picked tile flashes to the selected state for this long before the switch lands + the map closes,
 // so you SEE which pane you chose (an instant close gives no feedback that anything happened).
 const PICK_MS = 200;
+const DIMENSIONS_MIN_W = 90; // below this, cols×rows would compete with seq / Agent in the top row
 
 // One map tile. Tap = switch (onChoose); long-press = manage this pane (onManage). Its own component
 // so useLongPress is a valid per-tile hook. `releasing` drives the blue-handoff on the outgoing tile.
 function PaneMapCell({ cell, cur, releasing, picking, agent, onChoose, onManage }) {
   const fit = cellFit(cell); // '' | 'flat' | 'narrow' | 'tiny'
   const cmd = cell.command || cell.id;
+  const hasDimensions = Number.isFinite(cell.cols) && Number.isFinite(cell.rows);
+  const dimensions = hasDimensions ? `${cell.cols}×${cell.rows}` : '';
+  const showDimensions = fit === '' && cell.width >= DIMENSIONS_MIN_W && dimensions;
   const lp = useLongPress(() => onManage(cell.id), { onClick: () => onChoose(cell.id) });
   return (
     <button
       type="button"
       role="option"
       aria-selected={cur}
-      aria-label={cmd}
+      aria-label={dimensions ? `${cmd}, ${dimensions}` : cmd}
       className={`pane-map-cell${cur ? ' is-current' : ''}${releasing ? ' is-releasing' : ''}${fit ? ` is-${fit}` : ''}${picking ? ' is-picking' : ''}`}
       style={{ left: `${cell.left + MAP_PAD}px`, top: `${cell.top + MAP_PAD}px`, width: `${cell.width}px`, height: `${cell.height}px` }}
       {...lp}
@@ -65,6 +69,7 @@ function PaneMapCell({ cell, cur, releasing, picking, agent, onChoose, onManage 
             <span className="pmc-row">
               <span className="pmc-seq" aria-hidden="true">{seq(cell.seq)}</span>
               {agent && <AgentMark agent={agent} />}
+              {showDimensions && <span className="pmc-dims" aria-hidden="true">{dimensions}</span>}
             </span>
             <span className="pmc-cmd">{cmd}</span>
           </>

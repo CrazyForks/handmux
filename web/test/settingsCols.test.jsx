@@ -49,6 +49,8 @@ const render = async (props = {}) => {
     );
   });
 };
+const stepButtons = () => [...container.querySelectorAll('.cols-btns .col-step')];
+const restoreButton = () => container.querySelector('.cols-btns button:not(.col-step)');
 
 describe('Settings pane columns', () => {
   it('shows the current pane width read from tmux instead of the previous resize target', async () => {
@@ -84,8 +86,49 @@ describe('Settings pane columns', () => {
 
     await render();
 
-    const steps = [...container.querySelectorAll('.col-step')];
-    expect(steps).toHaveLength(4);
-    expect(steps.every((button) => button.disabled)).toBe(true);
+    expect(stepButtons()).toHaveLength(4);
+    expect(stepButtons().every((button) => button.disabled)).toBe(true);
+    expect(restoreButton().disabled).toBe(false);
+  });
+
+  it.each([
+    ['the pane lookup rejects', () => getPanes.mockRejectedValue(new Error('offline'))],
+    ['the pane disappeared', () => getPanes.mockResolvedValue([{ id: '%1', width: 63 }])],
+  ])('keeps width adjustments disabled but Restore available when %s', async (_name, arrange) => {
+    arrange();
+    await render();
+    expect(container.querySelector('.cols-btns .settings-value').textContent).toBe('—');
+    expect(stepButtons()).toHaveLength(4);
+    expect(stepButtons().every((button) => button.disabled)).toBe(true);
+    expect(restoreButton().disabled).toBe(false);
+  });
+
+  it('keeps Restore available while loading and ignores the pending width after restore', async () => {
+    let resolveWidth;
+    const onColRestore = vi.fn();
+    getPanes.mockReturnValue(new Promise((resolve) => { resolveWidth = resolve; }));
+    await render({ onColRestore });
+
+    act(() => restoreButton().click());
+    expect(onColRestore).toHaveBeenCalledOnce();
+
+    await act(async () => { resolveWidth([{ id: '%2', width: 37 }]); });
+    expect(container.querySelector('.cols-btns .settings-value').textContent).toBe('—');
+    expect(stepButtons().every((button) => button.disabled)).toBe(true);
+  });
+
+  it('ignores a delayed response from the previously selected pane', async () => {
+    let resolveOld;
+    getPanes
+      .mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }))
+      .mockResolvedValueOnce([{ id: '%3', width: 54 }]);
+
+    await render({ pane: '%1' });
+    await render({ pane: '%3' });
+    expect(container.querySelector('.cols-btns').textContent).toContain('54 列');
+
+    await act(async () => { resolveOld([{ id: '%1', width: 63 }]); });
+    expect(container.querySelector('.cols-btns').textContent).toContain('54 列');
+    expect(container.querySelector('.cols-btns').textContent).not.toContain('63 列');
   });
 });

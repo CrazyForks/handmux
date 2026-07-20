@@ -282,10 +282,14 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
   border-color: rgba(255, 255, 255, 0.10); box-shadow: none; }
 .pane-map-cell.is-current.is-releasing .pmc-seq { color: #9aa0aa; }
 .pane-map-cell.is-current.is-releasing .pmc-cmd { color: var(--ink, #e6e6e6); }
-.pane-map-cell .pmc-row { display: flex; align-items: center; gap: 5px; max-width: 100%; }
+.pane-map-cell .pmc-row { display: flex; align-items: center; gap: 5px; width: 100%; max-width: 100%; }
 .pane-map-cell .pmc-seq { font-size: 11px; font-weight: 700; line-height: 1; letter-spacing: .02em;
   color: #9aa0aa; font-variant-numeric: tabular-nums; }
 .pane-map-cell.is-current .pmc-seq { color: rgba(255,255,255,.9); }
+.pane-map-cell .pmc-dims { margin-left: auto; flex: none; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 9.5px; line-height: 1; font-variant-numeric: tabular-nums; color: rgba(154,160,170,.66); }
+.pane-map-cell.is-current .pmc-dims, .pane-map-cell.is-picking .pmc-dims { color: rgba(255,255,255,.62); }
+.pane-map-cell.is-current.is-releasing .pmc-dims { color: rgba(154,160,170,.66); }
 .pane-map-cell .pmc-cmd { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; line-height: 1.25; color: var(--ink, #e6e6e6); }
 .pane-map-cell.is-current .pmc-cmd { color: #fff; }

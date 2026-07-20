@@ -34,6 +34,8 @@ describe('paneLayout (equal-division schematic)', () => {
     expect(cells.map((c) => c.id)).toEqual(['%1', '%2']);
     expect(cells[0].width).toBeCloseTo(117); // (236 - 1 seam*2) / 2 columns
     expect(cells[1].width).toBeCloseTo(117); // equal — real 40 vs 39 cells is ignored
+    expect(cells[0]).toMatchObject({ cols: 40, rows: 24 });
+    expect(cells[1]).toMatchObject({ cols: 39, rows: 24 });
     expect(cells[1].left - (cells[0].left + cells[0].width)).toBeCloseTo(2); // the 2px seam, not a big gap
     expect(cells[0].height).toBeCloseTo(146); // both full height (MAP_H - 2*MAP_PAD)
   });
