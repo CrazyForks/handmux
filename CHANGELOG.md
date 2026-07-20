@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.17.8] - 2026-07-20
+
 ### Changed
 - 分屏地图会在空间足够的窗格里低调显示真实终端尺寸（列×行），拥挤的小窗格仍只保留主要信息。
 
