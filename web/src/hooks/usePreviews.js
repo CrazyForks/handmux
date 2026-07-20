@@ -161,31 +161,6 @@ export function usePreviews(current, { settingsOpen, setSettingsOpen }) {
     try { await createPreview(target.name, opts); await refreshPreviews(); } catch { /* ignore */ }
   }, [tabs, activeName, refreshPreviews]);
 
-  // Keep-alive: while the sheet is OPEN, renew EVERY tab ~1 min before the soonest one expires so no
-  // actively-viewed preview dies mid-use (all their iframes are live in parallel). Renewing bumps the
-  // expiries → soonestExpiry changes → this effect reschedules, a self-perpetuating heartbeat. Tied to
-  // previewSheetOpen (not merely having previews): a minimized/closed sheet stops renewing, so forgotten
-  // proxies still expire and get reaped.
-  const tabNamesKey = tabs.map((tb) => tb.name).join('|');
-  const soonestExpiry = tabs.length ? Math.min(...tabs.map((tb) => tb.expiresAt)) : null;
-  useEffect(() => {
-    if (!previewSheetOpen || soonestExpiry == null || !tabNamesKey) return undefined;
-    const names = tabNamesKey.split('|');
-    const delay = Math.max(0, soonestExpiry - Date.now() - 60_000);
-    const id = setTimeout(async () => {
-      try {
-        // Re-derive each name's registration args from the freshest registry, not the (possibly stale) closure.
-        await Promise.all(names.map((name) => {
-          const p = previews.find((e) => e && e.name === name);
-          if (!p) return null;
-          return createPreview(name, p.kind === 'dynamic' ? { port: p.port, protocol: p.protocol || 'http' } : { dir: p.dir });
-        }));
-        await refreshPreviews();
-      } catch { /* ignore */ }
-    }, delay);
-    return () => clearTimeout(id);
-  }, [previewSheetOpen, soonestExpiry, tabNamesKey, previews, refreshPreviews]);
-
   return {
     previews, previewDomain, dynamicEnabled,
     previewSheetOpen, setPreviewSheetOpen,
