@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import {
-  loadFavs, addFavResult, removeFav, moveFavBeside, updateFavResult, transferFavResult,
+  loadFavs, addFavResult, removeFavByIdentity, moveFavBesideByIdentity,
+  updateFavResult, transferFavResult,
   cmdScope, CMD_GLOBAL,
 } from '../favStore.js';
 import { buildChord } from '../keybarKeys.js';
@@ -288,7 +289,8 @@ export default function CmdFavEditor({
   const visibleGlobalIds = new Set(mergedGlobal.map(shortcutIdentity));
   const conflictsWithEffectiveGlobal = (identity, oldScope = null, oldFav = null) =>
     mergedGlobal.some((item) => shortcutIdentity(item) === identity
-      && !(oldScope === globalScope && item.source === 'local' && item.text === oldFav?.text));
+      && !(oldScope === globalScope && item.source === 'local'
+        && shortcutIdentity(item) === shortcutIdentity(oldFav)));
 
   const reloadAll = () => setItems(Object.fromEntries(scopes.map((s) => [s.key, loadFavs(s.key)])));
   const persistLayout = (next) => {
@@ -309,7 +311,7 @@ export default function CmdFavEditor({
       const i = visible.findIndex((fav) => shortcutIdentity(fav) === shortcutIdentity(item));
       const neighbour = visible[i + (dir < 0 ? -1 : 1)];
       if (!neighbour) return;
-      moveFavBeside(scope, item.text, neighbour.text);
+      moveFavBesideByIdentity(scope, shortcutIdentity(item), shortcutIdentity(neighbour));
       reloadAll();
       onChange?.();
     }
@@ -321,7 +323,7 @@ export default function CmdFavEditor({
       setUndo({ identity });
       return;
     }
-    removeFav(scope, item.text);
+    removeFavByIdentity(scope, identity);
     if (scope === globalScope) persistLayout(removeShortcutFromLayout(layout, identity));
     else onChange?.();
     reloadAll();
@@ -334,8 +336,16 @@ export default function CmdFavEditor({
   const doAdd = (scope, fav) => {
     const identity = shortcutIdentity(fav);
     if (conflictsWithEffectiveGlobal(identity)) return { ok: false, reason: 'conflict' };
+    const exactPreset = mergeShortcuts(presets, [], layoutMode)
+      .some((item) => shortcutIdentity(item) === identity);
+    const exactLocal = (items[scope] || []).some((item) => shortcutIdentity(item) === identity);
+    if (scope === globalScope && layout.hidden.includes(identity) && (exactPreset || exactLocal)) {
+      persistLayout(showShortcutInLayout(layout, identity));
+      reloadAll();
+      return { ok: true };
+    }
     const result = addFavResult(scope, fav);
-    if (!result.ok && !(scope === globalScope && layout.hidden.includes(identity))) return result;
+    if (!result.ok) return result;
     if (scope === globalScope) persistLayout(showShortcutInLayout(layout, shortcutIdentity(fav)));
     else onChange?.();
     reloadAll();
@@ -348,8 +358,8 @@ export default function CmdFavEditor({
       return { ok: false, reason: 'conflict' };
     }
     const result = oldScope === newScope
-      ? updateFavResult(oldScope, oldFav.text, fav)
-      : transferFavResult(oldScope, oldFav.text, newScope, fav);
+      ? updateFavResult(oldScope, oldIdentity, fav)
+      : transferFavResult(oldScope, oldIdentity, newScope, fav);
     if (!result.ok) return result;
     if (oldScope === globalScope && newScope === globalScope) {
       persistLayout(replaceShortcutInLayout(layout, oldIdentity, newIdentity));

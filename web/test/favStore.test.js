@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   loadFavs, saveFavs, addFav, removeFav, moveFav,
-  moveFavBeside, addFavResult, updateFavResult, transferFavResult,
+  moveFavBeside, moveFavBesideByIdentity, removeFavByIdentity,
+  addFavResult, updateFavResult, transferFavResult,
   cmdScope, CMD_GLOBAL, DEFAULT_FAVS,
 } from '../src/favStore.js';
+import { shortcutIdentity } from '../src/shortcutMerge.js';
 
 beforeEach(() => localStorage.clear());
 
@@ -70,9 +72,9 @@ describe('favStore', () => {
       { kind: 'cmd', text: 'one', enter: false },
       { kind: 'cmd', text: 'two', enter: true },
     ]);
-    expect(addFavResult('command', { kind: 'cmd', text: 'two' }))
+    expect(addFavResult('command', { kind: 'cmd', text: 'two', enter: true }))
       .toMatchObject({ ok: false, reason: 'conflict' });
-    expect(updateFavResult('command', 'one', { kind: 'cmd', text: 'two' }))
+    expect(updateFavResult('command', 'text:one:no-enter', { kind: 'cmd', text: 'two', enter: true }))
       .toMatchObject({ ok: false, reason: 'conflict' });
     expect(loadFavs('command')).toEqual([
       { kind: 'cmd', text: 'one', enter: false },
@@ -85,10 +87,46 @@ describe('favStore', () => {
   ])('reports a %s → %s transfer conflict without deleting either scope', (source, target) => {
     saveFavs(source, [{ kind: 'cmd', text: 'source', enter: false }]);
     saveFavs(target, [{ kind: 'cmd', text: 'taken', enter: true }]);
-    expect(transferFavResult(source, 'source', target, { kind: 'cmd', text: 'taken' }))
+    expect(transferFavResult(source, 'text:source:no-enter', target, { kind: 'cmd', text: 'taken', enter: true }))
       .toMatchObject({ ok: false, reason: 'conflict' });
     expect(loadFavs(source).map((f) => f.text)).toEqual(['source']);
     expect(loadFavs(target).map((f) => f.text)).toEqual(['taken']);
+  });
+  it('treats the same text with different Enter behavior as separate local actions', () => {
+    expect(addFavResult('command', { kind: 'cmd', text: 'ok', enter: false })).toMatchObject({ ok: true });
+    expect(addFavResult('command', { kind: 'cmd', text: 'ok', enter: true })).toMatchObject({ ok: true });
+    expect(loadFavs('command').map(shortcutIdentity))
+      .toEqual(['text:ok:no-enter', 'text:ok:enter']);
+  });
+  it('updates and transfers the exact identity when same-text actions coexist', () => {
+    saveFavs('command', [
+      { kind: 'cmd', text: 'ok', enter: false },
+      { kind: 'cmd', text: 'ok', enter: true },
+    ]);
+    expect(updateFavResult('command', 'text:ok:no-enter', { kind: 'cmd', text: 'draft', enter: false }))
+      .toMatchObject({ ok: true });
+    expect(loadFavs('command').map(shortcutIdentity))
+      .toEqual(['text:draft:no-enter', 'text:ok:enter']);
+    expect(transferFavResult('command', 'text:ok:enter', 'command@w', {
+      kind: 'cmd', text: 'ok', enter: true,
+    })).toMatchObject({ ok: true });
+    expect(loadFavs('command').map(shortcutIdentity)).toEqual(['text:draft:no-enter']);
+    expect(loadFavs('command@w').map(shortcutIdentity)).toEqual(['text:ok:enter']);
+  });
+  it('moves and removes exact same-text actions without touching their sibling identity', () => {
+    saveFavs('command@w', [
+      { kind: 'cmd', text: 'ok', enter: false },
+      { kind: 'cmd', text: 'middle', enter: false },
+      { kind: 'cmd', text: 'ok', enter: true },
+    ]);
+    const moved = moveFavBesideByIdentity(
+      'command@w', 'text:ok:enter', 'text:ok:no-enter',
+    );
+    expect(moved.map(shortcutIdentity))
+      .toEqual(['text:ok:enter', 'text:middle:no-enter', 'text:ok:no-enter']);
+    const removed = removeFavByIdentity('command@w', 'text:ok:enter');
+    expect(removed.map(shortcutIdentity))
+      .toEqual(['text:middle:no-enter', 'text:ok:no-enter']);
   });
   it('the two modes are independent', () => {
     addFav('command', { kind: 'cmd', text: 'git status' });

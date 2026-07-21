@@ -272,6 +272,33 @@ describe('CmdFavEditor', () => {
     expect(card().querySelector('.cmd-add-error').textContent).toContain('已存在');
   });
 
+  it('does not exempt a same-text sibling identity when transferring Global → window', () => {
+    saveFavs(CMD_GLOBAL, [
+      { kind: 'cmd', text: 'ok', enter: false },
+      { kind: 'cmd', text: 'ok', enter: true },
+    ]);
+    localStorage.setItem('hm_shortcut_layout1_command', JSON.stringify({
+      hidden: [], order: ['text:ok:no-enter', 'text:ok:enter'],
+    }));
+    render();
+    const global = container.querySelectorAll('.cmd-esection')[0];
+    click([...global.querySelectorAll('.cmd-fav-text')].find((node) => node.textContent === 'ok'));
+    click(seg('当前窗口'));
+    click(card().querySelector('.cmd-switch input')); // no-enter source → enter sibling identity
+    click(saveBtn());
+    expect(loadFavs(CMD_GLOBAL)).toEqual([
+      { kind: 'cmd', text: 'ok', enter: false },
+      { kind: 'cmd', text: 'ok', enter: true },
+    ]);
+    expect(loadFavs(cmdScope('@3'))).toEqual([]);
+    expect(loadShortcutLayout('command')).toEqual({
+      hidden: [], order: ['text:ok:no-enter', 'text:ok:enter'],
+    });
+    expect(card()).not.toBeNull();
+    expect(addInput().value).toBe('ok');
+    expect(card().querySelector('.cmd-add-error').textContent).toContain('已存在');
+  });
+
   it('rejects a window → Global transfer that would collide with a visible shared preset identity', () => {
     saveFavs(cmdScope('@3'), [{ kind: 'cmd', text: 'source', enter: false }]);
     localStorage.setItem('hm_shortcut_layout1_command', JSON.stringify({
@@ -314,6 +341,25 @@ describe('CmdFavEditor', () => {
     click(saveBtn());
     expect(container.textContent).toContain('Ctrl+C');
     expect(loadShortcutLayout('command').hidden).toEqual([]);
+  });
+
+  it('creates the exact stale-hidden text action when only a same-text different-Enter local exists', () => {
+    saveFavs(CMD_GLOBAL, [{ kind: 'cmd', text: 'ok', enter: false }]);
+    localStorage.setItem('hm_shortcut_layout1_command', JSON.stringify({
+      hidden: ['text:ok:enter'], order: [],
+    }));
+    render({ presets: [] }); // the server preset that created hidden has since been removed
+    openAdd();
+    setInput(addInput(), 'ok');
+    click(card().querySelector('.cmd-switch input')); // request the exact text:ok:enter action
+    click(saveBtn());
+    expect(loadFavs(CMD_GLOBAL)).toEqual([
+      { kind: 'cmd', text: 'ok', enter: false },
+      { kind: 'cmd', text: 'ok', enter: true },
+    ]);
+    expect(loadShortcutLayout('command').hidden).toEqual([]);
+    expect([...container.querySelectorAll('.cmd-esection')[0].querySelectorAll('.cmd-text')]
+      .map((node) => node.textContent)).toEqual(['ok', 'ok⏎']);
   });
 
   it('chat variant: a slash message is stored as a cmd, and 按键 tab saves a bare key fav (Esc)', () => {

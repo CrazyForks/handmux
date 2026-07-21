@@ -1,5 +1,8 @@
-// Only phone-local additions live here. Required presets come from config.json and are merged at render
-// time, so local edits can never remove or reorder them. v7 makes text Enter behavior explicit.
+import { shortcutIdentity } from './shortcutMerge.js';
+
+// Only phone-local additions live here. Shared config provides shortcut content; a device-local layout may
+// hide or reorder those shared actions without ever writing the shared server config. v7 makes text Enter
+// behavior explicit, so same-text actions with different Enter behavior have distinct identities.
 const KEY = (mode) => `hm_favs7_${mode}`;
 const OLD_KEY = (mode) => `hm_favs6_${mode}`;
 
@@ -57,7 +60,10 @@ function storedFav(item) {
 
 export function addFavResult(mode, item) {
   const items = loadFavs(mode);
-  if (items.some((f) => f.text === item.text)) return { ok: false, reason: 'conflict', items };
+  const identity = shortcutIdentity(item);
+  if (items.some((f) => shortcutIdentity(f) === identity)) {
+    return { ok: false, reason: 'conflict', items };
+  }
   // A key fav (kind 'key') carries a pretty label (⌃C); a command carries the enter flag.
   const next = saveFavs(mode, [...items, storedFav(item)]);
   return { ok: true, items: next };
@@ -71,14 +77,18 @@ export function removeFav(mode, text) {
   return saveFavs(mode, loadFavs(mode).filter((f) => f.text !== text));
 }
 
-// Replace the item currently stored as `oldText` with `item`, KEEPING its position (used by the editor's
-// re-open-to-edit flow). No-op if oldText is gone; rejected if the new text would collide with a DIFFERENT
-// existing item (dedupe by text, same rule as addFav).
-export function updateFavResult(mode, oldText, item) {
+export function removeFavByIdentity(mode, identity) {
+  return saveFavs(mode, loadFavs(mode).filter((f) => shortcutIdentity(f) !== identity));
+}
+
+// Replace the exact identity while keeping its position. Same-text actions with different Enter behavior
+// remain independently addressable throughout edit and cross-scope flows.
+export function updateFavResult(mode, oldIdentity, item) {
   const items = loadFavs(mode);
-  const i = items.findIndex((f) => f.text === oldText);
+  const i = items.findIndex((f) => shortcutIdentity(f) === oldIdentity);
   if (i < 0) return { ok: false, reason: 'missing', items };
-  if (items.some((f, k) => k !== i && f.text === item.text)) {
+  const newIdentity = shortcutIdentity(item);
+  if (items.some((f, k) => k !== i && shortcutIdentity(f) === newIdentity)) {
     return { ok: false, reason: 'conflict', items };
   }
   const next = items.slice();
@@ -87,22 +97,25 @@ export function updateFavResult(mode, oldText, item) {
 }
 
 export function updateFav(mode, oldText, item) {
-  return updateFavResult(mode, oldText, item).items;
+  const old = loadFavs(mode).find((fav) => fav.text === oldText);
+  if (!old) return loadFavs(mode);
+  return updateFavResult(mode, shortcutIdentity(old), item).items;
 }
 
 // Move one item between scopes only after validating both lists. A target conflict is therefore a true
 // no-op: neither source nor target is written, and callers can keep their UI/layout unchanged too.
-export function transferFavResult(oldMode, oldText, newMode, item) {
-  if (oldMode === newMode) return updateFavResult(oldMode, oldText, item);
+export function transferFavResult(oldMode, oldIdentity, newMode, item) {
+  if (oldMode === newMode) return updateFavResult(oldMode, oldIdentity, item);
   const source = loadFavs(oldMode);
   const target = loadFavs(newMode);
-  if (!source.some((f) => f.text === oldText)) {
+  if (!source.some((f) => shortcutIdentity(f) === oldIdentity)) {
     return { ok: false, reason: 'missing', source, target };
   }
-  if (target.some((f) => f.text === item.text)) {
+  const newIdentity = shortcutIdentity(item);
+  if (target.some((f) => shortcutIdentity(f) === newIdentity)) {
     return { ok: false, reason: 'conflict', source, target };
   }
-  const nextSource = saveFavs(oldMode, source.filter((f) => f.text !== oldText));
+  const nextSource = saveFavs(oldMode, source.filter((f) => shortcutIdentity(f) !== oldIdentity));
   const nextTarget = saveFavs(newMode, [...target, storedFav(item)]);
   return { ok: true, source: nextSource, target: nextTarget };
 }
@@ -124,6 +137,16 @@ export function moveFavBeside(mode, text, neighbourText) {
   const items = loadFavs(mode);
   const i = items.findIndex((f) => f.text === text);
   const j = items.findIndex((f) => f.text === neighbourText);
+  if (i < 0 || j < 0 || i === j) return items;
+  const next = items.slice();
+  [next[i], next[j]] = [next[j], next[i]];
+  return saveFavs(mode, next);
+}
+
+export function moveFavBesideByIdentity(mode, identity, neighbourIdentity) {
+  const items = loadFavs(mode);
+  const i = items.findIndex((f) => shortcutIdentity(f) === identity);
+  const j = items.findIndex((f) => shortcutIdentity(f) === neighbourIdentity);
   if (i < 0 || j < 0 || i === j) return items;
   const next = items.slice();
   [next[i], next[j]] = [next[j], next[i]];

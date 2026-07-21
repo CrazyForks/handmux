@@ -101,6 +101,24 @@ describe('BottomDock', () => {
       .map((node) => node.textContent)).toEqual(['C', 'B']);
   });
 
+  it('shows an exact stale-hidden Enter action added beside a same-text no-Enter local action', () => {
+    saveFavs('command', [{ kind: 'cmd', text: 'ok', enter: false }]);
+    localStorage.setItem('hm_shortcut_layout1_command', JSON.stringify({
+      hidden: ['text:ok:enter'], order: [],
+    }));
+    render({ pane: '%1', windowId: '@3', shortcuts: { command: [], chat: [] } });
+    fire(container.querySelector('.dock-page.command .quick-cmd-add'), 'click');
+    const editorCard = () => container.querySelector('.cmd-addcard');
+    fire(container.querySelector('.cmd-add-open'), 'click');
+    const input = editorCard().querySelector('.cmd-add-input');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    act(() => { setter.call(input, 'ok'); input.dispatchEvent(new Event('input', { bubbles: true })); });
+    fire(editorCard().querySelector('.cmd-switch input'), 'click');
+    fire(editorCard().querySelector('.cmd-submit'), 'click');
+    expect([...container.querySelectorAll('.dock-page.command .quick-cmd-plain')]
+      .map((node) => node.textContent)).toEqual(['ok', 'ok⏎']);
+  });
+
   it('no dedicated ⌫/Enter rail — those come from the system keyboard now', () => {
     render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
     expect(container.querySelector('.keyrow-del')).toBeNull();
