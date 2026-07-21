@@ -608,6 +608,31 @@ describe('workspace runtime orchestration', () => {
     expect(checkpointer.start).toHaveBeenCalledOnce();
   });
 
+  it('retries initial reconciliation after a transient startup failure', async () => {
+    const { store } = workspaceFixture();
+    const checkpointer = {
+      start: vi.fn()
+        .mockRejectedValueOnce(new Error('temporary workspace read failure'))
+        .mockResolvedValueOnce({ status: 'written' }),
+      stop: vi.fn(),
+      requestReconcile: vi.fn(),
+      confirmEmpty: vi.fn(),
+      reconcile: vi.fn(),
+    };
+    const runtime = createWorkspaceRuntime({
+      store,
+      tmux: { captureTopology: vi.fn(async () => ({ status: 'empty', sessions: [], windows: [] })) },
+      lock: {},
+      checkpointer,
+    });
+
+    await expect(runtime.getRestorePlan({ checkpointId: 'latest' }))
+      .rejects.toThrow('temporary workspace read failure');
+    await expect(runtime.getRestorePlan({ checkpointId: 'latest' }))
+      .resolves.toMatchObject({ checkpointId: 'cp-a' });
+    expect(checkpointer.start).toHaveBeenCalledTimes(2);
+  });
+
   it.each([
     ['ok', async () => ({ status: 'ok', value: { capturedAt: '2026-07-20T01:23:00.000Z' } }), { status: 'protected', lastSuccessfulCaptureAt: '2026-07-20T01:23:00.000Z', errorCode: null }],
     ['empty', async () => ({ status: 'empty' }), { status: 'unprotected', lastSuccessfulCaptureAt: null, errorCode: null }],

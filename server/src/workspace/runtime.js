@@ -286,7 +286,12 @@ export function createWorkspaceRuntime({
   }
 
   function start() {
-    startPromise ||= startOnce();
+    if (!startPromise) {
+      startPromise = startOnce().catch((error) => {
+        startPromise = null;
+        throw error;
+      });
+    }
     return startPromise;
   }
 
