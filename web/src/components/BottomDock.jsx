@@ -17,6 +17,7 @@ import { softKeyboardUp } from '../hooks/useKeyboardInset.js';
 import { t } from '../i18n';
 import { MODIFIERS, modActive, consumeMods, withMods } from '../keybarKeys.js';
 import { DEFAULT_SERVER_SHORTCUTS, mergeShortcuts, shortcutIdentity } from '../shortcutMerge.js';
+import { applyShortcutLayout, loadShortcutLayout } from '../shortcutLayout.js';
 
 // The bottom dock is a two-page pager (swipe the non-key chrome to switch, or TAP the page-dots above;
 // two dots show which page is current):
@@ -99,27 +100,40 @@ function BottomDock({
   const [crowd, setCrowd] = useState(false); // last text line would run under the overlaid buttons → reserve a bottom strip
   const [panelOpen, setPanelOpen] = useState(false);
   const serverShortcuts = shortcuts || DEFAULT_SERVER_SHORTCUTS;
-  // The chat page's horizontal quick-command bar reads the agent 常用 list; re-load it whenever the
-  // FavDrawer closes so add/delete there flow straight into the bar (single source of truth: favStore).
+  // The chat page's horizontal quick-command bar reads the agent 常用 list plus its device-local layout.
   const [favs, setFavs] = useState(() => loadFavs('agent'));
+  const [chatLayout, setChatLayout] = useState(() => loadShortcutLayout('chat'));
   // `chatEditOpen` is the chat page's ⚙ editor sheet (mirrors the command page's ⚙). Reload the agent list
   // whenever either it or the history panel closes so add/edit/delete/reorder flow straight into the bar.
   const [chatEditOpen, setChatEditOpen] = useState(false);
-  useEffect(() => { if (!panelOpen && !chatEditOpen) setFavs(loadFavs('agent')); }, [panelOpen, chatEditOpen]);
+  const refreshChatShortcuts = () => {
+    setFavs(loadFavs('agent'));
+    setChatLayout(loadShortcutLayout('chat'));
+  };
+  useEffect(() => { if (!panelOpen && !chatEditOpen) refreshChatShortcuts(); }, [panelOpen, chatEditOpen]);
   // Command mode has its OWN saved commands (separate from the agent list), split into a GLOBAL list
   // (shown first, grey) and a PER-WINDOW list (shown after, green) — both in the command page's quick-bar.
   // `cmdEditOpen` is the ⚙ editor sheet; reload BOTH lists whenever it closes (or the window changes) so
   // add/delete/reorder flow straight into the bar.
   const [cmdFavs, setCmdFavs] = useState(() => loadFavs('command'));
   const [winFavs, setWinFavs] = useState(() => (windowId ? loadFavs(cmdScope(windowId)) : []));
+  const [commandLayout, setCommandLayout] = useState(() => loadShortcutLayout('command'));
   const [cmdEditOpen, setCmdEditOpen] = useState(false);
-  useEffect(() => {
-    if (cmdEditOpen) return;
+  const refreshCommandShortcuts = () => {
     setCmdFavs(loadFavs('command'));
     setWinFavs(windowId ? loadFavs(cmdScope(windowId)) : []);
+    setCommandLayout(loadShortcutLayout('command'));
+  };
+  useEffect(() => {
+    if (cmdEditOpen) return;
+    refreshCommandShortcuts();
   }, [cmdEditOpen, windowId]);
-  const chatShortcuts = mergeShortcuts(serverShortcuts.chat, favs, 'chat');
-  const commandShortcuts = mergeShortcuts(serverShortcuts.command, cmdFavs, 'command');
+  const chatShortcuts = applyShortcutLayout(
+    mergeShortcuts(serverShortcuts.chat, favs, 'chat'), chatLayout,
+  );
+  const commandShortcuts = applyShortcutLayout(
+    mergeShortcuts(serverShortcuts.command, cmdFavs, 'command'), commandLayout,
+  );
   const presetCommandIds = new Set((serverShortcuts.command || []).map(shortcutIdentity));
   const windowShortcuts = mergeShortcuts([], winFavs, 'command')
     .filter((item) => !presetCommandIds.has(shortcutIdentity(item)));
@@ -950,11 +964,11 @@ function BottomDock({
           (global + this window) over one add row whose 命令/按键 tab picks what you add. Mounted only while
           open so it seeds fresh each time. Never touches the agent list. */}
       {cmdEditOpen && <CmdFavEditor windowId={windowId} inset={inset} presets={serverShortcuts.command}
-        onClose={() => setCmdEditOpen(false)} />}
+        onChange={refreshCommandShortcuts} onClose={() => setCmdEditOpen(false)} />}
       {/* Chat-mode saved-message editor (opened by the ⚙ in the chat quick-bar): one global list whose
           消息/按键 tab picks what you add. Same card as command mode, chat variant. */}
       {chatEditOpen && <CmdFavEditor variant="chat" inset={inset} presets={serverShortcuts.chat}
-        onClose={() => setChatEditOpen(false)} />}
+        onChange={refreshChatShortcuts} onClose={() => setChatEditOpen(false)} />}
     </div>
   );
 }

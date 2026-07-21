@@ -22,6 +22,20 @@ beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); voice.state = 'idle
 const typeInto = (el, text) => fireEvent.change(el, { target: { value: text } });
 
 describe('ChatComposer', () => {
+  it('renders the same device-local merged order as the editor', () => {
+    localStorage.setItem('hm_favs7_agent', JSON.stringify([
+      { kind: 'reply', text: 'local', enter: true },
+    ]));
+    localStorage.setItem('hm_shortcut_layout1_chat', JSON.stringify({
+      hidden: [], order: ['text:local:enter', 'key:C-c'],
+    }));
+    render(<ChatComposer pane="%1" kind="idle" shortcuts={{
+      command: [], chat: [{ type: 'key', key: 'C-c', label: 'Ctrl+C' }],
+    }} />);
+    expect([...screen.getAllByRole('button')].slice(0, 2).map((node) => node.textContent))
+      .toEqual(['local', 'Ctrl+C']);
+  });
+
   it('send is disabled until there is non-blank text', () => {
     render(<ChatComposer pane="%1" kind="idle" />);
     const send = screen.getByRole('button', { name: '发送' });
@@ -152,12 +166,13 @@ describe('ChatComposer', () => {
     await waitFor(() => expect(sendText).toHaveBeenCalledWith('%1', 'send now', true));
   });
 
-  it('passes required presets into the locked editor section', () => {
+  it('passes required presets into the unified editor list', () => {
     const shortcuts = { command: [], chat: [{ type: 'text', text: 'required', enter: true }] };
     const { container } = render(<ChatComposer pane="%1" kind="idle" shortcuts={shortcuts} />);
     fireEvent.click(screen.getByRole('button', { name: '常用消息' }));
-    expect(container.querySelector('.cmd-config-section').textContent).toContain('required');
-    expect(container.querySelector('.cmd-config-section button')).toBeNull();
+    expect(container.querySelector('.cmd-esection').textContent).toContain('required');
+    expect(container.querySelector('.cmd-config-section')).toBeNull();
+    expect(container.querySelector('.cmd-row .cmd-del').getAttribute('aria-label')).toBe('从本机移除');
   });
 
   it('shows explicit phone-local key/reply/cmd items in the chip strip', () => {

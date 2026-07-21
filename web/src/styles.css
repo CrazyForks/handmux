@@ -791,6 +791,16 @@ div.workspace-restore-errors { padding-left: 10px; }
 /* iOS grouped-list look for the saved commands, matching the add card: darker sheet, roomy rows with hairline
    separators, and a larger, more legible type size than the old dense 13px. */
 .cmd-panel.cmd-editor { background: #1c1c1e; }
+.cmd-undo-toast {
+  position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); z-index: 2;
+  transform: translateX(-50%); display: flex; align-items: center; gap: 12px;
+  max-width: calc(100% - 28px); padding: 9px 10px 9px 14px; border-radius: 12px;
+  background: rgba(44,44,46,.96); color: #f2f2f7; box-shadow: 0 5px 20px rgba(0,0,0,.38);
+  font-size: 13px; animation: exit-toast-in .18s ease;
+}
+.cmd-undo { min-width: 44px; min-height: 44px; padding: 0 10px; border: none; background: none;
+  color: #64a8ff; font: inherit; font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .cmd-undo-toast { animation: none; } }
 .cmd-editor .cmd-section { padding: 12px 16px 6px; }
 .cmd-editor .cmd-section-name { font-size: 13px; letter-spacing: .4px; }
 .cmd-editor .cmd-row { padding: 0 10px 0 16px; }
@@ -820,7 +830,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .cmd-copy { flex: none; background: none; border: none; color: #8a93a0; padding: 6px 8px; touch-action: manipulation; display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 44px; }
 .cmd-copy svg { width: 15px; height: 15px; display: block; }
 .cmd-copy:active { color: #9db8ff; }
-.cmd-del { flex: none; background: none; border: none; color: #888; padding: 6px 8px; touch-action: manipulation; display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 44px; }
+.cmd-del { flex: none; background: none; border: none; color: #888; padding: 6px 8px; touch-action: manipulation; display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
 .cmd-del svg { width: 14px; height: 14px; display: block; }
 .cmd-empty { padding: 20px 14px; color: #888; font-size: 13px; text-align: center; }
 /* History scope hint — a quiet line at the top of the send-log ("current window only"). */
@@ -843,7 +853,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .cmd-fav-text { flex: 1; }
 .cmd-enter { margin-left: 7px; opacity: .65; font-size: 12px; }
 /* ▲▼ reorder buttons — the up one is the same chevron flipped. Disabled at the list ends. */
-.cmd-move { flex: none; background: none; border: none; color: #8a93a0; padding: 6px 5px; touch-action: manipulation; display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 44px; }
+.cmd-move { flex: none; background: none; border: none; color: #8a93a0; padding: 6px 5px; touch-action: manipulation; display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
 .cmd-move svg { width: 16px; height: 16px; display: block; }
 .cmd-move.up svg { transform: rotate(180deg); }
 .cmd-move:active { color: #9db8ff; }

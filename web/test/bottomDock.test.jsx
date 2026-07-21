@@ -50,6 +50,28 @@ const typeInto = (node, text) => act(() => {
 });
 
 describe('BottomDock', () => {
+  it('renders the device-local command order across shared and local global items', () => {
+    localStorage.setItem('hm_favs7_command', JSON.stringify([
+      { kind: 'cmd', text: 'local', enter: false },
+    ]));
+    localStorage.setItem('hm_shortcut_layout1_command', JSON.stringify({
+      hidden: [], order: ['text:local:no-enter', 'key:C-c'],
+    }));
+    render({ pane: '%1', shortcuts: {
+      command: [{ type: 'key', key: 'C-c', label: 'Ctrl+C' }], chat: [],
+    } });
+    expect([...container.querySelectorAll('.dock-page.command .quick-scroll .quick-cmd')]
+      .slice(0, 2).map((node) => node.textContent)).toEqual(['local', 'Ctrl+C']);
+  });
+
+  it('does not render a command preset hidden on this device', () => {
+    localStorage.setItem('hm_shortcut_layout1_command', JSON.stringify({ hidden: ['key:C-c'], order: [] }));
+    render({ pane: '%1', shortcuts: {
+      command: [{ type: 'key', key: 'C-c', label: 'Ctrl+C' }], chat: [],
+    } });
+    expect(container.querySelector('.dock-page.command .quick-scroll').textContent).not.toContain('Ctrl+C');
+  });
+
   it('no dedicated ⌫/Enter rail — those come from the system keyboard now', () => {
     render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
     expect(container.querySelector('.keyrow-del')).toBeNull();

@@ -1,6 +1,11 @@
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { loadFavs, addFav, removeFav, moveFav, updateFav, cmdScope, CMD_GLOBAL } from '../favStore.js';
 import { buildChord } from '../keybarKeys.js';
+import { mergeShortcuts, shortcutIdentity } from '../shortcutMerge.js';
+import {
+  applyShortcutLayout, hideShortcutInLayout, loadShortcutLayout, moveShortcutInLayout,
+  removeShortcutFromLayout, replaceShortcutInLayout, saveShortcutLayout, showShortcutInLayout,
+} from '../shortcutLayout.js';
 import { XIcon, ChevronDownIcon, PlusIcon, CheckIcon } from './icons.jsx';
 import { t } from '../i18n';
 
@@ -87,34 +92,22 @@ function List({ title, accent, items, showTitle = true, onMove, onDel, onEdit })
       {showTitle && <div className={`cmd-section ${accent}`}><span className="cmd-section-name">{title}</span></div>}
       {items.length === 0 && <div className="cmd-empty">{t('cmd.empty')}</div>}
       {items.map((f, i) => (
-        <div key={f.text} className="cmd-row">
-          {/* Tap the row to re-open the card and edit this item (command or key). */}
-          <button type="button" className="cmd-text cmd-fav-text" onClick={() => onEdit(f)}>
-            {f.kind === 'key' ? (f.label || f.text) : f.text}
-            {f.kind !== 'key' && f.enter && <span className="cmd-enter" aria-hidden="true">⏎</span>}
-          </button>
-          <button className="cmd-move up" disabled={i === 0} onClick={() => onMove(f.text, -1)}
+        <div key={shortcutIdentity(f)} className="cmd-row">
+          {f.source === 'config'
+            ? <span className="cmd-text cmd-fav-text">
+              {f.kind === 'key' ? (f.label || f.text) : f.text}
+              {f.kind !== 'key' && f.enter && <span className="cmd-enter" aria-hidden="true">⏎</span>}
+            </span>
+            : <button type="button" className="cmd-text cmd-fav-text" onClick={() => onEdit(f)}>
+              {f.kind === 'key' ? (f.label || f.text) : f.text}
+              {f.kind !== 'key' && f.enter && <span className="cmd-enter" aria-hidden="true">⏎</span>}
+            </button>}
+          <button className="cmd-move up" disabled={i === 0} onClick={() => onMove(f, -1)}
             aria-label={t('cmd.moveUp')}><ChevronDownIcon /></button>
-          <button className="cmd-move" disabled={i === items.length - 1} onClick={() => onMove(f.text, 1)}
+          <button className="cmd-move" disabled={i === items.length - 1} onClick={() => onMove(f, 1)}
             aria-label={t('cmd.moveDown')}><ChevronDownIcon /></button>
-          <button className="cmd-del" onClick={() => onDel(f.text)} aria-label={t('common.delete')}><XIcon /></button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ConfigList({ items }) {
-  if (!items.length) return null;
-  return (
-    <div className="cmd-esection global cmd-config-section">
-      <div className="cmd-section global"><span className="cmd-section-name">{t('cmd.configPresets')}</span></div>
-      {items.map((item, i) => (
-        <div key={`${item.type}:${item.key || item.text}:${i}`} className="cmd-row cmd-config-row">
-          <span className="cmd-text">
-            {item.type === 'key' ? (item.label || item.key) : item.text}
-            {item.type === 'text' && item.enter && <span className="cmd-enter" aria-hidden="true">⏎</span>}
-          </span>
+          <button className="cmd-del" onClick={() => onDel(f)}
+            aria-label={t(f.source === 'config' ? 'cmd.removeDevice' : 'common.delete')}><XIcon /></button>
         </div>
       ))}
     </div>
@@ -150,7 +143,7 @@ function AddCard({ scopes, cfg, edit, inset, onAdd, onUpdate, onClose }) {
     const fav = tab === 'key'
       ? { kind: 'key', text: chord.name, label: chord.label }
       : { kind: cfg.msgKind(text.trim()), text: text.trim(), enter };
-    if (edit) { onUpdate(edit.scope, edit.fav.text, targetScope, fav); return; }
+    if (edit) { onUpdate(edit.scope, edit.fav, targetScope, fav); return; }
     onAdd(targetScope, fav);
     setText('');                                // keep the card open for rapid multi-add
     inputRef.current?.focus();
@@ -269,18 +262,78 @@ function editorConfig(variant, windowId) {
   };
 }
 
-export default function CmdFavEditor({ windowId, inset = 0, variant = 'command', presets = [], onClose }) {
+export default function CmdFavEditor({
+  windowId, inset = 0, variant = 'command', presets = [], onChange, onClose,
+}) {
   const { title, scopes, card: cardCfg } = editorConfig(variant, windowId);
   const [items, setItems] = useState(() => Object.fromEntries(scopes.map((s) => [s.key, loadFavs(s.key)])));
   const [card, setCard] = useState(null); // null | { edit: null } (add) | { edit: { fav, scope } }
+  const layoutMode = variant === 'chat' ? 'chat' : 'command';
+  const globalScope = scopes[0].key;
+  const [layout, setLayout] = useState(() => loadShortcutLayout(layoutMode));
+  const [undo, setUndo] = useState(null);
+  const mergedGlobal = applyShortcutLayout(
+    mergeShortcuts(presets, items[globalScope] || [], layoutMode), layout,
+  );
 
   const reloadAll = () => setItems(Object.fromEntries(scopes.map((s) => [s.key, loadFavs(s.key)])));
-  const doMove = (s, txt, dir) => { moveFav(s, txt, dir); reloadAll(); };
-  const doDel = (s, txt) => { removeFav(s, txt); reloadAll(); };
-  const doAdd = (s, fav) => { addFav(s, fav); reloadAll(); };
-  const doUpdate = (oldScope, oldText, newScope, fav) => {
-    if (oldScope === newScope) updateFav(oldScope, oldText, fav);
-    else { removeFav(oldScope, oldText); addFav(newScope, fav); }
+  const persistLayout = (next) => {
+    const saved = saveShortcutLayout(layoutMode, next);
+    setLayout(saved);
+    onChange?.();
+    return saved;
+  };
+  useEffect(() => {
+    if (!undo) return undefined;
+    const timer = setTimeout(() => setUndo(null), 4000);
+    return () => clearTimeout(timer);
+  }, [undo]);
+  const doMove = (scope, item, dir) => {
+    if (scope === globalScope) {
+      persistLayout(moveShortcutInLayout(layout, mergedGlobal, shortcutIdentity(item), dir));
+    } else {
+      moveFav(scope, item.text, dir);
+      reloadAll();
+      onChange?.();
+    }
+  };
+  const doDel = (scope, item) => {
+    const identity = shortcutIdentity(item);
+    if (item.source === 'config') {
+      persistLayout(hideShortcutInLayout(layout, mergedGlobal, identity));
+      setUndo({ identity });
+      return;
+    }
+    removeFav(scope, item.text);
+    if (scope === globalScope) persistLayout(removeShortcutFromLayout(layout, identity));
+    else onChange?.();
+    reloadAll();
+  };
+  const doUndo = () => {
+    if (!undo) return;
+    persistLayout(showShortcutInLayout(layout, undo.identity));
+    setUndo(null);
+  };
+  const doAdd = (scope, fav) => {
+    addFav(scope, fav);
+    if (scope === globalScope) persistLayout(showShortcutInLayout(layout, shortcutIdentity(fav)));
+    else onChange?.();
+    reloadAll();
+  };
+  const doUpdate = (oldScope, oldFav, newScope, fav) => {
+    const oldIdentity = shortcutIdentity(oldFav);
+    const newIdentity = shortcutIdentity(fav);
+    if (oldScope === newScope) updateFav(oldScope, oldFav.text, fav);
+    else { removeFav(oldScope, oldFav.text); addFav(newScope, fav); }
+    if (oldScope === globalScope && newScope === globalScope) {
+      persistLayout(replaceShortcutInLayout(layout, oldIdentity, newIdentity));
+    } else if (oldScope === globalScope) {
+      persistLayout(removeShortcutFromLayout(layout, oldIdentity));
+    } else if (newScope === globalScope) {
+      persistLayout(showShortcutInLayout(layout, newIdentity));
+    } else {
+      onChange?.();
+    }
     reloadAll();
     setCard(null);
   };
@@ -295,14 +348,21 @@ export default function CmdFavEditor({ windowId, inset = 0, variant = 'command',
           <button className="cmd-close" onClick={onClose} aria-label={t('common.close')}><XIcon /></button>
         </div>
         <div className="cmd-list">
-          <ConfigList items={presets} />
-          {scopes.map((s) => (
-            <List key={s.key} title={s.title} accent={s.accent} items={items[s.key] || []}
-              showTitle={scopes.length > 1 || presets.length > 0}
-              onMove={(txt, d) => doMove(s.key, txt, d)} onDel={(txt) => doDel(s.key, txt)}
-              onEdit={(f) => setCard({ edit: { fav: f, scope: s.key } })} />
-          ))}
+          {scopes.map((scope) => {
+            const visible = scope.key === globalScope
+              ? mergedGlobal
+              : mergeShortcuts([], items[scope.key] || [], 'command');
+            return <List key={scope.key} title={scope.title} accent={scope.accent} items={visible}
+              showTitle={scopes.length > 1}
+              onMove={(item, direction) => doMove(scope.key, item, direction)}
+              onDel={(item) => doDel(scope.key, item)}
+              onEdit={(item) => setCard({ edit: { fav: item, scope: scope.key } })} />;
+          })}
         </div>
+        {undo && <div className="cmd-undo-toast" role="status">
+          <span>{t('cmd.removedDevice')}</span>
+          <button type="button" className="cmd-undo" onClick={doUndo}>{t('common.undo')}</button>
+        </div>}
       </div>
       {card && <AddCard scopes={scopes} cfg={cardCfg} edit={card.edit} inset={inset}
         onAdd={doAdd} onUpdate={doUpdate} onClose={() => setCard(null)} />}

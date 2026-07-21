@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import CmdFavEditor from '../src/components/CmdFavEditor.jsx';
 import { loadFavs, saveFavs, cmdScope, CMD_GLOBAL } from '../src/favStore.js';
+import { loadShortcutLayout } from '../src/shortcutLayout.js';
 
 let container, root;
 beforeEach(() => {
@@ -11,7 +12,7 @@ beforeEach(() => {
   document.body.appendChild(container);
   root = createRoot(container);
 });
-afterEach(() => { act(() => root.unmount()); container.remove(); });
+afterEach(() => { act(() => root.unmount()); container.remove(); vi.useRealTimers(); });
 
 const render = (props) => act(() => root.render(<CmdFavEditor windowId="@3" onClose={vi.fn()} {...props} />));
 const click = (node) => act(() => node.dispatchEvent(new MouseEvent('click', { bubbles: true })));
@@ -114,18 +115,51 @@ describe('CmdFavEditor', () => {
     expect(loadFavs('agent')).toEqual([{ kind: 'reply', text: '用中文回答', enter: true }]);
   });
 
-  it('shows config presets in a locked section without edit/delete/reorder controls', () => {
-    const presets = [
+  it('merges shared presets and phone-local global items in the effective order', () => {
+    saveFavs(CMD_GLOBAL, [{ kind: 'cmd', text: 'local', enter: false }]);
+    render({ presets: [{ type: 'key', key: 'C-c', label: 'Ctrl+C' }] });
+    const global = container.querySelectorAll('.cmd-esection')[0];
+    expect([...global.querySelectorAll('.cmd-text')].map((node) => node.textContent))
+      .toEqual(['Ctrl+C', 'local']);
+    expect(container.querySelector('.cmd-config-section')).toBeNull();
+  });
+
+  it('moves a shared preset across a local item and persists the effective order', () => {
+    saveFavs(CMD_GLOBAL, [{ kind: 'cmd', text: 'local', enter: false }]);
+    render({ presets: [{ type: 'key', key: 'C-c', label: 'Ctrl+C' }] });
+    const global = container.querySelectorAll('.cmd-esection')[0];
+    click([...global.querySelectorAll('.cmd-row')][1].querySelector('.cmd-move.up'));
+    expect([...global.querySelectorAll('.cmd-text')].map((node) => node.textContent))
+      .toEqual(['local', 'Ctrl+C']);
+    expect(loadShortcutLayout('command').order).toEqual(['text:local:no-enter', 'key:C-c']);
+  });
+
+  it('removes a shared preset from this device and undo restores its position', () => {
+    vi.useFakeTimers();
+    render({ presets: [
+      { type: 'key', key: 'C-c', label: 'Ctrl+C' },
       { type: 'key', key: 'Escape', label: 'Esc' },
-      { type: 'text', text: 'ok', enter: true },
-    ];
-    render({ presets });
-    const locked = container.querySelector('.cmd-config-section');
-    expect(locked.textContent).toContain('配置预置');
-    expect(locked.textContent).toContain('Esc');
-    expect(locked.textContent).toContain('ok');
-    expect(locked.querySelectorAll('.cmd-del, .cmd-move')).toHaveLength(0);
-    expect(locked.querySelectorAll('button')).toHaveLength(0);
+    ] });
+    const first = container.querySelector('.cmd-esection .cmd-row');
+    expect(first.querySelector('.cmd-del').getAttribute('aria-label')).toBe('从本机移除');
+    click(first.querySelector('.cmd-del'));
+    expect(container.textContent).not.toContain('Ctrl+C');
+    expect(loadShortcutLayout('command').hidden).toEqual(['key:C-c']);
+    click(container.querySelector('.cmd-undo'));
+    expect([...container.querySelectorAll('.cmd-esection .cmd-text')].map((node) => node.textContent))
+      .toEqual(['Ctrl+C', 'Esc']);
+  });
+
+  it('re-adding a hidden shortcut clears the hidden identity', () => {
+    localStorage.setItem('hm_shortcut_layout1_command', JSON.stringify({ hidden: ['key:C-c'], order: [] }));
+    render({ presets: [{ type: 'key', key: 'C-c', label: 'Ctrl+C' }] });
+    openAdd();
+    click(modeTab('按键'));
+    pickFromDD(0, 'Ctrl');
+    pickFromDD(1, 'C');
+    click(saveBtn());
+    expect(container.textContent).toContain('Ctrl+C');
+    expect(loadShortcutLayout('command').hidden).toEqual([]);
   });
 
   it('chat variant: a slash message is stored as a cmd, and 按键 tab saves a bare key fav (Esc)', () => {
@@ -154,6 +188,6 @@ describe('CmdFavEditor', () => {
     const twoRow = [...global.querySelectorAll('.cmd-row')][1];
     click(twoRow.querySelector('.cmd-move.up'));
     expect(rows()).toEqual(['two', 'one']);
-    expect(loadFavs(CMD_GLOBAL).map((f) => f.text)).toEqual(['two', 'one']);
+    expect(loadShortcutLayout('command').order).toEqual(['text:two:no-enter', 'text:one:no-enter']);
   });
 });

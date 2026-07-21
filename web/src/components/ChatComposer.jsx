@@ -12,6 +12,7 @@ import { useUpload } from '../hooks/useUpload.js';
 import { usePushToTalk } from '../voice/usePushToTalk.js';
 import { useScreenWakeLock } from '../hooks/useScreenWakeLock.js';
 import { DEFAULT_SERVER_SHORTCUTS, mergeShortcuts, shortcutIdentity } from '../shortcutMerge.js';
+import { applyShortcutLayout, loadShortcutLayout } from '../shortcutLayout.js';
 import { t } from '../i18n';
 
 // The 对话-lens composer — a single modern AI-agent input CARD (textarea on top, an action row beneath),
@@ -47,13 +48,20 @@ export default function ChatComposer({
   const uploadRef = useRef(null);    // hidden <input type=file>
   const tapPt = useRef({ x: 0, y: 0, moved: false }); // for tap-to-focus on the card's blank areas
 
-  // Config presets stay first and locked; phone-local additions follow. App fetches the server half once
-  // at startup; reloading the local half when the editor closes is enough for on-device changes.
+  // Shared presets and phone-local additions use one device-local layout. App fetches the server half once;
+  // editor changes reload both the local items and layout immediately, even while the sheet stays open.
   const serverShortcuts = shortcuts || DEFAULT_SERVER_SHORTCUTS;
   const [favs, setFavs] = useState(() => loadFavs('agent'));
+  const [layout, setLayout] = useState(() => loadShortcutLayout('chat'));
   const [editOpen, setEditOpen] = useState(false);
-  useEffect(() => { if (!editOpen) setFavs(loadFavs('agent')); }, [editOpen]);
-  const quickFavs = mergeShortcuts(serverShortcuts.chat, favs, 'chat');
+  const refreshShortcuts = () => {
+    setFavs(loadFavs('agent'));
+    setLayout(loadShortcutLayout('chat'));
+  };
+  useEffect(() => { if (!editOpen) refreshShortcuts(); }, [editOpen]);
+  const quickFavs = applyShortcutLayout(
+    mergeShortcuts(serverShortcuts.chat, favs, 'chat'), layout,
+  );
 
   // While the agent is working, the send button becomes a STOP that interrupts it (Escape). Any other
   // state (idle / needs-you / done) shows the normal send.
@@ -227,7 +235,8 @@ export default function ChatComposer({
           </div>
         </div>
       </div>
-      {editOpen && <CmdFavEditor variant="chat" presets={serverShortcuts.chat} onClose={() => setEditOpen(false)} />}
+      {editOpen && <CmdFavEditor variant="chat" presets={serverShortcuts.chat}
+        onChange={refreshShortcuts} onClose={() => setEditOpen(false)} />}
     </div>
   );
 }
