@@ -425,6 +425,7 @@ export default {
   'cmd.recent': '最近',
   'cmd.scopeSession': '仅本会话',
   'cmd.favorite': '收藏',
+  'cmd.itemConflict': '该快捷项已存在，请更换内容或选择其他列表。',
   'cmd.unfavorite': '取消收藏',
   'doc.home': '最近',
   'doc.read': '朗读',

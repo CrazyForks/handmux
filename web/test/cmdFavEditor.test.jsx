@@ -184,6 +184,126 @@ describe('CmdFavEditor', () => {
     expect(win.textContent).not.toContain('Ctrl+C');
   });
 
+  it('moves across a hidden global duplicate by swapping the visible window neighbours', () => {
+    saveFavs(cmdScope('@3'), [
+      { kind: 'cmd', text: 'B', enter: false },
+      { kind: 'cmd', text: 'duplicate', enter: false },
+      { kind: 'cmd', text: 'C', enter: false },
+    ]);
+    render({ presets: [{ type: 'text', text: 'duplicate', enter: false }] });
+    const win = container.querySelectorAll('.cmd-esection')[1];
+    expect([...win.querySelectorAll('.cmd-text')].map((node) => node.textContent)).toEqual(['B', 'C']);
+    click([...win.querySelectorAll('.cmd-row')][1].querySelector('.cmd-move.up'));
+    expect([...win.querySelectorAll('.cmd-text')].map((node) => node.textContent)).toEqual(['C', 'B']);
+    expect(loadFavs(cmdScope('@3')).map((f) => f.text)).toEqual(['C', 'duplicate', 'B']);
+  });
+
+  it('keeps a same-scope edit open and preserves data/layout when the new text conflicts', () => {
+    saveFavs(CMD_GLOBAL, [
+      { kind: 'cmd', text: 'one', enter: false },
+      { kind: 'cmd', text: 'two', enter: false },
+    ]);
+    localStorage.setItem('hm_shortcut_layout1_command', JSON.stringify({
+      hidden: [], order: ['text:one:no-enter', 'text:two:no-enter'],
+    }));
+    render();
+    click(container.querySelector('.cmd-esection .cmd-fav-text'));
+    setInput(addInput(), 'two');
+    click(saveBtn());
+    expect(loadFavs(CMD_GLOBAL).map((f) => f.text)).toEqual(['one', 'two']);
+    expect(loadShortcutLayout('command')).toEqual({
+      hidden: [], order: ['text:one:no-enter', 'text:two:no-enter'],
+    });
+    expect(card()).not.toBeNull();
+    expect(card().querySelector('.cmd-add-error').textContent).toContain('已存在');
+    expect(addInput().value).toBe('two');
+  });
+
+  it.each([
+    ['全局 → 当前窗口', 0, '当前窗口'],
+    ['当前窗口 → 全局', 1, '全局'],
+  ])('keeps a conflicting %s edit transactional and open', (_name, sourceSection, targetLabel) => {
+    saveFavs(CMD_GLOBAL, [{ kind: 'cmd', text: sourceSection === 0 ? 'source' : 'taken', enter: false }]);
+    saveFavs(cmdScope('@3'), [{ kind: 'cmd', text: sourceSection === 1 ? 'source' : 'taken', enter: false }]);
+    localStorage.setItem('hm_shortcut_layout1_command', JSON.stringify({
+      hidden: ['key:Escape'], order: ['text:taken:no-enter'],
+    }));
+    render();
+    const section = container.querySelectorAll('.cmd-esection')[sourceSection];
+    click([...section.querySelectorAll('.cmd-fav-text')].find((node) => node.textContent === 'source'));
+    click(seg(targetLabel));
+    setInput(addInput(), 'taken');
+    click(saveBtn());
+    expect(loadFavs(CMD_GLOBAL).map((f) => f.text)).toEqual([sourceSection === 0 ? 'source' : 'taken']);
+    expect(loadFavs(cmdScope('@3')).map((f) => f.text)).toEqual([sourceSection === 1 ? 'source' : 'taken']);
+    expect(loadShortcutLayout('command')).toEqual({
+      hidden: ['key:Escape'], order: ['text:taken:no-enter'],
+    });
+    expect(card()).not.toBeNull();
+    expect(card().querySelector('.cmd-add-error').textContent).toContain('已存在');
+  });
+
+  it('rejects a global edit that would collide with a visible shared preset identity', () => {
+    saveFavs(CMD_GLOBAL, [{ kind: 'cmd', text: 'source', enter: false }]);
+    localStorage.setItem('hm_shortcut_layout1_command', JSON.stringify({
+      hidden: [], order: ['text:source:no-enter', 'text:taken:no-enter'],
+    }));
+    render({ presets: [{ type: 'text', text: 'taken', enter: false }] });
+    click([...container.querySelectorAll('.cmd-esection')[0].querySelectorAll('.cmd-fav-text')]
+      .find((node) => node.textContent === 'source'));
+    setInput(addInput(), 'taken');
+    click(saveBtn());
+    expect(loadFavs(CMD_GLOBAL).map((f) => f.text)).toEqual(['source']);
+    expect(loadShortcutLayout('command').order).toEqual(['text:source:no-enter', 'text:taken:no-enter']);
+    expect(card()).not.toBeNull();
+    expect(card().querySelector('.cmd-add-error').textContent).toContain('已存在');
+  });
+
+  it('rejects a window edit that would collide with an effective local Global identity', () => {
+    saveFavs(CMD_GLOBAL, [{ kind: 'cmd', text: 'taken', enter: false }]);
+    saveFavs(cmdScope('@3'), [{ kind: 'cmd', text: 'source', enter: false }]);
+    render();
+    const win = container.querySelectorAll('.cmd-esection')[1];
+    click([...win.querySelectorAll('.cmd-fav-text')].find((node) => node.textContent === 'source'));
+    setInput(addInput(), 'taken');
+    click(saveBtn());
+    expect(loadFavs(cmdScope('@3')).map((f) => f.text)).toEqual(['source']);
+    expect(card()).not.toBeNull();
+    expect(card().querySelector('.cmd-add-error').textContent).toContain('已存在');
+  });
+
+  it('rejects a window → Global transfer that would collide with a visible shared preset identity', () => {
+    saveFavs(cmdScope('@3'), [{ kind: 'cmd', text: 'source', enter: false }]);
+    localStorage.setItem('hm_shortcut_layout1_command', JSON.stringify({
+      hidden: ['key:Escape'], order: ['text:taken:no-enter'],
+    }));
+    render({ presets: [{ type: 'text', text: 'taken', enter: false }] });
+    const win = container.querySelectorAll('.cmd-esection')[1];
+    click([...win.querySelectorAll('.cmd-fav-text')].find((node) => node.textContent === 'source'));
+    click(seg('全局'));
+    setInput(addInput(), 'taken');
+    click(saveBtn());
+    expect(loadFavs(CMD_GLOBAL)).toEqual([]);
+    expect(loadFavs(cmdScope('@3')).map((f) => f.text)).toEqual(['source']);
+    expect(loadShortcutLayout('command')).toEqual({
+      hidden: ['key:Escape'], order: ['text:taken:no-enter'],
+    });
+    expect(card()).not.toBeNull();
+  });
+
+  it('rejects adding a window item hidden by an effective Global identity and preserves input', () => {
+    saveFavs(CMD_GLOBAL, [{ kind: 'cmd', text: 'taken', enter: false }]);
+    render();
+    openAdd();
+    click(seg('当前窗口'));
+    setInput(addInput(), 'taken');
+    click(saveBtn());
+    expect(loadFavs(cmdScope('@3'))).toEqual([]);
+    expect(card()).not.toBeNull();
+    expect(addInput().value).toBe('taken');
+    expect(card().querySelector('.cmd-add-error').textContent).toContain('已存在');
+  });
+
   it('re-adding a hidden shortcut clears the hidden identity', () => {
     localStorage.setItem('hm_shortcut_layout1_command', JSON.stringify({ hidden: ['key:C-c'], order: [] }));
     render({ presets: [{ type: 'key', key: 'C-c', label: 'Ctrl+C' }] });

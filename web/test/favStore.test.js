@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { loadFavs, saveFavs, addFav, removeFav, moveFav, cmdScope, CMD_GLOBAL, DEFAULT_FAVS } from '../src/favStore.js';
+import {
+  loadFavs, saveFavs, addFav, removeFav, moveFav,
+  moveFavBeside, addFavResult, updateFavResult, transferFavResult,
+  cmdScope, CMD_GLOBAL, DEFAULT_FAVS,
+} from '../src/favStore.js';
 
 beforeEach(() => localStorage.clear());
 
@@ -38,6 +42,15 @@ describe('favStore', () => {
     expect(moveFav('command', 'a', 1).map((f) => f.text)).toEqual(['b', 'c', 'a']);  // down
     expect(moveFav('command', 'b', -1).map((f) => f.text)).toEqual(['b', 'c', 'a']); // top, up → no-op
   });
+  it('moveFavBeside swaps visible neighbours even when a hidden duplicate sits between them', () => {
+    saveFavs('command@w', [
+      { kind: 'cmd', text: 'B' },
+      { kind: 'cmd', text: 'global-duplicate' },
+      { kind: 'cmd', text: 'C' },
+    ]);
+    expect(moveFavBeside('command@w', 'C', 'B').map((f) => f.text))
+      .toEqual(['C', 'global-duplicate', 'B']);
+  });
   it('global and per-window command lists are separate scopes', () => {
     expect(cmdScope(null)).toBe(CMD_GLOBAL);
     addFav(CMD_GLOBAL, { kind: 'cmd', text: 'global-cmd' });
@@ -51,6 +64,31 @@ describe('favStore', () => {
     expect(dup.filter((f) => f.text === 'ls')).toHaveLength(1);
     const after = removeFav('command', 'ls');
     expect(after.find((f) => f.text === 'ls')).toBeUndefined();
+  });
+  it('reports add/update conflicts without changing the stored list', () => {
+    saveFavs('command', [
+      { kind: 'cmd', text: 'one', enter: false },
+      { kind: 'cmd', text: 'two', enter: true },
+    ]);
+    expect(addFavResult('command', { kind: 'cmd', text: 'two' }))
+      .toMatchObject({ ok: false, reason: 'conflict' });
+    expect(updateFavResult('command', 'one', { kind: 'cmd', text: 'two' }))
+      .toMatchObject({ ok: false, reason: 'conflict' });
+    expect(loadFavs('command')).toEqual([
+      { kind: 'cmd', text: 'one', enter: false },
+      { kind: 'cmd', text: 'two', enter: true },
+    ]);
+  });
+  it.each([
+    ['command', 'command@w'],
+    ['command@w', 'command'],
+  ])('reports a %s → %s transfer conflict without deleting either scope', (source, target) => {
+    saveFavs(source, [{ kind: 'cmd', text: 'source', enter: false }]);
+    saveFavs(target, [{ kind: 'cmd', text: 'taken', enter: true }]);
+    expect(transferFavResult(source, 'source', target, { kind: 'cmd', text: 'taken' }))
+      .toMatchObject({ ok: false, reason: 'conflict' });
+    expect(loadFavs(source).map((f) => f.text)).toEqual(['source']);
+    expect(loadFavs(target).map((f) => f.text)).toEqual(['taken']);
   });
   it('the two modes are independent', () => {
     addFav('command', { kind: 'cmd', text: 'git status' });

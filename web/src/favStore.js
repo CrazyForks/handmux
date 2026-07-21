@@ -49,14 +49,22 @@ export function saveFavs(mode, items) {
   return items;
 }
 
-export function addFav(mode, item) {
-  const items = loadFavs(mode);
-  if (items.some((f) => f.text === item.text)) return items; // dedupe by text
-  // A key fav (kind 'key') carries a pretty label (⌃C); a command carries the enter flag.
-  const next = item.kind === 'key'
+function storedFav(item) {
+  return item.kind === 'key'
     ? { kind: 'key', text: item.text, label: item.label }
     : { kind: item.kind, text: item.text, enter: !!item.enter };
-  return saveFavs(mode, [...items, next]);
+}
+
+export function addFavResult(mode, item) {
+  const items = loadFavs(mode);
+  if (items.some((f) => f.text === item.text)) return { ok: false, reason: 'conflict', items };
+  // A key fav (kind 'key') carries a pretty label (⌃C); a command carries the enter flag.
+  const next = saveFavs(mode, [...items, storedFav(item)]);
+  return { ok: true, items: next };
+}
+
+export function addFav(mode, item) {
+  return addFavResult(mode, item).items;
 }
 
 export function removeFav(mode, text) {
@@ -66,16 +74,37 @@ export function removeFav(mode, text) {
 // Replace the item currently stored as `oldText` with `item`, KEEPING its position (used by the editor's
 // re-open-to-edit flow). No-op if oldText is gone; rejected if the new text would collide with a DIFFERENT
 // existing item (dedupe by text, same rule as addFav).
-export function updateFav(mode, oldText, item) {
+export function updateFavResult(mode, oldText, item) {
   const items = loadFavs(mode);
   const i = items.findIndex((f) => f.text === oldText);
-  if (i < 0) return items;
-  if (items.some((f, k) => k !== i && f.text === item.text)) return items;
+  if (i < 0) return { ok: false, reason: 'missing', items };
+  if (items.some((f, k) => k !== i && f.text === item.text)) {
+    return { ok: false, reason: 'conflict', items };
+  }
   const next = items.slice();
-  next[i] = item.kind === 'key'
-    ? { kind: 'key', text: item.text, label: item.label }
-    : { kind: item.kind, text: item.text, enter: !!item.enter };
-  return saveFavs(mode, next);
+  next[i] = storedFav(item);
+  return { ok: true, items: saveFavs(mode, next) };
+}
+
+export function updateFav(mode, oldText, item) {
+  return updateFavResult(mode, oldText, item).items;
+}
+
+// Move one item between scopes only after validating both lists. A target conflict is therefore a true
+// no-op: neither source nor target is written, and callers can keep their UI/layout unchanged too.
+export function transferFavResult(oldMode, oldText, newMode, item) {
+  if (oldMode === newMode) return updateFavResult(oldMode, oldText, item);
+  const source = loadFavs(oldMode);
+  const target = loadFavs(newMode);
+  if (!source.some((f) => f.text === oldText)) {
+    return { ok: false, reason: 'missing', source, target };
+  }
+  if (target.some((f) => f.text === item.text)) {
+    return { ok: false, reason: 'conflict', source, target };
+  }
+  const nextSource = saveFavs(oldMode, source.filter((f) => f.text !== oldText));
+  const nextTarget = saveFavs(newMode, [...target, storedFav(item)]);
+  return { ok: true, source: nextSource, target: nextTarget };
 }
 
 // Reorder one item by swapping it with its neighbour. dir < 0 = up, dir > 0 = down. No-op at the ends.
@@ -84,6 +113,18 @@ export function moveFav(mode, text, dir) {
   const i = items.findIndex((f) => f.text === text);
   const j = i + (dir < 0 ? -1 : 1);
   if (i < 0 || j < 0 || j >= items.length) return items;
+  const next = items.slice();
+  [next[i], next[j]] = [next[j], next[i]];
+  return saveFavs(mode, next);
+}
+
+// Swap two known visible neighbours at their real storage positions. Hidden effective-global duplicates may
+// sit between them in the full window-local list, so swapping raw adjacent indexes would leave the UI still.
+export function moveFavBeside(mode, text, neighbourText) {
+  const items = loadFavs(mode);
+  const i = items.findIndex((f) => f.text === text);
+  const j = items.findIndex((f) => f.text === neighbourText);
+  if (i < 0 || j < 0 || i === j) return items;
   const next = items.slice();
   [next[i], next[j]] = [next[j], next[i]];
   return saveFavs(mode, next);

@@ -85,6 +85,22 @@ describe('BottomDock', () => {
       .map((node) => node.textContent)).toContain('Ctrl+C');
   });
 
+  it('reorders visible window shortcuts across an intervening global duplicate in the live quick bar', () => {
+    saveFavs(cmdScope('@3'), [
+      { kind: 'cmd', text: 'B', enter: false },
+      { kind: 'cmd', text: 'duplicate', enter: false },
+      { kind: 'cmd', text: 'C', enter: false },
+    ]);
+    render({ pane: '%1', windowId: '@3', shortcuts: {
+      command: [{ type: 'text', text: 'duplicate', enter: false }], chat: [],
+    } });
+    fire(container.querySelector('.dock-page.command .quick-cmd-add'), 'click');
+    const win = container.querySelectorAll('.cmd-esection')[1];
+    fire([...win.querySelectorAll('.cmd-row')][1].querySelector('.cmd-move.up'), 'click');
+    expect([...container.querySelectorAll('.dock-page.command .quick-cmd-win')]
+      .map((node) => node.textContent)).toEqual(['C', 'B']);
+  });
+
   it('no dedicated ⌫/Enter rail — those come from the system keyboard now', () => {
     render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
     expect(container.querySelector('.keyrow-del')).toBeNull();

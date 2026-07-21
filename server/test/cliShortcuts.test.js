@@ -7,8 +7,16 @@ import { tmpHome } from './tmphome.js';
 import {
   buildShortcutKey, moveShortcut, saveShortcutConfig, runShortcutEditor,
 } from '../src/cli/shortcutEditor.js';
+import en from '../src/cli/i18n/en.js';
+import zh from '../src/cli/i18n/zh.js';
 
 describe('shortcut editor model', () => {
+  it('describes server shortcuts as shared rather than required', () => {
+    expect(en['shortcuts.title']).toBe('Shared quick shortcuts');
+    expect(zh['shortcuts.title']).toBe('共享常用快捷项');
+    expect(en['help.body']).toContain('configure shared command/chat quick shortcuts');
+    expect(zh['help.body']).toContain('配置命令/聊天模式的共享常用快捷项');
+  });
   it('builds canonical tmux keys and friendly labels from picked parts', () => {
     expect(buildShortcutKey('none', 'Escape')).toEqual({ type: 'key', key: 'Escape', label: 'Esc' });
     expect(buildShortcutKey('shift', 'Tab')).toEqual({ type: 'key', key: 'BTab', label: 'Shift+Tab' });

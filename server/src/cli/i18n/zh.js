@@ -13,7 +13,7 @@ export default {
   'config.none': '(无 —— 使用 flag + 默认值)',
 
   // 快捷项编辑器
-  'shortcuts.title': '必备常用快捷项',
+  'shortcuts.title': '共享常用快捷项',
   'shortcuts.command': '命令模式',
   'shortcuts.chat': '聊天模式',
   'shortcuts.count': '{n} 项',
@@ -340,7 +340,7 @@ export default {
   handmux start            直接运行(默认仅局域网;无需配置)
   handmux open <会话名>     接入 tmux 会话,不存在则新建——手机上建的也能一键接管
   handmux setup            配置隧道 / 名称 / 通知(写入配置;重跑即可修改)
-  handmux shortcuts        配置命令/聊天模式的必备常用快捷项
+  handmux shortcuts        配置命令/聊天模式的共享常用快捷项
   handmux stop | restart | status
   handmux logs [--follow] [--lines N]
   handmux push <标题> <正文>    从脚本推一条通知到手机（--session 会话 · --device 设备key · --tag · --url）

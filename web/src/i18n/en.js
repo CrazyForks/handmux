@@ -426,6 +426,7 @@ export default {
   'cmd.recent': 'Recent',
   'cmd.scopeSession': 'This session only',
   'cmd.favorite': 'Favorite',
+  'cmd.itemConflict': 'That shortcut already exists. Change its content or choose another list.',
   'cmd.unfavorite': 'Unfavorite',
   'doc.home': 'Recent',
   'doc.read': 'Read aloud',

@@ -14,7 +14,7 @@ export default {
   'config.none': '(none — flags + defaults)',
 
   // shortcut editor
-  'shortcuts.title': 'Required quick shortcuts',
+  'shortcuts.title': 'Shared quick shortcuts',
   'shortcuts.command': 'Command mode',
   'shortcuts.chat': 'Chat mode',
   'shortcuts.count': '{n} items',
@@ -341,7 +341,7 @@ export default {
   handmux start            run it (defaults to LAN-only; no config needed)
   handmux open <session>   attach a tmux session, creating it if missing — incl. ones made on the phone
   handmux setup            configure tunnel / name / notifications (writes config; re-run to change)
-  handmux shortcuts        configure required command/chat quick shortcuts
+  handmux shortcuts        configure shared command/chat quick shortcuts
   handmux stop | restart | status
   handmux logs [--follow] [--lines N]
   handmux push <title> <body>   notify your phone from a script (--session X · --device K · --tag T · --url U)

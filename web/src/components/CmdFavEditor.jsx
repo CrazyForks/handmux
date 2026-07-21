@@ -1,5 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
-import { loadFavs, addFav, removeFav, moveFav, updateFav, cmdScope, CMD_GLOBAL } from '../favStore.js';
+import {
+  loadFavs, addFavResult, removeFav, moveFavBeside, updateFavResult, transferFavResult,
+  cmdScope, CMD_GLOBAL,
+} from '../favStore.js';
 import { buildChord } from '../keybarKeys.js';
 import { mergeShortcuts, shortcutIdentity } from '../shortcutMerge.js';
 import {
@@ -126,12 +129,13 @@ function AddCard({ scopes, cfg, edit, inset, onAdd, onUpdate, onClose }) {
   const [text, setText] = useState(edit ? (seedKey ? seedKey.base : edit.fav.text) : '');
   const [enter, setEnter] = useState(edit && edit.fav.kind !== 'key' ? !!edit.fav.enter : !!cfg.defaultEnter);
   const [sticky, setSticky] = useState(seedKey ? seedKey.sticky : 'none');
+  const [error, setError] = useState(null);
   // NOT auto-focused on open: focusing pops the soft keyboard, which shoves the card up before you've even
   // chosen 消息/命令 vs 按键. The user taps the field when they're ready. (After an add we do refocus, below,
   // so rapid multi-add keeps typing.)
   const inputRef = useRef(null);
   // Switching mode clears the field: a text string and a picked base key don't carry over sensibly.
-  const switchTab = (nt) => { if (nt !== tab) { setTab(nt); setText(''); } };
+  const switchTab = (nt) => { if (nt !== tab) { setTab(nt); setText(''); setError(null); } };
   const stickyDD = STICKY_OPTS.map((o) => ({ value: o.key, label: o.label ?? t('cmd.stickyNone') }));
 
   const chord = tab === 'key' ? buildChord(stickyByKey(sticky).mods, text) : null;
@@ -143,8 +147,12 @@ function AddCard({ scopes, cfg, edit, inset, onAdd, onUpdate, onClose }) {
     const fav = tab === 'key'
       ? { kind: 'key', text: chord.name, label: chord.label }
       : { kind: cfg.msgKind(text.trim()), text: text.trim(), enter };
-    if (edit) { onUpdate(edit.scope, edit.fav, targetScope, fav); return; }
-    onAdd(targetScope, fav);
+    const result = edit
+      ? onUpdate(edit.scope, edit.fav, targetScope, fav)
+      : onAdd(targetScope, fav);
+    if (!result?.ok) { setError(t('cmd.itemConflict')); return; }
+    setError(null);
+    if (edit) return;
     setText('');                                // keep the card open for rapid multi-add
     inputRef.current?.focus();
   };
@@ -176,7 +184,7 @@ function AddCard({ scopes, cfg, edit, inset, onAdd, onUpdate, onClose }) {
               {scopes.map((s) => (
                 <button key={s.key} type="button" aria-pressed={targetScope === s.key}
                   className={`cmd-seg-btn${s.accent === 'win' ? ' win' : ''}${targetScope === s.key ? ' on' : ''}`}
-                  onClick={() => setScopeKey(s.key)}>{s.title}</button>
+                  onClick={() => { setScopeKey(s.key); setError(null); }}>{s.title}</button>
               ))}
             </div>
           </div>
@@ -202,7 +210,7 @@ function AddCard({ scopes, cfg, edit, inset, onAdd, onUpdate, onClose }) {
               <input ref={inputRef} className="cmd-add-input" value={text}
                 placeholder={cfg.placeholder}
                 autoCapitalize="off" autoCorrect="off" spellCheck={false}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => { setText(e.target.value); setError(null); }}
                 onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} />
             </div>
             {cfg.hasEnter && (
@@ -217,6 +225,8 @@ function AddCard({ scopes, cfg, edit, inset, onAdd, onUpdate, onClose }) {
             )}
           </>
         )}
+
+        {error && <div className="cmd-add-error" role="status">{error}</div>}
 
         <button type="button" className="cmd-submit" disabled={!canSave} onClick={submit}>
           {edit ? t('common.save') : t('fav.add')}</button>
@@ -276,6 +286,9 @@ export default function CmdFavEditor({
     mergeShortcuts(presets, items[globalScope] || [], layoutMode), layout,
   );
   const visibleGlobalIds = new Set(mergedGlobal.map(shortcutIdentity));
+  const conflictsWithEffectiveGlobal = (identity, oldScope = null, oldFav = null) =>
+    mergedGlobal.some((item) => shortcutIdentity(item) === identity
+      && !(oldScope === globalScope && item.source === 'local' && item.text === oldFav?.text));
 
   const reloadAll = () => setItems(Object.fromEntries(scopes.map((s) => [s.key, loadFavs(s.key)])));
   const persistLayout = (next) => {
@@ -289,11 +302,14 @@ export default function CmdFavEditor({
     const timer = setTimeout(() => setUndo(null), 4000);
     return () => clearTimeout(timer);
   }, [undo]);
-  const doMove = (scope, item, dir) => {
+  const doMove = (scope, item, dir, visible) => {
     if (scope === globalScope) {
       persistLayout(moveShortcutInLayout(layout, mergedGlobal, shortcutIdentity(item), dir));
     } else {
-      moveFav(scope, item.text, dir);
+      const i = visible.findIndex((fav) => shortcutIdentity(fav) === shortcutIdentity(item));
+      const neighbour = visible[i + (dir < 0 ? -1 : 1)];
+      if (!neighbour) return;
+      moveFavBeside(scope, item.text, neighbour.text);
       reloadAll();
       onChange?.();
     }
@@ -316,16 +332,25 @@ export default function CmdFavEditor({
     setUndo(null);
   };
   const doAdd = (scope, fav) => {
-    addFav(scope, fav);
+    const identity = shortcutIdentity(fav);
+    if (conflictsWithEffectiveGlobal(identity)) return { ok: false, reason: 'conflict' };
+    const result = addFavResult(scope, fav);
+    if (!result.ok && !(scope === globalScope && layout.hidden.includes(identity))) return result;
     if (scope === globalScope) persistLayout(showShortcutInLayout(layout, shortcutIdentity(fav)));
     else onChange?.();
     reloadAll();
+    return { ok: true };
   };
   const doUpdate = (oldScope, oldFav, newScope, fav) => {
     const oldIdentity = shortcutIdentity(oldFav);
     const newIdentity = shortcutIdentity(fav);
-    if (oldScope === newScope) updateFav(oldScope, oldFav.text, fav);
-    else { removeFav(oldScope, oldFav.text); addFav(newScope, fav); }
+    if (conflictsWithEffectiveGlobal(newIdentity, oldScope, oldFav)) {
+      return { ok: false, reason: 'conflict' };
+    }
+    const result = oldScope === newScope
+      ? updateFavResult(oldScope, oldFav.text, fav)
+      : transferFavResult(oldScope, oldFav.text, newScope, fav);
+    if (!result.ok) return result;
     if (oldScope === globalScope && newScope === globalScope) {
       persistLayout(replaceShortcutInLayout(layout, oldIdentity, newIdentity));
     } else if (oldScope === globalScope) {
@@ -337,6 +362,7 @@ export default function CmdFavEditor({
     }
     reloadAll();
     setCard(null);
+    return result;
   };
 
   return (
@@ -356,7 +382,7 @@ export default function CmdFavEditor({
                 .filter((item) => !visibleGlobalIds.has(shortcutIdentity(item)));
             return <List key={scope.key} title={scope.title} accent={scope.accent} items={visible}
               showTitle={scopes.length > 1}
-              onMove={(item, direction) => doMove(scope.key, item, direction)}
+              onMove={(item, direction) => doMove(scope.key, item, direction, visible)}
               onDel={(item) => doDel(scope.key, item)}
               onEdit={(item) => setCard({ edit: { fav: item, scope: scope.key } })} />;
           })}
