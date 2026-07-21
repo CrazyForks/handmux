@@ -15,11 +15,21 @@ describe('detectEnvironmentChange', () => {
     expect(detectEnvironmentChange(previous, observed).reason).toBe(reason);
   });
 
-  it.each([
-    [{ status: 'unknown' }, 'unknown'],
-    [{ status: 'absent', bootIdentity: 'a' }, 'unknown'],
-  ])('does not turn a query failure or same-boot absent tmux into a change', (observed, status) => {
-    expect(detectEnvironmentChange({ bootIdentity: 'a', tmuxServerId: 'a' }, observed).status).toBe(status);
+  it('does not turn a query failure into a change', () => {
+    expect(detectEnvironmentChange({ bootIdentity: 'a', tmuxServerId: 'a' }, { status: 'unknown' }).status).toBe('unknown');
+  });
+
+  it('treats a missing tmux server as a generation change only when live state belonged to one', () => {
+    const observed = { status: 'absent', id: 'empty-id', bootIdentity: 'a', tmuxServerId: null };
+
+    expect(detectEnvironmentChange({ id: 'old-id', bootIdentity: 'a', tmuxServerId: 'tmux-old' }, observed)).toEqual({
+      status: 'changed',
+      reason: 'tmux-changed',
+      current: observed,
+    });
+    expect(detectEnvironmentChange({ id: 'empty-id', bootIdentity: 'a', tmuxServerId: null }, observed)).toEqual({
+      status: 'unknown',
+    });
   });
 
   it('attaches the first tmux generation to an explicit empty live environment', () => {

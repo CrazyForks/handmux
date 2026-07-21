@@ -16,6 +16,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 - `handmux shortcuts` 保存后会立即更新正在运行的 server，无需重启；手机端在 App 启动及每次回到前台时读取配置，不再每 15 秒轮询。
 
 ### Fixed
+- tmux server 完全退出且尚未创建新 session 时，手机也能立即识别旧工作区并提示恢复；handmux 内主动删除最后会话仍不会产生恢复历史。
 - 优化动态预览续期策略：打开预览后不再自动续期；需要延长时可手动点「续期」或重新打开本机链接。
 - tmux 3.0+ 的旧版 client/server 不再因控制字符格式分隔符而错误解析工作区；从未 attach 的 session 和 linked window 的重复 pane 输出也会被兼容处理，矛盾数据仍安全拒绝。
 

@@ -25,13 +25,13 @@ async function reconcileOnce(deps, cause) {
     if (live.status === 'corrupt') return live;
     const previous = live.status === 'ok' ? live.value.environment : null;
     let change = detectEnvironmentChange(previous, observed);
-    if (cause === 'confirmed-empty' && observed.status === 'absent' && change.status === 'unknown') {
+    if (cause === 'confirmed-empty' && observed.status === 'absent') {
       change = { status: 'same', reason: 'same', current: observed };
     }
     if (change.status === 'unknown') return change;
 
-    // An absent tmux server is not proof of an intentionally empty workspace. A changed boot identity
-    // is the exception: it proves the old environment ended, even before tmux comes back.
+    // An absent tmux server only ends a known live generation. An already-empty generation remains
+    // unknown unless a Handmux deletion explicitly confirms it.
     if (observed.status === 'absent' && cause !== 'confirmed-empty' && change.status !== 'changed') {
       return { status: 'unknown' };
     }

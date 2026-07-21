@@ -21,7 +21,11 @@ export function detectEnvironmentChange(previous, observed) {
   if (!observed || observed.status === 'unknown') return { status: 'unknown' };
   if (!previous) return { status: 'initial', current: observed };
   if (previous.bootIdentity !== observed.bootIdentity) return { status: 'changed', reason: 'boot-changed', current: observed };
-  if (observed.status === 'absent') return { status: 'unknown' };
+  if (observed.status === 'absent') {
+    return previous.tmuxServerId
+      ? { status: 'changed', reason: 'tmux-changed', current: observed }
+      : { status: 'unknown' };
+  }
   if (!previous.tmuxServerId) return { status: 'attached', reason: 'same', current: observed };
   if (previous.tmuxServerId !== observed.tmuxServerId) return { status: 'changed', reason: 'tmux-changed', current: observed };
   return { status: 'same', reason: 'same', current: observed };

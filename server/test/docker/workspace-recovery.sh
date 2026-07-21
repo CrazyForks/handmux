@@ -473,6 +473,20 @@ async function phaseB() {
   await core.checkpointer.reconcile('before-generation-change');
   const beforeGeneration = await checkpointCount(core.store);
   await runTmux(['kill-server']);
+  let generationEnded;
+  // tmux 3.3a can return from kill-server just before the old socket teardown completes.
+  for (let attempt = 0; attempt < 20; attempt++) {
+    generationEnded = await core.checkpointer.reconcile('tmux-generation-ended');
+    if (generationEnded.status === 'written') break;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.equal(generationEnded.status, 'written', 'missing tmux must archive before a new server exists');
+  assert.equal(await checkpointCount(core.store), beforeGeneration + 1);
+  assert.equal((await core.store.readLatestCheckpoint()).value.environment.endedReason, 'tmux-changed');
+  const generationEmpty = await core.store.readLive();
+  assert.equal(generationEmpty.status, 'ok');
+  assert.equal(generationEmpty.value.sessions.length, 0, 'ended generation must write explicit empty live state');
+
   // tmux 3.3a can return from kill-server just before the old socket teardown completes. Retry only
   // that narrow handoff error; validation/target/configuration failures must still fail immediately.
   for (let attempt = 0; attempt < 20; attempt++) {
@@ -484,10 +498,9 @@ async function phaseB() {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
-  const generationChanged = await core.checkpointer.reconcile('tmux-generation-change');
-  assert.equal(generationChanged.status, 'written');
+  const generationAttached = await core.checkpointer.reconcile('tmux-generation-attached');
+  assert.equal(generationAttached.status, 'written');
   assert.equal(await checkpointCount(core.store), beforeGeneration + 1);
-  assert.equal((await core.store.readLatestCheckpoint()).value.environment.endedReason, 'tmux-changed');
   assert.equal((await core.checkpointer.reconcile('same-new-generation')).status, 'unchanged');
   assert.equal(await checkpointCount(core.store), beforeGeneration + 1, 'tmux generation must archive once');
   await core.checkpointer.stop();
