@@ -186,6 +186,7 @@ export default {
   'cmd.tabKey': '按键',
   'cmd.addTo': '添加到',
   'cmd.addTitle': '添加',
+  'cmd.added': '已添加',
   'cmd.editItem': '编辑',
   'cmd.sticky': '粘滞键',
   'cmd.stickyNone': '无',

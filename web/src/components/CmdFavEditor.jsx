@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import {
   loadFavs, addFavResult, removeFavByIdentity, moveFavBesideByIdentity,
   updateFavResult, transferFavResult,
@@ -132,9 +132,7 @@ function AddCard({ scopes, cfg, edit, inset, onAdd, onUpdate, onClose }) {
   const [sticky, setSticky] = useState(seedKey ? seedKey.sticky : 'none');
   const [error, setError] = useState(null);
   // NOT auto-focused on open: focusing pops the soft keyboard, which shoves the card up before you've even
-  // chosen 消息/命令 vs 按键. The user taps the field when they're ready. (After an add we do refocus, below,
-  // so rapid multi-add keeps typing.)
-  const inputRef = useRef(null);
+  // chosen 消息/命令 vs 按键. The user taps the field when they're ready.
   // Switching mode clears the field: a text string and a picked base key don't carry over sensibly.
   const switchTab = (nt) => { if (nt !== tab) { setTab(nt); setText(''); setError(null); } };
   const stickyDD = STICKY_OPTS.map((o) => ({ value: o.key, label: o.label ?? t('cmd.stickyNone') }));
@@ -153,9 +151,6 @@ function AddCard({ scopes, cfg, edit, inset, onAdd, onUpdate, onClose }) {
       : onAdd(targetScope, fav);
     if (!result?.ok) { setError(t('cmd.itemConflict')); return; }
     setError(null);
-    if (edit) return;
-    setText('');                                // keep the card open for rapid multi-add
-    inputRef.current?.focus();
   };
 
   return (
@@ -208,7 +203,7 @@ function AddCard({ scopes, cfg, edit, inset, onAdd, onUpdate, onClose }) {
           <>
             <div className="cmd-field">
               <label className="cmd-field-label">{cfg.msgLabel}</label>
-              <input ref={inputRef} className="cmd-add-input" value={text}
+              <input className="cmd-add-input" value={text}
                 placeholder={cfg.placeholder}
                 autoCapitalize="off" autoCorrect="off" spellCheck={false}
                 onChange={(e) => { setText(e.target.value); setError(null); }}
@@ -283,6 +278,7 @@ export default function CmdFavEditor({
   const globalScope = scopes[0].key;
   const [layout, setLayout] = useState(() => loadShortcutLayout(layoutMode));
   const [undo, setUndo] = useState(null);
+  const [addedNotice, setAddedNotice] = useState(0);
   const mergedGlobal = applyShortcutLayout(
     mergeShortcuts(presets, items[globalScope] || [], layoutMode), layout,
   );
@@ -304,6 +300,17 @@ export default function CmdFavEditor({
     const timer = setTimeout(() => setUndo(null), 4000);
     return () => clearTimeout(timer);
   }, [undo]);
+  useEffect(() => {
+    if (!addedNotice) return undefined;
+    const timer = setTimeout(() => setAddedNotice(0), 2000);
+    return () => clearTimeout(timer);
+  }, [addedNotice]);
+  const finishAdd = () => {
+    reloadAll();
+    setUndo(null);
+    setCard(null);
+    setAddedNotice((version) => version + 1);
+  };
   const doMove = (scope, item, dir, visible) => {
     if (scope === globalScope) {
       persistLayout(moveShortcutInLayout(layout, mergedGlobal, shortcutIdentity(item), dir));
@@ -317,6 +324,7 @@ export default function CmdFavEditor({
     }
   };
   const doDel = (scope, item) => {
+    setAddedNotice(0);
     const identity = shortcutIdentity(item);
     if (item.source === 'config') {
       persistLayout(hideShortcutInLayout(layout, mergedGlobal, identity));
@@ -341,14 +349,14 @@ export default function CmdFavEditor({
     const exactLocal = (items[scope] || []).some((item) => shortcutIdentity(item) === identity);
     if (scope === globalScope && layout.hidden.includes(identity) && (exactPreset || exactLocal)) {
       persistLayout(showShortcutInLayout(layout, identity));
-      reloadAll();
+      finishAdd();
       return { ok: true };
     }
     const result = addFavResult(scope, fav);
     if (!result.ok) return result;
     if (scope === globalScope) persistLayout(showShortcutInLayout(layout, shortcutIdentity(fav)));
     else onChange?.();
-    reloadAll();
+    finishAdd();
     return { ok: true };
   };
   const doUpdate = (oldScope, oldFav, newScope, fav) => {
@@ -381,7 +389,7 @@ export default function CmdFavEditor({
       <div className="cmd-panel cmd-editor" role="dialog" aria-label={title}>
         <div className="cmd-head">
           <span className="cmd-title">{title}</span>
-          <button className="cmd-add-open" onClick={() => setCard({ edit: null })} aria-label={t('cmd.addTitle')}><PlusIcon /></button>
+          <button className="cmd-add-open" onClick={() => { setAddedNotice(0); setCard({ edit: null }); }} aria-label={t('cmd.addTitle')}><PlusIcon /></button>
           <button className="cmd-close" onClick={onClose} aria-label={t('common.close')}><XIcon /></button>
         </div>
         <div className="cmd-list">
@@ -394,12 +402,15 @@ export default function CmdFavEditor({
               showTitle={scopes.length > 1}
               onMove={(item, direction) => doMove(scope.key, item, direction, visible)}
               onDel={(item) => doDel(scope.key, item)}
-              onEdit={(item) => setCard({ edit: { fav: item, scope: scope.key } })} />;
+              onEdit={(item) => { setAddedNotice(0); setCard({ edit: { fav: item, scope: scope.key } }); }} />;
           })}
         </div>
         {undo && <div className="cmd-undo-toast" role="status">
           <span>{t('cmd.removedDevice')}</span>
           <button type="button" className="cmd-undo" onClick={doUndo}>{t('common.undo')}</button>
+        </div>}
+        {!!addedNotice && <div className="cmd-undo-toast cmd-added-toast" role="status">
+          {t('cmd.added')}
         </div>}
       </div>
       {card && <AddCard scopes={scopes} cfg={cardCfg} edit={card.edit} inset={inset}

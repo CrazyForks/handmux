@@ -187,6 +187,7 @@ export default {
   'cmd.tabKey': 'Key',
   'cmd.addTo': 'Add to',
   'cmd.addTitle': 'Add',
+  'cmd.added': 'Added',
   'cmd.editItem': 'Edit',
   'cmd.sticky': 'Modifier',
   'cmd.stickyNone': 'None',

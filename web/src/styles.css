@@ -798,6 +798,7 @@ div.workspace-restore-errors { padding-left: 10px; }
   background: rgba(44,44,46,.96); color: #f2f2f7; box-shadow: 0 5px 20px rgba(0,0,0,.38);
   font-size: 13px; animation: exit-toast-in .18s ease;
 }
+.cmd-added-toast { padding: 10px 14px; }
 .cmd-undo { min-width: 44px; min-height: 44px; padding: 0 10px; border: none; background: none;
   color: #64a8ff; font: inherit; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .cmd-undo-toast { animation: none; } }

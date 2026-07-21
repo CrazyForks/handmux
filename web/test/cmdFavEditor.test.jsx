@@ -51,6 +51,8 @@ describe('CmdFavEditor', () => {
     click(saveBtn());
     expect(loadFavs(CMD_GLOBAL)).toEqual([{ kind: 'cmd', text: 'npm test', enter: true }]);
     expect(container.querySelector('.cmd-esection .cmd-enter')).not.toBeNull();
+    expect(card()).toBeNull();
+    expect(container.querySelector('.cmd-added-toast')?.textContent).toBe('已添加');
   });
 
   it('the 全局/窗口 segmented switch sends the add to the window list', () => {
@@ -61,6 +63,59 @@ describe('CmdFavEditor', () => {
     click(saveBtn());
     expect(loadFavs(cmdScope('@3')).map((f) => f.text)).toEqual(['make']);
     expect(loadFavs(CMD_GLOBAL)).toEqual([]);
+  });
+
+  it('hides the added confirmation after two seconds', () => {
+    vi.useFakeTimers();
+    render();
+    openAdd();
+    setInput(addInput(), 'make test');
+    click(saveBtn());
+    expect(container.querySelector('.cmd-added-toast')).not.toBeNull();
+    act(() => vi.advanceTimersByTime(2000));
+    expect(container.querySelector('.cmd-added-toast')).toBeNull();
+  });
+
+  it('replaces the remove undo with the added confirmation instead of overlapping toasts', () => {
+    vi.useFakeTimers();
+    render({ presets: [{ type: 'key', key: 'C-c', label: 'Ctrl+C' }] });
+    click(container.querySelector('.cmd-esection .cmd-row .cmd-del'));
+    expect(container.querySelector('.cmd-undo')).not.toBeNull();
+    openAdd();
+    setInput(addInput(), 'make test');
+    click(saveBtn());
+    expect(container.querySelector('.cmd-undo')).toBeNull();
+    expect(container.querySelectorAll('.cmd-undo-toast')).toHaveLength(1);
+    expect(container.querySelector('.cmd-added-toast')?.textContent).toBe('已添加');
+  });
+
+  it('replaces the added confirmation with remove undo instead of overlapping toasts', () => {
+    vi.useFakeTimers();
+    render({ presets: [{ type: 'key', key: 'C-c', label: 'Ctrl+C' }] });
+    openAdd();
+    setInput(addInput(), 'make test');
+    click(saveBtn());
+    expect(container.querySelector('.cmd-added-toast')).not.toBeNull();
+    click(container.querySelector('.cmd-esection .cmd-row .cmd-del'));
+    expect(container.querySelector('.cmd-added-toast')).toBeNull();
+    expect(container.querySelectorAll('.cmd-undo-toast')).toHaveLength(1);
+    expect(container.querySelector('.cmd-undo')).not.toBeNull();
+  });
+
+  it('clears a previous added confirmation when editing an existing item', () => {
+    vi.useFakeTimers();
+    saveFavs(CMD_GLOBAL, [{ kind: 'cmd', text: 'old', enter: false }]);
+    render();
+    openAdd();
+    setInput(addInput(), 'new');
+    click(saveBtn());
+    expect(container.querySelector('.cmd-added-toast')).not.toBeNull();
+    click([...container.querySelectorAll('.cmd-fav-text')]
+      .find((node) => node.textContent === 'old'));
+    expect(container.querySelector('.cmd-added-toast')).toBeNull();
+    setInput(addInput(), 'edited');
+    click(saveBtn());
+    expect(container.querySelector('.cmd-added-toast')).toBeNull();
   });
 
   it('the 按键 tab picks a sticky key + base key to build a fav (Ctrl+C) — no ⏎, shows the Ctrl+C label', () => {
@@ -113,6 +168,8 @@ describe('CmdFavEditor', () => {
     setInput(addInput(), '用中文回答');
     click(saveBtn());
     expect(loadFavs('agent')).toEqual([{ kind: 'reply', text: '用中文回答', enter: true }]);
+    expect(card()).toBeNull();
+    expect(container.querySelector('.cmd-added-toast')?.textContent).toBe('已添加');
   });
 
   it('merges shared presets and phone-local global items in the effective order', () => {
