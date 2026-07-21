@@ -80,11 +80,12 @@ describe('runShortcutEditor', () => {
     expect(result.cfg.shortcuts.command.map((item) => item.text)).toEqual(['a', 'c', 'b', 'd']);
     const actionMenu = selectCalls.find((call) => call.options.some((option) => option.value === 'move'));
     expect(actionMenu.options.some((option) => option.value === 'move')).toBe(true);
-    const positionMenu = selectCalls.find((call) => call.options.some((option) => option.value === 0));
+    const positionMenu = selectCalls.find((call) => call.message === 'Move to (current: position 2)');
     expect(positionMenu.options).toEqual([
-      { value: 0, label: '1 · First' },
-      { value: 2, label: '3 · After c' },
-      { value: 3, label: '4 · Last' },
+      { value: 0, label: 'First (position 1)' },
+      { value: 1, label: 'After a (position 2)' },
+      { value: 2, label: 'After c (position 3)' },
+      { value: 3, label: 'Last (position 4)' },
     ]);
   });
 
@@ -114,7 +115,7 @@ describe('runShortcutEditor', () => {
   it('guides a text shortcut from mode selection through Enter behavior and save', async () => {
     const home = tmpHome('tw-shortcuts-ui-');
     const target = path.join(home, '.handmux', 'config.json');
-    const answers = ['command', 'add-text', 'git status', true, 'back', 'save'];
+    const answers = ['command', 'add-text', 'git status', true, 0, 'back', 'save'];
     const selectCalls = [];
     const ui = {
       intro: vi.fn(), outro: vi.fn(), cancel: vi.fn(),
@@ -260,7 +261,7 @@ describe('runShortcutEditor', () => {
   it('adds a key directly without asking for its shortcut type first', async () => {
     const home = tmpHome('tw-shortcuts-key-ui-');
     const target = path.join(home, '.handmux', 'config.json');
-    const answers = ['command', 'add-key', 'none', 'Escape', 'back', 'save'];
+    const answers = ['command', 'add-key', 'none', 'Escape', 0, 'back', 'save'];
     const ui = {
       intro: vi.fn(), outro: vi.fn(), cancel: vi.fn(),
       select: vi.fn((options) => ({ kind: 'select', options })),

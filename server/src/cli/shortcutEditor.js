@@ -72,13 +72,17 @@ const itemLabel = (item) => item.type === 'key' ? item.label : item.text;
 const itemHint = (item) => item.type === 'key'
   ? t('shortcuts.key')
   : t(item.enter ? 'shortcuts.textEnter' : 'shortcuts.textOnly');
-const moveOptions = (items, index) => {
-  const remaining = items.filter((_item, i) => i !== index);
-  return items.flatMap((_item, target) => {
-    if (target === index) return [];
-    if (target === 0) return [{ value: target, label: t('shortcuts.moveFirst') }];
-    if (target === items.length - 1) return [{ value: target, label: t('shortcuts.moveLast', { n: items.length }) }];
-    return [{ value: target, label: t('shortcuts.moveAfter', { n: target + 1, item: itemLabel(remaining[target - 1]) }) }];
+const positionOptions = (items, index = null) => {
+  const remaining = index === null ? items : items.filter((_item, i) => i !== index);
+  const count = remaining.length + 1;
+  if (remaining.length === 0) return [{ value: 0, label: t('shortcuts.positionLast', { n: 1 }) }];
+  return Array.from({ length: count }, (_item, target) => {
+    if (target === 0) return { value: target, label: t('shortcuts.positionFirst') };
+    if (target === count - 1) return { value: target, label: t('shortcuts.positionLast', { n: count }) };
+    return {
+      value: target,
+      label: t('shortcuts.positionAfter', { n: target + 1, item: itemLabel(remaining[target - 1]) }),
+    };
   });
 };
 const validateText = (value) => {
@@ -153,7 +157,12 @@ async function editMode(mode, initial, ui) {
     if (choice === 'back') return items;
     if (choice === 'add-key' || choice === 'add-text') {
       const item = await editItem(mode, null, ui, choice === 'add-key' ? 'key' : 'text');
-      if (!items.some((existing) => shortcutIdentity(existing) === shortcutIdentity(item))) items = [...items, item];
+      if (!items.some((existing) => shortcutIdentity(existing) === shortcutIdentity(item))) {
+        const target = await ui.ask(ui.select({
+          message: t('shortcuts.addPositionPrompt'), options: positionOptions(items),
+        }));
+        items = moveShortcut([...items, item], items.length, target);
+      }
       continue;
     }
     const index = Number(choice.slice(5));
@@ -173,7 +182,7 @@ async function editMode(mode, initial, ui) {
       }
     } else if (action === 'move') {
       const target = await ui.ask(ui.select({
-        message: t('shortcuts.movePrompt'), options: moveOptions(items, index),
+        message: t('shortcuts.movePrompt', { n: index + 1 }), options: positionOptions(items, index),
       }));
       items = moveShortcut(items, index, target);
     } else if (action === 'delete') items = items.filter((_item, i) => i !== index);
