@@ -119,6 +119,7 @@ export function createWorkspaceRuntime({
     randomUUID,
     tryAcquireOperationLock: (owner) => lock.tryAcquire(owner),
   });
+  let startPromise = null;
 
   async function resolveOperationRequest(requestInput = {}) {
     const request = normalizeRestoreRequest(requestInput);
@@ -164,6 +165,7 @@ export function createWorkspaceRuntime({
   }
 
   async function getRestorePlan(request = {}) {
+    await start();
     const state = await planRestore(request);
     const serverNow = new Date(now()).toISOString();
     const promptEligible = Boolean(
@@ -258,7 +260,7 @@ export function createWorkspaceRuntime({
     return result;
   }
 
-  async function start() {
+  async function startOnce() {
     let interrupted;
     let sweepError;
     try {
@@ -269,7 +271,7 @@ export function createWorkspaceRuntime({
     let started;
     let startError;
     try {
-      started = await checkpointer.start();
+      started = await checkpointer.start?.();
     } catch (error) {
       startError = error;
     }
@@ -281,6 +283,11 @@ export function createWorkspaceRuntime({
     if (sweepError) throw sweepError;
     if (startError) throw startError;
     return [interrupted, started];
+  }
+
+  function start() {
+    startPromise ||= startOnce();
+    return startPromise;
   }
 
   return {

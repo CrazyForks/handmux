@@ -579,6 +579,35 @@ describe('workspace runtime orchestration', () => {
     expect(checkpointer.start).toHaveBeenCalledOnce();
   });
 
+  it('waits for initial workspace reconciliation before reading a restore plan', async () => {
+    let releaseStart;
+    const started = new Promise((resolve) => { releaseStart = resolve; });
+    const { store } = workspaceFixture();
+    const checkpointer = {
+      start: vi.fn(() => started),
+      stop: vi.fn(),
+      requestReconcile: vi.fn(),
+      confirmEmpty: vi.fn(),
+      reconcile: vi.fn(),
+    };
+    const runtime = createWorkspaceRuntime({
+      store,
+      tmux: { captureTopology: vi.fn(async () => ({ status: 'empty', sessions: [], windows: [] })) },
+      lock: {},
+      checkpointer,
+    });
+
+    const boot = runtime.start();
+    const plan = runtime.getRestorePlan({ checkpointId: 'latest' });
+    await Promise.resolve();
+
+    expect(store.readLatestCheckpoint).not.toHaveBeenCalled();
+    releaseStart({ status: 'written' });
+    await boot;
+    await expect(plan).resolves.toMatchObject({ checkpointId: 'cp-a' });
+    expect(checkpointer.start).toHaveBeenCalledOnce();
+  });
+
   it.each([
     ['ok', async () => ({ status: 'ok', value: { capturedAt: '2026-07-20T01:23:00.000Z' } }), { status: 'protected', lastSuccessfulCaptureAt: '2026-07-20T01:23:00.000Z', errorCode: null }],
     ['empty', async () => ({ status: 'empty' }), { status: 'unprotected', lastSuccessfulCaptureAt: null, errorCode: null }],
