@@ -15,6 +15,7 @@ const api = vi.hoisted(() => ({
 }));
 const storage = vi.hoisted(() => ({ applyWorkspaceRestoreMapping: vi.fn() }));
 const push = vi.hoisted(() => ({ getNotifications: vi.fn() }));
+const windowBar = vi.hoisted(() => ({ props: null }));
 
 vi.mock('./api.js', async (importOriginal) => ({ ...(await importOriginal()), ...api }));
 vi.mock('./storage.js', async (importOriginal) => ({
@@ -60,7 +61,9 @@ vi.mock('./hooks/useKeyboardInset.js', () => ({ useKeyboardInset: () => 0 }));
 vi.mock('./hooks/usePageScrollLock.js', () => ({ usePageScrollLock: () => {} }));
 vi.mock('./hooks/useLongPress.js', () => ({ useLongPress: () => ({}) }));
 
-vi.mock('./components/WindowBar.jsx', () => ({ default: () => null }));
+vi.mock('./components/WindowBar.jsx', () => ({
+  default: (props) => { windowBar.props = props; return null; },
+}));
 vi.mock('./components/BottomDock.jsx', async () => {
   const { forwardRef } = await import('react');
   return { default: forwardRef((_props, _ref) => null) };
@@ -134,6 +137,7 @@ beforeEach(() => {
   Object.values(api).forEach((mock) => mock.mockReset());
   storage.applyWorkspaceRestoreMapping.mockReset();
   push.getNotifications.mockReset();
+  windowBar.props = null;
   localStorage.clear();
   localStorage.setItem('tw_lang', 'zh');
   localStorage.setItem('tw_token', 'good');
@@ -160,6 +164,47 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+describe('App management dimensions', () => {
+  const session = { id: '$7', name: 'current' };
+  const staleWindow = { id: '@1', name: 'work', active: true, panes: 2, width: 80, height: 24 };
+  const stalePanes = [
+    { id: '%1', active: true, width: 39, height: 24, command: 'zsh', cwd: '/work', left: 0, top: 0 },
+    { id: '%2', active: false, width: 40, height: 24, command: 'node', cwd: '/work', left: 40, top: 0 },
+  ];
+
+  async function renderManagedSession() {
+    localStorage.setItem('tw_bound', JSON.stringify([session.name]));
+    api.getSessions.mockResolvedValue([session]);
+    api.getWindows.mockResolvedValue([staleWindow]);
+    api.getPanes.mockResolvedValue(stalePanes);
+    const view = await renderApp();
+    expect(windowBar.props).toBeTruthy();
+    return view;
+  }
+
+  it('refreshes the window dimensions from tmux before opening window management', async () => {
+    await renderManagedSession();
+    api.getWindows.mockResolvedValueOnce([{ ...staleWindow, width: 160, height: 48 }]);
+
+    await act(async () => { await windowBar.props.onManageWindow(staleWindow); });
+
+    expect(screen.getByRole('dialog', { name: '窗口管理，work · 160×48' })).toBeTruthy();
+    expect(api.getWindows).toHaveBeenCalledTimes(2);
+  });
+
+  it('refreshes the pane dimensions from tmux before opening split management', async () => {
+    await renderManagedSession();
+    api.getPanes.mockResolvedValueOnce(stalePanes.map((pane) => (
+      pane.id === '%1' ? { ...pane, width: 59, height: 30 } : { ...pane, width: 60, height: 30, left: 60 }
+    )));
+
+    await act(async () => { await windowBar.props.onManagePane('%1'); });
+
+    expect(screen.getByRole('dialog', { name: '分屏管理，① zsh · 59×30' })).toBeTruthy();
+    expect(api.getPanes).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('App workspace recovery', () => {

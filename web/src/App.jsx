@@ -866,6 +866,41 @@ export default function App() {
     });
   }, []);
 
+  // Sizes can change outside handmux (another tmux client, terminal resize, etc.). Management sheets
+  // must therefore resolve their target from tmux when they open instead of reusing the dimensions
+  // captured when the session/window was first selected. If the refresh itself fails, keep the existing
+  // management action available with the last known snapshot; auth failures still return to login.
+  const openWindowManagement = useCallback(async (win) => {
+    if (!win) return;
+    const sessionId = current?.session?.id;
+    if (!sessionId) { setManageWindow(win); return; }
+    try {
+      const windows = await getWindows(sessionId);
+      const freshWindow = windows.find((w) => w.id === win.id);
+      if (!freshWindow) return;
+      setCurrent((c) => {
+        if (!c || c.session.id !== sessionId) return c;
+        return { ...c, windows, window: windows.find((w) => w.id === c.window.id) || c.window };
+      });
+      setManageWindow(freshWindow);
+    } catch (e) {
+      if (!handledAuth(e)) setManageWindow(win);
+    }
+  }, [current?.session?.id, handledAuth]);
+
+  const openPaneManagement = useCallback(async (paneId, targetWindowId = current?.window?.id) => {
+    if (!paneId) return;
+    if (!targetWindowId) { setManagePane(paneId); return; }
+    try {
+      const panes = await getPanes(targetWindowId);
+      if (!panes.some((pane) => pane.id === paneId)) return;
+      refreshPanes(targetWindowId, panes);
+      setManagePane(paneId);
+    } catch (e) {
+      if (!handledAuth(e)) setManagePane(paneId);
+    }
+  }, [current?.window?.id, refreshPanes, handledAuth]);
+
   // Split `paneId` into two (dir 'h' left|right, 'v' top/bottom); jump the phone to the new pane. The
   // decision logic (call the api, refetch, pick the new pane) lives in paneActions.js — unit-tested there.
   const splitPaneAction = useCallback(async (paneId, dir) => {
@@ -961,8 +996,8 @@ export default function App() {
     }
     if (!paneId) return; // switch failed (no panes / auth) — don't strand an openMapFor for a window that never mounts
     setOpenMapFor(win.id);
-    setManagePane(paneId);
-  }, [current, selectWindow]);
+    await openPaneManagement(paneId, win.id);
+  }, [current, selectWindow, openPaneManagement]);
 
   // Reload the recent (send) history whenever the open session OR window changes — history is
   // window-level, keyed by session NAME + window ID. Use the tmux window ID (@N), which is stable for the
@@ -1696,8 +1731,8 @@ export default function App() {
             onSelectWindow={selectWindow}
             onSelectPane={selectPane}
             onNewWindow={() => setNewWinOpen(true)}
-            onManageWindow={(w) => setManageWindow(w)}
-            onManagePane={(paneId) => setManagePane(paneId)}
+            onManageWindow={openWindowManagement}
+            onManagePane={openPaneManagement}
             paneSheetOpen={!!managePane}
             openMapFor={openMapFor}
             onMapOpened={() => setOpenMapFor(null)}
