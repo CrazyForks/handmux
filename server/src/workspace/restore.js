@@ -214,14 +214,27 @@ async function restoreOneSession({
   }
 }
 
-export function summarizeRestore(results) {
+function restoredTopologySummary(checkpoint, results) {
+  const restoredSessions = new Set(results
+    .filter((result) => result.status === 'restored')
+    .map((result) => result.logicalId));
+  const windowIds = new Set((checkpoint?.sessions || [])
+    .filter((session) => restoredSessions.has(session.id))
+    .flatMap((session) => (session.windowLinks || []).map((link) => link.windowId)));
+  const paneIds = new Set((checkpoint?.windows || [])
+    .filter((window) => windowIds.has(window.id))
+    .flatMap((window) => (window.panes || []).map((pane) => pane.id)));
+  return { sessions: restoredSessions.size, windows: windowIds.size, panes: paneIds.size };
+}
+
+export function summarizeRestore(results, checkpoint = null) {
   const mapping = emptyMapping();
   for (const result of results) if (result.mapping) mergeMapping(mapping, result.mapping);
   const restored = results.filter((result) => result.status === 'restored').length;
   const alreadyPresent = results.filter((result) => result.status === 'already-present').length;
   const failed = results.filter((result) => result.status === 'failed').length;
   const status = failed === 0 ? 'succeeded' : restored + alreadyPresent > 0 ? 'partial' : 'failed';
-  return { status, restored, alreadyPresent, failed, results, mapping };
+  return { status, restored, alreadyPresent, failed, results, mapping, summary: restoredTopologySummary(checkpoint, results) };
 }
 
 export async function executeRestore({
@@ -259,7 +272,7 @@ export async function executeRestore({
       results.push(result);
       await notify(onProgress, results, result, plan.sessions.length);
     }
-    return summarizeRestore(results);
+    return summarizeRestore(results, checkpoint);
   } finally {
     tmux.revokeCreatedTargets?.();
   }

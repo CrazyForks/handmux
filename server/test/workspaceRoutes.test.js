@@ -219,6 +219,7 @@ describe('workspace API routes', () => {
         startedAt: '2026-07-20T02:01:00.000Z',
         completedAt: '2026-07-20T02:03:00.000Z',
         progress: { completed: 2, total: 2, extra: 'progress-secret' },
+        summary: { sessions: 1, windows: 2, panes: 3, extra: 'summary-secret' },
         results: [
           {
             logicalId: SESSION_OK,
@@ -261,6 +262,7 @@ describe('workspace API routes', () => {
       startedAt: '2026-07-20T02:01:00.000Z',
       completedAt: '2026-07-20T02:03:00.000Z',
       progress: { completed: 2, total: 2 },
+      summary: { sessions: 1, windows: 2, panes: 3 },
       results: [
         {
           logicalId: SESSION_OK,
@@ -299,11 +301,13 @@ describe('workspace API routes', () => {
       status: 'succeeded',
       request: { checkpointId: 'checkpoint-a', sessions: [], historical: false },
       progress: { completed: 0, total: 0 },
+      summary: { sessions: -1, windows: 1.5, panes: '3' },
       results: [],
       mapping: { ...mapping, transcriptPath: '/Users/secret/transcript.jsonl' },
     });
     const response = await auth(request(app).get(`/api/workspace/restore/${OPERATION_ID}`)).expect(200);
     expect(response.body.mapping).toBeNull();
+    expect(response.body.summary).toEqual({ sessions: 0, windows: 0, panes: 0 });
     expect(JSON.stringify(response.body)).not.toMatch(/Users|secret|transcript/);
   });
 

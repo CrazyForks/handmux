@@ -129,6 +129,7 @@ describe('workspace restore executor', () => {
       { logicalId: ID.sA, status: 'restored' },
       { logicalId: ID.sB, status: 'restored' },
     ]);
+    expect(result.summary).toEqual({ sessions: 2, windows: 3, panes: 3 });
     const tempCalls = tmux.calls.filter((call) => call.method === 'createTemporarySession');
     expect(tempCalls).toHaveLength(2);
     expect(tempCalls[0].input.windowLogicalId).toBe(ID.wShared);
@@ -168,6 +169,7 @@ describe('workspace restore executor', () => {
       { logicalId: ID.sA, status: 'failed', stage: 'topology' },
       { logicalId: ID.sC, status: 'restored' },
     ]);
+    expect(result.summary).toEqual({ sessions: 1, windows: 1, panes: 1 });
     const temps = tmux.calls.filter((call) => call.method === 'createTemporarySession');
     expect(tmux.calls.filter((call) => call.method === 'killCreatedSession').map((call) => call.target)).toEqual([temps[0].sessionId]);
     expect(tmux.calls).toContainEqual(expect.objectContaining({ method: 'renameCreatedSession', target: temps[1].sessionId, name: 'gamma' }));

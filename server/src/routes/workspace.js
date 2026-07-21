@@ -201,6 +201,11 @@ function projectOperation(operation) {
       completed: count(operation?.progress?.completed),
       total: count(operation?.progress?.total),
     },
+    summary: {
+      sessions: count(operation?.summary?.sessions),
+      windows: count(operation?.summary?.windows),
+      panes: count(operation?.summary?.panes),
+    },
     results: Array.isArray(operation?.results) ? operation.results.map(projectResult) : [],
     errorCode: code,
     errorMessage: code ? ERROR_MESSAGES[code] : null,
