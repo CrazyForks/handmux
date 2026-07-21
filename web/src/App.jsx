@@ -11,7 +11,7 @@ import {
   getReadInboxIds, addReadInboxId, pruneReadInboxIds, getNotifSeenTs, setNotifSeenTs,
   getPreviewDir, getIdeas, getChatTone, setChatTone, getChatLensEnabled, setChatLensEnabled,
   getWorkspacePromptState, markWorkspaceAutoShown, ignoreWorkspaceCheckpoint,
-  applyWorkspaceRestoreMapping,
+  applyWorkspaceRestoreMapping, removeRestoredSessionBindings,
 } from './storage.js';
 import { LATEST_RELEASE } from './changelog.js';
 import {
@@ -85,9 +85,6 @@ const COL_STEP = 10; // columns added/removed per ⊟/⊞ tap
 // to tmux's "active" — the local last-opened choice wins, first is the fallback.
 const pickId = (items, prefer) =>
   (prefer && items.some((x) => x.id === prefer) ? prefer : items[0].id);
-
-const hasRecoveryWarnings = (operation) => (operation?.warningCodes || []).length > 0
-  || (operation?.results || []).some((row) => (row.warningCodes || []).length > 0);
 
 export default function App() {
   const [needToken, setNeedToken] = useState(!getToken());
@@ -247,13 +244,26 @@ export default function App() {
     const checkpointId = recoveryPlanRef.current?.checkpointId;
     if (checkpointId) markWorkspaceAutoShown(checkpointId);
     if (!restoreInFlightRef.current
-      && recoveryOperationRef.current?.status === 'succeeded'
-      && hasRecoveryWarnings(recoveryOperationRef.current)) {
+      && ['succeeded', 'partial'].includes(recoveryOperationRef.current?.status)) {
       clearRecoveryOperation();
       setRecoveryPlan(null);
     }
     setRecoveryDialogOpen(false);
   }, [clearRecoveryOperation]);
+  const rebindAfterRecovery = useCallback(() => {
+    let opened = false;
+    const open = () => {
+      if (opened) return;
+      opened = true;
+      window.removeEventListener('popstate', onPop);
+      clearTimeout(fallback);
+      setBindOpen(true);
+    };
+    const onPop = () => open();
+    window.addEventListener('popstate', onPop);
+    const fallback = setTimeout(open, 300);
+    closeRecovery();
+  }, [closeRecovery]);
   const openRecoveryFromDrawer = useCallback(() => {
     setDrawerOpen(false);
     setRecoveryDialogOpen(true);
@@ -466,11 +476,10 @@ export default function App() {
     if (restoreInFlightRef.current) return;
     if (plan?.mapping) applyRecoveryMapping(plan.mapping);
     const checkpointId = plan?.checkpointId || null;
-    const retainsWarnedSuccess = checkpointId
+    const retainsCompletedResult = checkpointId
       && checkpointId === lastRecoveryCheckpointRef.current
-      && recoveryOperationRef.current?.status === 'succeeded'
-      && hasRecoveryWarnings(recoveryOperationRef.current);
-    if (retainsWarnedSuccess) return;
+      && ['succeeded', 'partial'].includes(recoveryOperationRef.current?.status);
+    if (retainsCompletedResult) return;
     const changedCheckpoint = Boolean(checkpointId
       && lastRecoveryCheckpointRef.current
       && lastRecoveryCheckpointRef.current !== checkpointId);
@@ -493,32 +502,6 @@ export default function App() {
       setRecoveryDialogOpen(false);
     }
   }, [applyRecoveryMapping, clearRecoveryOperation]);
-
-  const navigateToRestoredSession = useCallback(async (result, plan, sessions, isCancelled = () => false) => {
-    if (isCancelled()) return false;
-    const restored = (result?.results || []).filter((row) => row.status === 'restored');
-    if (restored.length === 0 || !Array.isArray(sessions)) return false;
-    const active = restored.find((row) => row.logicalId === plan?.active?.sessionId);
-    const chosen = active || restored[0];
-    const logical = result?.mapping?.logical || {};
-    const runtimeSessionId = logical.sessions?.[chosen.logicalId];
-    const session = sessions.find((row) => row.id === runtimeSessionId)
-      || sessions.find((row) => row.name === chosen.targetName)
-      || sessions.find((row) => row.name === result?.mapping?.names?.[chosen.sourceName]);
-    if (!session) return false;
-    const target = active ? {
-      window: logical.windows?.[plan?.active?.windowId],
-      pane: logical.panes?.[plan?.active?.paneId],
-    } : null;
-    const opened = await openSession(
-      session,
-      target?.window || target?.pane ? target : null,
-      { isCancelled },
-    );
-    if (!opened || isCancelled()) return false;
-    setDrawerOpen(false);
-    return true;
-  }, [openSession]);
 
   const startRecovery = useCallback(async () => {
     const plan = recoveryPlanRef.current;
@@ -578,36 +561,13 @@ export default function App() {
       applyRecoveryMapping(result.mapping);
 
       const restoredCount = (result.results || []).filter((row) => row.status === 'restored').length;
-      let sessions = null;
-      let navigated = restoredCount === 0;
       if (restoredCount > 0) {
-        try {
-          sessions = await getSessions();
-          if (!isCurrent()) return true;
-          liveSessionCountRef.current = Array.isArray(sessions) ? sessions.length : 0;
-          navigated = await navigateToRestoredSession(result, finishedPlan, sessions, () => !isCurrent());
-          if (!isCurrent()) return true;
-        } catch (error) {
-          if (!isCurrent() || handledAuth(error)) return true;
-        }
-        if (!navigated) {
-          if (!isCurrent()) return true;
-          setRecoveryOperation({ ...result, errorCode: 'navigation-failed' });
-          return false;
-        }
+        setBound(removeRestoredSessionBindings(result.results));
+        reportBound();
       }
 
-      const hasWarnings = hasRecoveryWarnings(result);
-      const autoClear = result.status === 'succeeded' && !hasWarnings && navigated;
       restoreInFlightRef.current = false;
       setRecoverySubmitting(false);
-      if (!autoClear) return true;
-
-      setRecoveryOperation(null);
-      if (result.status === 'succeeded') {
-        setRecoveryPlan(null);
-        setRecoveryDialogOpen(false);
-      }
 
       if (!isCurrent()) return true;
       const [planResult, protectionResult] = await Promise.allSettled([
@@ -669,7 +629,7 @@ export default function App() {
     };
     poll();
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [recoveryOperationId, needToken, applyRecoveryMapping, consumeRecoveryPlan, navigateToRestoredSession, handledAuth]);
+  }, [recoveryOperationId, needToken, applyRecoveryMapping, consumeRecoveryPlan, handledAuth]);
 
   // Switch to another window within the current session (its active pane). Session/hash unchanged.
   const selectWindow = useCallback(async (window) => {
@@ -1549,6 +1509,7 @@ export default function App() {
         onRestore={startRecovery}
         onIgnore={ignoreRecovery}
         onClose={closeRecovery}
+        onRebind={rebindAfterRecovery}
       />
       <BindSession
         open={bindOpen}

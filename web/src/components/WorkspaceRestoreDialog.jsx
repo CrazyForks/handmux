@@ -7,7 +7,7 @@ const TERMINAL = new Set(['succeeded', 'partial', 'failed', 'interrupted']);
 const SAFE_ERROR_CODES = new Set([
   'restore-interrupted', 'checkpoint-not-found', 'storage-full', 'permission-denied',
   'plan-failed', 'agent-unavailable', 'tmux-unavailable', 'restore-failed',
-  'navigation-failed', 'operation-not-found',
+  'operation-not-found',
 ]);
 const SAFE_WARNING_CODES = new Set([
   'cwd-fallback', 'layout-fallback', 'agent-warning', 'live-reconcile-failed',
@@ -24,7 +24,7 @@ function warningCopy(code) {
 
 export default function WorkspaceRestoreDialog({
   open, plan, operation = null, submitting = false, returnFocusRef = null,
-  onRestore, onIgnore, onClose,
+  onRestore, onIgnore, onClose, onRebind,
 }) {
   const submitted = useRef(false);
   const dialogRef = useRef(null);
@@ -32,6 +32,7 @@ export default function WorkspaceRestoreDialog({
   const triggerRef = useRef(null);
   const busy = submitting || operation?.status === 'pending' || operation?.status === 'running';
   const terminal = operation && TERMINAL.has(operation.status);
+  const completed = operation && ['succeeded', 'partial'].includes(operation.status);
   useEffect(() => {
     if (!busy || terminal) submitted.current = false;
   }, [busy, terminal, plan?.checkpointId]);
@@ -52,6 +53,11 @@ export default function WorkspaceRestoreDialog({
   const renamed = (plan.sessions || []).filter((row) => row.action === 'create-renamed');
   const progress = operation?.progress || { completed: 0, total: restoreCount };
   const restoredCount = (operation?.results || []).filter((row) => row.status === 'restored').length;
+  const restoredSummary = operation?.summary || {
+    sessions: restoredCount,
+    windows: 0,
+    panes: 0,
+  };
   const failures = (operation?.results || []).filter((row) => row.status === 'failed');
   const topWarnings = (operation?.warningCodes || []).filter((code) => SAFE_WARNING_CODES.has(code));
   const sessionWarnings = (operation?.results || []).flatMap((row) =>
@@ -121,8 +127,15 @@ export default function WorkspaceRestoreDialog({
             </div>
           )}
           {operation?.status === 'succeeded' && <div className="workspace-restore-success">{t('workspace.complete')}</div>}
-          {operation?.errorCode
-            && (operation.errorCode === 'navigation-failed' || failures.length === 0) && (
+          {completed && (
+            <div className="workspace-restore-summary workspace-restore-completed-summary">
+              {t('workspace.completedSummary', restoredSummary)}
+            </div>
+          )}
+          {completed && restoredSummary.sessions > 0 && (
+            <div className="workspace-restore-note">{t('workspace.rebindHint')}</div>
+          )}
+          {operation?.errorCode && failures.length === 0 && (
             <div className="workspace-restore-errors" role="alert">{errorCopy(operation.errorCode)}</div>
           )}
           {failures.length > 0 && (
@@ -152,14 +165,29 @@ export default function WorkspaceRestoreDialog({
           )}
         </div>
         <div className="workspace-restore-actions">
-          <button type="button" className="workspace-restore-primary" disabled={busy} onClick={restore}>
-            {busy
-              ? t('workspace.progress', { completed: progress.completed || 0, total: progress.total || restoreCount })
-              : t('workspace.restore')}
-          </button>
-          <button type="button" className="workspace-restore-ignore" disabled={busy} onClick={onIgnore}>
-            {t('workspace.ignore')}
-          </button>
+          {completed ? (
+            <>
+              {restoredSummary.sessions > 0 && (
+                <button type="button" className="workspace-restore-primary" onClick={onRebind}>
+                  {t('workspace.rebind')}
+                </button>
+              )}
+              <button type="button" className="workspace-restore-ignore" onClick={onClose}>
+                {t('common.done')}
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="workspace-restore-primary" disabled={busy} onClick={restore}>
+                {busy
+                  ? t('workspace.progress', { completed: progress.completed || 0, total: progress.total || restoreCount })
+                  : t('workspace.restore')}
+              </button>
+              <button type="button" className="workspace-restore-ignore" disabled={busy} onClick={onIgnore}>
+                {t('workspace.ignore')}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </>

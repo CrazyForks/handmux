@@ -39,7 +39,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     // Component tests carry JSX, so they're named .test.jsx (plain logic tests stay .test.js).
-    include: ['test/**/*.test.{js,jsx}'],
+    include: ['test/**/*.test.{js,jsx}', 'src/**/*.test.{js,jsx}'],
     setupFiles: ['./test/setup.js'],
   },
 });

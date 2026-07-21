@@ -5,6 +5,7 @@ import {
   getWorkspacePromptState,
   ignoreWorkspaceCheckpoint,
   markWorkspaceAutoShown,
+  removeRestoredSessionBindings,
 } from './storage.js';
 
 const read = (key) => JSON.parse(localStorage.getItem(key));
@@ -31,6 +32,21 @@ describe('workspace prompt state', () => {
 });
 
 describe('workspace runtime mapping', () => {
+  it('removes only successfully restored target names from this device bindings', () => {
+    localStorage.setItem('tw_bound', JSON.stringify(['project', 'current', 'project-restored']));
+
+    expect(removeRestoredSessionBindings([
+      { status: 'restored', targetName: 'project-restored' },
+      { status: 'failed', targetName: 'current' },
+      { status: 'already-present', targetName: 'project' },
+    ])).toEqual(['project', 'current']);
+    expect(getBoundSessions()).toEqual(['project', 'current']);
+
+    expect(removeRestoredSessionBindings([
+      { status: 'restored', targetName: 'project' },
+    ])).toEqual(['current']);
+  });
+
   it('does not cascade a value mapping when its parent key belongs to the current tmux server', () => {
     localStorage.setItem('tw_win', JSON.stringify({ '$1': '@1', '$7': '@1' }));
     localStorage.setItem('tw_pane', JSON.stringify({ '@1': '%1', '@7': '%1' }));

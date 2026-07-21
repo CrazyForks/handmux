@@ -56,6 +56,15 @@ export function removeBoundSession(name) {
   return list;
 }
 
+export function removeRestoredSessionBindings(results) {
+  const restoredNames = new Set((Array.isArray(results) ? results : [])
+    .filter((row) => row?.status === 'restored' && typeof row.targetName === 'string' && row.targetName)
+    .map((row) => row.targetName));
+  const list = getBoundSessions().filter((name) => !restoredNames.has(name));
+  localStorage.setItem(BOUND_KEY, JSON.stringify(list));
+  return list;
+}
+
 // Rename a bound session in place: swap the name in tw_bound (keeping its list position) and carry
 // its recent-command history (tw_recent is keyed by NAME) to the new name. tw_win is keyed by
 // session id, which rename-session does NOT change, so it needs no migration.
