@@ -275,6 +275,7 @@ export default function CmdFavEditor({
   const mergedGlobal = applyShortcutLayout(
     mergeShortcuts(presets, items[globalScope] || [], layoutMode), layout,
   );
+  const visibleGlobalIds = new Set(mergedGlobal.map(shortcutIdentity));
 
   const reloadAll = () => setItems(Object.fromEntries(scopes.map((s) => [s.key, loadFavs(s.key)])));
   const persistLayout = (next) => {
@@ -351,7 +352,8 @@ export default function CmdFavEditor({
           {scopes.map((scope) => {
             const visible = scope.key === globalScope
               ? mergedGlobal
-              : mergeShortcuts([], items[scope.key] || [], 'command');
+              : mergeShortcuts([], items[scope.key] || [], 'command')
+                .filter((item) => !visibleGlobalIds.has(shortcutIdentity(item)));
             return <List key={scope.key} title={scope.title} accent={scope.accent} items={visible}
               showTitle={scopes.length > 1}
               onMove={(item, direction) => doMove(scope.key, item, direction)}

@@ -134,9 +134,9 @@ function BottomDock({
   const commandShortcuts = applyShortcutLayout(
     mergeShortcuts(serverShortcuts.command, cmdFavs, 'command'), commandLayout,
   );
-  const presetCommandIds = new Set((serverShortcuts.command || []).map(shortcutIdentity));
+  const visibleGlobalCommandIds = new Set(commandShortcuts.map(shortcutIdentity));
   const windowShortcuts = mergeShortcuts([], winFavs, 'command')
-    .filter((item) => !presetCommandIds.has(shortcutIdentity(item)));
+    .filter((item) => !visibleGlobalCommandIds.has(shortcutIdentity(item)));
   const [modeOverride, setModeOverride] = useState({}); // pane → 'command' | 'agent'
   const mode = modeOverride[pane] || (agent ? 'agent' : 'command');
   const setMode = (next) => {

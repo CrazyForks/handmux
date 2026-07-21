@@ -44,6 +44,14 @@ describe('phone-local shortcut layout', () => {
       .toEqual([a, c, b]);
   });
 
+  it('keeps a hidden identity slot while moving remaining items before undo', () => {
+    const hidden = hideShortcutInLayout({ hidden: [], order: [] }, [a, b, c], id(a));
+    const moved = moveShortcutInLayout(hidden, [b, c], id(c), -1);
+    expect(applyShortcutLayout([a, b, c], moved)).toEqual([c, b]);
+    expect(applyShortcutLayout([a, b, c], showShortcutInLayout(moved, id(a))))
+      .toEqual([a, c, b]);
+  });
+
   it('forgets deleted local identities and preserves position across an edit', () => {
     const layout = { hidden: [], order: [id(a), id(b), id(c)] };
     expect(removeShortcutFromLayout(layout, id(b)).order).toEqual([id(a), id(c)]);

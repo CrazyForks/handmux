@@ -44,12 +44,22 @@ export function applyShortcutLayout(items, layout) {
 }
 
 export function moveShortcutInLayout(layout, visibleItems, identity, direction) {
+  const normalized = normalize(layout);
   const ids = applyShortcutLayout(visibleItems, layout).map(shortcutIdentity);
   const from = ids.indexOf(identity);
   const to = from + (direction < 0 ? -1 : 1);
-  if (from < 0 || to < 0 || to >= ids.length) return normalize(layout);
+  if (from < 0 || to < 0 || to >= ids.length) return normalized;
   [ids[from], ids[to]] = [ids[to], ids[from]];
-  return { ...normalize(layout), order: ids };
+  const hidden = new Set(normalized.hidden);
+  const visible = new Set(ids);
+  let nextVisible = 0;
+  const order = [];
+  for (const current of normalized.order) {
+    if (hidden.has(current)) order.push(current);
+    else if (visible.has(current)) order.push(ids[nextVisible++]);
+  }
+  order.push(...ids.slice(nextVisible));
+  return { ...normalized, order: strings(order) };
 }
 
 export function hideShortcutInLayout(layout, visibleItems, identity) {

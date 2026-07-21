@@ -150,6 +150,40 @@ describe('CmdFavEditor', () => {
       .toEqual(['Ctrl+C', 'Esc']);
   });
 
+  it('undo keeps the shared preset slot after remaining items are reordered', () => {
+    vi.useFakeTimers();
+    saveFavs(CMD_GLOBAL, [{ kind: 'cmd', text: 'local', enter: false }]);
+    render({ presets: [
+      { type: 'key', key: 'Escape', label: 'Esc' },
+      { type: 'key', key: 'C-c', label: 'Ctrl+C' },
+    ] });
+    const global = container.querySelectorAll('.cmd-esection')[0];
+    click(global.querySelector('.cmd-row .cmd-del'));
+    click([...global.querySelectorAll('.cmd-row')][1].querySelector('.cmd-move.up'));
+    expect([...global.querySelectorAll('.cmd-text')].map((node) => node.textContent))
+      .toEqual(['local', 'Ctrl+C']);
+    click(container.querySelector('.cmd-undo'));
+    expect([...global.querySelectorAll('.cmd-text')].map((node) => node.textContent))
+      .toEqual(['Esc', 'local', 'Ctrl+C']);
+  });
+
+  it('shows a window-local shortcut when its shared global identity is hidden', () => {
+    localStorage.setItem('hm_shortcut_layout1_command', JSON.stringify({ hidden: ['key:C-c'], order: [] }));
+    saveFavs(cmdScope('@3'), [{ kind: 'key', text: 'C-c', label: 'Ctrl+C' }]);
+    render({ presets: [{ type: 'key', key: 'C-c', label: 'Ctrl+C' }] });
+    const [global, win] = container.querySelectorAll('.cmd-esection');
+    expect(global.textContent).not.toContain('Ctrl+C');
+    expect([...win.querySelectorAll('.cmd-text')].map((node) => node.textContent)).toEqual(['Ctrl+C']);
+  });
+
+  it('deduplicates a window-local shortcut while its global identity is visible', () => {
+    saveFavs(cmdScope('@3'), [{ kind: 'key', text: 'C-c', label: 'Ctrl+C' }]);
+    render({ presets: [{ type: 'key', key: 'C-c', label: 'Ctrl+C' }] });
+    const [global, win] = container.querySelectorAll('.cmd-esection');
+    expect([...global.querySelectorAll('.cmd-text')].map((node) => node.textContent)).toEqual(['Ctrl+C']);
+    expect(win.textContent).not.toContain('Ctrl+C');
+  });
+
   it('re-adding a hidden shortcut clears the hidden identity', () => {
     localStorage.setItem('hm_shortcut_layout1_command', JSON.stringify({ hidden: ['key:C-c'], order: [] }));
     render({ presets: [{ type: 'key', key: 'C-c', label: 'Ctrl+C' }] });

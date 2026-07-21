@@ -17,6 +17,7 @@ vi.mock('../src/voice/usePushToTalk.js', () => ({
 import BottomDock from '../src/components/BottomDock.jsx';
 import { sendText } from '../src/api.js';
 import { t } from '../src/i18n';
+import { cmdScope, saveFavs } from '../src/favStore.js';
 
 let container;
 let root;
@@ -70,6 +71,18 @@ describe('BottomDock', () => {
       command: [{ type: 'key', key: 'C-c', label: 'Ctrl+C' }], chat: [],
     } });
     expect(container.querySelector('.dock-page.command .quick-scroll').textContent).not.toContain('Ctrl+C');
+  });
+
+  it('renders a window-local identity when the matching shared global preset is hidden', () => {
+    saveFavs(cmdScope('@3'), [
+      { kind: 'key', text: 'C-c', label: 'Ctrl+C' },
+    ]);
+    localStorage.setItem('hm_shortcut_layout1_command', JSON.stringify({ hidden: ['key:C-c'], order: [] }));
+    render({ pane: '%1', windowId: '@3', shortcuts: {
+      command: [{ type: 'key', key: 'C-c', label: 'Ctrl+C' }], chat: [],
+    } });
+    expect([...container.querySelectorAll('.dock-page.command .quick-scroll .quick-cmd')]
+      .map((node) => node.textContent)).toContain('Ctrl+C');
   });
 
   it('no dedicated ⌫/Enter rail — those come from the system keyboard now', () => {
