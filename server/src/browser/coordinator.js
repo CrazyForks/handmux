@@ -37,6 +37,20 @@ export function createBrowserCoordinator({
   const direct = createBrowserSessionStore({ now, setTimer, clearTimer });
   const proxyIds = new Map(); // logical id -> current worker id; never used to synthesize worker list entries
   const proxyTabs = new Map(); // last worker-confirmed metadata, only for an atomic proxy -> direct transition
+  const deviceQueues = new Map();
+  const serializeDevice = async (deviceId, operation) => {
+    const previous = deviceQueues.get(deviceId) || Promise.resolve();
+    let release;
+    const current = new Promise((resolve) => { release = resolve; });
+    deviceQueues.set(deviceId, current);
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (deviceQueues.get(deviceId) === current) deviceQueues.delete(deviceId);
+    }
+  };
 
   const directFor = (id, deviceId) => {
     const tab = direct.get(id);
@@ -172,13 +186,7 @@ export function createBrowserCoordinator({
     };
   };
 
-  const browserCoordinator = async (req, res) => {
-    const deviceId = req.get('x-handmux-browser-device');
-    if (!DEVICE_ID.test(deviceId || '')) return res.status(400).json({ error: 'browser device id required' });
-    const requestOrigin = browserRequestOrigin(req);
-    const secure = requestOrigin.startsWith('https://') ? '; Secure' : '';
-    res.append('Set-Cookie', `${DEVICE_COOKIE}=${deviceId}; Path=/; HttpOnly; SameSite=Strict${secure}`);
-
+  const handleBrowserRequest = async (req, res, deviceId) => {
     const path = req.path || '/';
     const navigateMatch = path.match(/^\/([^/]+)\/navigate$/);
     const visibilityMatch = path.match(/^\/([^/]+)\/visibility$/);
@@ -194,28 +202,42 @@ export function createBrowserCoordinator({
       if (mode === 'direct') {
         let finished = false;
         let cancelled = req.aborted || res.destroyed;
+        let responseSettled = false;
+        let settleResponse;
+        const responseDone = new Promise((resolve) => { settleResponse = resolve; });
+        const settle = () => {
+          if (responseSettled) return;
+          responseSettled = true;
+          settleResponse();
+        };
         const transaction = createDirectTransaction(req, deviceId);
         const cancel = () => {
           if (finished) return;
           cancelled = true;
-          void transaction.rollback().catch(() => {});
+          void transaction.rollback().catch(() => {}).finally(settle);
         };
         req.once('aborted', cancel);
         res.once('close', cancel);
-        res.once('finish', () => { finished = true; });
+        res.once('finish', () => { finished = true; settle(); });
         const hidden = await transaction.prepare();
         cancelled ||= req.aborted || res.destroyed;
         if (cancelled) {
           await transaction.rollback();
           return undefined;
         }
-        if (hidden.response) return sendProxy(res, hidden.response);
+        if (hidden.response) {
+          const sent = sendProxy(res, hidden.response);
+          await responseDone;
+          return sent;
+        }
         const created = transaction.commit({ url, closeAfterMinutes, deviceId });
         if (cancelled) {
           await transaction.rollback();
           return undefined;
         }
-        return res.status(201).json(publicTab(created));
+        const sent = res.status(201).json(publicTab(created));
+        await responseDone;
+        return sent;
       }
       const response = await proxyCall(req, 'POST', '/api/browser-tabs', { url, closeAfterMinutes, mode });
       const created = jsonBody(response);
@@ -348,6 +370,19 @@ export function createBrowserCoordinator({
     }
 
     return res.status(404).json({ error: 'browser tab not found' });
+  };
+
+  const browserCoordinator = async (req, res) => {
+    const deviceId = req.get('x-handmux-browser-device');
+    if (!DEVICE_ID.test(deviceId || '')) return res.status(400).json({ error: 'browser device id required' });
+    const requestOrigin = browserRequestOrigin(req);
+    const secure = requestOrigin.startsWith('https://') ? '; Secure' : '';
+    res.append('Set-Cookie', `${DEVICE_COOKIE}=${deviceId}; Path=/; HttpOnly; SameSite=Strict${secure}`);
+
+    return serializeDevice(deviceId, () => {
+      if (req.aborted || res.destroyed) return undefined;
+      return handleBrowserRequest(req, res, deviceId);
+    });
   };
   browserCoordinator.close = () => direct.close();
   return browserCoordinator;

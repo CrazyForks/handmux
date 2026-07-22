@@ -86,18 +86,22 @@ function proxyBackend() {
       return release;
     },
     drop(device, id) { save(device, tabs(device).filter((tab) => tab.id !== id)); },
+    list(device) { return tabs(device); },
     setVisible(device, id, visible) {
       save(device, tabs(device).map((tab) => tab.id === id ? { ...tab, visible } : tab));
     },
   };
 }
 
-function appFor(backend, now = () => 1_000, { responseDelayMs = 0, coordinatorOptions = {} } = {}) {
+function appFor(backend, now = () => 1_000, {
+  responseDelayMs = 0, coordinatorOptions = {}, onJson = () => {},
+} = {}) {
   const app = express();
   app.use(express.json());
   if (responseDelayMs) app.use((_req, res, next) => {
     const jsonResponse = res.json.bind(res);
     res.json = (body) => {
+      onJson(_req, body);
       setTimeout(() => jsonResponse(body), responseDelayMs);
       return res;
     };
@@ -248,6 +252,9 @@ describe('browser main-process coordinator', () => {
 
     const listed = await asDevice(request(app).get('/api/browser-tabs')).expect(200);
     expect(listed.body.tabs).toEqual([expect.objectContaining({ id: proxy.body.id, visible: true })]);
+    await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://retry.example/', closeAfterMinutes: 30, mode: 'direct',
+    }).expect(201);
   });
 
   it('does not mark a direct tab visible when hiding the proxy fails', async () => {
@@ -434,6 +441,121 @@ describe('browser main-process coordinator', () => {
     expect(listed.body.tabs).toEqual([expect.objectContaining({
       id: proxy.body.id, mode: 'proxy', visible: true, closeAfterMinutes: 30,
     })]);
+  });
+
+  it('does not let an aborted direct rollback override a newer successful direct create', async () => {
+    const backend = proxyBackend();
+    const committed = new Map();
+    const signal = (url) => new Promise((resolve) => committed.set(url, resolve));
+    const aCommitted = signal('https://a.example/');
+    const bCommitted = signal('https://b.example/');
+    const app = appFor(backend, () => 1_000, {
+      responseDelayMs: 100,
+      onJson: (_req, body) => committed.get(body?.originalUrl)?.(),
+    });
+    const original = await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://original.example/', closeAfterMinutes: 30, mode: 'direct',
+    }).expect(201);
+    const pendingA = asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://a.example/', closeAfterMinutes: 10, mode: 'direct',
+    });
+    const outcomeA = pendingA.then(() => null, (error) => error);
+    await aCommitted;
+    const pendingB = asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://b.example/', closeAfterMinutes: 60, mode: 'direct',
+    });
+    const outcomeB = pendingB.then((response) => response);
+    await Promise.race([bCommitted, new Promise((resolve) => setTimeout(resolve, 30))]);
+
+    pendingA.abort();
+    expect(await outcomeA).toBeInstanceOf(Error);
+    const createdB = await outcomeB;
+    expect(createdB.status).toBe(201);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    const listed = await asDevice(request(app).get('/api/browser-tabs')).expect(200);
+    expect(listed.body.tabs.filter((tab) => tab.visible)).toEqual([
+      expect.objectContaining({ id: createdB.body.id, originalUrl: 'https://b.example/' }),
+    ]);
+    expect(listed.body.tabs).toContainEqual(expect.objectContaining({
+      id: original.body.id, visible: false, closeAfterMinutes: 30,
+      hiddenAt: 1000, expiresAt: 1_801_000,
+    }));
+  });
+
+  it('does not let an aborted proxy rollback override a newer successful direct create', async () => {
+    const backend = proxyBackend();
+    const committed = new Map();
+    const signal = (url) => new Promise((resolve) => committed.set(url, resolve));
+    const aCommitted = signal('https://a.example/');
+    const bCommitted = signal('https://b.example/');
+    const app = appFor(backend, () => 1_000, {
+      responseDelayMs: 100,
+      onJson: (_req, body) => committed.get(body?.originalUrl)?.(),
+    });
+    const original = await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://proxy.example/', closeAfterMinutes: 30, mode: 'proxy',
+    }).expect(201);
+    const pendingA = asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://a.example/', closeAfterMinutes: 10, mode: 'direct',
+    });
+    const outcomeA = pendingA.then(() => null, (error) => error);
+    await aCommitted;
+    const pendingB = asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://b.example/', closeAfterMinutes: 60, mode: 'direct',
+    });
+    const outcomeB = pendingB.then((response) => response);
+    await Promise.race([bCommitted, new Promise((resolve) => setTimeout(resolve, 30))]);
+    const releaseRestore = backend.deferNextVisibility();
+
+    pendingA.abort();
+    expect(await outcomeA).toBeInstanceOf(Error);
+    await vi.waitFor(() => expect(backend.calls).toContainEqual(expect.objectContaining({
+      method: 'PATCH', body: expect.objectContaining({ visible: true }),
+    })));
+    releaseRestore();
+    const createdB = await outcomeB;
+    expect(createdB.status).toBe(201);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(backend.list(DEVICE_A).filter((tab) => tab.visible)).toEqual([]);
+
+    const listed = await asDevice(request(app).get('/api/browser-tabs')).expect(200);
+    expect(listed.body.tabs.filter((tab) => tab.visible)).toEqual([
+      expect.objectContaining({ id: createdB.body.id, originalUrl: 'https://b.example/' }),
+    ]);
+    expect(listed.body.tabs).toContainEqual(expect.objectContaining({
+      id: original.body.id, mode: 'proxy', visible: false, closeAfterMinutes: 30,
+    }));
+  });
+
+  it('keeps different devices parallel while one device waits for proxy visibility', async () => {
+    const backend = proxyBackend();
+    const app = appFor(backend);
+    await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://proxy.example/', closeAfterMinutes: 30, mode: 'proxy',
+    }).expect(201);
+    const releaseHide = backend.deferNextVisibility();
+    const pendingA = asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://a.example/', closeAfterMinutes: 10, mode: 'direct',
+    });
+    const outcomeA = pendingA.then((response) => response);
+    await vi.waitFor(() => expect(backend.calls).toContainEqual(expect.objectContaining({
+      method: 'PATCH', body: expect.objectContaining({ visible: false }),
+    })));
+
+    await asDevice(request(app).post('/api/browser-tabs'), DEVICE_B).send({
+      url: 'https://b.example/', closeAfterMinutes: 60, mode: 'direct',
+    }).expect(201);
+
+    releaseHide();
+    expect((await outcomeA).status).toBe(201);
+    const [listedA, listedB] = await Promise.all([
+      asDevice(request(app).get('/api/browser-tabs')).expect(200),
+      asDevice(request(app).get('/api/browser-tabs'), DEVICE_B).expect(200),
+    ]);
+    expect(listedA.body.tabs.filter((tab) => tab.visible)).toHaveLength(1);
+    expect(listedB.body.tabs.filter((tab) => tab.visible)).toHaveLength(1);
   });
 
   it('clears direct expiry timers when the coordinator closes', async () => {
