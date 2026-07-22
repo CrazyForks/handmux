@@ -205,6 +205,18 @@ describe('App management dimensions', () => {
     expect(screen.getByRole('dialog', { name: '分屏管理，① zsh · 59×30' })).toBeTruthy();
     expect(api.getPanes).toHaveBeenCalledTimes(2);
   });
+
+  it('refreshes pane geometry from tmux before opening the pane map', async () => {
+    await renderManagedSession();
+    api.getPanes.mockResolvedValueOnce(stalePanes.map((pane) => (
+      pane.id === '%1' ? { ...pane, width: 59, height: 30 } : { ...pane, width: 60, height: 30, left: 60 }
+    )));
+
+    await act(async () => { await windowBar.props.onBeforePaneMapOpen?.('@1'); });
+
+    expect(windowBar.props.panes.find((pane) => pane.id === '%1')).toMatchObject({ width: 59, height: 30 });
+    expect(api.getPanes).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('App workspace recovery', () => {

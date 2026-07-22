@@ -901,6 +901,15 @@ export default function App() {
     }
   }, [current?.window?.id, refreshPanes, handledAuth]);
 
+  const refreshPaneMap = useCallback(async (targetWindowId = current?.window?.id) => {
+    if (!targetWindowId) return;
+    try {
+      refreshPanes(targetWindowId, await getPanes(targetWindowId));
+    } catch (e) {
+      handledAuth(e);
+    }
+  }, [current?.window?.id, refreshPanes, handledAuth]);
+
   // Split `paneId` into two (dir 'h' left|right, 'v' top/bottom); jump the phone to the new pane. The
   // decision logic (call the api, refetch, pick the new pane) lives in paneActions.js — unit-tested there.
   const splitPaneAction = useCallback(async (paneId, dir) => {
@@ -1733,6 +1742,7 @@ export default function App() {
             onNewWindow={() => setNewWinOpen(true)}
             onManageWindow={openWindowManagement}
             onManagePane={openPaneManagement}
+            onBeforePaneMapOpen={refreshPaneMap}
             paneSheetOpen={!!managePane}
             openMapFor={openMapFor}
             onMapOpened={() => setOpenMapFor(null)}

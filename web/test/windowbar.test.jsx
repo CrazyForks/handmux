@@ -240,6 +240,19 @@ describe('WindowBar', () => {
     expect(cells[1].querySelector('.pmc-dims').textContent).toBe('40×24');
   });
 
+  it('waits for a live pane refresh before opening the map', async () => {
+    let finishRefresh;
+    const onBeforePaneMapOpen = vi.fn(() => new Promise((resolve) => { finishRefresh = resolve; }));
+    render({ ...base, panes: geomPanes, onBeforePaneMapOpen });
+
+    openPaneMenu();
+    expect(onBeforePaneMapOpen).toHaveBeenCalledWith('@1');
+    expect(paneMap()).toBeNull();
+
+    await act(async () => { finishRefresh(); });
+    expect(paneMap()).not.toBeNull();
+  });
+
   it('portals the pane map outside the horizontally scrolling window strip', () => {
     render({ ...base, panes: geomPanes });
     openPaneMenu();
