@@ -153,6 +153,30 @@ describe('browser public proxy', () => {
     expect(resolvePublicRequest).toHaveBeenCalledWith(expect.any(String), DEVICE, 'https://one.example');
   });
 
+  it('consumes a one-time preview-origin bootstrap into a host-only device cookie', async () => {
+    const browserBootstrap = {
+      consume: vi.fn(() => ({
+        deviceId: DEVICE,
+        url: 'https://handmux.example.com:30443/_browser-tab-a/https://target.example/',
+      })),
+    };
+    const proxy = createBrowserPublicProxy({ browser: {}, browserBootstrap });
+    const app = express();
+    app.use(proxy.handler);
+
+    const res = await request(app).get('/_browser-bootstrap/ticket')
+      .set('Host', 'handmux.example.com:30443')
+      .set('X-Forwarded-Proto', 'https');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain('/_browser-tab-a/');
+    expect(res.headers['set-cookie'][0]).toContain(`tw_browser_device=${DEVICE}`);
+    expect(res.headers['set-cookie'][0]).not.toContain('Domain=');
+    expect(res.headers['set-cookie'][0]).toContain('HttpOnly');
+    expect(res.headers['set-cookie'][0]).toContain('Secure');
+    expect(browserBootstrap.consume).toHaveBeenCalledWith('/_browser-bootstrap/ticket', 'https://handmux.example.com:30443');
+  });
+
   it('returns a specific 502 when the internal proxy is unavailable', async () => {
     const browser = { internalPorts: [9, 10], ownsPublicPath: () => true, hasDevice: () => true };
     const proxy = createBrowserPublicProxy({ browser });

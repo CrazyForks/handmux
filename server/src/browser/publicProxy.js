@@ -1,5 +1,6 @@
 import http from 'node:http';
 import net from 'node:net';
+import { isBrowserBootstrapPath } from './bootstrap.js';
 
 const SERVICE_PATHS = new Set([
   '/hammerhead.js',
@@ -74,12 +75,23 @@ function upstreamHeaders(headers, port, token) {
 
 export function createBrowserPublicProxy({
   browser,
+  browserBootstrap,
   token,
   request = http.request,
   connect = net.connect,
 } = {}) {
   const handler = (req, res, next) => {
     if (!browser) return next();
+    const pathname = String(req.url || '').split('?')[0];
+    if (isBrowserBootstrapPath(pathname)) {
+      const origin = browserRequestOrigin(req);
+      const bootstrap = browserBootstrap?.consume(pathname, origin);
+      if (!bootstrap) return res.status(403).json({ error: 'browser bootstrap unavailable' });
+      const secure = origin?.startsWith('https://') ? '; Secure' : '';
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Set-Cookie', `${DEVICE_COOKIE}=${bootstrap.deviceId}; Path=/; HttpOnly; SameSite=Strict${secure}`);
+      return res.redirect(302, bootstrap.url);
+    }
     const deviceId = cookieValue(req.headers.cookie, DEVICE_COOKIE);
     const target = browserTarget(browser, req, deviceId);
     if (!target) {

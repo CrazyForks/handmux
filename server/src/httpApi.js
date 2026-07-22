@@ -32,9 +32,11 @@ export { isAllowedKey } from './routes/terminal.js';
 export function createApiRouter({
   token, commands = defaultCommands, docs = defaultDocs, git = defaultGit, events,
   uploadExts = DEFAULT_UPLOAD_EXTS, maxUploadBytes = MAX_TRANSFER_BYTES,
-  asrEnv = process.env, previews, previewDomain = null,
+  asrEnv = process.env, previews,
   shortcuts = DEFAULT_SHORTCUTS,
   browser,
+  browserBootstrap,
+  previewDomain,
   workspace,
   home = homedir(), stateFile = process.env.CLAUDE_STATE_FILE || claudeStatePath(homedir()),
 } = {}) {
@@ -45,7 +47,7 @@ export function createApiRouter({
 
   const deps = {
     token, commands, docs, git, push, notifications, claudeEvents,
-    uploadExts, maxUploadBytes, asrEnv, previews, previewDomain, shortcuts, home, stateFile, workspace, browser,
+    uploadExts, maxUploadBytes, asrEnv, previews, shortcuts, home, stateFile, workspace, browser, browserBootstrap, previewDomain,
   };
 
   r.use(sessionRoutes(deps));

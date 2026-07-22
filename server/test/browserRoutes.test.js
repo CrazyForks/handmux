@@ -3,10 +3,10 @@ import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 import { browserRoutes } from '../src/browser/routes.js';
 
-function appFor(browser) {
+function appFor(browser, previewDomain = null, browserBootstrap = null) {
   const app = express();
   app.use(express.json());
-  app.use(browserRoutes({ browser }));
+  app.use(browserRoutes({ browser, previewDomain, browserBootstrap }));
   return app;
 }
 const DEVICE = 'device_abcdefghijklmnopqrstuvwxyz123456';
@@ -50,6 +50,26 @@ describe('browser routes', () => {
     expect(browser.create).toHaveBeenCalledWith(expect.objectContaining({ origin: 'https://actual.example' }));
   });
 
+  it('uses previewDomain as the browser public origin and returns its host-only bootstrap URL', async () => {
+    const browser = browserFake();
+    const browserBootstrap = { issue: vi.fn(() => 'https://handmux.example.com:30443/_browser-bootstrap/ticket') };
+    const res = await asDevice(request(appFor(browser, 'handmux.example.com:30443', browserBootstrap)).post('/browser-tabs'))
+      .set('Host', 'example.com')
+      .send({ url: 'https://target.example/', closeAfterMinutes: 10 })
+      .expect(201);
+
+    expect(browser.create).toHaveBeenCalledWith(expect.objectContaining({
+      origin: 'https://handmux.example.com:30443',
+    }));
+    expect(browserBootstrap.issue).toHaveBeenCalledWith(expect.objectContaining({
+      deviceId: DEVICE,
+      origin: 'https://handmux.example.com:30443',
+    }));
+    expect(res.body.url).toBe('https://handmux.example.com:30443/_browser-bootstrap/ticket');
+    expect(res.headers['set-cookie'][0]).not.toContain('Domain=');
+    expect(res.headers['set-cookie'][0]).toContain('Secure');
+  });
+
   it.each([10, 30, 60, 120, null])('accepts closeAfterMinutes=%s', async (closeAfterMinutes) => {
     const browser = browserFake();
     const res = await asDevice(request(appFor(browser)).post('/browser-tabs')).send({ url: 'https://target.example/', closeAfterMinutes });
@@ -80,6 +100,21 @@ describe('browser routes', () => {
     expect(res.body.tabs).toEqual([{ id: 'tab-a', originalUrl: 'https://target/' }]);
   });
 
+  it('reissues preview-origin bootstrap URLs when listing existing tabs', async () => {
+    const browser = browserFake();
+    browser.list.mockReturnValue([{ id: 'tab-a', url: 'https://handmux.example.com:30443/_browser-tab-a/https://target/' }]);
+    const browserBootstrap = { issue: vi.fn(() => 'https://handmux.example.com:30443/_browser-bootstrap/recovery') };
+
+    const res = await asDevice(request(appFor(browser, 'handmux.example.com:30443', browserBootstrap)).get('/browser-tabs'))
+      .expect(200);
+
+    expect(res.body.tabs[0].url).toBe('https://handmux.example.com:30443/_browser-bootstrap/recovery');
+    expect(browserBootstrap.issue).toHaveBeenCalledWith(expect.objectContaining({
+      origin: 'https://handmux.example.com:30443',
+      deviceId: DEVICE,
+    }));
+  });
+
   it('updates one tab visibility and its independent close duration', async () => {
     const browser = browserFake();
     const res = await asDevice(request(appFor(browser)).patch('/browser-tabs/tab-a/visibility')).send({ visible: false, closeAfterMinutes: 30 });
@@ -92,6 +127,21 @@ describe('browser routes', () => {
     const res = await asDevice(request(appFor(browser)).post('/browser-tabs/tab-a/navigate')).send({ url: 'https://next.example/' });
     expect(res.status).toBe(200);
     expect(browser.navigate).toHaveBeenCalledWith('tab-a', 'https://next.example/', DEVICE);
+  });
+
+  it('reissues a preview-origin bootstrap URL after navigation', async () => {
+    const browser = browserFake();
+    browser.navigate.mockReturnValue({
+      id: 'tab-a',
+      originalUrl: 'https://next.example/',
+      url: 'https://handmux.example.com:30443/_browser-tab-a/https://next.example/',
+    });
+    const browserBootstrap = { issue: vi.fn(() => 'https://handmux.example.com:30443/_browser-bootstrap/navigate') };
+
+    const res = await asDevice(request(appFor(browser, 'handmux.example.com:30443', browserBootstrap))
+      .post('/browser-tabs/tab-a/navigate')).send({ url: 'https://next.example/' }).expect(200);
+
+    expect(res.body.url).toBe('https://handmux.example.com:30443/_browser-bootstrap/navigate');
   });
 
   it('returns 404 when updating a missing tab', async () => {

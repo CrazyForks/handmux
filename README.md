@@ -8,7 +8,7 @@
   <a href="https://www.npmjs.com/package/handmux"><img src="https://img.shields.io/npm/v/handmux?color=cb3837&logo=npm" alt="npm"></a>
   <a href="https://github.com/handmux/handmux/actions/workflows/test.yml"><img src="https://github.com/handmux/handmux/actions/workflows/test.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="license: AGPL-3.0"></a>
-  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=white" alt="node"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white" alt="node"></a>
 </p>
 
 > **One phone, a whole mobile vibe-coding cockpit.** Built on tmux — one command on your computer, scan a QR, and your live session, Claude Code, Codex, git, previews and docs are all in your hand, creativity ready wherever you are.
@@ -27,7 +27,7 @@ handmux is more than a terminal on your phone. It puts the *same* live **tmux** 
 
 ## Quick start · about a minute
 
-Your computer needs tmux and Node ≥ 18; the phone just needs a browser. Pick one:
+Your computer needs tmux and Node ≥ 20; the phone just needs a browser. Pick one:
 
 **Homebrew — macOS (recommended)** · installs Node + tmux for you:
 
@@ -73,7 +73,7 @@ handmux start --tunnel cloudflare   # instant public URL (cloudflared auto-insta
 - **Script push** — notify your phone from any script or CI step with `handmux push`; target all devices, a named session, or a specific device.
 - **Workspace recovery** — handmux silently keeps the metadata needed to rebuild your latest tmux workspace. After a computer or tmux-server restart, restore it beside any new sessions from the phone or with `handmux restore`; existing sessions are never replaced.
 - **Git viewer** — changes / commit history / any branch / full-screen colored diff, multi-repo tabs, read-only, never touches your tree.
-- **Site preview** — a static folder, or a running HTTP/HTTPS service by port (routing / APIs / live-reload intact), in a phone or desktop viewport. Set its bare preview domain once in `handmux setup`.
+- **Built-in browser + static preview** — after a one-time confirmation, the permanent top-bar Browser opens public sites, intranet domains, and localhost services through the computer, with device-private tabs/sign-ins, local history, phone/desktop viewports, and independent 10/30/60/120-minute or never-close timers. If the main public entry cannot forward browser-reserved paths, the existing `previewDomain` can serve as its public origin. Folder preview remains for static sites. Some browser-bound capabilities (client certificates, WebAuthn/passkeys, DRM, browser extensions, and unusually strict SSO) may not work through the rewritten session.
 - **Docs** — tap a path in the terminal to open it; Markdown rendered, font zoom, sentence-by-sentence read-aloud.
 - **Select & copy text** — long-press to select in the terminal, drag iOS-style handles to fine-tune, copy the selection / a whole line / a whole paragraph.
 - **Files both ways** — multi-select upload from the chat box, download, share in, copy any absolute path.
@@ -138,13 +138,13 @@ No tunnel by default — the phone connects **straight to your own computer**, n
 - **Yes** (cloud box / public IP / forwarded port) — no tunnel needed, connect directly; fastest and most private.
 - **No** — open a tunnel. Each runs on **your own free third-party account** — handmux just wires it up and operates no relay of its own: `cloudflare` (zero-config, up in seconds, but its public edge can be slow or unreliable in some regions) · `cloudflare-named` (your own domain, steadier) · `natapp` / `cpolar` (domestic providers that stay reachable inside mainland China) · `ssh` self-hosted (through your own server).
 
-> Tunnel config, server-side reverse proxy, autostart, voice/push credentials, and port previews → see the **[docs](https://handmux.com/docs)**.
+> Tunnel config, the built-in browser, autostart, and voice/push credentials → see the **[docs](https://handmux.com/docs)**.
 
 Once autostart is installed, `handmux start` / `stop` / `restart` coordinate with that same launchd/systemd service (including after an upgrade). A lifecycle lock prevents concurrent launches; `status` shows the running version and warns with PIDs if stale/duplicate supervisors exist, while `stop` reaps every copy.
 
 ## Requirements
 
-Your computer needs **Node ≥ 18** and **tmux ≥ 3.0**; the phone just needs a browser. On **Windows**, run it inside **WSL2** (a real Linux kernel + real tmux) — see the [docs](https://handmux.com/docs#windows).
+Your computer needs **Node ≥ 20** and **tmux ≥ 3.0**; the phone just needs a browser. On **Windows**, run it inside **WSL2** (a real Linux kernel + real tmux) — see the [docs](https://handmux.com/docs#windows).
 
 ## Feedback & community
 

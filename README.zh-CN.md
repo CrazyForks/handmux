@@ -8,7 +8,7 @@
   <a href="https://www.npmjs.com/package/handmux"><img src="https://img.shields.io/npm/v/handmux?color=cb3837&logo=npm" alt="npm"></a>
   <a href="https://github.com/handmux/handmux/actions/workflows/test.yml"><img src="https://github.com/handmux/handmux/actions/workflows/test.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="license: AGPL-3.0"></a>
-  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=white" alt="node"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white" alt="node"></a>
 </p>
 
 > **一部手机,一整套移动 Vibe Coding 驾驶舱。** 基于 tmux——电脑上一行命令、手机扫码,你正跑着的会话、Claude Code、Codex、git、预览、文档全到手里,创造力随时随地都在你手上。
@@ -27,7 +27,7 @@ handmux 不只是把终端搬上手机。它把你电脑上**正跑着的 tmux �
 
 ## 快速上手 · 约一分钟
 
-**电脑上**需要 tmux 和 Node ≥ 18(手机只要个浏览器)。二选一:
+**电脑上**需要 tmux 和 Node ≥ 20(手机只要个浏览器)。二选一:
 
 **Homebrew —— macOS 首选** · 顺带帮你装好 Node + tmux:
 
@@ -73,7 +73,7 @@ handmux start --tunnel cloudflare   # 即时公网地址(自动装 cloudflared)
 - **脚本推送**——用 `handmux push` 从脚本或 CI 步骤推消息到手机,可指定全部设备、某个会话或某台设备。
 - **工作区恢复**——handmux 静默保存重建最新 tmux 工作区所需的元数据。电脑或 tmux server 重启后,可从手机或 `handmux restore` 把旧工作区恢复到新会话旁边,绝不替换现有会话。
 - **Git 查看器**——改动 / 提交历史 / 任意分支 / 全屏彩色 diff,多仓库分页,只读不动工作区。
-- **站点预览**——挑目录预览静态站,或按端口预览正跑的 HTTP/HTTPS 服务(路由 / 接口 / HMR 全保留)；动态预览域名在 `handmux setup` 里一次配好即可。
+- **内置浏览器 + 静态预览**——首次确认后，顶部常驻浏览器可经电脑访问公网、内网域名与 localhost 服务；页签和登录状态按设备隔离，历史仅存在当前设备，并支持手机 / 电脑视口及各页签独立的 10 / 30 / 60 / 120 分钟或永不关闭计时。主公网入口无法转发浏览器保留路径时，可沿用已有 `previewDomain` 作为浏览器公开入口。纯目录静态站仍用静态预览。客户端证书、WebAuthn / Passkey、DRM、浏览器扩展及少数严格 SSO 等强依赖真实浏览器上下文的能力可能不兼容。
 - **文档**——终端里点路径即开;Markdown 排版、字号缩放、逐句高亮朗读。
 - **选中 · 拷贝**——终端里长按选中,拖 iOS 式手柄精调,一键拷贝选区 / 整行 / 整段。
 - **文件双向传**——聊天框多选上传、下载、系统分享进来、复制绝对路径。
@@ -138,13 +138,13 @@ handmux push <title> <body> [选项]
 - **有**(云主机 / 公网 IP / 已端口转发)—— 不用隧道,直接连,最快也最私密。
 - **没有** —— 开一条隧道。每条都跑在**你自己的免费第三方账号**上,handmux 只负责接通、自身不设中转:`cloudflare`(零配置秒通,但公共边缘在国内常不稳)· `cloudflare-named`(你的域名,更稳)· `natapp` / `cpolar`(国内厂商,大陆境内可达)· `ssh` 自建(接你自己的服务器)。
 
-> 隧道配置、服务端反向代理、开机自启、语音 / 推送凭证、端口预览等细节 → 见 **[文档](https://handmux.com/docs)**。
+> 隧道配置、内置浏览器、开机自启、语音 / 推送凭证等细节 → 见 **[文档](https://handmux.com/docs)**。
 
 安装开机自启后，`handmux start` / `stop` / `restart` 会始终与同一个 launchd/systemd 服务协同（升级后也一样）。生命周期锁会阻止并发启动；`status` 显示实际运行版本，并列出未登记/重复 supervisor 的 PID；`stop` 会回收全部副本。
 
 ## 环境要求
 
-电脑需 **Node ≥ 18** 与 **tmux ≥ 3.0**;手机只要浏览器。**Windows** 请装进 **WSL2**(真 Linux 内核 + 真 tmux)——见 [文档](https://handmux.com/docs#windows)。
+电脑需 **Node ≥ 20** 与 **tmux ≥ 3.0**;手机只要浏览器。**Windows** 请装进 **WSL2**(真 Linux 内核 + 真 tmux)——见 [文档](https://handmux.com/docs#windows)。
 
 ## 反馈与交流
 

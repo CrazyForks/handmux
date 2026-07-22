@@ -24,6 +24,7 @@ import { createGracefulShutdown, createWorkspaceBackground } from './workspace/c
 import { createWorkspaceRuntime } from './workspace/runtime.js';
 import { createBrowserPreviewManager } from './browser/manager.js';
 import { createBrowserPublicProxy } from './browser/publicProxy.js';
+import { createBrowserBootstrapStore } from './browser/bootstrap.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -83,23 +84,20 @@ try {
   });
 } catch { /* best effort — hook sync never fails startup */ }
 
-// Static-site + dynamic preview. The dynamic side is enabled by HANDMUX_PREVIEW_DOMAIN (the wildcard
-// base domain, e.g. preview.example.com); unset → static only. One registry instance is shared by the
-// API (register/list/remove), the /preview static layer, and the Host-based dynamic proxy.
+// Static directory preview remains for folders without a web server. Arbitrary sites and local ports
+// use the built-in browser below; previewDomain may provide its dedicated public origin.
+const previews = createPreviews({ home });
+const preview = createPreview({ previews, token });
 const previewDomain = process.env.HANDMUX_PREVIEW_DOMAIN || null;
-const previews = createPreviews({ home, dynamicEnabled: !!previewDomain });
-const preview = createPreview({ previews, token, domain: previewDomain });
 const browser = await createBrowserPreviewManager();
-const browserPublic = createBrowserPublicProxy({ browser, token });
+const browserBootstrap = createBrowserBootstrapStore();
+const browserPublic = createBrowserPublicProxy({ browser, browserBootstrap, token });
 
 const app = express();
 // Browser session URLs and Hammerhead service assets share the current Handmux origin. Dispatch their
 // reserved paths before the API/SPA while leaving every unrelated request untouched.
 app.use(browserPublic.handler);
-// Host-based dispatch FIRST: a request to <name>.<domain> is reverse-proxied to its dynamic preview;
-// every other Host falls straight through (next()) to the app below, unaffected.
-app.use(preview.dynamicProxy);
-app.use('/api', createApiRouter({ token, events, uploadExts, previews, previewDomain, shortcuts: cfg.shortcuts, browser, workspace }));
+app.use('/api', createApiRouter({ token, events, uploadExts, previews, previewDomain, shortcuts: cfg.shortcuts, browser, browserBootstrap, workspace }));
 app.use('/preview', preview.router);
 app.use(preview.refererFallback);
 
@@ -149,9 +147,8 @@ app.get('*', (req, res, next) => {
 const server = app.listen(cfg.port, cfg.host, () => {
   console.log(`[handmux] listening on http://${cfg.host}:${cfg.port} (serving ${staticDir})`);
 });
-// WebSocket/HMR for dynamic previews: route raw Upgrade by Host to the right loopback port.
 server.on('upgrade', (req, socket, head) => {
-  if (!browserPublic.onUpgrade(req, socket, head)) preview.onUpgrade(req, socket, head);
+  if (!browserPublic.onUpgrade(req, socket, head)) socket.destroy();
 });
 
 const shutdown = createGracefulShutdown({ events, workspace, browser, server });
