@@ -52,7 +52,7 @@ export function useBrowser({ enabled = true } = {}) {
   const [history, setHistory] = useState(() => readBrowserHistory());
   const [error, setError] = useState(null);
   const enablePromise = useRef(null);
-  const openPromises = useRef(new Map());
+  const openRequest = useRef(null);
   const switchQueue = useRef(Promise.resolve());
   const tabsRef = useRef(tabs);
   const activeIdRef = useRef(activeId);
@@ -95,6 +95,20 @@ export function useBrowser({ enabled = true } = {}) {
     setHistory(readBrowserHistory());
   }, []);
 
+  const resyncLostWorker = useCallback(async (nextError) => {
+    if (nextError?.status !== 404 && nextError?.status !== 503) return false;
+    try {
+      const { tabs: loaded = [] } = await getBrowserTabs();
+      commitTabs(loaded);
+      const visible = loaded.find((tab) => tab.visible);
+      const selected = visible || loaded[0] || null;
+      commitActiveId(selected?.id || null);
+      commitHistoryActive(!selected);
+      if (!visible) commitOpen(false);
+      return true;
+    } catch { return false; }
+  }, [commitActiveId, commitHistoryActive, commitOpen, commitTabs]);
+
   useEffect(() => {
     if (!enabled || !accessEnabled) return undefined;
     let live = true;
@@ -109,6 +123,8 @@ export function useBrowser({ enabled = true } = {}) {
     }).catch((nextError) => { if (live) setError(nextError); });
     return () => { live = false; };
   }, [commitActiveId, commitHistoryActive, commitOpen, commitTabs, enabled]); // access is loaded explicitly by enableAccess on first consent
+
+  useEffect(() => () => openRequest.current?.controller.abort(), []);
 
   useEffect(() => {
     const timers = tabs
@@ -151,11 +167,12 @@ export function useBrowser({ enabled = true } = {}) {
         commitHistoryActive(false);
         return true;
       } catch (nextError) {
-        setError(nextError);
+        const recovered = await resyncLostWorker(nextError);
+        if (!recovered) setError(nextError);
         return false;
       }
     });
-  }, [commitActiveId, commitHistoryActive, enqueueTransition, updateVisibility]);
+  }, [commitActiveId, commitHistoryActive, enqueueTransition, resyncLostWorker, updateVisibility]);
 
   const setOpen = useCallback((visible) => {
     if (visible && !accessEnabled) {
@@ -171,11 +188,13 @@ export function useBrowser({ enabled = true } = {}) {
         commitOpen(visible);
         return true;
       } catch (nextError) {
-        setError(nextError);
-        return false;
+        const recovered = await resyncLostWorker(nextError);
+        if (!visible) commitOpen(false);
+        if (!recovered && visible) setError(nextError);
+        return !visible;
       }
     });
-  }, [accessEnabled, commitOpen, enqueueTransition, updateVisibility]);
+  }, [accessEnabled, commitOpen, enqueueTransition, resyncLostWorker, updateVisibility]);
 
   const openUrl = useCallback((input, options = {}) => {
     const url = normalizeBrowserInput(input);
@@ -188,28 +207,50 @@ export function useBrowser({ enabled = true } = {}) {
       setConsentOpen(true);
       return Promise.resolve({ pending: true });
     }
-    const pending = openPromises.current.get(url);
-    if (pending) return pending;
+    openRequest.current?.controller.abort();
+    const controller = new AbortController();
+    const request = {
+      controller,
+      previousVisibleId: tabsRef.current.find((tab) => tab.visible)?.id || null,
+    };
+    openRequest.current = request;
+    const abortFromCaller = () => controller.abort();
+    if (options.signal?.aborted) abortFromCaller();
+    else options.signal?.addEventListener('abort', abortFromCaller, { once: true });
     const task = (async () => {
       setError(null);
       try {
-        const created = options.signal
-          ? await createBrowserTab(url, closeAfter, { signal: options.signal })
-          : await createBrowserTab(url, closeAfter);
+        if (controller.signal.aborted) return null;
+        const created = await createBrowserTab(url, closeAfter, { signal: controller.signal });
+        if (controller.signal.aborted || openRequest.current !== request) {
+          await deleteBrowserTab(created.id).catch(() => {});
+          return null;
+        }
         commitTabs((current) => mirrorVisibleTab(current, created, closeAfter));
         commitActiveId(created.id);
         commitHistoryActive(false);
         commitOpen(true);
         return created;
       } catch (nextError) {
-        if (options.signal?.aborted) return null;
+        if (controller.signal.aborted || openRequest.current !== request) return null;
+        if (request.previousVisibleId && tabsRef.current.some((tab) => tab.id === request.previousVisibleId)) {
+          try {
+            const restored = await setBrowserTabVisible(request.previousVisibleId, true, closeAfter);
+            if (!controller.signal.aborted && openRequest.current === request) {
+              commitTabs((current) => mirrorVisibleTab(current, restored, closeAfter));
+              commitActiveId(restored.id);
+              commitHistoryActive(false);
+              commitOpen(true);
+            }
+          } catch { /* preserve the original create error */ }
+        }
         setError(nextError);
         return null;
       }
     })().finally(() => {
-      if (openPromises.current.get(url) === task) openPromises.current.delete(url);
+      options.signal?.removeEventListener('abort', abortFromCaller);
+      if (openRequest.current === request) openRequest.current = null;
     });
-    openPromises.current.set(url, task);
     return task;
   }, [accessEnabled, closeAfter, commitActiveId, commitHistoryActive, commitOpen, commitTabs]);
 
@@ -266,9 +307,9 @@ export function useBrowser({ enabled = true } = {}) {
         commitHistoryActive(!remaining.length);
       }
     } catch (nextError) {
-      setError(nextError);
+      if (!await resyncLostWorker(nextError)) setError(nextError);
     }
-  }, [commitActiveId, commitHistoryActive, commitTabs, recordHistory, updateVisibility]);
+  }, [commitActiveId, commitHistoryActive, commitTabs, recordHistory, resyncLostWorker, updateVisibility]);
 
   const navigateTab = useCallback(async (id, input) => {
     const url = normalizeBrowserInput(input);
@@ -282,10 +323,10 @@ export function useBrowser({ enabled = true } = {}) {
       setError(null);
       return next;
     } catch (nextError) {
-      setError(nextError);
+      if (!await resyncLostWorker(nextError)) setError(nextError);
       return null;
     }
-  }, [commitTabs]);
+  }, [commitTabs, resyncLostWorker]);
 
   const updateTabMeta = useCallback((id, patch) => {
     const current = tabsRef.current.find((tab) => tab.id === id);

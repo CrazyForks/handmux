@@ -262,6 +262,7 @@ describe('browser preview manager', () => {
     expect(payload).toContain('history.back');
     expect(payload).toContain('history.forward');
     expect(payload).toContain('location.reload');
+    expect(payload).toContain('window.stop()');
     expect(payload).toContain('pageNavigationTriggered');
     expect(payload).toContain('parseProxyUrl');
     expect(payload).toContain("addEventListener('popstate', () => send('urlchange'))");

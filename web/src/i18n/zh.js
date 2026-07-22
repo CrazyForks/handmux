@@ -26,6 +26,7 @@ export default {
   'browser.address': '地址',
   'browser.addressPlaceholder': '输入网址或端口',
   'browser.refresh': '刷新',
+  'browser.stop': '停止加载',
   'browser.viewMode': '浏览视图',
   'browser.desktopView': '电脑视图',
   'browser.mobileView': '手机视图',

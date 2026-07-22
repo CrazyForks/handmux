@@ -25,6 +25,7 @@ export default {
   'browser.address': '주소',
   'browser.addressPlaceholder': 'URL 또는 포트 입력',
   'browser.refresh': '새로고침',
+  'browser.stop': '로딩 중지',
   'browser.viewMode': '보기 모드',
   'browser.desktopView': '데스크톱 보기',
   'browser.mobileView': '모바일 보기',

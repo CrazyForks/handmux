@@ -48,9 +48,11 @@ export function browserRequestOrigin(req) {
   try { return new URL(`${protocol}://${host}`).origin; } catch { return null; }
 }
 
-function claimedBrowserRequest(req) {
+export function claimedBrowserRequest(req) {
   const pathname = String(req.url || '').split('?')[0];
-  return isBrowserServicePath(pathname) || String(pathname).split('/')[1]?.startsWith('_browser-');
+  return isBrowserBootstrapPath(pathname)
+    || isBrowserServicePath(pathname)
+    || String(pathname).split('/')[1]?.startsWith('_browser-');
 }
 
 function filteredCookie(raw) {
@@ -108,8 +110,13 @@ export function createBrowserPublicProxy({
     }, (incoming) => {
       res.writeHead(incoming.statusCode || 502, incoming.headers);
       incoming.pipe(res);
+      res.once('close', () => { if (!res.writableEnded) incoming.destroy(); });
     });
+    const abort = () => upstream.destroy();
+    req.once('aborted', abort);
+    res.once('close', () => { if (!res.writableEnded) abort(); });
     upstream.on('error', () => {
+      if (res.destroyed) return;
       if (!res.headersSent) res.status(502).json({ error: 'browser proxy unavailable' });
       else res.destroy();
     });

@@ -25,6 +25,7 @@ export default {
   'browser.address': 'アドレス',
   'browser.addressPlaceholder': 'URL またはポートを入力',
   'browser.refresh': '更新',
+  'browser.stop': '読み込みを停止',
   'browser.viewMode': '表示モード',
   'browser.desktopView': 'PC 表示',
   'browser.mobileView': 'モバイル表示',

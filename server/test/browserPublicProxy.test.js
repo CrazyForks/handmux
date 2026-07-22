@@ -189,6 +189,39 @@ describe('browser public proxy', () => {
     expect(res.body.error).toMatch(/browser proxy unavailable/i);
   });
 
+  it('aborts the Hammerhead upstream when the browser navigation disconnects', async () => {
+    let markReceived;
+    let markClosed;
+    const received = new Promise((resolve) => { markReceived = resolve; });
+    const closed = new Promise((resolve) => { markClosed = resolve; });
+    const upstream = http.createServer((req) => {
+      markReceived();
+      req.once('close', markClosed);
+    });
+    const port = await listen(upstream);
+    const browser = { internalPorts: [port, port + 1], ownsPublicPath: () => true, hasDevice: () => true };
+    const proxy = createBrowserPublicProxy({ browser });
+    const app = express();
+    app.use(proxy.handler);
+    const outer = http.createServer(app);
+    const outerPort = await listen(outer);
+    const pending = http.request({
+      host: '127.0.0.1', port: outerPort,
+      path: '/_browser-tab-a/https://target.example/',
+      headers: { cookie },
+    });
+    pending.once('error', () => {});
+    pending.end();
+    await received;
+
+    pending.destroy();
+
+    await expect(Promise.race([
+      closed,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('upstream stayed open')), 250)),
+    ])).resolves.toBeUndefined();
+  });
+
   it('does not expose a session or Hammerhead service routes to another device', async () => {
     const browser = { internalPorts: [9, 10], ownsPublicPath: () => false, hasDevice: () => false };
     const proxy = createBrowserPublicProxy({ browser });

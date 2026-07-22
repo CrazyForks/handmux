@@ -27,6 +27,7 @@ export default {
   'browser.address': 'Address',
   'browser.addressPlaceholder': 'Enter a URL or port',
   'browser.refresh': 'Refresh',
+  'browser.stop': 'Stop loading',
   'browser.viewMode': 'View mode',
   'browser.desktopView': 'Desktop view',
   'browser.mobileView': 'Mobile view',

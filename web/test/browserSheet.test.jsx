@@ -89,6 +89,7 @@ describe('BrowserSheet', () => {
     expect(model.navigateTab).toHaveBeenCalledWith('a', 'https://next.example/path');
 
     const frame = document.querySelector('iframe[data-tab-id="a"]');
+    act(() => frame.dispatchEvent(new Event('load')));
     const post = vi.spyOn(frame.contentWindow, 'postMessage');
     click(document.querySelector('button[aria-label="后退"]'));
     click(document.querySelector('button[aria-label="前进"]'));
@@ -97,20 +98,24 @@ describe('BrowserSheet', () => {
     expect(post.mock.calls.every(([message]) => message.channel === 'ca')).toBe(true);
   });
 
-  it('shows page loading state initially and while refresh is in flight', async () => {
+  it('shows a top progress bar and changes Refresh into Stop while loading', async () => {
     await render(browser());
     const frame = document.querySelector('iframe[data-tab-id="a"]');
     const overlay = document.querySelector('.browser-page-loading');
-    const loadingRule = styles.match(/\.browser-page-loading\s*\{([^}]*)\}/)?.[1] || '';
+    const progress = document.querySelector('.browser-page-progress');
+    const progressRule = styles.match(/\.browser-page-progress\s*\{([^}]*)\}/)?.[1] || '';
     expect(overlay).not.toBeNull();
-    expect(overlay.querySelector('.browser-loading-hud')).not.toBeNull();
-    expect(loadingRule).toMatch(/pointer-events:\s*auto/);
-    expect(loadingRule).toMatch(/touch-action:\s*none/);
+    expect(document.querySelector('.browser-loading-hud')).toBeNull();
+    expect(progress).not.toBeNull();
+    expect(progress.getAttribute('role')).toBe('progressbar');
+    expect(progressRule).toMatch(/height:\s*3px/);
     expect(frame.hasAttribute('inert')).toBe(true);
+    expect(document.querySelector('button[aria-label="停止加载"]')).not.toBeNull();
 
     act(() => frame.dispatchEvent(new Event('load')));
     expect(document.querySelector('.browser-page-loading')).toBeNull();
     expect(frame.hasAttribute('inert')).toBe(false);
+    expect(document.querySelector('button[aria-label="刷新"]')).not.toBeNull();
 
     click(document.querySelector('button[aria-label="刷新"]'));
     expect(document.querySelector('.browser-page-loading')).not.toBeNull();
@@ -123,6 +128,21 @@ describe('BrowserSheet', () => {
     })));
     expect(document.querySelector('.browser-page-loading')).not.toBeNull();
     act(() => frame.dispatchEvent(new Event('load')));
+    expect(document.querySelector('.browser-page-loading')).toBeNull();
+  });
+
+  it('stops the current iframe navigation and keeps its mounted page state', async () => {
+    await render(browser());
+    const frame = document.querySelector('iframe[data-tab-id="a"]');
+    const post = vi.spyOn(frame.contentWindow, 'postMessage');
+
+    act(() => frame.dispatchEvent(new Event('load')));
+    click(document.querySelector('button[aria-label="刷新"]'));
+    click(document.querySelector('button[aria-label="停止加载"]'));
+
+    expect(post.mock.calls.map(([message]) => message.command)).toEqual(['reload', 'stop']);
+    expect(document.querySelector('iframe[data-tab-id="a"]')).toBe(frame);
+    expect(frame.hasAttribute('inert')).toBe(false);
     expect(document.querySelector('.browser-page-loading')).toBeNull();
   });
 

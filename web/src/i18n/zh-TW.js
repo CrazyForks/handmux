@@ -25,6 +25,7 @@ export default {
   'browser.address': '網址',
   'browser.addressPlaceholder': '輸入網址或連接埠',
   'browser.refresh': '重新整理',
+  'browser.stop': '停止載入',
   'browser.viewMode': '瀏覽檢視',
   'browser.desktopView': '電腦檢視',
   'browser.mobileView': '手機檢視',

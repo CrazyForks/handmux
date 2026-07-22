@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.js';
-import { loadToken } from './auth.js';
+import { expressAuth, loadToken } from './auth.js';
 import { createApiRouter } from './httpApi.js';
 import { loadUploadExts } from './uploadTypes.js';
 import { createClaudeEvents } from './claudeEvents.js';
@@ -22,9 +22,7 @@ import { createEnvironmentProvider } from './workspace/environment.js';
 import { createWorkspaceLock } from './workspace/lock.js';
 import { createGracefulShutdown, createWorkspaceBackground } from './workspace/checkpointer.js';
 import { createWorkspaceRuntime } from './workspace/runtime.js';
-import { createBrowserPreviewManager } from './browser/manager.js';
-import { createBrowserPublicProxy } from './browser/publicProxy.js';
-import { createBrowserBootstrapStore } from './browser/bootstrap.js';
+import { createBrowserWorkerClient } from './browser/workerClient.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -89,15 +87,14 @@ try {
 const previews = createPreviews({ home });
 const preview = createPreview({ previews, token });
 const previewDomain = process.env.HANDMUX_PREVIEW_DOMAIN || null;
-const browser = await createBrowserPreviewManager();
-const browserBootstrap = createBrowserBootstrapStore();
-const browserPublic = createBrowserPublicProxy({ browser, browserBootstrap, token });
+const browserWorker = createBrowserWorkerClient({ appToken: token, previewDomain });
 
 const app = express();
-// Browser session URLs and Hammerhead service assets share the current Handmux origin. Dispatch their
-// reserved paths before the API/SPA while leaving every unrelated request untouched.
-app.use(browserPublic.handler);
-app.use('/api', createApiRouter({ token, events, uploadExts, previews, previewDomain, shortcuts: cfg.shortcuts, browser, browserBootstrap, workspace }));
+// Browser APIs stay behind normal Handmux auth, but their unparsed request streams and all claimed
+// Hammerhead paths are forwarded to the isolated browser worker. Ordinary app paths fall through.
+app.use(browserWorker.publicHandler);
+app.use('/api/browser-tabs', expressAuth(token), browserWorker.apiHandler);
+app.use('/api', createApiRouter({ token, events, uploadExts, previews, shortcuts: cfg.shortcuts, workspace }));
 app.use('/preview', preview.router);
 app.use(preview.refererFallback);
 
@@ -148,10 +145,10 @@ const server = app.listen(cfg.port, cfg.host, () => {
   console.log(`[handmux] listening on http://${cfg.host}:${cfg.port} (serving ${staticDir})`);
 });
 server.on('upgrade', (req, socket, head) => {
-  if (!browserPublic.onUpgrade(req, socket, head)) socket.destroy();
+  if (!browserWorker.onUpgrade(req, socket, head)) socket.destroy();
 });
 
-const shutdown = createGracefulShutdown({ events, workspace, browser, server });
+const shutdown = createGracefulShutdown({ events, workspace, browser: browserWorker, server });
 const handleSignal = () => { shutdown().catch(() => {}); };
 process.on('SIGINT', handleSignal);
 process.on('SIGTERM', handleSignal);

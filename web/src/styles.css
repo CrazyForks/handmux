@@ -1190,18 +1190,19 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-frame-scaler { width: 100%; height: 100%; position: relative; }
 .browser-frame { width: 100%; height: 100%; display: block; border: 0; background: #fff; }
 .browser-page-loading {
-  position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; padding: 24px;
-  background: rgba(11,15,20,.18); -webkit-backdrop-filter: blur(1.5px); backdrop-filter: blur(1.5px);
+  position: absolute; inset: 0; z-index: 2;
+  background: transparent;
   pointer-events: auto; touch-action: none; overscroll-behavior: contain; -webkit-user-select: none; user-select: none;
 }
-.browser-loading-hud {
-  min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 9px;
-  padding: 0 16px; border: 1px solid rgba(255,255,255,.1); border-radius: 14px;
-  background: rgba(20,27,36,.9); color: #e6edf3; font-size: 13px; font-weight: 550;
-  box-shadow: 0 12px 36px rgba(0,0,0,.32); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+.browser-page-progress {
+  position: absolute; inset: 0 0 auto; height: 3px; overflow: hidden; background: rgba(var(--blue-rgb),.16);
 }
-.browser-page-loading .spinner { border-color: #46515e; border-top-color: var(--blue); }
-.browser-refresh.loading svg { animation: tw-spin .7s linear infinite; }
+.browser-page-progress::after {
+  content: ''; display: block; width: 100%; height: 100%; background: var(--blue);
+  transform: scaleX(.08); transform-origin: left; animation: browser-progress 8s cubic-bezier(.1,.7,.2,1) forwards;
+  box-shadow: 0 0 7px rgba(var(--blue-rgb),.72);
+}
+@keyframes browser-progress { 45% { transform: scaleX(.68); } 100% { transform: scaleX(.9); } }
 .browser-content.desktop { overflow: auto; -webkit-overflow-scrolling: touch; }
 .browser-content.desktop .browser-pane { flex: none; }
 .browser-content.desktop .browser-frame { position: absolute; inset: 0 auto auto 0; }
@@ -1236,7 +1237,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 }
 @media (prefers-reduced-motion: reduce) {
   .browser-sheet { transition: none; }
-  .browser-refresh.loading svg, .browser-page-loading .spinner { animation: none; }
+  .browser-page-progress::after { animation: none; transform: scaleX(.72); }
 }
 /* 停止 confirm — overlaid INSIDE the sheet (which is its own z50 stacking context) so it sits above
    the iframe; a settings-card dialog would render beneath the sheet. */

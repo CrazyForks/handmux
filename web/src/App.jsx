@@ -1282,16 +1282,15 @@ export default function App() {
   // Confirm a terminal web link → open it as a new built-in browser tab.
   const [localUrlError, setLocalUrlError] = useState(null);
   const [localUrlOpening, setLocalUrlOpening] = useState(false);
-  const localUrlOpeningRef = useRef(false);
   const localUrlAbortRef = useRef(null);
   const localUrlRequestRef = useRef(0);
   const confirmLocalUrl = async () => {
     const p = localUrlPrompt;
-    if (!p || localUrlOpeningRef.current) return;
+    if (!p) return;
+    localUrlAbortRef.current?.abort();
     const requestId = ++localUrlRequestRef.current;
     const controller = new AbortController();
     localUrlAbortRef.current = controller;
-    localUrlOpeningRef.current = true;
     setLocalUrlOpening(true);
     try {
       const opened = await browser.openUrl(p.raw, { signal: controller.signal });
@@ -1306,7 +1305,6 @@ export default function App() {
     } finally {
       if (requestId === localUrlRequestRef.current) {
         localUrlAbortRef.current = null;
-        localUrlOpeningRef.current = false;
         setLocalUrlOpening(false);
       }
     }
@@ -1315,7 +1313,6 @@ export default function App() {
     localUrlRequestRef.current += 1;
     localUrlAbortRef.current?.abort();
     localUrlAbortRef.current = null;
-    localUrlOpeningRef.current = false;
     setLocalUrlOpening(false);
     setLocalUrlPrompt(null);
     setLocalUrlError(null);
@@ -1723,6 +1720,7 @@ export default function App() {
           x={localUrlPrompt.x}
           y={localUrlPrompt.y}
           busy={localUrlOpening}
+          allowRepeat={true}
           onOpen={confirmLocalUrl}
           onClose={closeLocalUrl}
         />

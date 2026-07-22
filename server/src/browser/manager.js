@@ -84,6 +84,7 @@ function bridgeScript(channel) {
       if (event.data.command === 'back') history.back();
       else if (event.data.command === 'forward') history.forward();
       else if (event.data.command === 'reload') location.reload();
+      else if (event.data.command === 'stop') window.stop();
     });
     send('ready');
   })();`;

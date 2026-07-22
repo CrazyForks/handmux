@@ -8,6 +8,7 @@ import {
   PlusIcon,
   RefreshIcon,
   SmartphoneIcon,
+  StopIcon,
   XIcon,
 } from './icons.jsx';
 import { BROWSER_CLOSE_AFTER_OPTIONS } from '../browserState.js';
@@ -167,6 +168,18 @@ export default function BrowserSheet({ browser }) {
     postCommand('reload');
   };
 
+  const stopActive = () => {
+    if (!active) return;
+    postCommand('stop');
+    frameUrls.current.set(active.id, active.url);
+    setLoadedTabs((current) => new Set(current).add(active.id));
+    setRefreshingTabs((current) => {
+      const next = new Set(current);
+      next.delete(active.id);
+      return next;
+    });
+  };
+
   const frameLoaded = (tab) => {
     frameUrls.current.set(tab.id, tab.url);
     setLoadedTabs((current) => new Set(current).add(tab.id));
@@ -200,6 +213,8 @@ export default function BrowserSheet({ browser }) {
   const frameStyle = device === 'desktop' && bodySize.height > 0
     ? { width: '1280px', height: `${bodySize.height / desktopScale}px`, transform: `scale(${desktopScale})`, transformOrigin: '0 0' }
     : undefined;
+  const activeLoading = !!active && (!loadedTabs.has(active.id)
+    || frameUrls.current.get(active.id) !== active.url || refreshingTabs.has(active.id));
 
   if (consentOpen) return createPortal(
     <div className="file-sheet browser-sheet open browser-consent" role="dialog" aria-modal="true" aria-label={t('browser.consentTitle')}>
@@ -255,9 +270,11 @@ export default function BrowserSheet({ browser }) {
             value={address} onChange={(event) => setAddress(event.target.value)}
             placeholder={t('browser.addressPlaceholder')} autoCapitalize="none" autoCorrect="off" spellCheck="false" />
         </form>
-        <button className={`browser-nav-button browser-refresh ${active && refreshingTabs.has(active.id) ? 'loading' : ''}`}
-          aria-label={t('browser.refresh')} aria-busy={active ? refreshingTabs.has(active.id) : false}
-          disabled={!active || historyActive} onClick={refreshActive}><RefreshIcon /></button>
+        <button className={`browser-nav-button browser-refresh ${activeLoading ? 'loading' : ''}`}
+          aria-label={t(activeLoading ? 'browser.stop' : 'browser.refresh')} aria-busy={activeLoading}
+          disabled={!active || historyActive} onClick={activeLoading ? stopActive : refreshActive}>
+          {activeLoading ? <StopIcon /> : <RefreshIcon />}
+        </button>
         <button className="browser-nav-button" aria-label={t('browser.viewMode')}
           title={device === 'mobile' ? t('browser.desktopView') : t('browser.mobileView')}
           aria-pressed={device === 'desktop'} onClick={() => setDevice((value) => (value === 'mobile' ? 'desktop' : 'mobile'))}>
@@ -313,10 +330,7 @@ export default function BrowserSheet({ browser }) {
               />
               {loading && (
                 <div className="browser-page-loading" role="status" aria-live="polite">
-                  <div className="browser-loading-hud">
-                    <span className="spinner" aria-hidden="true" />
-                    <span>{t('common.loading')}</span>
-                  </div>
+                  <div className="browser-page-progress" role="progressbar" aria-label={t('common.loading')} />
                 </div>
               )}
             </div>

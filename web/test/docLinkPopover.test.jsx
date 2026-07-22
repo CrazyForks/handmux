@@ -12,6 +12,15 @@ const click = (node) => act(() => node.dispatchEvent(new MouseEvent('click', { b
 const base = { path: '/home/u/口播稿-纯配音版.md', x: 100, y: 200, onOpen: vi.fn(), onClose: vi.fn() };
 
 describe('DocLinkPopover', () => {
+  it('can keep a pending URL action repeatable so the latest confirmation replaces it', async () => {
+    const onOpen = vi.fn();
+    await render({ path: 'https://example.com', x: 20, y: 20, busy: true, allowRepeat: true, onOpen, onClose: vi.fn() });
+
+    const button = document.querySelector('.doclink-open');
+    expect(button.disabled).toBe(false);
+    act(() => button.click());
+    expect(onOpen).toHaveBeenCalledWith('https://example.com');
+  });
   it('previews the basename and full path', async () => {
     await render({ ...base });
     expect(container.querySelector('.doclink-name').textContent).toContain('口播稿-纯配音版.md');

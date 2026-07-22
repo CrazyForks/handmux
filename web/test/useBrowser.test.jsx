@@ -81,33 +81,86 @@ describe('useBrowser', () => {
     await act(async () => { await Promise.all([first, second]); });
     expect(api.createBrowserTab).toHaveBeenCalledOnce();
   });
-  it('deduplicates repeated requests to open the same URL while creation is pending', async () => {
-    let release;
-    api.createBrowserTab.mockReturnValue(new Promise((resolve) => { release = resolve; }));
+  it('cancels the pending open request and commits only the latest URL', async () => {
+    const requests = [];
+    api.createBrowserTab.mockImplementation((url, _closeAfter, { signal } = {}) => new Promise((resolve) => {
+      requests.push({ url, signal, resolve });
+    }));
     const { result } = renderHook(() => useBrowser());
     await flush();
 
     let first;
     let second;
     act(() => {
-      first = result.current.openUrl('https://example.com/login');
-      second = result.current.openUrl('https://example.com/login');
+      first = result.current.openUrl('https://example.com/first');
+      second = result.current.openUrl('https://example.com/latest');
     });
 
-    expect(api.createBrowserTab).toHaveBeenCalledOnce();
-    release(tab('created'));
-    await act(async () => { await Promise.all([first, second]); });
-    expect(result.current.tabs).toHaveLength(1);
+    expect(requests).toHaveLength(2);
+    expect(requests[0].signal.aborted).toBe(true);
+    expect(requests[1].signal.aborted).toBe(false);
+
+    requests[1].resolve(tab('latest'));
+    await act(async () => { await second; });
+    requests[0].resolve(tab('stale'));
+    let staleResult;
+    await act(async () => { staleResult = await first; });
+
+    expect(staleResult).toBeNull();
+    expect(result.current.tabs.map((item) => item.id)).toEqual(['latest']);
+    expect(api.deleteBrowserTab).toHaveBeenCalledWith('stale');
   });
-  it('forwards cancellation when opening a URL', async () => {
+  it('links external cancellation into the take-latest request signal', async () => {
     const controller = new AbortController();
-    api.createBrowserTab.mockResolvedValue(tab('created'));
+    let requestSignal;
+    api.createBrowserTab.mockImplementation((_url, _closeAfter, { signal }) => {
+      requestSignal = signal;
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+    });
     const { result } = renderHook(() => useBrowser());
     await flush();
 
-    await act(async () => { await result.current.openUrl('https://example.com/', { signal: controller.signal }); });
+    let opening;
+    act(() => { opening = result.current.openUrl('https://example.com/', { signal: controller.signal }); });
+    expect(requestSignal).not.toBe(controller.signal);
+    expect(requestSignal.aborted).toBe(false);
+    controller.abort();
+    let opened;
+    await act(async () => { opened = await opening; });
 
-    expect(api.createBrowserTab).toHaveBeenCalledWith('https://example.com/', 10, { signal: controller.signal });
+    expect(requestSignal.aborted).toBe(true);
+    expect(opened).toBeNull();
+    expect(result.current.error).toBeNull();
+  });
+
+  it('restores the previously visible tab when the replacing open fails', async () => {
+    const requests = [];
+    api.getBrowserTabs.mockResolvedValue({ tabs: [tab('a')] });
+    api.createBrowserTab.mockImplementation((_url, _closeAfter, { signal }) => new Promise((resolve, reject) => {
+      requests.push({ resolve, reject, signal });
+    }));
+    api.deleteBrowserTab.mockResolvedValue({ ok: true });
+    api.setBrowserTabVisible.mockResolvedValue(tab('a'));
+    const { result } = renderHook(() => useBrowser());
+    await flush();
+
+    let stale;
+    let latest;
+    act(() => {
+      stale = result.current.openUrl('https://example.com/stale');
+      latest = result.current.openUrl('https://example.com/latest');
+    });
+    requests[0].resolve(tab('stale'));
+    await act(async () => { await stale; });
+    requests[1].reject(new Error('latest failed'));
+    await act(async () => { await latest; });
+
+    expect(api.deleteBrowserTab).toHaveBeenCalledWith('stale');
+    expect(api.setBrowserTabVisible).toHaveBeenCalledWith('a', true, 10);
+    expect(result.current.tabs).toEqual([expect.objectContaining({ id: 'a', visible: true })]);
+    expect(result.current.open).toBe(true);
   });
   it('waits for Handmux authentication before loading server tabs', async () => {
     const { rerender } = renderHook(
@@ -239,6 +292,25 @@ describe('useBrowser', () => {
     expect(result.current.tabs[0].expiresAt).toBeNull();
   });
 
+  it('resynchronizes lost worker tabs and still minimizes locally after a restart', async () => {
+    api.getBrowserTabs
+      .mockResolvedValueOnce({ tabs: [tab('a')] })
+      .mockResolvedValueOnce({ tabs: [] });
+    api.setBrowserTabVisible.mockRejectedValue(Object.assign(new Error('missing'), { status: 404 }));
+    const { result } = renderHook(() => useBrowser());
+    await flush();
+
+    let minimized;
+    await act(async () => { minimized = await result.current.setOpen(false); });
+
+    expect(minimized).toBe(true);
+    expect(result.current.open).toBe(false);
+    expect(result.current.tabs).toEqual([]);
+    expect(result.current.activeId).toBeNull();
+    expect(result.current.historyActive).toBe(true);
+    expect(api.getBrowserTabs).toHaveBeenCalledTimes(2);
+  });
+
   it('opens a normalized URL atomically and mirrors the old tab as hidden', async () => {
     const a = tab('a');
     const b = tab('b', { originalUrl: 'http://127.0.0.1:5173/' });
@@ -251,7 +323,9 @@ describe('useBrowser', () => {
     await act(async () => { await result.current.openUrl('5173'); });
 
     expect(api.setBrowserTabVisible).not.toHaveBeenCalled();
-    expect(api.createBrowserTab).toHaveBeenCalledWith('http://127.0.0.1:5173/', 10);
+    expect(api.createBrowserTab).toHaveBeenCalledWith(
+      'http://127.0.0.1:5173/', 10, { signal: expect.any(AbortSignal) },
+    );
     expect(result.current.activeId).toBe('b');
     expect(result.current.open).toBe(true);
     expect(result.current.tabs.find((item) => item.id === 'a').visible).toBe(false);
