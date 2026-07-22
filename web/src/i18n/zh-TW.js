@@ -42,11 +42,22 @@ export default {
   'browser.consentPrivate': '分頁與登入狀態只屬於目前裝置。',
   'browser.consentIdle': '背景分頁預設 10 分鐘後關閉並銷毀登入狀態。',
   'browser.enable': '開啟內建瀏覽器',
+  'browser.directMode': '手機直連',
+  'browser.proxyMode': '透過電腦代理',
+  'browser.directBadge': '直連',
+  'browser.proxyBadge': '代理',
+  'browser.switchMode': '切換瀏覽模式',
+  'browser.openMode': '選擇開啟方式',
+  'browser.historyMore': '更多開啟方式',
+  'browser.proxyUnavailable': '目前伺服器未開啟瀏覽器代理。',
+  'browser.tryProxy': '改用電腦代理',
 
   'token.title': '需要存取 Token',
   'token.placeholder': '貼上 HANDMUX_TOKEN',
 
   'settings.language': '語言 Language',
+  'settings.browserDefaultMode': '網頁預設開啟方式',
+  'settings.browserDefaultModeHint': '開啟終端連結與瀏覽紀錄時使用。',
 
   // home / drawer / windowbar
   'home.empty': '尚未開啟任何檔案',

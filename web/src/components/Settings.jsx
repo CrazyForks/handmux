@@ -17,6 +17,9 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   updateInfo = null, windowId = null,
   workspaceProtection = null,
   activePreview = null, pane = null, lastPreviewDir = null,
+  browser = null, browserDefaultMode = browser?.defaultMode ?? 'direct',
+  browserProxyAvailable = browser?.proxyAvailable ?? false,
+  onBrowserDefaultMode = browser?.setDefaultMode ?? (() => {}),
   getColCount = null,
   onStartPreview, onOpenPreview, onRenew, onStop }) {
   const [font, setFont] = useState(null); // { size, auto } snapshot for display
@@ -154,6 +157,23 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
               </div>
             )}
           </div>
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-label">{t('settings.browserDefaultMode')}</div>
+          <div className="preview-seg browser-default-mode" role="group" aria-label={t('settings.browserDefaultMode')}>
+            <button type="button" className={browserDefaultMode === 'direct' ? 'on' : ''}
+              aria-pressed={browserDefaultMode === 'direct'} onClick={() => onBrowserDefaultMode('direct')}>
+              {t('browser.directMode')}
+            </button>
+            <button type="button" className={browserDefaultMode === 'proxy' ? 'on' : ''}
+              aria-pressed={browserDefaultMode === 'proxy'} disabled={!browserProxyAvailable}
+              onClick={() => onBrowserDefaultMode('proxy')}>
+              {t('browser.proxyMode')}
+            </button>
+          </div>
+          {!browserProxyAvailable && <div className="settings-hint">{t('browser.proxyUnavailable')}</div>}
+          <div className="settings-hint">{t('settings.browserDefaultModeHint')}</div>
         </div>
 
         <div className="settings-section">

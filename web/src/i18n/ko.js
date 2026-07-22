@@ -42,11 +42,22 @@ export default {
   'browser.consentPrivate': '탭과 로그인 상태는 현재 기기에만 속합니다.',
   'browser.consentIdle': '백그라운드 탭은 기본 10분 후 닫히며 로그인 상태가 삭제됩니다.',
   'browser.enable': '내장 브라우저 켜기',
+  'browser.directMode': '휴대폰에서 직접',
+  'browser.proxyMode': '컴퓨터 프록시 경유',
+  'browser.directBadge': '직접',
+  'browser.proxyBadge': '프록시',
+  'browser.switchMode': '탐색 모드 전환',
+  'browser.openMode': '열기 방식 선택',
+  'browser.historyMore': '더 많은 열기 옵션',
+  'browser.proxyUnavailable': '이 서버에서 브라우저 프록시가 활성화되지 않았습니다.',
+  'browser.tryProxy': '컴퓨터 프록시 사용',
 
   'token.title': '액세스 토큰이 필요합니다',
   'token.placeholder': 'HANDMUX_TOKEN 붙여넣기',
 
   'settings.language': '언어 Language',
+  'settings.browserDefaultMode': '기본 웹 모드',
+  'settings.browserDefaultModeHint': '터미널 링크와 방문 기록에 사용됩니다.',
 
   // home / drawer / windowbar
   'home.empty': '열린 파일이 없습니다',

@@ -42,11 +42,22 @@ export default {
   'browser.consentPrivate': 'タブとログイン状態はこのデバイス専用です。',
   'browser.consentIdle': 'バックグラウンドタブは既定で10分後に閉じ、ログイン状態を破棄します。',
   'browser.enable': '内蔵ブラウザを有効化',
+  'browser.directMode': 'スマホから直接',
+  'browser.proxyMode': 'PC プロキシ経由',
+  'browser.directBadge': '直接',
+  'browser.proxyBadge': 'プロキシ',
+  'browser.switchMode': '閲覧モードを切り替え',
+  'browser.openMode': '開き方を選択',
+  'browser.historyMore': 'その他の開き方',
+  'browser.proxyUnavailable': 'このサーバーではブラウザプロキシが有効ではありません。',
+  'browser.tryProxy': 'PC プロキシを試す',
 
   'token.title': 'アクセストークンが必要です',
   'token.placeholder': 'HANDMUX_TOKEN を貼り付け',
 
   'settings.language': '言語 Language',
+  'settings.browserDefaultMode': 'ウェブの既定モード',
+  'settings.browserDefaultModeHint': '端末リンクと閲覧履歴に使用します。',
 
   // home / drawer / windowbar
   'home.empty': 'ファイルが開かれていません',

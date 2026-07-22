@@ -44,11 +44,22 @@ export default {
   'browser.consentPrivate': 'Tabs and signed-in sessions belong only to this device.',
   'browser.consentIdle': 'Background tabs close after 10 minutes by default and their sign-in state is destroyed.',
   'browser.enable': 'Enable built-in browser',
+  'browser.directMode': 'Direct from phone',
+  'browser.proxyMode': 'Through computer proxy',
+  'browser.directBadge': 'Direct',
+  'browser.proxyBadge': 'Proxy',
+  'browser.switchMode': 'Switch browsing mode',
+  'browser.openMode': 'Choose how to open',
+  'browser.historyMore': 'More opening options',
+  'browser.proxyUnavailable': 'Browser proxy is not enabled on this server.',
+  'browser.tryProxy': 'Try computer proxy',
 
   'token.title': 'Access token required',
   'token.placeholder': 'Paste HANDMUX_TOKEN',
 
   'settings.language': 'Language',
+  'settings.browserDefaultMode': 'Default web mode',
+  'settings.browserDefaultModeHint': 'Used for terminal links and browsing history.',
 
   // home / drawer / windowbar
   'home.empty': 'No files opened yet',

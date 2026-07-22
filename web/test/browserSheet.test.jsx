@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import BrowserSheet from '../src/components/BrowserSheet.jsx';
+import { readBrowserHistory } from '../src/browserState.js';
 
 const styles = readFileSync(path.resolve(process.cwd(), 'src/styles.css'), 'utf8');
 
@@ -11,8 +12,8 @@ let container;
 let root;
 
 const tabs = [
-  { id: 'a', url: '/_browser-a/https://a.example/', originalUrl: 'https://a.example/', title: 'Alpha', channel: 'ca' },
-  { id: 'b', url: '/_browser-b/https://b.example/', originalUrl: 'https://b.example/', title: 'Beta', channel: 'cb' },
+  { id: 'a', mode: 'proxy', url: '/_browser-a/https://a.example/', originalUrl: 'https://a.example/', title: 'Alpha', channel: 'ca' },
+  { id: 'b', mode: 'proxy', url: '/_browser-b/https://b.example/', originalUrl: 'https://b.example/', title: 'Beta', channel: 'cb' },
 ];
 
 const browser = (overrides = {}) => ({
@@ -21,7 +22,9 @@ const browser = (overrides = {}) => ({
   activeId: 'a',
   historyActive: false,
   closeAfter: 10,
-  history: [{ url: 'https://old.example/', title: 'Old', visitedAt: 1000 }],
+  history: [{ url: 'https://old.example/', title: 'Old', visitedAt: 1000, lastMode: 'direct' }],
+  defaultMode: 'proxy',
+  proxyAvailable: true,
   error: null,
   consentOpen: false,
   enableAccess: vi.fn(),
@@ -78,6 +81,76 @@ describe('BrowserSheet', () => {
     const tabButtons = [...document.querySelectorAll('[role="tab"]')];
     expect(tabButtons.map((node) => node.textContent)).toEqual(['历史', 'Alpha', 'Beta']);
     expect(document.querySelector('.browser-history-tab .browser-tab-close')).toBeNull();
+  });
+
+  it('marks proxy tabs orange and lets an existing tab switch modes in place', async () => {
+    const model = browser();
+    await render(model);
+    const alpha = [...document.querySelectorAll('[role="tab"]')].find((node) => node.textContent.includes('Alpha'));
+    expect(alpha.querySelector('.browser-mode-badge.proxy')).not.toBeNull();
+    expect(alpha.closest('.browser-tab-wrap').classList.contains('proxy')).toBe(true);
+    click(document.querySelector('button[aria-label="切换浏览模式"]'));
+    click([...document.querySelectorAll('.browser-mode-option')].find((node) => node.textContent === '手机直连'));
+    expect(model.navigateTab).toHaveBeenCalledWith('a', 'https://a.example/', 'direct');
+  });
+
+  it('hides bridge-only controls on direct tabs and refreshes the iframe locally', async () => {
+    const directTabs = tabs.map((tab) => tab.id === 'b'
+      ? { ...tab, mode: 'direct', url: tab.originalUrl }
+      : tab);
+    const model = browser({ activeId: 'b', tabs: directTabs });
+    await render(model);
+    expect(document.querySelector('button[aria-label="后退"]')).toBeNull();
+    expect(document.querySelector('button[aria-label="前进"]')).toBeNull();
+    expect(document.querySelector('button[aria-label="停止加载"]')).toBeNull();
+    const frame = document.querySelector('iframe[data-tab-id="b"]');
+    act(() => frame.dispatchEvent(new Event('load')));
+    click(document.querySelector('button[aria-label="刷新"]'));
+    expect(document.querySelector('iframe[data-tab-id="b"]')).not.toBe(frame);
+  });
+
+  it('offers a manual proxy fallback only after a direct page stays loading', async () => {
+    vi.useFakeTimers();
+    const directTabs = [{ ...tabs[0], mode: 'direct', url: tabs[0].originalUrl }];
+    try {
+      const model = browser({ tabs: directTabs, activeId: 'a', proxyAvailable: true });
+      await render(model);
+      expect(document.querySelector('.browser-try-proxy')).toBeNull();
+      act(() => vi.advanceTimersByTime(5000));
+      const fallback = document.querySelector('.browser-try-proxy');
+      expect(fallback.textContent).toBe('改用电脑代理');
+      click(fallback);
+      expect(model.navigateTab).toHaveBeenCalledWith('a', 'https://a.example/', 'proxy');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('lets history mode menus escape the rounded list instead of clipping them', () => {
+    const rule = styles.match(/\.browser-history-list\s*\{([^}]*)\}/)?.[1] || '';
+    expect(rule).not.toMatch(/overflow:\s*hidden/);
+  });
+
+  it('opens history in its last mode and supports a three-dot override', async () => {
+    const model = browser();
+    await render(model);
+    click(document.querySelector('.browser-history-tab'));
+    await render({ ...model, historyActive: true, activeId: null });
+    click(document.querySelector('.browser-history-main'));
+    expect(model.openUrl).toHaveBeenCalledWith('https://old.example/', { mode: 'direct' });
+    click(document.querySelector('.browser-history-more'));
+    click([...document.querySelectorAll('.browser-history-mode-option')].find((node) => node.textContent === '经电脑代理'));
+    expect(model.openUrl).toHaveBeenLastCalledWith('https://old.example/', { mode: 'proxy' });
+    expect(readBrowserHistory().find((entry) => entry.url === 'https://old.example/')?.lastMode).toBe('proxy');
+  });
+
+  it('disables unavailable proxy choices in history and mode switching', async () => {
+    const model = browser({ proxyAvailable: false, historyActive: true, activeId: null });
+    await render(model);
+    click(document.querySelector('.browser-history-more'));
+    const proxy = [...document.querySelectorAll('.browser-history-mode-option')].find((node) => node.textContent === '经电脑代理');
+    expect(proxy.disabled).toBe(true);
+    expect(document.querySelector('.browser-history-mode-menu').textContent).toContain('当前服务器未开启浏览器代理');
   });
 
   it('submits the editable address and sends browser navigation commands', async () => {

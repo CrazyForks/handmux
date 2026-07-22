@@ -43,11 +43,22 @@ export default {
   'browser.consentPrivate': '浏览页签与登录状态仅属于当前设备。',
   'browser.consentIdle': '后台页签默认 10 分钟后关闭并销毁登录状态。',
   'browser.enable': '开启内置浏览器',
+  'browser.directMode': '手机直连',
+  'browser.proxyMode': '经电脑代理',
+  'browser.directBadge': '直连',
+  'browser.proxyBadge': '代理',
+  'browser.switchMode': '切换浏览模式',
+  'browser.openMode': '选择打开方式',
+  'browser.historyMore': '更多打开方式',
+  'browser.proxyUnavailable': '当前服务器未开启浏览器代理。',
+  'browser.tryProxy': '改用电脑代理',
 
   'token.title': '需要访问 token',
   'token.placeholder': '粘贴 HANDMUX_TOKEN',
 
   'settings.language': '语言 Language',
+  'settings.browserDefaultMode': '网页默认打开方式',
+  'settings.browserDefaultModeHint': '打开终端链接和浏览记录时使用。',
 
   // home / drawer / windowbar
   'home.empty': '还没有打开过文件',

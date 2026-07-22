@@ -9,7 +9,7 @@ describe('built-in browser App composition', () => {
   it('mounts one global browser model and its sheet', () => {
     expect(source).toContain("import BrowserSheet from './components/BrowserSheet.jsx'");
     expect(source).toContain("import { useBrowser } from './hooks/useBrowser.js'");
-    expect(source).toMatch(/const browser = useBrowser\(\{ enabled: !needToken \}\)/);
+    expect(source).toMatch(/const browser = useBrowser\(\{ enabled: !needToken, browserProxy: !!serverConfig\?\.browserProxy \}\)/);
     expect(source).toContain('<BrowserSheet browser={browser} />');
   });
 
@@ -19,7 +19,9 @@ describe('built-in browser App composition', () => {
   });
 
   it('routes confirmed terminal web links into the built-in browser', () => {
-    expect(source).toContain('await browser.openUrl(p.raw, { signal: controller.signal })');
+    expect(source).toContain('await browser.openUrl(p.raw, { mode, signal: controller.signal })');
+    expect(source).toContain('modeChoices={true}');
+    expect(source).toContain('proxyAvailable={browser.proxyAvailable}');
     expect(source).not.toContain('if (!p || localUrlOpeningRef.current) return');
     expect(source).toMatch(/const p = localUrlPrompt;[\s\S]*?localUrlAbortRef\.current\?\.abort\(\);[\s\S]*?const controller = new AbortController\(\)/);
     expect(source).toContain('allowRepeat={true}');

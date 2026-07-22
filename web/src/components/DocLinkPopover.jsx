@@ -13,7 +13,8 @@ const GAP = 12;     // vertical gap between the tap point and the card
 //
 // Also serves the terminal URL confirm via optional display overrides. Most async actions disable while
 // pending; Browser opts into `allowRepeat` so a newer confirmation can cancel and replace the old request.
-export default function DocLinkPopover({ path, x, y, onOpen, onClose, icon, name: nameProp, openLabel, note, disabled = false, busy = false, allowRepeat = false }) {
+export default function DocLinkPopover({ path, x, y, onOpen, onClose, icon, name: nameProp, openLabel, note,
+  disabled = false, busy = false, allowRepeat = false, modeChoices = false, proxyAvailable = false }) {
   const name = nameProp ?? (path.split('/').filter(Boolean).pop() || path);
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
@@ -43,9 +44,19 @@ export default function DocLinkPopover({ path, x, y, onOpen, onClose, icon, name
         <div className="doclink-name">{icon ?? <FolderIcon />}{name}</div>
         <div className="doclink-path">{path}</div>
         {note && <div className="doclink-note">{note}</div>}
+        {modeChoices && !proxyAvailable && <div className="doclink-note">{t('browser.proxyUnavailable')}</div>}
         <div className="doclink-actions">
           <button className="doclink-cancel" onClick={onClose}>{t('common.cancel')}</button>
-          {!disabled && <button className="doclink-open" disabled={busy && !allowRepeat} onClick={() => onOpen(path)}>{busy ? t('common.loading') : (openLabel ?? t('common.open'))}</button>}
+          {!disabled && (modeChoices ? (
+            <>
+              <button className="doclink-open" disabled={busy && !allowRepeat}
+                onClick={() => onOpen(path, 'direct')}>{busy ? t('common.loading') : t('browser.directMode')}</button>
+              <button className="doclink-open proxy" disabled={!proxyAvailable || (busy && !allowRepeat)}
+                onClick={() => onOpen(path, 'proxy')}>{busy ? t('common.loading') : t('browser.proxyMode')}</button>
+            </>
+          ) : (
+            <button className="doclink-open" disabled={busy && !allowRepeat} onClick={() => onOpen(path)}>{busy ? t('common.loading') : (openLabel ?? t('common.open'))}</button>
+          ))}
         </div>
       </div>
     </>

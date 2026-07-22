@@ -12,6 +12,21 @@ const click = (node) => act(() => node.dispatchEvent(new MouseEvent('click', { b
 const base = { path: '/home/u/口播稿-纯配音版.md', x: 100, y: 200, onOpen: vi.fn(), onClose: vi.fn() };
 
 describe('DocLinkPopover', () => {
+  it('offers direct and proxy choices and disables proxy with an explanation when unavailable', async () => {
+    const onOpen = vi.fn();
+    await render({
+      path: 'https://example.com', x: 20, y: 20, onOpen, onClose: vi.fn(),
+      modeChoices: true, proxyAvailable: false,
+    });
+    const buttons = [...container.querySelectorAll('.doclink-open')];
+    expect(buttons.map((button) => button.textContent)).toEqual(['手机直连', '经电脑代理']);
+    expect(buttons[0].disabled).toBe(false);
+    expect(buttons[1].disabled).toBe(true);
+    expect(container.textContent).toContain('当前服务器未开启浏览器代理');
+    click(buttons[0]);
+    expect(onOpen).toHaveBeenCalledWith('https://example.com', 'direct');
+  });
+
   it('can keep a pending URL action repeatable so the latest confirmation replaces it', async () => {
     const onOpen = vi.fn();
     await render({ path: 'https://example.com', x: 20, y: 20, busy: true, allowRepeat: true, onOpen, onClose: vi.fn() });

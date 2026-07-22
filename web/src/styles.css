@@ -1142,12 +1142,21 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-tabs-scroll::-webkit-scrollbar { display: none; }
 .browser-tab-wrap { display: inline-flex; align-items: stretch; flex: 0 0 auto; max-width: 44vw; border-right: 1px solid #1d2630; }
 .browser-tab-wrap.active, .browser-history-tab.active { background: #0b0f14; box-shadow: inset 0 -2px 0 var(--blue); }
+.browser-tab-wrap.proxy { border-top: 2px solid #d9822b; }
+.browser-tab-wrap.proxy.active { box-shadow: inset 0 -2px 0 #e8892f; }
 .browser-tab {
   min-height: 44px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px;
   border: 0; background: transparent; color: #9fb0c0; font-size: 13px; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; touch-action: manipulation;
 }
 .browser-tab svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.browser-tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.browser-mode-badge, .browser-address-mode {
+  flex: 0 0 auto; padding: 2px 4px; border-radius: 4px; background: #343a42;
+  color: #aeb9c4; font-size: 9px; font-weight: 700; line-height: 1.1; letter-spacing: .2px;
+}
+.browser-mode-badge.proxy, .browser-address-mode.proxy { background: rgba(217,130,43,.18); color: #f2a450; }
+.browser-mode-badge.proxy::after { content: '•'; font-size: 13px; line-height: 7px; }
 .browser-tab-wrap.active .browser-tab, .browser-history-tab.active { color: #fff; }
 .browser-history-tab { flex: 0 0 auto; border-right: 1px solid #1d2630; }
 .browser-tab-close, .browser-head-button {
@@ -1181,6 +1190,17 @@ button.cmd-text { background: none; border: none; text-align: left; }
   display: flex; flex-direction: column; gap: 2px; padding: 6px;
   background: #23262b; border: 1px solid #383d45; border-radius: 12px; box-shadow: 0 12px 36px rgba(0,0,0,.52);
 }
+.browser-mode-menu {
+  position: absolute; top: 48px; right: 94px; z-index: 6; width: min(260px, calc(100vw - 12px));
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  background: #23262b; border: 1px solid #383d45; border-radius: 12px; box-shadow: 0 12px 36px rgba(0,0,0,.52);
+}
+.browser-mode-option { min-height: 44px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: #e8edf2; text-align: left; font-size: 14px; }
+.browser-mode-option.proxy { color: #f2a450; }
+.browser-mode-option[aria-pressed="true"] { background: rgba(var(--blue-rgb),.18); }
+.browser-mode-option:disabled { color: #666f79; }
+.browser-mode-menu p, .browser-history-mode-menu p { margin: 4px 8px 6px; color: #929ba5; font-size: 12px; line-height: 1.35; }
+.browser-mode-switch.proxy { color: #e8892f; }
 .browser-time-option { min-height: 44px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: #e8edf2; text-align: left; font-size: 14px; }
 .browser-time-option[aria-pressed="true"] { background: rgba(var(--blue-rgb),.18); color: #73b8ff; }
 
@@ -1189,6 +1209,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-pane[hidden] { display: none; }
 .browser-frame-scaler { width: 100%; height: 100%; position: relative; }
 .browser-frame { width: 100%; height: 100%; display: block; border: 0; background: #fff; }
+.browser-pane.proxy { box-shadow: inset 0 2px 0 #d9822b; }
 .browser-page-loading {
   position: absolute; inset: 0; z-index: 2;
   background: transparent;
@@ -1202,6 +1223,11 @@ button.cmd-text { background: none; border: none; text-align: left; }
   transform: scaleX(.08); transform-origin: left; animation: browser-progress 8s cubic-bezier(.1,.7,.2,1) forwards;
   box-shadow: 0 0 7px rgba(var(--blue-rgb),.72);
 }
+.browser-try-proxy {
+  position: absolute; left: 50%; top: 20px; transform: translateX(-50%); min-height: 38px;
+  padding: 0 14px; border: 1px solid rgba(217,130,43,.55); border-radius: 10px;
+  background: rgba(28,30,34,.92); color: #f2a450; font-weight: 650;
+}
 @keyframes browser-progress { 45% { transform: scaleX(.68); } 100% { transform: scaleX(.9); } }
 .browser-content.desktop { overflow: auto; -webkit-overflow-scrolling: touch; }
 .browser-content.desktop .browser-pane { flex: none; }
@@ -1212,10 +1238,20 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-history-head h2 { margin: 0; font-size: 20px; }
 .browser-history-head button { min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: var(--blue); font-size: 14px; }
 .browser-empty { color: #798796; text-align: center; margin-top: 22vh; }
-.browser-history-list { margin-top: 10px; border-radius: 12px; overflow: hidden; background: #151a20; }
-.browser-history-list button { width: 100%; min-height: 58px; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 9px 12px; border: 0; border-bottom: 1px solid #252c34; background: transparent; color: #e8edf2; text-align: left; }
+.browser-history-list { margin-top: 10px; border-radius: 12px; overflow: visible; background: #151a20; }
+.browser-history-row { position: relative; display: flex; border-bottom: 1px solid #252c34; }
+.browser-history-list .browser-history-main { min-width: 0; flex: 1; min-height: 58px; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 9px 12px; border: 0; background: transparent; color: #e8edf2; text-align: left; }
+.browser-history-list .browser-history-more { width: 44px; min-height: 44px; flex: 0 0 auto; border: 0; background: transparent; color: #aeb9c4; font-size: 22px; }
 .browser-history-list strong, .browser-history-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .browser-history-list span { color: #788797; font: 11px ui-monospace, "SF Mono", Menlo, monospace; }
+.browser-history-mode-menu {
+  position: absolute; right: 8px; top: 50px; z-index: 4; width: min(260px, calc(100vw - 44px));
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  background: #282c32; border: 1px solid #414750; border-radius: 12px; box-shadow: 0 12px 34px rgba(0,0,0,.55);
+}
+.browser-history-list .browser-history-mode-option { min-height: 44px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: #e8edf2; text-align: left; font-size: 14px; }
+.browser-history-list .browser-history-mode-option.proxy { color: #f2a450; }
+.browser-history-list .browser-history-mode-option:disabled { color: #666f79; }
 .browser-error { position: absolute; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 3; width: min(92%, 420px); display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: rgba(35,38,43,.96); border: 1px solid #454b54; border-radius: 12px; color: #f0f2f4; font-size: 13px; box-shadow: 0 10px 28px rgba(0,0,0,.4); }
 .browser-error span { flex: 1; }
 .browser-error button { min-height: 36px; border: 0; background: transparent; color: var(--blue); font-weight: 600; }
@@ -1611,8 +1647,10 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .doclink-name svg { width: 17px; height: 17px; color: #6cb4ff; flex: 0 0 auto; }
 .doclink-path { font-size: 11px; color: #7d8da0; margin: 5px 0 11px; word-break: break-all; max-width: 72vw; }
 .doclink-note { font-size: 11px; color: #8a97a6; margin: -5px 0 11px; max-width: 72vw; line-height: 1.45; }
-.doclink-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.doclink-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .doclink-actions button { border: 1px solid #2c3a4e; background: #11161d; color: #c9d6e2; border-radius: 8px; padding: 7px 18px; font-size: 14px; }
+.doclink-actions .doclink-open.proxy { border-color: rgba(217,130,43,.6); color: #f2a450; }
+.doclink-actions button:disabled { color: #68727c; border-color: #30363d; }
 .doclink-open { background: #2563b0; border-color: #2f6fc0; color: #fff; }
 
 /* Clickable doc-path highlight: a soft blue wash behind the path, so it reads as tappable and rides the

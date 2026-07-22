@@ -21,6 +21,19 @@ const render = (props) => act(() => root.render(
 const click = (n) => act(() => n.dispatchEvent(new MouseEvent('click', { bubbles: true })));
 
 describe('Settings preview section', () => {
+  it('chooses the default browser mode and explains an unavailable proxy', async () => {
+    const setDefaultMode = vi.fn();
+    await render({ browserDefaultMode: 'direct', browserProxyAvailable: false, onBrowserDefaultMode: setDefaultMode });
+    const direct = [...container.querySelectorAll('button')].find((button) => button.textContent === '手机直连');
+    const proxy = [...container.querySelectorAll('button')].find((button) => button.textContent === '经电脑代理');
+    expect(direct.disabled).toBe(false);
+    expect(direct.getAttribute('aria-pressed')).toBe('true');
+    expect(proxy.disabled).toBe(true);
+    expect(container.textContent).toContain('当前服务器未开启浏览器代理');
+    click(direct);
+    expect(setDefaultMode).toHaveBeenCalledWith('direct');
+  });
+
   it('defaults to 不开启; picking 静态 reveals 选择目录启动 and opens the dir picker', async () => {
     await render({ activePreview: null, onStartPreview: vi.fn() }); // no pane → picker opens synchronously, seeds $HOME
     expect(container.textContent).toContain('不开启');
