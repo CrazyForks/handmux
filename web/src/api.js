@@ -144,6 +144,22 @@ export const installClaudeHooks = () => req('/api/hooks/install', { method: 'POS
 export const getStates = (sessions = []) =>
   req(`/api/states?sessions=${encodeURIComponent(sessions.join(','))}`, { timeoutMs: 4000 });
 
+export const createBrowserTab = (url, closeAfterMinutes) =>
+  req('/api/browser-tabs', { method: 'POST', body: JSON.stringify({ url, closeAfterMinutes }) });
+export const getBrowserTabs = () => req('/api/browser-tabs');
+export const setBrowserTabVisible = (id, visible, closeAfterMinutes) =>
+  req(`/api/browser-tabs/${encodeURIComponent(id)}/visibility`, {
+    method: 'PATCH',
+    body: JSON.stringify({ visible, closeAfterMinutes }),
+  });
+export const navigateBrowserTab = (id, url) =>
+  req(`/api/browser-tabs/${encodeURIComponent(id)}/navigate`, {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  });
+export const deleteBrowserTab = (id) =>
+  req(`/api/browser-tabs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+
 // Orphan Claude sessions running outside tmux (see server/src/orphans.js). getOrphans returns the roster;
 // takeoverOrphan spawns `claude --resume` in tmux and (default) SIGTERMs the original. Takeover involves a
 // process scan + tmux spawn + up-poll, so it gets a longer timeout.
