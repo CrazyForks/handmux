@@ -1,6 +1,7 @@
 export const BROWSER_CLOSE_AFTER_OPTIONS = [10, 30, 60, 120, null];
 
 const PREF_KEY = 'hm_browser_close_after1';
+const DEFAULT_MODE_KEY = 'hm_browser_default_mode1';
 const HISTORY_KEY = 'hm_browser_history1';
 const HISTORY_LIMIT = 200;
 const SENSITIVE_URL_FIELD = /^(?:access_token|id_token|refresh_token|token|code|authorization|api_?key)$/i;
@@ -33,9 +34,10 @@ export function normalizeBrowserInput(value) {
 
 export function readBrowserPrefs() {
   const raw = localStorage.getItem(PREF_KEY);
-  if (raw === 'never') return { closeAfter: null };
+  const defaultMode = localStorage.getItem(DEFAULT_MODE_KEY) === 'proxy' ? 'proxy' : 'direct';
+  if (raw === 'never') return { closeAfter: null, defaultMode };
   const value = Number(raw);
-  return { closeAfter: isCloseAfter(value) && value != null ? value : 10 };
+  return { closeAfter: isCloseAfter(value) && value != null ? value : 10, defaultMode };
 }
 
 export function setBrowserCloseAfter(value) {
@@ -44,6 +46,14 @@ export function setBrowserCloseAfter(value) {
     return;
   }
   localStorage.setItem(PREF_KEY, value == null ? 'never' : String(value));
+}
+
+export function setBrowserDefaultMode(mode) {
+  if (mode !== 'direct' && mode !== 'proxy') {
+    localStorage.removeItem(DEFAULT_MODE_KEY);
+    return;
+  }
+  localStorage.setItem(DEFAULT_MODE_KEY, mode);
 }
 
 function sanitizedHistoryEntry(entry) {
@@ -58,10 +68,14 @@ function sanitizedHistoryEntry(entry) {
     if (/(?:^|[&#])(?:access_token|id_token|refresh_token|token|code|authorization|api_?key)=/i.test(url.hash)) {
       url.hash = '';
     }
+    const lastMode = entry?.lastMode === 'proxy'
+      ? 'proxy'
+      : entry?.lastMode === 'direct' ? 'direct' : null;
     return {
       url: url.toString(),
       title: String(entry?.title || ''),
       visitedAt: Number.isFinite(Number(entry?.visitedAt)) ? Number(entry.visitedAt) : Date.now(),
+      ...(lastMode ? { lastMode } : {}),
     };
   } catch {
     return null;

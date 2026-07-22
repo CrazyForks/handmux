@@ -23,7 +23,7 @@ describe('browser API client', () => {
       options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
     })));
 
-    const pending = createBrowserTab('https://a.example/', 10, { signal: controller.signal });
+    const pending = createBrowserTab('https://a.example/', 10, 'direct', { signal: controller.signal });
     controller.abort();
 
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
@@ -37,10 +37,10 @@ describe('browser API client', () => {
       .mockResolvedValueOnce(response(204));
     vi.stubGlobal('fetch', fetchMock);
 
-    await createBrowserTab('https://a.example/', 10);
+    await createBrowserTab('https://a.example/', 10, 'proxy');
     await getBrowserTabs();
     await setBrowserTabVisible('a', false, 30);
-    await navigateBrowserTab('a', 'https://b.example/');
+    await navigateBrowserTab('a', 'https://b.example/', 'direct');
     await deleteBrowserTab('a');
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
@@ -51,13 +51,13 @@ describe('browser API client', () => {
       '/api/browser-tabs/a',
     ]);
     expect(fetchMock.mock.calls[0][1]).toMatchObject({
-      method: 'POST', body: JSON.stringify({ url: 'https://a.example/', closeAfterMinutes: 10 }),
+      method: 'POST', body: JSON.stringify({ url: 'https://a.example/', closeAfterMinutes: 10, mode: 'proxy' }),
     });
     expect(fetchMock.mock.calls[2][1]).toMatchObject({
       method: 'PATCH', body: JSON.stringify({ visible: false, closeAfterMinutes: 30 }),
     });
     expect(fetchMock.mock.calls[3][1]).toMatchObject({
-      method: 'POST', body: JSON.stringify({ url: 'https://b.example/' }),
+      method: 'POST', body: JSON.stringify({ url: 'https://b.example/', mode: 'direct' }),
     });
     expect(fetchMock.mock.calls[4][1]).toMatchObject({ method: 'DELETE' });
     const deviceIds = fetchMock.mock.calls.map(([, options]) => options.headers['X-Handmux-Browser-Device']);

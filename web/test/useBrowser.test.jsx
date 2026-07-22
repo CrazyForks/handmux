@@ -83,7 +83,7 @@ describe('useBrowser', () => {
   });
   it('cancels the pending open request and commits only the latest URL', async () => {
     const requests = [];
-    api.createBrowserTab.mockImplementation((url, _closeAfter, { signal } = {}) => new Promise((resolve) => {
+    api.createBrowserTab.mockImplementation((url, _closeAfter, _mode, { signal } = {}) => new Promise((resolve) => {
       requests.push({ url, signal, resolve });
     }));
     const { result } = renderHook(() => useBrowser());
@@ -113,7 +113,7 @@ describe('useBrowser', () => {
   it('links external cancellation into the take-latest request signal', async () => {
     const controller = new AbortController();
     let requestSignal;
-    api.createBrowserTab.mockImplementation((_url, _closeAfter, { signal }) => {
+    api.createBrowserTab.mockImplementation((_url, _closeAfter, _mode, { signal }) => {
       requestSignal = signal;
       return new Promise((_resolve, reject) => {
         signal.addEventListener('abort', () => reject(signal.reason), { once: true });
@@ -138,7 +138,7 @@ describe('useBrowser', () => {
   it('restores the previously visible tab when the replacing open fails', async () => {
     const requests = [];
     api.getBrowserTabs.mockResolvedValue({ tabs: [tab('a')] });
-    api.createBrowserTab.mockImplementation((_url, _closeAfter, { signal }) => new Promise((resolve, reject) => {
+    api.createBrowserTab.mockImplementation((_url, _closeAfter, _mode, { signal }) => new Promise((resolve, reject) => {
       requests.push({ resolve, reject, signal });
     }));
     api.deleteBrowserTab.mockResolvedValue({ ok: true });
@@ -324,11 +324,73 @@ describe('useBrowser', () => {
 
     expect(api.setBrowserTabVisible).not.toHaveBeenCalled();
     expect(api.createBrowserTab).toHaveBeenCalledWith(
-      'http://127.0.0.1:5173/', 10, { signal: expect.any(AbortSignal) },
+      'http://127.0.0.1:5173/', 10, 'direct', { signal: expect.any(AbortSignal) },
     );
     expect(result.current.activeId).toBe('b');
     expect(result.current.open).toBe(true);
     expect(result.current.tabs.find((item) => item.id === 'a').visible).toBe(false);
+  });
+
+  it('uses the device default mode and exposes mode preferences', async () => {
+    localStorage.setItem('hm_browser_default_mode1', 'proxy');
+    api.createBrowserTab.mockResolvedValue(tab('proxy', { mode: 'proxy' }));
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+
+    await act(async () => { await result.current.openUrl('https://example.com/'); });
+
+    expect(api.createBrowserTab).toHaveBeenCalledWith(
+      'https://example.com/', 10, 'proxy', { signal: expect.any(AbortSignal) },
+    );
+    expect(result.current.defaultMode).toBe('proxy');
+    expect(result.current.proxyAvailable).toBe(true);
+
+    act(() => { result.current.setDefaultMode('direct'); });
+    expect(result.current.defaultMode).toBe('direct');
+  });
+
+  it('rejects unavailable proxy actions locally without falling back to direct', async () => {
+    const { result } = renderHook(() => useBrowser({ browserProxy: false }));
+    await flush();
+
+    let opened;
+    await act(async () => { opened = await result.current.openUrl('https://example.com/', { mode: 'proxy' }); });
+
+    expect(opened).toBeNull();
+    expect(api.createBrowserTab).not.toHaveBeenCalled();
+    expect(result.current.error?.message).toBe('browser proxy unavailable');
+  });
+
+  it('rechecks proxy availability before opening a consent-pending URL', async () => {
+    localStorage.removeItem('hm_browser_access1');
+    const { result, rerender } = renderHook(
+      ({ browserProxy }) => useBrowser({ browserProxy }),
+      { initialProps: { browserProxy: true } },
+    );
+    await flush();
+
+    await act(async () => {
+      await result.current.openUrl('https://example.com/', { mode: 'proxy' });
+    });
+    rerender({ browserProxy: false });
+    await act(async () => { await result.current.enableAccess(); });
+
+    expect(api.createBrowserTab).not.toHaveBeenCalled();
+    expect(result.current.error?.message).toBe('browser proxy unavailable');
+  });
+
+  it('threads mode through navigation and records the successful mode', async () => {
+    api.getBrowserTabs.mockResolvedValue({ tabs: [tab('a', { mode: 'direct' })] });
+    api.navigateBrowserTab.mockResolvedValue(tab('a', { mode: 'proxy' }));
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+
+    await act(async () => { await result.current.navigateTab('a', 'https://example.com/a', 'proxy'); });
+
+    expect(api.navigateBrowserTab).toHaveBeenCalledWith('a', 'https://example.com/a', 'proxy');
+    expect(readBrowserHistory()[0]).toMatchObject({
+      url: 'https://example.com/a', lastMode: 'proxy',
+    });
   });
 
   it('moves each independently expired background tab into device history', async () => {
@@ -391,15 +453,15 @@ describe('useBrowser', () => {
   });
 
   it('uses the latest page title when moving a tab into history', async () => {
-    api.getBrowserTabs.mockResolvedValue({ tabs: [tab('a', { title: '' })] });
+    api.getBrowserTabs.mockResolvedValue({ tabs: [tab('a', { title: '', mode: 'proxy' })] });
     api.deleteBrowserTab.mockResolvedValue({ ok: true });
     const { result } = renderHook(() => useBrowser());
     await flush();
 
     act(() => result.current.updateTabMeta('a', { url: 'https://example.com/a', title: 'Actual page title' }));
-    expect(readBrowserHistory()).toEqual([
-      expect.objectContaining({ url: 'https://example.com/a', title: 'Actual page title' }),
-    ]);
+    expect(readBrowserHistory()).toEqual([expect.objectContaining({
+      url: 'https://example.com/a', title: 'Actual page title', lastMode: 'proxy',
+    })]);
     await act(async () => { await result.current.closeTab('a'); });
 
     expect(readBrowserHistory()[0]).toMatchObject({ url: 'https://example.com/a', title: 'Actual page title' });

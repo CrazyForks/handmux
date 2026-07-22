@@ -815,6 +815,19 @@ describe('GET /api/asr/sign', () => {
 });
 
 describe('GET /api/config (capabilities)', () => {
+  it('reports browser proxy availability from preview-domain configuration', async () => {
+    const withoutProxy = express();
+    withoutProxy.use('/api', createApiRouter({ token: 'good', commands: baseCommands }));
+    const unavailable = await request(withoutProxy).get('/api/config').set('Authorization', 'Bearer good').expect(200);
+    expect(unavailable.body.browserProxy).toBe(false);
+
+    const withProxy = express();
+    withProxy.use('/api', createApiRouter({
+      token: 'good', commands: baseCommands, previewDomain: 'preview.example.com',
+    }));
+    const available = await request(withProxy).get('/api/config').set('Authorization', 'Bearer good').expect(200);
+    expect(available.body.browserProxy).toBe(true);
+  });
   it('reports asr:false when XFYUN env is not configured', async () => {
     const app = express();
     app.use('/api', createApiRouter({ token: 'good', commands: baseCommands, asrEnv: {} }));

@@ -36,7 +36,7 @@ export function combinedHooksStatus(home) {
   return 'no-claude';
 }
 
-export function systemRoutes({ commands, claudeEvents, asrEnv, shortcuts, home, stateFile }) {
+export function systemRoutes({ commands, claudeEvents, asrEnv, shortcuts, home, stateFile, previewDomain }) {
   const r = express.Router();
   let activeShortcuts = normalizeShortcuts(shortcuts);
 
@@ -47,7 +47,12 @@ export function systemRoutes({ commands, claudeEvents, asrEnv, shortcuts, home, 
   // `claudeHooks` (name kept for web back-compat) now summarizes EVERY coding agent: 'installed' if any is
   // wired, 'absent' if an agent is present but none wired (→ offer enable), 'no-claude' if no agent at all.
   r.get('/config', (req, res) => {
-    res.json({ asr: isAsrConfigured(asrEnv), claudeHooks: combinedHooksStatus(home), shortcuts: activeShortcuts });
+    res.json({
+      asr: isAsrConfigured(asrEnv),
+      claudeHooks: combinedHooksStatus(home),
+      shortcuts: activeShortcuts,
+      browserProxy: !!previewDomain,
+    });
   });
 
   r.put('/config/shortcuts', (req, res) => {

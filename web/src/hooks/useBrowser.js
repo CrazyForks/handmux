@@ -12,6 +12,7 @@ import {
   readBrowserHistory,
   readBrowserPrefs,
   setBrowserCloseAfter,
+  setBrowserDefaultMode,
   upsertBrowserHistory,
 } from '../browserState.js';
 import { isBrowserAccessEnabled, setBrowserAccessEnabled } from '../storage.js';
@@ -40,7 +41,7 @@ function mirrorVisibleTab(tabs, next, closeAfter) {
   return found ? updated : [...updated, next];
 }
 
-export function useBrowser({ enabled = true } = {}) {
+export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const [open, setOpenState] = useState(false);
   const [accessEnabled, setAccessEnabled] = useState(isBrowserAccessEnabled);
   const [consentOpen, setConsentOpen] = useState(false);
@@ -49,6 +50,7 @@ export function useBrowser({ enabled = true } = {}) {
   const [activeId, setActiveId] = useState(null);
   const [historyActive, setHistoryActive] = useState(true);
   const [closeAfter, setCloseAfterState] = useState(() => readBrowserPrefs().closeAfter);
+  const [defaultMode, setDefaultModeState] = useState(() => readBrowserPrefs().defaultMode);
   const [history, setHistory] = useState(() => readBrowserHistory());
   const [error, setError] = useState(null);
   const enablePromise = useRef(null);
@@ -91,7 +93,12 @@ export function useBrowser({ enabled = true } = {}) {
 
   const recordHistory = useCallback((tab) => {
     if (!tab?.originalUrl) return;
-    upsertBrowserHistory({ url: tab.originalUrl, title: tab.title, visitedAt: Date.now() });
+    upsertBrowserHistory({
+      url: tab.originalUrl,
+      title: tab.title,
+      visitedAt: Date.now(),
+      lastMode: tab.mode,
+    });
     setHistory(readBrowserHistory());
   }, []);
 
@@ -196,14 +203,18 @@ export function useBrowser({ enabled = true } = {}) {
     });
   }, [accessEnabled, commitOpen, enqueueTransition, resyncLostWorker, updateVisibility]);
 
-  const openUrl = useCallback((input, options = {}) => {
+  const openUrl = useCallback((input, { mode = defaultMode, signal } = {}) => {
     const url = normalizeBrowserInput(input);
     if (!url) {
       setError(new Error('browser URL must use http or https'));
       return Promise.resolve(null);
     }
+    if (mode === 'proxy' && !browserProxy) {
+      setError(new Error('browser proxy unavailable'));
+      return Promise.resolve(null);
+    }
     if (!accessEnabled) {
-      setPendingUrl(url);
+      setPendingUrl({ url, mode });
       setConsentOpen(true);
       return Promise.resolve({ pending: true });
     }
@@ -215,13 +226,13 @@ export function useBrowser({ enabled = true } = {}) {
     };
     openRequest.current = request;
     const abortFromCaller = () => controller.abort();
-    if (options.signal?.aborted) abortFromCaller();
-    else options.signal?.addEventListener('abort', abortFromCaller, { once: true });
+    if (signal?.aborted) abortFromCaller();
+    else signal?.addEventListener('abort', abortFromCaller, { once: true });
     const task = (async () => {
       setError(null);
       try {
         if (controller.signal.aborted) return null;
-        const created = await createBrowserTab(url, closeAfter, { signal: controller.signal });
+        const created = await createBrowserTab(url, closeAfter, mode, { signal: controller.signal });
         if (controller.signal.aborted || openRequest.current !== request) {
           await deleteBrowserTab(created.id).catch(() => {});
           return null;
@@ -248,11 +259,11 @@ export function useBrowser({ enabled = true } = {}) {
         return null;
       }
     })().finally(() => {
-      options.signal?.removeEventListener('abort', abortFromCaller);
+      signal?.removeEventListener('abort', abortFromCaller);
       if (openRequest.current === request) openRequest.current = null;
     });
     return task;
-  }, [accessEnabled, closeAfter, commitActiveId, commitHistoryActive, commitOpen, commitTabs]);
+  }, [accessEnabled, browserProxy, closeAfter, commitActiveId, commitHistoryActive, commitOpen, commitTabs, defaultMode]);
 
   const enableAccess = useCallback(() => {
     if (enablePromise.current) return enablePromise.current;
@@ -264,7 +275,11 @@ export function useBrowser({ enabled = true } = {}) {
       try {
         const { tabs: loaded = [] } = await getBrowserTabs();
         if (pendingUrl) {
-          const created = await createBrowserTab(pendingUrl, closeAfter);
+          if (pendingUrl.mode === 'proxy' && !browserProxy) {
+            setPendingUrl(null);
+            throw new Error('browser proxy unavailable');
+          }
+          const created = await createBrowserTab(pendingUrl.url, closeAfter, pendingUrl.mode);
           commitTabs(mirrorVisibleTab(loaded, created, closeAfter));
           commitActiveId(created.id);
           commitHistoryActive(false);
@@ -284,7 +299,7 @@ export function useBrowser({ enabled = true } = {}) {
     });
     enablePromise.current = task;
     return task;
-  }, [closeAfter, commitActiveId, commitHistoryActive, commitOpen, commitTabs, pendingUrl]);
+  }, [browserProxy, closeAfter, commitActiveId, commitHistoryActive, commitOpen, commitTabs, pendingUrl]);
 
   const cancelAccess = useCallback(() => {
     setPendingUrl(null);
@@ -311,22 +326,38 @@ export function useBrowser({ enabled = true } = {}) {
     }
   }, [commitActiveId, commitHistoryActive, commitTabs, recordHistory, resyncLostWorker, updateVisibility]);
 
-  const navigateTab = useCallback(async (id, input) => {
+  const navigateTab = useCallback(async (id, input, mode) => {
     const url = normalizeBrowserInput(input);
     if (!url) {
       setError(new Error('browser URL must use http or https'));
       return null;
     }
+    const current = tabsRef.current.find((tab) => tab.id === id);
+    const nextMode = mode || current?.mode || defaultMode;
+    if (nextMode === 'proxy' && !browserProxy) {
+      setError(new Error('browser proxy unavailable'));
+      return null;
+    }
     try {
-      const next = await navigateBrowserTab(id, url);
+      const next = await navigateBrowserTab(id, url, nextMode);
       commitTabs((current) => replaceTab(current, next));
+      const committedMode = next.mode || nextMode;
+      if (current && committedMode !== current.mode) {
+        upsertBrowserHistory({
+          url: next.originalUrl || url,
+          title: next.title || current.title || '',
+          visitedAt: Date.now(),
+          lastMode: committedMode,
+        });
+        setHistory(readBrowserHistory());
+      }
       setError(null);
       return next;
     } catch (nextError) {
       if (!await resyncLostWorker(nextError)) setError(nextError);
       return null;
     }
-  }, [commitTabs, resyncLostWorker]);
+  }, [browserProxy, commitTabs, defaultMode, resyncLostWorker]);
 
   const updateTabMeta = useCallback((id, patch) => {
     const current = tabsRef.current.find((tab) => tab.id === id);
@@ -336,7 +367,7 @@ export function useBrowser({ enabled = true } = {}) {
     if (url === current.originalUrl && title === current.title) return;
     commitTabs((all) => replaceTab(all, { ...current, originalUrl: url, title }));
     if (url && title?.trim()) {
-      upsertBrowserHistory({ url, title, visitedAt: Date.now() });
+      upsertBrowserHistory({ url, title, visitedAt: Date.now(), lastMode: current.mode });
       setHistory(readBrowserHistory());
     }
   }, [commitTabs]);
@@ -345,6 +376,13 @@ export function useBrowser({ enabled = true } = {}) {
     setBrowserCloseAfter(value);
     const saved = readBrowserPrefs().closeAfter;
     setCloseAfterState(saved);
+    return saved;
+  }, []);
+
+  const setDefaultMode = useCallback((mode) => {
+    setBrowserDefaultMode(mode);
+    const saved = readBrowserPrefs().defaultMode;
+    setDefaultModeState(saved);
     return saved;
   }, []);
 
@@ -361,6 +399,8 @@ export function useBrowser({ enabled = true } = {}) {
     activeId,
     historyActive,
     closeAfter,
+    defaultMode,
+    proxyAvailable: browserProxy,
     history,
     error,
     openUrl,
@@ -370,6 +410,7 @@ export function useBrowser({ enabled = true } = {}) {
     closeTab,
     setOpen,
     setCloseAfter,
+    setDefaultMode,
     navigateTab,
     updateTabMeta,
     clearHistory,

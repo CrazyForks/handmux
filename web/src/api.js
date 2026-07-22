@@ -153,18 +153,22 @@ const browserReq = (path, options = {}) => req(path, {
   ...options,
   headers: { ...(options.headers || {}), 'X-Handmux-Browser-Device': getBrowserDeviceId() },
 });
-export const createBrowserTab = (url, closeAfterMinutes, options = {}) =>
-  browserReq('/api/browser-tabs', { ...options, method: 'POST', body: JSON.stringify({ url, closeAfterMinutes }) });
+export const createBrowserTab = (url, closeAfterMinutes, mode, options = {}) =>
+  browserReq('/api/browser-tabs', {
+    ...options,
+    method: 'POST',
+    body: JSON.stringify({ url, closeAfterMinutes, mode }),
+  });
 export const getBrowserTabs = () => browserReq('/api/browser-tabs');
 export const setBrowserTabVisible = (id, visible, closeAfterMinutes) =>
   browserReq(`/api/browser-tabs/${encodeURIComponent(id)}/visibility`, {
     method: 'PATCH',
     body: JSON.stringify({ visible, closeAfterMinutes }),
   });
-export const navigateBrowserTab = (id, url) =>
+export const navigateBrowserTab = (id, url, mode) =>
   browserReq(`/api/browser-tabs/${encodeURIComponent(id)}/navigate`, {
     method: 'POST',
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, mode }),
   });
 export const deleteBrowserTab = (id) =>
   browserReq(`/api/browser-tabs/${encodeURIComponent(id)}`, { method: 'DELETE' });

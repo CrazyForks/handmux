@@ -6,6 +6,8 @@ import {
   readBrowserHistory,
   readBrowserPrefs,
   setBrowserCloseAfter,
+  setBrowserDefaultMode,
+  upsertBrowserHistory,
 } from '../src/browserState.js';
 
 beforeEach(() => localStorage.clear());
@@ -27,13 +29,22 @@ describe('browser address normalization', () => {
 
 describe('browser preferences', () => {
   it('defaults to 10 and accepts only the five product choices', () => {
-    expect(readBrowserPrefs()).toEqual({ closeAfter: 10 });
+    expect(readBrowserPrefs()).toEqual({ closeAfter: 10, defaultMode: 'direct' });
     for (const value of [10, 30, 60, 120, null]) {
       setBrowserCloseAfter(value);
-      expect(readBrowserPrefs()).toEqual({ closeAfter: value });
+      expect(readBrowserPrefs()).toEqual({ closeAfter: value, defaultMode: 'direct' });
     }
     setBrowserCloseAfter(240);
-    expect(readBrowserPrefs()).toEqual({ closeAfter: 10 });
+    expect(readBrowserPrefs()).toEqual({ closeAfter: 10, defaultMode: 'direct' });
+  });
+
+  it('persists only valid default modes without changing the close timer', () => {
+    setBrowserCloseAfter(30);
+    setBrowserDefaultMode('proxy');
+    expect(readBrowserPrefs()).toEqual({ closeAfter: 30, defaultMode: 'proxy' });
+
+    setBrowserDefaultMode('invalid');
+    expect(readBrowserPrefs()).toEqual({ closeAfter: 30, defaultMode: 'direct' });
   });
 });
 
@@ -62,6 +73,28 @@ describe('device-local browser history', () => {
       visitedAt: 123,
     });
     expect(readBrowserHistory()[0].url).toBe('https://portal.example/callback?tab=keys');
+  });
+
+  it('stores the latest valid mode while remaining compatible with old history', () => {
+    addBrowserHistory({
+      url: 'https://portal.example/', title: 'Portal', visitedAt: 123, lastMode: 'proxy',
+    });
+    expect(readBrowserHistory()[0].lastMode).toBe('proxy');
+
+    addBrowserHistory({
+      url: 'https://old.example/', title: 'Old', visitedAt: 122, lastMode: 'invalid',
+    });
+    expect(readBrowserHistory().find((entry) => entry.url === 'https://old.example/')).not.toHaveProperty('lastMode');
+
+    upsertBrowserHistory({
+      url: 'https://user:secret@portal.example/?token=secret',
+      title: 'Updated',
+      visitedAt: 124,
+      lastMode: 'direct',
+    });
+    expect(readBrowserHistory()[0]).toEqual({
+      url: 'https://portal.example/', title: 'Updated', visitedAt: 124, lastMode: 'direct',
+    });
   });
 
   it('keeps the newest 200 records and can clear them', () => {

@@ -94,7 +94,9 @@ const app = express();
 // Hammerhead paths are forwarded to the isolated browser worker. Ordinary app paths fall through.
 app.use(browserWorker.publicHandler);
 app.use('/api/browser-tabs', expressAuth(token), browserWorker.apiHandler);
-app.use('/api', createApiRouter({ token, events, uploadExts, previews, shortcuts: cfg.shortcuts, workspace }));
+app.use('/api', createApiRouter({
+  token, events, uploadExts, previews, shortcuts: cfg.shortcuts, workspace, previewDomain,
+}));
 app.use('/preview', preview.router);
 app.use(preview.refererFallback);
 
