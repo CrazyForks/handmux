@@ -13,7 +13,8 @@ import {
 import { BROWSER_CLOSE_AFTER_OPTIONS } from '../browserState.js';
 import { t } from '../i18n';
 
-const FRAME_SANDBOX = 'allow-scripts allow-forms allow-downloads allow-modals allow-popups';
+// Temporary compatibility validation only: unsafe while proxied pages share the Handmux origin.
+const FRAME_SANDBOX = 'allow-scripts allow-forms allow-downloads allow-modals allow-popups allow-same-origin';
 
 function tabLabel(tab) {
   if (tab.title) return tab.title;

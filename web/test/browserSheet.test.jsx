@@ -93,7 +93,7 @@ describe('BrowserSheet', () => {
     expect(model.setOpen).toHaveBeenCalledWith(false);
   });
 
-  it('keeps every iframe mounted and uses the strict sandbox', async () => {
+  it('keeps every iframe mounted and temporarily allows same-origin storage for compatibility validation', async () => {
     await render(browser());
     const frames = [...document.querySelectorAll('.browser-frame')];
     expect(frames).toHaveLength(2);
@@ -102,9 +102,8 @@ describe('BrowserSheet', () => {
     for (const frame of frames) {
       const sandbox = frame.getAttribute('sandbox').split(/\s+/);
       expect(sandbox).toEqual(expect.arrayContaining([
-        'allow-scripts', 'allow-forms', 'allow-downloads', 'allow-modals', 'allow-popups',
+        'allow-scripts', 'allow-forms', 'allow-downloads', 'allow-modals', 'allow-popups', 'allow-same-origin',
       ]));
-      expect(sandbox).not.toContain('allow-same-origin');
       expect(sandbox.some((value) => value.startsWith('allow-top-navigation'))).toBe(false);
     }
   });
