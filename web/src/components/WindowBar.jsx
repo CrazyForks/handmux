@@ -79,7 +79,7 @@ function PaneMapCell({ cell, cur, releasing, picking, agent, onChoose, onManage 
   );
 }
 
-function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, onManage, onManagePane, onSelectPane, paneSheetOpen = false, openMapFor = null, onMapOpened }) {
+function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, onManage, onManagePane, onSelectPane, onBeforePaneMapOpen, paneSheetOpen = false, openMapFor = null, onMapOpened }) {
   const [open, setOpen] = useState(false);
   // Id of the tile mid-selection (drives the .is-picking flash) until the switch commits.
   const [picking, setPicking] = useState(null);
@@ -133,7 +133,12 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
     setPos({ top, left });
   };
   const lp = useLongPress(() => onManage(win), {
-    onClick: () => { if (!open) place(); setOpen((o) => !o); },
+    onClick: () => {
+      if (open) { setOpen(false); return; }
+      const show = () => { place(); setOpen(true); };
+      if (onBeforePaneMapOpen) Promise.resolve(onBeforePaneMapOpen(win.id)).then(show, show);
+      else show();
+    },
   });
 
   // "管理分屏" in the window sheet asks (by our window id) to open the map: anchor + show it, then clear
@@ -237,7 +242,7 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
 
 export default function WindowBar({
   windows, windowAgents = {}, paneAgents = {}, currentAgent, currentWindowId, panes, currentPaneId, onSelectWindow, onSelectPane, onNewWindow, onManageWindow,
-  onManagePane, paneSheetOpen = false, openMapFor = null, onMapOpened, trackWindowId,
+  onManagePane, onBeforePaneMapOpen, paneSheetOpen = false, openMapFor = null, onMapOpened, trackWindowId,
   lens = 'terminal', onLensChange = () => {}, chatLensEnabled = false,
 }) {
   const scrollRef = useRef(null);
@@ -267,6 +272,7 @@ export default function WindowBar({
                 onManage={onManageWindow}
                 onManagePane={onManagePane}
                 onSelectPane={onSelectPane}
+                onBeforePaneMapOpen={onBeforePaneMapOpen}
                 paneSheetOpen={paneSheetOpen}
                 openMapFor={openMapFor}
                 onMapOpened={onMapOpened}
