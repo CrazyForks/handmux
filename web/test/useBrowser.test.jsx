@@ -581,6 +581,71 @@ describe('useBrowser', () => {
     expect(result.current.tabs.find(({ id }) => id === 'b').visible).toBe(true);
   });
 
+  it('invalidates a newer resync when an earlier-started visibility mutation commits later', async () => {
+    const a = tab('a', { mode: 'direct' });
+    const b = tab('b', { mode: 'direct', visible: false, expiresAt: Date.now() + 600_000 });
+    let releaseVisibility;
+    let releaseResync;
+    api.getBrowserTabs
+      .mockResolvedValueOnce({ tabs: [a, b] })
+      .mockReturnValueOnce(new Promise((resolve) => { releaseResync = resolve; }));
+    api.setBrowserTabVisible.mockReturnValue(new Promise((resolve) => { releaseVisibility = resolve; }));
+    api.navigateBrowserTab.mockRejectedValue(Object.assign(new Error('missing'), { status: 404 }));
+    const { result } = renderHook(() => useBrowser());
+    await flush();
+
+    let switching;
+    act(() => { switching = result.current.switchTab('b'); });
+    await flush();
+    expect(api.setBrowserTabVisible).toHaveBeenCalledOnce();
+
+    let navigating;
+    act(() => { navigating = result.current.navigateTab('a', 'https://example.com/a', 'direct'); });
+    await flush();
+    expect(api.getBrowserTabs).toHaveBeenCalledTimes(2);
+
+    releaseVisibility(tab('b', { mode: 'direct' }));
+    await act(async () => { await switching; });
+    releaseResync({ tabs: [a, b] });
+    await act(async () => { await navigating; });
+
+    expect(result.current.activeId).toBe('b');
+    expect(result.current.tabs.find(({ id }) => id === 'b').visible).toBe(true);
+    expect(result.current.error?.message).toBe('missing');
+  });
+
+  it('invalidates a newer resync when an earlier-started open create commits later', async () => {
+    const a = tab('a', { mode: 'direct' });
+    let releaseCreate;
+    let releaseResync;
+    api.getBrowserTabs
+      .mockResolvedValueOnce({ tabs: [a] })
+      .mockReturnValueOnce(new Promise((resolve) => { releaseResync = resolve; }));
+    api.createBrowserTab.mockReturnValue(new Promise((resolve) => { releaseCreate = resolve; }));
+    api.navigateBrowserTab.mockRejectedValue(Object.assign(new Error('missing'), { status: 404 }));
+    const { result } = renderHook(() => useBrowser());
+    await flush();
+
+    let opening;
+    act(() => { opening = result.current.openUrl('https://example.com/b', { mode: 'direct' }); });
+    await flush();
+    expect(api.createBrowserTab).toHaveBeenCalledOnce();
+
+    let navigating;
+    act(() => { navigating = result.current.navigateTab('a', 'https://example.com/a', 'direct'); });
+    await flush();
+    expect(api.getBrowserTabs).toHaveBeenCalledTimes(2);
+
+    releaseCreate(tab('b', { mode: 'direct' }));
+    await act(async () => { await opening; });
+    releaseResync({ tabs: [a] });
+    await act(async () => { await navigating; });
+
+    expect(result.current.activeId).toBe('b');
+    expect(result.current.tabs.map(({ id }) => id)).toEqual(['a', 'b']);
+    expect(result.current.error?.message).toBe('missing');
+  });
+
   it('moves each independently expired background tab into device history', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);

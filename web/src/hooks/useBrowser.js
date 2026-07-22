@@ -143,8 +143,9 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     const generation = mutationGeneration.current;
     try {
       const { tabs: loaded = [] } = await getBrowserTabs();
-      if (!isCurrent() || mutationGeneration.current !== generation) return true;
+      if (!isCurrent() || mutationGeneration.current !== generation) return false;
       const normalized = normalizeServerTabs(loaded);
+      mutationGeneration.current += 1;
       commitTabs(normalized);
       const visible = normalized.find((tab) => tab.visible);
       const selected = visible || normalized[0] || null;
@@ -162,6 +163,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     getBrowserTabs().then(({ tabs: loaded = [] }) => {
       if (!live || mutationGeneration.current !== generation) return;
       const normalized = normalizeServerTabs(loaded);
+      mutationGeneration.current += 1;
       commitTabs(normalized);
       const visible = normalized.find((tab) => tab.visible);
       const selected = visible || normalized[0] || null;
@@ -196,6 +198,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const updateVisibility = useCallback(async (id, visible, duration = closeAfter) => {
     mutationGeneration.current += 1;
     const next = normalizeServerTab(await setBrowserTabVisible(id, visible, duration));
+    mutationGeneration.current += 1;
     commitTabs((current) => mirrorVisibleTab(current, next, duration));
     return next;
   }, [closeAfter, commitTabs]);
@@ -211,12 +214,14 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
           if (openRef.current && currentActiveId && !currentHistoryActive) {
             await updateVisibility(currentActiveId, false);
           }
+          mutationGeneration.current += 1;
           commitHistoryActive(true);
           return true;
         }
         if (!tabsRef.current.some((tab) => tab.id === id)) return false;
         if (openRef.current) await updateVisibility(id, true);
         if (!tabsRef.current.some((tab) => tab.id === id)) return false;
+        mutationGeneration.current += 1;
         commitActiveId(id);
         commitHistoryActive(false);
         return true;
@@ -240,11 +245,15 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
         if (activeIdRef.current && !historyActiveRef.current) {
           await updateVisibility(activeIdRef.current, visible);
         }
+        mutationGeneration.current += 1;
         commitOpen(visible);
         return true;
       } catch (nextError) {
         const recovered = await resyncLostWorker(nextError);
-        if (!visible) commitOpen(false);
+        if (!visible) {
+          mutationGeneration.current += 1;
+          commitOpen(false);
+        }
         if (!recovered && visible) setError(nextError);
         return !visible;
       }
@@ -275,9 +284,13 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
           url, closeAfter, mode, { signal: request.controller.signal },
         ));
         if (request.controller.signal.aborted || openRequest.current !== request) {
-          await deleteBrowserTab(created.id).catch(() => {});
+          try {
+            await deleteBrowserTab(created.id);
+            mutationGeneration.current += 1;
+          } catch { /* best-effort stale tab cleanup */ }
           return null;
         }
+        mutationGeneration.current += 1;
         commitTabs((current) => mirrorVisibleTab(current, created, closeAfter));
         commitActiveId(created.id);
         commitHistoryActive(false);
@@ -289,6 +302,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
           try {
             const restored = await setBrowserTabVisible(request.previousVisibleId, true, closeAfter);
             if (!request.controller.signal.aborted && openRequest.current === request) {
+              mutationGeneration.current += 1;
               commitTabs((current) => mirrorVisibleTab(current, restored, closeAfter));
               commitActiveId(restored.id);
               commitHistoryActive(false);
@@ -334,10 +348,19 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
           const created = normalizeServerTab(await createBrowserTab(
             pending.url, closeAfter, pending.mode, { signal: request.controller.signal },
           ));
-          if (request.controller.signal.aborted || openEpoch.current !== request.epoch || openRequest.current !== request) {
-            await deleteBrowserTab(created.id).catch(() => {});
+          if (
+            request.controller.signal.aborted
+            || openEpoch.current !== request.epoch
+            || openRequest.current !== request
+            || mutationGeneration.current !== expectedGeneration
+          ) {
+            try {
+              await deleteBrowserTab(created.id);
+              mutationGeneration.current += 1;
+            } catch { /* best-effort stale tab cleanup */ }
             return;
           }
+          mutationGeneration.current += 1;
           commitTabs(mirrorVisibleTab(normalized, created, closeAfter));
           commitActiveId(created.id);
           commitHistoryActive(false);
@@ -346,6 +369,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
             openEpoch.current !== expectedOpenEpoch
             || mutationGeneration.current !== expectedGeneration
           ) return;
+          mutationGeneration.current += 1;
           commitTabs(normalized);
           const selected = normalized.find((tab) => tab.visible) || normalized[0] || null;
           commitActiveId(selected?.id || null);
@@ -386,12 +410,14 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     setError(null);
     try {
       await deleteBrowserTab(id);
+      mutationGeneration.current += 1;
       recordHistory(closing);
       const remaining = commitTabs((current) => current.filter((tab) => tab.id !== id));
       if (activeIdRef.current === id) {
         if (openRef.current && remaining.length) {
           await updateVisibility(remaining[0].id, true);
         }
+        mutationGeneration.current += 1;
         commitActiveId(remaining[0]?.id || null);
         commitHistoryActive(!remaining.length);
       }
@@ -424,6 +450,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     try {
       const next = normalizeServerTab(await request);
       if (!isCurrent()) return null;
+      mutationGeneration.current += 1;
       commitTabs((current) => replaceTab(current, next));
       const committedMode = next.mode || nextMode;
       if (current && committedMode !== current.mode) {
