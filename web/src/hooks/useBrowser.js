@@ -21,6 +21,15 @@ function replaceTab(tabs, next) {
   return tabs.map((tab) => (tab.id === next.id ? { ...tab, ...next } : tab));
 }
 
+function normalizeServerTab(tab) {
+  if (!tab) return tab;
+  return { ...tab, mode: tab.mode === 'direct' ? 'direct' : 'proxy' };
+}
+
+function normalizeServerTabs(tabs) {
+  return tabs.map(normalizeServerTab);
+}
+
 function mirrorVisibleTab(tabs, next, closeAfter) {
   if (!next.visible) return replaceTab(tabs, next);
   const hiddenAt = Date.now();
@@ -55,6 +64,9 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const [error, setError] = useState(null);
   const enablePromise = useRef(null);
   const openRequest = useRef(null);
+  const openEpoch = useRef(0);
+  const navigateEpoch = useRef(new Map());
+  const browserProxyRef = useRef(browserProxy);
   const switchQueue = useRef(Promise.resolve());
   const tabsRef = useRef(tabs);
   const activeIdRef = useRef(activeId);
@@ -64,6 +76,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   activeIdRef.current = activeId;
   historyActiveRef.current = historyActive;
   openRef.current = open;
+  browserProxyRef.current = browserProxy;
 
   const commitTabs = useCallback((update) => {
     const next = typeof update === 'function' ? update(tabsRef.current) : update;
@@ -90,6 +103,26 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     switchQueue.current = task.then(() => undefined, () => undefined);
     return task;
   }, []);
+  const beginOpenRequest = useCallback((signal) => {
+    openRequest.current?.controller.abort();
+    openRequest.current?.detachCaller?.();
+    const controller = new AbortController();
+    const abortFromCaller = () => controller.abort();
+    if (signal?.aborted) abortFromCaller();
+    else signal?.addEventListener('abort', abortFromCaller, { once: true });
+    const request = {
+      controller,
+      epoch: ++openEpoch.current,
+      previousVisibleId: tabsRef.current.find((tab) => tab.visible)?.id || null,
+      detachCaller: () => signal?.removeEventListener('abort', abortFromCaller),
+    };
+    openRequest.current = request;
+    return request;
+  }, []);
+  const finishOpenRequest = useCallback((request) => {
+    request?.detachCaller?.();
+    if (openRequest.current === request) openRequest.current = null;
+  }, []);
 
   const recordHistory = useCallback((tab) => {
     if (!tab?.originalUrl) return;
@@ -102,13 +135,15 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     setHistory(readBrowserHistory());
   }, []);
 
-  const resyncLostWorker = useCallback(async (nextError) => {
+  const resyncLostWorker = useCallback(async (nextError, isCurrent = () => true) => {
     if (nextError?.status !== 404 && nextError?.status !== 503) return false;
     try {
       const { tabs: loaded = [] } = await getBrowserTabs();
-      commitTabs(loaded);
-      const visible = loaded.find((tab) => tab.visible);
-      const selected = visible || loaded[0] || null;
+      if (!isCurrent()) return true;
+      const normalized = normalizeServerTabs(loaded);
+      commitTabs(normalized);
+      const visible = normalized.find((tab) => tab.visible);
+      const selected = visible || normalized[0] || null;
       commitActiveId(selected?.id || null);
       commitHistoryActive(!selected);
       if (!visible) commitOpen(false);
@@ -121,9 +156,10 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     let live = true;
     getBrowserTabs().then(({ tabs: loaded = [] }) => {
       if (!live) return;
-      commitTabs(loaded);
-      const visible = loaded.find((tab) => tab.visible);
-      const selected = visible || loaded[0] || null;
+      const normalized = normalizeServerTabs(loaded);
+      commitTabs(normalized);
+      const visible = normalized.find((tab) => tab.visible);
+      const selected = visible || normalized[0] || null;
       commitActiveId(selected?.id || null);
       commitHistoryActive(!selected);
       commitOpen(!!visible);
@@ -131,7 +167,10 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     return () => { live = false; };
   }, [commitActiveId, commitHistoryActive, commitOpen, commitTabs, enabled]); // access is loaded explicitly by enableAccess on first consent
 
-  useEffect(() => () => openRequest.current?.controller.abort(), []);
+  useEffect(() => () => {
+    openRequest.current?.controller.abort();
+    openRequest.current?.detachCaller?.();
+  }, []);
 
   useEffect(() => {
     const timers = tabs
@@ -149,7 +188,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   }, [commitActiveId, commitHistoryActive, commitTabs, tabs, recordHistory]);
 
   const updateVisibility = useCallback(async (id, visible, duration = closeAfter) => {
-    const next = await setBrowserTabVisible(id, visible, duration);
+    const next = normalizeServerTab(await setBrowserTabVisible(id, visible, duration));
     commitTabs((current) => mirrorVisibleTab(current, next, duration));
     return next;
   }, [closeAfter, commitTabs]);
@@ -213,27 +252,20 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       setError(new Error('browser proxy unavailable'));
       return Promise.resolve(null);
     }
+    const request = beginOpenRequest(signal);
     if (!accessEnabled) {
-      setPendingUrl({ url, mode });
+      setPendingUrl({ url, mode, request });
       setConsentOpen(true);
       return Promise.resolve({ pending: true });
     }
-    openRequest.current?.controller.abort();
-    const controller = new AbortController();
-    const request = {
-      controller,
-      previousVisibleId: tabsRef.current.find((tab) => tab.visible)?.id || null,
-    };
-    openRequest.current = request;
-    const abortFromCaller = () => controller.abort();
-    if (signal?.aborted) abortFromCaller();
-    else signal?.addEventListener('abort', abortFromCaller, { once: true });
     const task = (async () => {
       setError(null);
       try {
-        if (controller.signal.aborted) return null;
-        const created = await createBrowserTab(url, closeAfter, mode, { signal: controller.signal });
-        if (controller.signal.aborted || openRequest.current !== request) {
+        if (request.controller.signal.aborted) return null;
+        const created = normalizeServerTab(await createBrowserTab(
+          url, closeAfter, mode, { signal: request.controller.signal },
+        ));
+        if (request.controller.signal.aborted || openRequest.current !== request) {
           await deleteBrowserTab(created.id).catch(() => {});
           return null;
         }
@@ -243,11 +275,11 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
         commitOpen(true);
         return created;
       } catch (nextError) {
-        if (controller.signal.aborted || openRequest.current !== request) return null;
+        if (request.controller.signal.aborted || openRequest.current !== request) return null;
         if (request.previousVisibleId && tabsRef.current.some((tab) => tab.id === request.previousVisibleId)) {
           try {
             const restored = await setBrowserTabVisible(request.previousVisibleId, true, closeAfter);
-            if (!controller.signal.aborted && openRequest.current === request) {
+            if (!request.controller.signal.aborted && openRequest.current === request) {
               commitTabs((current) => mirrorVisibleTab(current, restored, closeAfter));
               commitActiveId(restored.id);
               commitHistoryActive(false);
@@ -259,52 +291,75 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
         return null;
       }
     })().finally(() => {
-      signal?.removeEventListener('abort', abortFromCaller);
-      if (openRequest.current === request) openRequest.current = null;
+      finishOpenRequest(request);
     });
     return task;
-  }, [accessEnabled, browserProxy, closeAfter, commitActiveId, commitHistoryActive, commitOpen, commitTabs, defaultMode]);
+  }, [accessEnabled, beginOpenRequest, browserProxy, closeAfter, commitActiveId, commitHistoryActive, commitOpen, commitTabs, defaultMode, finishOpenRequest]);
 
   const enableAccess = useCallback(() => {
     if (enablePromise.current) return enablePromise.current;
     const task = (async () => {
+      const expectedOpenEpoch = openEpoch.current;
+      const pending = pendingUrl;
       setBrowserAccessEnabled(true);
       setAccessEnabled(true);
       setConsentOpen(false);
       setError(null);
       try {
         const { tabs: loaded = [] } = await getBrowserTabs();
-        if (pendingUrl) {
-          if (pendingUrl.mode === 'proxy' && !browserProxy) {
-            setPendingUrl(null);
+        const normalized = normalizeServerTabs(loaded);
+        if (pending) {
+          const { request } = pending;
+          if (request.controller.signal.aborted || openEpoch.current !== request.epoch || openRequest.current !== request) {
+            return;
+          }
+          if (pending.mode === 'proxy' && !browserProxyRef.current) {
             throw new Error('browser proxy unavailable');
           }
-          const created = await createBrowserTab(pendingUrl.url, closeAfter, pendingUrl.mode);
-          commitTabs(mirrorVisibleTab(loaded, created, closeAfter));
+          const created = normalizeServerTab(await createBrowserTab(
+            pending.url, closeAfter, pending.mode, { signal: request.controller.signal },
+          ));
+          if (request.controller.signal.aborted || openEpoch.current !== request.epoch || openRequest.current !== request) {
+            await deleteBrowserTab(created.id).catch(() => {});
+            return;
+          }
+          commitTabs(mirrorVisibleTab(normalized, created, closeAfter));
           commitActiveId(created.id);
           commitHistoryActive(false);
-          setPendingUrl(null);
         } else {
-          commitTabs(loaded);
-          const selected = loaded.find((tab) => tab.visible) || loaded[0] || null;
+          if (openEpoch.current !== expectedOpenEpoch) return;
+          commitTabs(normalized);
+          const selected = normalized.find((tab) => tab.visible) || normalized[0] || null;
           commitActiveId(selected?.id || null);
           commitHistoryActive(!selected);
         }
         commitOpen(true);
       } catch (nextError) {
+        if (pending?.request && (
+          pending.request.controller.signal.aborted
+          || openEpoch.current !== pending.request.epoch
+          || openRequest.current !== pending.request
+        )) return;
         setError(nextError);
+      } finally {
+        if (pending?.request) {
+          setPendingUrl((current) => (current?.request === pending.request ? null : current));
+          finishOpenRequest(pending.request);
+        }
       }
     })().finally(() => {
       if (enablePromise.current === task) enablePromise.current = null;
     });
     enablePromise.current = task;
     return task;
-  }, [browserProxy, closeAfter, commitActiveId, commitHistoryActive, commitOpen, commitTabs, pendingUrl]);
+  }, [closeAfter, commitActiveId, commitHistoryActive, commitOpen, commitTabs, finishOpenRequest, pendingUrl]);
 
   const cancelAccess = useCallback(() => {
+    pendingUrl?.request?.controller.abort();
+    finishOpenRequest(pendingUrl?.request);
     setPendingUrl(null);
     setConsentOpen(false);
-  }, []);
+  }, [finishOpenRequest, pendingUrl]);
 
   const closeTab = useCallback(async (id) => {
     const closing = tabsRef.current.find((tab) => tab.id === id);
@@ -327,6 +382,9 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   }, [commitActiveId, commitHistoryActive, commitTabs, recordHistory, resyncLostWorker, updateVisibility]);
 
   const navigateTab = useCallback(async (id, input, mode) => {
+    const epoch = (navigateEpoch.current.get(id) || 0) + 1;
+    navigateEpoch.current.set(id, epoch);
+    const isCurrent = () => navigateEpoch.current.get(id) === epoch;
     const url = normalizeBrowserInput(input);
     if (!url) {
       setError(new Error('browser URL must use http or https'));
@@ -339,7 +397,8 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       return null;
     }
     try {
-      const next = await navigateBrowserTab(id, url, nextMode);
+      const next = normalizeServerTab(await navigateBrowserTab(id, url, nextMode));
+      if (!isCurrent()) return null;
       commitTabs((current) => replaceTab(current, next));
       const committedMode = next.mode || nextMode;
       if (current && committedMode !== current.mode) {
@@ -354,7 +413,8 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       setError(null);
       return next;
     } catch (nextError) {
-      if (!await resyncLostWorker(nextError)) setError(nextError);
+      if (!isCurrent()) return null;
+      if (!await resyncLostWorker(nextError, isCurrent) && isCurrent()) setError(nextError);
       return null;
     }
   }, [browserProxy, commitTabs, defaultMode, resyncLostWorker]);

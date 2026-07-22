@@ -175,6 +175,30 @@ describe('useBrowser', () => {
     expect(api.getBrowserTabs).toHaveBeenCalledOnce();
   });
 
+  it('normalizes server-loaded legacy tabs to proxy before navigate, metadata, close, and history flows', async () => {
+    api.getBrowserTabs.mockResolvedValue({ tabs: [tab('legacy')] });
+    api.navigateBrowserTab.mockResolvedValue(tab('legacy', { title: '' }));
+    api.deleteBrowserTab.mockResolvedValue({ ok: true });
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+
+    expect(result.current.tabs[0].mode).toBe('proxy');
+    await act(async () => {
+      await result.current.navigateTab('legacy', 'https://example.com/legacy');
+    });
+    expect(api.navigateBrowserTab).toHaveBeenCalledWith(
+      'legacy', 'https://example.com/legacy', 'proxy',
+    );
+
+    act(() => result.current.updateTabMeta('legacy', {
+      url: 'https://example.com/legacy', title: 'Legacy title',
+    }));
+    await act(async () => { await result.current.closeTab('legacy'); });
+    expect(readBrowserHistory()[0]).toMatchObject({
+      url: 'https://example.com/legacy', title: 'Legacy title', lastMode: 'proxy',
+    });
+  });
+
   it('shows the selected tab atomically and mirrors the displaced tab locally', async () => {
     const a = tab('a');
     const b = tab('b', { visible: false, expiresAt: Date.now() + 600_000 });
@@ -363,6 +387,9 @@ describe('useBrowser', () => {
 
   it('rechecks proxy availability before opening a consent-pending URL', async () => {
     localStorage.removeItem('hm_browser_access1');
+    let releaseLoad;
+    api.getBrowserTabs.mockReturnValue(new Promise((resolve) => { releaseLoad = resolve; }));
+    api.createBrowserTab.mockResolvedValue(tab('proxy', { mode: 'proxy' }));
     const { result, rerender } = renderHook(
       ({ browserProxy }) => useBrowser({ browserProxy }),
       { initialProps: { browserProxy: true } },
@@ -372,11 +399,39 @@ describe('useBrowser', () => {
     await act(async () => {
       await result.current.openUrl('https://example.com/', { mode: 'proxy' });
     });
+    let enabling;
+    act(() => { enabling = result.current.enableAccess(); });
+    await flush();
     rerender({ browserProxy: false });
-    await act(async () => { await result.current.enableAccess(); });
+    releaseLoad({ tabs: [] });
+    await act(async () => { await enabling; });
 
     expect(api.createBrowserTab).not.toHaveBeenCalled();
     expect(result.current.error?.message).toBe('browser proxy unavailable');
+  });
+
+  it('does not let a consent-pending URL overwrite a newer open request', async () => {
+    localStorage.removeItem('hm_browser_access1');
+    let releaseLoad;
+    api.getBrowserTabs.mockReturnValue(new Promise((resolve) => { releaseLoad = resolve; }));
+    api.createBrowserTab.mockImplementation(async (url) => (
+      url.endsWith('/a') ? tab('a', { originalUrl: url }) : tab('b', { originalUrl: url })
+    ));
+    const { result } = renderHook(() => useBrowser());
+    await flush();
+
+    await act(async () => { await result.current.openUrl('https://example.com/a'); });
+    let enabling;
+    act(() => { enabling = result.current.enableAccess(); });
+    await flush();
+
+    await act(async () => { await result.current.openUrl('https://example.com/b'); });
+    releaseLoad({ tabs: [] });
+    await act(async () => { await enabling; });
+
+    expect(api.createBrowserTab.mock.calls.map(([url]) => url)).toEqual(['https://example.com/b']);
+    expect(result.current.activeId).toBe('b');
+    expect(result.current.tabs.map(({ id }) => id)).toEqual(['b']);
   });
 
   it('threads mode through navigation and records the successful mode', async () => {
@@ -391,6 +446,59 @@ describe('useBrowser', () => {
     expect(readBrowserHistory()[0]).toMatchObject({
       url: 'https://example.com/a', lastMode: 'proxy',
     });
+  });
+
+  it('ignores an older navigation result that resolves after the latest mode change', async () => {
+    api.getBrowserTabs.mockResolvedValue({ tabs: [tab('a', { mode: 'direct' })] });
+    const requests = [];
+    api.navigateBrowserTab.mockImplementation((_id, _url, mode) => new Promise((resolve) => {
+      requests.push({ mode, resolve });
+    }));
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+
+    let older;
+    let latest;
+    act(() => {
+      older = result.current.navigateTab('a', 'https://example.com/a', 'proxy');
+      latest = result.current.navigateTab('a', 'https://example.com/a', 'direct');
+    });
+    requests[1].resolve(tab('a', { mode: 'direct' }));
+    await act(async () => { await latest; });
+    requests[0].resolve(tab('a', { mode: 'proxy' }));
+    await act(async () => { await older; });
+
+    expect(result.current.tabs[0].mode).toBe('direct');
+  });
+
+  it('does not let an older failed navigation resync over the latest mode change', async () => {
+    let releaseResync;
+    api.getBrowserTabs
+      .mockResolvedValueOnce({ tabs: [tab('a', { mode: 'direct' })] })
+      .mockReturnValueOnce(new Promise((resolve) => { releaseResync = resolve; }));
+    const requests = [];
+    api.navigateBrowserTab.mockImplementation((_id, _url, mode) => new Promise((resolve, reject) => {
+      requests.push({ mode, resolve, reject });
+    }));
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+
+    let older;
+    act(() => { older = result.current.navigateTab('a', 'https://example.com/a', 'proxy'); });
+    requests[0].reject(Object.assign(new Error('missing'), { status: 404 }));
+    await flush();
+    expect(api.getBrowserTabs).toHaveBeenCalledTimes(2);
+
+    let latest;
+    act(() => { latest = result.current.navigateTab('a', 'https://example.com/a', 'direct'); });
+    requests[1].resolve(tab('a', { mode: 'direct' }));
+    await act(async () => { await latest; });
+    releaseResync({ tabs: [tab('a', { mode: 'proxy' })] });
+    await act(async () => { await older; });
+
+    expect(api.getBrowserTabs).toHaveBeenCalledTimes(2);
+    expect(result.current.tabs[0].mode).toBe('direct');
+    expect(result.current.error).toBeNull();
   });
 
   it('moves each independently expired background tab into device history', async () => {
