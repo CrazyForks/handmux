@@ -307,10 +307,18 @@ export default function BrowserSheet({ browser }) {
                 title={tabLabel(tab)}
                 src={tab.url}
                 sandbox={FRAME_SANDBOX}
+                inert={loading ? '' : undefined}
                 style={frameStyle}
                 onLoad={() => frameLoaded(tab)}
               />
-              {loading && <div className="browser-page-loading" role="status"><span className="spinner" aria-hidden="true" />{t('common.loading')}</div>}
+              {loading && (
+                <div className="browser-page-loading" role="status" aria-live="polite">
+                  <div className="browser-loading-hud">
+                    <span className="spinner" aria-hidden="true" />
+                    <span>{t('common.loading')}</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           );

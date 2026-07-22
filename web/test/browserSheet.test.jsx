@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import BrowserSheet from '../src/components/BrowserSheet.jsx';
+
+const styles = readFileSync(path.resolve(process.cwd(), 'src/styles.css'), 'utf8');
 
 let container;
 let root;
@@ -96,10 +100,17 @@ describe('BrowserSheet', () => {
   it('shows page loading state initially and while refresh is in flight', async () => {
     await render(browser());
     const frame = document.querySelector('iframe[data-tab-id="a"]');
-    expect(document.querySelector('.browser-page-loading')).not.toBeNull();
+    const overlay = document.querySelector('.browser-page-loading');
+    const loadingRule = styles.match(/\.browser-page-loading\s*\{([^}]*)\}/)?.[1] || '';
+    expect(overlay).not.toBeNull();
+    expect(overlay.querySelector('.browser-loading-hud')).not.toBeNull();
+    expect(loadingRule).toMatch(/pointer-events:\s*auto/);
+    expect(loadingRule).toMatch(/touch-action:\s*none/);
+    expect(frame.hasAttribute('inert')).toBe(true);
 
     act(() => frame.dispatchEvent(new Event('load')));
     expect(document.querySelector('.browser-page-loading')).toBeNull();
+    expect(frame.hasAttribute('inert')).toBe(false);
 
     click(document.querySelector('button[aria-label="刷新"]'));
     expect(document.querySelector('.browser-page-loading')).not.toBeNull();
