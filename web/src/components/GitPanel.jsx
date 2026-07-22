@@ -7,7 +7,6 @@ import { parseDiff } from '../gitDiff.js';
 import DirPicker from './DirPicker.jsx';
 import { ChevronDownIcon, GitIcon } from './icons.jsx';
 import { t } from '../i18n';
-import { useBackButton, useHistoryLayer, unwindHistory } from '../hooks/useBackButton.js';
 
 // basename of an absolute path (the repo-tab label). Exported for the unit test.
 export const basename = (p) => String(p || '').replace(/\/+$/, '').split('/').pop() || p;
@@ -78,19 +77,20 @@ export default function GitPanel({ open, pane, windowId, inset = 0, onClose }) {
   const pushHist = () => { window.history.pushState({ gitOverlay: true }, ''); depthRef.current += 1; };
   const pushDrill = (frame) => { pushHist(); setStack((s) => [...s, frame]); };
   const openPicker = () => { pushHist(); setPickOpen(true); };
-  useBackButton(open && branchMenuOpen, () => setBranchMenuOpen(false));
-  useHistoryLayer(open, () => {
-    depthRef.current = Math.max(0, depthRef.current - 1);
-    if (pickOpenRef.current) { setPickOpen(false); return; }
-    if (stackRef.current.length) { setStack((s) => s.slice(0, -1)); return; }
-    onCloseRef.current?.();
-  });
   useEffect(() => {
     if (!open) return undefined;
     pushHist();                       // base entry for the open panel
+    const onPop = () => {
+      depthRef.current = Math.max(0, depthRef.current - 1);   // the Back already consumed one entry
+      if (pickOpenRef.current) { setPickOpen(false); return; }
+      if (stackRef.current.length) { setStack((s) => s.slice(0, -1)); return; }
+      onCloseRef.current?.();         // base consumed at home → leave the panel
+    };
+    window.addEventListener('popstate', onPop);
     return () => {
+      window.removeEventListener('popstate', onPop);
       // Closed by a button (not Back): drop whatever entries we still own so history stays balanced.
-      if (depthRef.current > 0) { unwindHistory(depthRef.current); depthRef.current = 0; }
+      if (depthRef.current > 0) { window.history.go(-depthRef.current); depthRef.current = 0; }
     };
   }, [open]);
 

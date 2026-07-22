@@ -45,14 +45,6 @@ describe('UsagePage', () => {
     expect(container.textContent).toContain('handmux hooks install');
   });
 
-  it('keeps the Codex card visible when no machine-wide quota is available yet', async () => {
-    getUsage.mockResolvedValue({ claude: null, codex: null });
-    await render();
-    await settle();
-    expect(container.textContent).toContain('Codex CLI');
-    expect(container.textContent).toMatch(/not detected|未检测到/);
-  });
-
   it('renders Claude 5h + weekly bars when present', async () => {
     getUsage.mockResolvedValue({
       claude: { rateLimits: { fiveHour: { usedPercent: 43, resetsAt: 9999999999 }, sevenDay: { usedPercent: 15, resetsAt: 9999999999 } } },

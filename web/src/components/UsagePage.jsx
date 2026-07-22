@@ -172,7 +172,7 @@ export default function UsagePage({ open, onClose, onAuthFail }) {
             <div className="bind-error">{error}</div>
           ) : data ? (
             <>
-              <CodexCard codex={data.codex} now={now} />
+              {data.codex && <CodexCard codex={data.codex} now={now} />}
               <ClaudeCard claude={data.claude} now={now} />
             </>
           ) : null}

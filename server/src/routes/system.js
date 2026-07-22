@@ -106,10 +106,11 @@ export function systemRoutes({ commands, claudeEvents, asrEnv, shortcuts, home, 
     try { res.json(await claudeEvents.getStates(allowed)); } catch (e) { next(e); }
   });
 
-  // Agent usage/quota for the Usage page. Claude reads its statusLine snapshot; Codex asks its own local
-  // app-server for account limits and merges rollout token/context data. Cached briefly; never handles auth.
-  r.get('/usage', async (req, res, next) => {
-    try { res.json(await getUsageCached(home)); } catch (e) { next(e); }
+  // Agent usage/quota for the Usage page. Disk-only, no credentials: Claude's 5h/weekly % from the
+  // statusLine snapshot (if the capturer is opted in), Codex's rate_limits + tokens from its newest
+  // rollout. Either side is null when unavailable. Cached briefly (see usage.js); never throws.
+  r.get('/usage', (req, res, next) => {
+    try { res.json(getUsageCached(home)); } catch (e) { next(e); }
   });
 
   // Orphan Claude sessions: `claude` processes running on this host but NOT inside a tmux pane, so

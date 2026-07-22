@@ -45,10 +45,10 @@ export async function listSessions() {
 
 export async function listWindows(sessionId) {
   const out = await runTmux(['list-windows', '-t', sessionId, '-F', tmuxFormat([
-    'window_id', 'window_name', 'window_active', 'window_panes', 'window_width', 'window_height', 'pane_id',
+    'window_id', 'window_name', 'window_active', 'window_panes', 'window_width', 'window_height',
   ])]);
-  return parseTmuxRows(out, 7, 'window').map(([id, name, active, panes, width, height, activePaneId]) => {
-    return { id, name, active: active === '1', panes: Number(panes), width: Number(width), height: Number(height), activePaneId };
+  return parseTmuxRows(out, 6, 'window').map(([id, name, active, panes, width, height]) => {
+    return { id, name, active: active === '1', panes: Number(panes), width: Number(width), height: Number(height) };
   });
 }
 
@@ -92,16 +92,6 @@ export async function listLivePanes() {
 // faithfully reproduces the pane, so the client can write it verbatim (see prepareSeed).
 export async function capturePane(paneId, linesBack) {
   return runTmux(['capture-pane', '-p', '-e', '-N', '-S', String(-Math.abs(linesBack)), '-t', paneId]);
-}
-
-// A single row capture re-emits that row's real starting attributes. The combined capture above
-// intentionally compresses SGR state across newlines, which makes an inherited background ambiguous.
-export async function capturePaneRow(paneId, row) {
-  return runTmux([
-    'capture-pane', '-p', '-e', '-N',
-    '-S', String(row), '-E', String(row),
-    '-t', paneId,
-  ]);
 }
 
 // Plain visible-screen capture — NO SGR escapes (unlike capturePane's `-e`), so the text parses cleanly.
@@ -163,13 +153,6 @@ export async function paneLocation(paneId) {
   return { session, window: windowId, windowName };
 }
 
-export async function paneSession(paneId) {
-  const out = await runTmux(['display-message', '-p', '-t', paneId, '#{session_id}']);
-  const id = out.trim();
-  if (!isSessionId(id)) throw new Error('pane session not found');
-  return id;
-}
-
 // Exit tmux copy/scroll mode if the pane is currently in it. Called before any user input so
 // text and keys reach the shell instead of being swallowed by tmux's mode key-bindings.
 export async function exitCopyModeIfActive(paneId) {
@@ -179,11 +162,6 @@ export async function exitCopyModeIfActive(paneId) {
 
 export async function sendText(paneId, text) {
   await runTmux(['send-keys', '-t', paneId, '-l', '--', text]);
-}
-
-export async function sendHexInput(paneId, hex) {
-  const bytes = hex.match(/../g) || [];
-  await runTmux(['send-keys', '-t', paneId, '-H', ...bytes]);
 }
 
 export async function sendEnter(paneId) {

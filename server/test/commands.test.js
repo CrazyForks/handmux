@@ -3,7 +3,7 @@ import { execFile as _execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import {
   isPaneId, isWindowId, isSessionId, isValidSessionName,
-  listSessions, listWindows, listPanes, listPaneIds, capturePane, paneInfo, paneLocation, sendText, sendHexInput, sendEnter,
+  listSessions, listWindows, listPanes, listPaneIds, capturePane, paneInfo, paneLocation, sendText, sendEnter,
   resizeWindow, restoreWindowSize, newSession, paneCurrentPath, newWindow,
   renameSession, renameWindow, sessionWindowCount, killWindow, swapWindows, wheelSeq,
   splitPane, windowPaneCount, killPane,
@@ -49,7 +49,6 @@ describe('tmux commands (integration)', () => {
     expect(panes.length).toBeGreaterThan(0);
     expect(isPaneId(panes[0].id)).toBe(true);
     expect(panes[0].width).toBe(80);
-    expect(windows[0].activePaneId).toBe(panes.find((pane) => pane.active).id);
   });
 
   it('listPanes includes an absolute cwd for each pane', async () => {
@@ -108,20 +107,6 @@ describe('tmux commands (integration)', () => {
     expect(info.height).toBe(24);
     expect(info.altScreen).toBe(false); // a plain shell isn't on the alternate screen…
     expect(info.mouseAware).toBe(false); // …nor is it reporting mouse
-  });
-
-  it('sendHexInput writes UTF-8 and control bytes in order', async () => {
-    if (!hasTmux) return;
-    const s = (await listSessions()).find((x) => x.name === SES);
-    const w = (await listWindows(s.id))[0];
-    const pane = (await listPanes(w.id))[0].id;
-
-    await sendText(pane, "stty raw -echo; node -e \"process.stdin.once('data',d=>{console.log(d.toString('hex'));process.stdin.pause()})\"; stty sane");
-    await sendEnter(pane);
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    await sendHexInput(pane, 'e4bda0e5a5bd0d');
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    expect(await capturePane(pane, 20)).toContain('e4bda0e5a5bd0d');
   });
 
   // Named guard for the tmux capture behaviours the terminal rendering depends on (CLAUDE.md). If a tmux

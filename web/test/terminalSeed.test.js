@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  normalizeSeedNewlines, prepareSeed, prepareLiveSeed, trimTrailingShadow, cursorSeq,
+  normalizeSeedNewlines, prepareSeed, trimTrailingShadow, cursorSeq,
 } from '../src/terminalSeed.js';
 
 describe('normalizeSeedNewlines', () => {
@@ -38,24 +38,12 @@ describe('prepareSeed', () => {
   });
 });
 
-describe('prepareLiveSeed', () => {
-  it('restores the exact pane height after snapshot cleanup drops trailing padding', () => {
-    const seed = prepareLiveSeed('one\n\n', 3);
-    expect(seed.split('\r\n')).toEqual(['one', '', '']);
-  });
-
-  it('keeps captured history above the pane grid', () => {
-    const seed = prepareLiveSeed('history\nscreen-1\nscreen-2\n', 2);
-    expect(seed.split('\r\n')).toEqual(['history', 'screen-1', 'screen-2']);
-  });
-});
-
 describe('trimTrailingShadow', () => {
-  it('keeps one shaded bottom-padding row and seals the run bg there', () => {
+  it('drops the shade from a blank row that trails a highlight, and seals the run bg', () => {
     // text row (bg left open), blank padding row, then a plain row (bg reset by the pane). The run's
-    // bottom-padding row gets \x1b[49m so scroll-BCE cannot shade the following plain row.
+    // last shaded row gets \x1b[49m so a scroll-BCE can't paint the blank row below it grey.
     const out = trimTrailingShadow(['\x1b[48;5;237m❯ hi\x1b[39m   ', '\x1b[48;5;237m   ', '\x1b[49mplain']);
-    expect(out).toEqual(['\x1b[48;5;237m❯ hi\x1b[39m   ', '\x1b[48;5;237m   \x1b[49m', '\x1b[49mplain']);
+    expect(out).toEqual(['\x1b[48;5;237m❯ hi\x1b[39m   \x1b[49m', '\x1b[0m', '\x1b[49mplain']);
   });
 
   it('keeps a blank row that sits BETWEEN two highlighted text rows', () => {
@@ -67,46 +55,25 @@ describe('trimTrailingShadow', () => {
     ]);
   });
 
-  it('keeps one trailing blank highlight row at end-of-capture', () => {
+  it('drops trailing blank highlight rows at end-of-capture', () => {
     const out = trimTrailingShadow(['\x1b[48;5;237m❯ hi\x1b[39m', '\x1b[48;5;237m   ', '']);
-    expect(out).toEqual(['\x1b[48;5;237m❯ hi\x1b[39m', '\x1b[48;5;237m   \x1b[49m', '']);
+    expect(out).toEqual(['\x1b[48;5;237m❯ hi\x1b[39m\x1b[49m', '\x1b[0m', '']);
   });
 
-  it('keeps a padding row that explicitly opens and closes its own bg', () => {
+  it('drops the shade from a padding row that opens AND closes its bg within the row', () => {
     // The sent-message box draws its bottom padding as a self-contained grey bar: the bg is set
     // and reset on the same row, so neither the previous nor this row leaves bg flowing. It must
-    // still be recognised as the real blank bottom-padding row and kept.
+    // still be recognised as a blank shaded row and trimmed.
     const out = trimTrailingShadow([
       '\x1b[48;5;237m❯ hi\x1b[49m', '\x1b[48;5;237m   \x1b[49m', 'plain',
     ]);
-    expect(out).toEqual([
-      '\x1b[48;5;237m❯ hi\x1b[49m',
-      '\x1b[48;5;237m   \x1b[49m',
-      'plain',
-    ]);
+    // The text row already closed its own bg (\x1b[49m), so no extra seal is appended.
+    expect(out).toEqual(['\x1b[48;5;237m❯ hi\x1b[49m', '\x1b[0m', 'plain']);
   });
 
-  it('keeps a self-contained shaded padding row at end-of-capture', () => {
+  it('trims a self-contained shaded padding row at end-of-capture', () => {
     const out = trimTrailingShadow(['\x1b[48;5;237m❯ hi\x1b[49m', '\x1b[48;5;237m   \x1b[49m']);
-    expect(out).toEqual([
-      '\x1b[48;5;237m❯ hi\x1b[49m',
-      '\x1b[48;5;237m   \x1b[49m',
-    ]);
-  });
-
-  it('clears extra inherited shaded blanks after preserving the first bottom-padding row', () => {
-    const out = trimTrailingShadow([
-      '\x1b[48;5;237m❯ hi',
-      '   ',
-      '   ',
-      '\x1b[49mplain',
-    ]);
-    expect(out).toEqual([
-      '\x1b[48;5;237m❯ hi',
-      '   \x1b[49m',
-      '',
-      '\x1b[49mplain',
-    ]);
+    expect(out).toEqual(['\x1b[48;5;237m❯ hi\x1b[49m', '\x1b[0m']);
   });
 
   it('leaves plain (un-highlighted) text untouched', () => {

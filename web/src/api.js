@@ -53,7 +53,7 @@ async function req(path, opts = {}) {
 export const getSessions = () => req('/api/sessions');
 export const getUsage = () => req('/api/usage');
 export const getWindows = (session) => req(`/api/windows?session=${encodeURIComponent(session)}`);
-export const getPanes = (window) => req(`/api/panes?window=${encodeURIComponent(window)}`, { timeoutMs: 8000 });
+export const getPanes = (window) => req(`/api/panes?window=${encodeURIComponent(window)}`);
 export const getHistory = (pane, lines = 1500, since) =>
   req(`/api/history?pane=${encodeURIComponent(pane)}&lines=${lines}${since ? `&since=${since}` : ''}`, { timeoutMs: 8000 });
 // The 对话 lens's transcript: same req()-based conditional-poll convention as getHistory (8s timeout),
@@ -80,8 +80,6 @@ export const sendText = (pane, text, enter = true) =>
   req('/api/send', { method: 'POST', body: JSON.stringify({ pane, text, enter }) });
 export const sendKeys = (pane, keys) =>
   req('/api/keys', { method: 'POST', body: JSON.stringify({ pane, keys }) });
-export const sendInput = (pane, hex) =>
-  req('/api/input', { method: 'POST', body: JSON.stringify({ pane, hex }) });
 // Forward a swipe over a full-screen (alt-screen) pane as `lines` wheel notches; the server injects the
 // mouse-wheel events the app scrolls on (no-op reply when the app isn't mouse-reporting — see /scroll).
 export const scrollPane = (pane, dir, lines = 1) =>

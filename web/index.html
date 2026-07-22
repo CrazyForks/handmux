@@ -22,8 +22,8 @@
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=2" />
 
     <!-- Inline boot splash: paints instantly (before the JS bundle loads) so a cold launch shows the
-         brand, not a blank dark screen. main.jsx calls window.__hideBootSplash() once React has painted.
-         Until then it must remain visible: a slow bundle should never expose the still-empty app root. -->
+         brand, not a blank dark screen. main.jsx calls window.__hideBootSplash() once React has painted;
+         a safety timer hides it even if the bundle never boots. Self-contained here — no app code. -->
     <style>
       html, body { margin: 0; background: #1a1b1e; } /* opaque dark from frame one — no wallpaper showing through */
       #boot-splash { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column;
@@ -61,7 +61,7 @@
     <div id="root"></div>
     <script>
       // Hide the splash once the app has painted (main.jsx), but keep it up at least ~650ms so the glow
-      // is actually seen, not a flicker. Slow or unavailable bundles leave this branded loading state visible.
+      // is actually seen, not a flicker. Safety: hide after 8s no matter what, so a failed boot never traps it.
       window.__bootStart = Date.now();
       window.__hideBootSplash = function () {
         var el = document.getElementById('boot-splash');
@@ -72,6 +72,7 @@
           setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 500);
         }, wait);
       };
+      setTimeout(function () { window.__hideBootSplash(); }, 8000);
     </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>

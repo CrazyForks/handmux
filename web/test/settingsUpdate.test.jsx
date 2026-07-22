@@ -14,11 +14,10 @@ const termRef = { current: { getFontSize: () => ({ size: 14, auto: false }) } };
 beforeEach(() => { container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container); });
 afterEach(async () => { await act(() => root.unmount()); container.remove(); vi.clearAllMocks(); });
 
-const render = (whatsNew, props = {}) => act(() => root.render(
+const render = (whatsNew) => act(() => root.render(
   <Settings open onClose={() => {}} termRef={termRef}
     onColAdjust={() => {}} onColRestore={() => {}} onOpenChangelog={() => {}} changelogUnread={false}
-    updateInfo={{ current: '0.17.0', latest: '0.17.4', updateAvailable: true, whatsNew }}
-    {...props} />,
+    updateInfo={{ current: '0.17.0', latest: '0.17.4', updateAvailable: true, whatsNew }} />,
 ));
 
 const releases = [
@@ -48,17 +47,5 @@ describe('Settings update notice', () => {
     await render(releases.slice(0, 1));
     expect(container.querySelectorAll('.settings-update-new li')).toHaveLength(1);
     expect(container.querySelector('.settings-update-more')).toBeNull();
-  });
-
-  it('reloads the client from the version controls', async () => {
-    const onReloadApp = vi.fn();
-    await render(releases, { onReloadApp });
-
-    const button = [...container.querySelectorAll('button')]
-      .find((item) => item.textContent === '重新加载应用');
-    expect(button).toBeTruthy();
-
-    act(() => button.click());
-    expect(onReloadApp).toHaveBeenCalledOnce();
   });
 });

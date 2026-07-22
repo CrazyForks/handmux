@@ -5,7 +5,6 @@ describe('idleDelay', () => {
   it('stays at the fast cadence inside the live window (<8s)', () => {
     expect(idleDelay(0)).toBe(FAST_MS);
     expect(idleDelay(7999)).toBe(FAST_MS);
-    expect(idleDelay(0, 1500)).toBe(1500);
   });
   it('eases to 5s once unchanged for 8s..60s', () => {
     expect(idleDelay(8000)).toBe(5000);

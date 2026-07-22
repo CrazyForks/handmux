@@ -49,22 +49,9 @@ if (file) {
     };
     if (snap.context === undefined) delete snap.context;
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    let previousHasQuota = false;
-    try {
-      const previous = JSON.parse(fs.readFileSync(file, 'utf8'));
-      previousHasQuota = previous?.rateLimits && Object.keys(previous.rateLimits).length > 0;
-    } catch { /* no prior machine-wide snapshot */ }
-    // A new session renders statusLine before its first API response, when rate_limits is absent. Keep the
-    // previous machine-wide quota until a real rate-limit payload refreshes it instead of flashing empty.
-    if (Object.keys(rateLimits).length > 0) {
-      const tmp = `${file}.${process.pid}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(snap));
-      fs.renameSync(tmp, file); // atomic: concurrent statuslines (multiple sessions) can't tear the snapshot
-    } else if (!previousHasQuota) {
-      // Create the initial "capturer active, awaiting data" marker only if no concurrent session has
-      // already published a real quota snapshot. An empty session can therefore never win that race.
-      try { fs.writeFileSync(file, JSON.stringify(snap), { flag: 'wx' }); } catch { /* file now exists */ }
-    }
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(snap));
+    fs.renameSync(tmp, file); // atomic: concurrent statuslines (multiple sessions) can't tear the snapshot
 
     // Per-session context snapshot. The global file above is last-writer-wins across ALL sessions, so it
     // can't tell the phone which session a given pane is on. Claude's statusLine stdin carries `session_id`,

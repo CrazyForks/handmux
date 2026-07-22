@@ -23,7 +23,7 @@ handmux is more than a terminal on your phone. It puts the *same* live **tmux** 
   <em>Real phone browser, real panes — say what you need and Claude Code writes it, then tap a filename to preview (left); a push pings you when needed, and you review the git repo &amp; each agent's usage (right).</em>
 </p>
 
-**[📖 Docs](https://handmux.com/docs)** · **[🧭 Roadmap](ROADMAP.md)** · **[📝 Changelog](CHANGELOG.md)** · **[📦 npm](https://www.npmjs.com/package/handmux)**
+**[📖 Docs](https://handmux.com/docs)** · **[📝 Changelog](CHANGELOG.md)** · **[📦 npm](https://www.npmjs.com/package/handmux)**
 
 ## Quick start · about a minute
 
@@ -67,17 +67,15 @@ handmux start --tunnel cloudflare   # instant public URL (cloudflared auto-insta
 
 ## Features
 
-- **Claude Code / Codex, deeply** — an inbox status ledger, thumb-approve permissions & plans, and stable host-wide usage bars shared by every connected device.
+- **Claude Code / Codex, deeply** — an inbox status ledger, thumb-approve permissions & plans, per-agent usage bars.
 - **Chat view (experimental)** — read and drive a Claude session as a chat instead of a terminal: bubbles with Markdown, tool cards with colored diffs, question cards you answer with a tap, warm colour tones. Experimental — may be unstable: enable it in Settings → 启用对话视图 / Enable chat view, then switch views from the window bar.
-- **Real-time terminal + desktop physical keyboard input** — terminal output streams as it happens on both phone and desktop. Scrolling up immediately browses recent tmux history without losing your place, pauses the stream when needed, and loads older history as you continue; returning to the bottom resynchronizes the live screen. When the source pane is shorter than the browser, spare rows show recent history above a faint dashed live boundary instead of empty space. Leaving the page pauses delivery; after 10 seconds away, returning starts from a fresh current screen instead of replaying stale output. **Live pushing** uses WebSocket, automatically falls back to **snapshot pulling** on a poor connection, and returns after 30 stable seconds. One top-right tag combines the actual mode and current latency; click it to see connection quality, the configured mode, fallback reason and retry countdown. Settings can keep this browser on snapshot pulling at an active interval from 0.8 to 2 seconds. On desktop, type into the current pane immediately without tapping “Show keyboard”; terminal-page keys keep working even after focus lands on the Window toolbar. `Shift+Enter` or the draft field opens draft mode with shortcuts, upload, history, voice and multiline editing intact. `Enter` sends and stays in draft mode, `Shift+Enter` inserts a newline, and IME Enter only confirms composition; press `Esc` or click the terminal to return to direct input. When a dialog, sheet, or menu is open, `Esc` closes only the top layer, one layer per press. Settings subpages stay stacked above Settings, so Back or `Esc` returns there before the main screen. Drag to select text, then copy/paste with `Cmd+C` / `Cmd+V` on macOS or `Ctrl+Shift+C` / `Ctrl+V` (or `Ctrl+Shift+V`) on Windows/Linux; `Ctrl+C` remains the terminal interrupt. Settings → Keyboard mode can auto-detect or force Mobile/Desktop for this browser only. Browser-reserved shortcuts such as `Cmd+W/T/L/R`, `F5`, and `F12` stay with the browser.
 - **Command & chat modes** — one bottom bar, two modes: type straight into the terminal, or talk to the agent in natural language. Both default quick bars include `Ctrl+C`. `handmux shortcuts` configures shared key/text items; each phone's ⚙ editor shows the effective quick-bar order, interleaves shared and local items, and can remove a shared item from that device only with immediate undo. Adding a phone-local item confirms success and returns directly to the list. Server changes apply live and phones reload them on foreground—no restart or polling required.
-- **Client reload after updates** — once the server update has finished, use Settings → Reload app to load the new client without quitting and reopening the home-screen app.
 - **Script push** — notify your phone from any script or CI step with `handmux push`; target all devices, a named session, or a specific device.
 - **Workspace recovery** — handmux silently keeps the metadata needed to rebuild your latest tmux workspace. After a computer or tmux-server restart, restore it beside any new sessions from the phone or with `handmux restore`; existing sessions are never replaced.
 - **Git viewer** — changes / commit history / any branch / full-screen colored diff, multi-repo tabs, read-only, never touches your tree.
 - **Site preview** — a static folder, or a running HTTP/HTTPS service by port (routing / APIs / live-reload intact), in a phone or desktop viewport. Set its bare preview domain once in `handmux setup`.
 - **Docs** — tap a path in the terminal to open it; Markdown rendered, font zoom, sentence-by-sentence read-aloud.
-- **Mobile select & copy** — long-press to select in the terminal, drag iOS-style handles to fine-tune, copy the selection / a whole line / a whole paragraph.
+- **Select & copy text** — long-press to select in the terminal, drag iOS-style handles to fine-tune, copy the selection / a whole line / a whole paragraph.
 - **Files both ways** — multi-select upload from the chat box, download, share in, copy any absolute path.
 - **Ideas — catch every one** — a thought the moment it strikes: a per-window idea/to-do list, jot one by voice and drop it straight into the prompt.
 - **Built for flaky networks** — backoff reconnect, connection-lost banner, offline page, polling that pauses in the background; a reflow-safe cursor.
@@ -154,6 +152,6 @@ Hit a bug, or wish handmux did something? [**Open an issue**](https://github.com
 
 ## More
 
-**[📖 Docs](https://handmux.com/docs)** · **[🧭 Roadmap](ROADMAP.md)** · **[📝 Changelog](CHANGELOG.md)** · **[🔒 Security](SECURITY.md)** · License **AGPL-3.0**
+**[📖 Docs](https://handmux.com/docs)** · **[📝 Changelog](CHANGELOG.md)** · **[🔒 Security](SECURITY.md)** · License **AGPL-3.0**
 
 Found a security issue? Please report it privately (see [SECURITY.md](SECURITY.md)), not via a public issue.

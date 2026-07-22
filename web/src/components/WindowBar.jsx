@@ -12,7 +12,6 @@ import { AgentMark } from './icons.jsx';
 import { paneLayout, hasGeometry, cellFit, MAP_W, MAP_H, MAP_PAD } from '../paneLayout.js';
 import { t } from '../i18n';
 import LensSwitch from './LensSwitch.jsx';
-import { useBackButton } from '../hooks/useBackButton.js';
 
 const CIRCLED = '①②③④⑤⑥⑦⑧⑨';
 const seq = (i) => (i < CIRCLED.length ? CIRCLED[i] : String(i + 1));
@@ -23,10 +22,8 @@ function WindowTab({ window: win, active, agent, onSelect, onManage }) {
   const lp = useLongPress(() => onManage(win), { onClick: () => onSelect(win) });
   return (
     <button data-win={win.id} className={`win-tab ${active ? 'active' : ''}`} {...lp}>
-      <span className="win-title">
-        {agent && <AgentMark agent={agent} />}
-        <span>{win.name || win.id}</span>
-      </span>
+      {agent && <AgentMark agent={agent} />}
+      {win.name || win.id}
       {win.panes > 1 && <span className="win-panes">{win.panes}</span>}
     </button>
   );
@@ -82,19 +79,8 @@ function PaneMapCell({ cell, cur, releasing, picking, agent, onChoose, onManage 
   );
 }
 
-function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, onManage, onManagePane, onSelectPane, onBeforePaneMapOpen, paneSheetOpen = false, openMapFor = null, onMapOpened, onPaneMapOpenChange }) {
+function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, onManage, onManagePane, onSelectPane, paneSheetOpen = false, openMapFor = null, onMapOpened }) {
   const [open, setOpen] = useState(false);
-  useBackButton(open, () => setOpen(false));
-  const openRef = useRef(open);
-  const onPaneMapOpenChangeRef = useRef(onPaneMapOpenChange);
-  openRef.current = open;
-  onPaneMapOpenChangeRef.current = onPaneMapOpenChange;
-  useEffect(() => {
-    onPaneMapOpenChange?.(open);
-  }, [open, onPaneMapOpenChange]);
-  useEffect(() => () => {
-    if (openRef.current) onPaneMapOpenChangeRef.current?.(false);
-  }, []);
   // Id of the tile mid-selection (drives the .is-picking flash) until the switch commits.
   const [picking, setPicking] = useState(null);
   const pickTimer = useRef(null);
@@ -147,12 +133,7 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
     setPos({ top, left });
   };
   const lp = useLongPress(() => onManage(win), {
-    onClick: () => {
-      if (open) { setOpen(false); return; }
-      const show = () => { place(); setOpen(true); };
-      if (onBeforePaneMapOpen) Promise.resolve(onBeforePaneMapOpen(win.id)).then(show, show);
-      else show();
-    },
+    onClick: () => { if (!open) place(); setOpen((o) => !o); },
   });
 
   // "管理分屏" in the window sheet asks (by our window id) to open the map: anchor + show it, then clear
@@ -200,10 +181,8 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
         aria-expanded={open}
         {...lp}
       >
-        <span className="win-title">
-          {agent && <AgentMark agent={agent} />}
-          <span className="wt-name">{win.name || win.id}</span>
-        </span>
+        {agent && <AgentMark agent={agent} />}
+        <span className="wt-name">{win.name || win.id}</span>
         <span className="wt-sep" aria-hidden="true">│</span>
         <span className="wt-pane">{paneLabel(cur, idx)}</span>
         <span className={`wt-caret${open ? ' open' : ''}`} aria-hidden="true">▾</span>
@@ -258,7 +237,7 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
 
 export default function WindowBar({
   windows, windowAgents = {}, paneAgents = {}, currentAgent, currentWindowId, panes, currentPaneId, onSelectWindow, onSelectPane, onNewWindow, onManageWindow,
-  onManagePane, onBeforePaneMapOpen, paneSheetOpen = false, openMapFor = null, onMapOpened, onPaneMapOpenChange, trackWindowId,
+  onManagePane, paneSheetOpen = false, openMapFor = null, onMapOpened, trackWindowId,
   lens = 'terminal', onLensChange = () => {}, chatLensEnabled = false,
 }) {
   const scrollRef = useRef(null);
@@ -288,11 +267,9 @@ export default function WindowBar({
                 onManage={onManageWindow}
                 onManagePane={onManagePane}
                 onSelectPane={onSelectPane}
-                onBeforePaneMapOpen={onBeforePaneMapOpen}
                 paneSheetOpen={paneSheetOpen}
                 openMapFor={openMapFor}
                 onMapOpened={onMapOpened}
-                onPaneMapOpenChange={onPaneMapOpenChange}
               />
             );
           }

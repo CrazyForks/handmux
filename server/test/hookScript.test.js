@@ -139,32 +139,6 @@ describe('handmux-notify.sh → handmux-write.js', () => {
     expect(obj['%42']).toBeUndefined();
   });
 
-  it('a Codex hook snapshots its exact transcript and an empty new session cannot clear it', () => {
-    const home = tmpHome('hookstate-');
-    const file = path.join(home, 'claude-state.json');
-    const transcript = path.join(home, 'rollout.jsonl');
-    const usageFile = path.join(home, 'codex-usage.json');
-    fs.writeFileSync(transcript, JSON.stringify({
-      timestamp: '2026-07-23T06:00:00.000Z',
-      payload: {
-        type: 'token_count',
-        info: { total_token_usage: { total_tokens: 20 }, model_context_window: 258400 },
-        rate_limits: { primary: { used_percent: 42, window_minutes: 300, resets_at: 1785600000 } },
-      },
-    }));
-
-    const payload = JSON.stringify({ session_id: 'codex-1', transcript_path: transcript });
-    const obj = run('stop', { TMUX_PANE: '%50' }, payload, file, 'codex');
-    expect(obj['%50']).toMatchObject({ src: 'stop', agent: 'codex' });
-    const before = JSON.parse(fs.readFileSync(usageFile, 'utf8'));
-    expect(before.usage.rateLimits.primary.usedPercent).toBe(42);
-
-    const empty = path.join(home, 'empty.jsonl');
-    fs.writeFileSync(empty, JSON.stringify({ type: 'session_meta', payload: {} }));
-    run('prompt', { TMUX_PANE: '%51' }, JSON.stringify({ session_id: 'codex-2', transcript_path: empty }), file, 'codex');
-    expect(JSON.parse(fs.readFileSync(usageFile, 'utf8'))).toEqual(before);
-  });
-
   it('no pane → does nothing (no file written)', () => {
     const file = freshFile();
     const obj = run('stop', { TMUX_PANE: '', CLAUDE_PANE: '' }, '{}', file);

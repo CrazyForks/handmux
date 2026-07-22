@@ -20,12 +20,6 @@ afterEach(cleanup);
 beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); voice.state = 'idle'; });
 
 const typeInto = (el, text) => fireEvent.change(el, { target: { value: text } });
-const deferred = () => {
-  let resolve;
-  let reject;
-  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
-  return { promise, resolve, reject };
-};
 
 describe('ChatComposer', () => {
   it('renders the same device-local merged order as the editor', () => {
@@ -61,27 +55,6 @@ describe('ChatComposer', () => {
     await waitFor(() => expect(ta.value).toBe(''));
     expect(sendText).toHaveBeenCalledWith('%1', '继续实现', true);
     expect(onSent).toHaveBeenCalledWith('继续实现');
-  });
-
-  it('locks editing and ignores repeated Enter while a send is in flight', async () => {
-    const request = deferred();
-    sendText.mockReturnValueOnce(request.promise);
-    render(<ChatComposer pane="%1" kind="idle" desktop />);
-    const input = screen.getByPlaceholderText('和 Claude 对话…');
-    typeInto(input, '只发一次');
-
-    fireEvent.keyDown(input, { key: 'Enter' });
-    fireEvent.keyDown(input, { key: 'Enter' });
-
-    expect(sendText).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('button', { name: '发送' }).disabled).toBe(true);
-    expect(input.getAttribute('aria-readonly')).toBe('true');
-    typeInto(input, '发送中不应改写');
-    expect(input.value).toBe('只发一次');
-
-    request.resolve({ ok: true });
-    await waitFor(() => expect(input.value).toBe(''));
-    expect(input.getAttribute('aria-readonly')).toBe('false');
   });
 
   it('sending a bare non-one-shot slash command hands off to the terminal lens — incl. unrecognized ones', async () => {
@@ -164,35 +137,6 @@ describe('ChatComposer', () => {
     fireEvent.click(screen.getByRole('button', { name: '停止' }));
     expect(onKey).toHaveBeenCalledWith('Escape');
     expect(sendText).not.toHaveBeenCalled();
-  });
-
-  it('desktop focuses the existing textarea and Enter sends while Shift+Enter and IME Enter stay local', async () => {
-    render(<ChatComposer pane="%1" kind="idle" desktop />);
-    const input = screen.getByPlaceholderText('和 Claude 对话…');
-    expect(document.activeElement).toBe(input);
-
-    typeInto(input, '继续');
-    fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => expect(sendText).toHaveBeenCalledWith('%1', '继续', true));
-    await waitFor(() => expect(input.value).toBe(''));
-
-    typeInto(input, '第一行');
-    fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
-    fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
-    expect(sendText).toHaveBeenCalledTimes(1);
-  });
-
-  it('desktop working Enter never stops, while Escape keeps the explicit interrupt shortcut', () => {
-    const onKey = vi.fn();
-    render(<ChatComposer pane="%1" kind="working" desktop onKey={onKey} />);
-    const input = screen.getByPlaceholderText('和 Claude 对话…');
-    typeInto(input, '下一条');
-    fireEvent.keyDown(input, { key: 'Enter' });
-    expect(onKey).not.toHaveBeenCalled();
-    expect(sendText).not.toHaveBeenCalled();
-
-    fireEvent.keyDown(input, { key: 'Escape' });
-    expect(onKey).toHaveBeenCalledWith('Escape');
   });
 
   it('a quick-reply chip sends its text on tap', async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { t } from './i18n';
 import {
   getToken, getLastSession, getLastWindow, getLastPane, remember, clearToken,
@@ -71,28 +71,13 @@ import { useKeyboardInset } from './hooks/useKeyboardInset.js';
 import { useAsrAvailable } from './voice/useAsrAvailable.js';
 import { usePageScrollLock } from './hooks/usePageScrollLock.js';
 import { useLongPress } from './hooks/useLongPress.js';
-import { useBackButton, useHistoryLayer, unwindHistory } from './hooks/useBackButton.js';
+import { useBackButton } from './hooks/useBackButton.js';
 import { useExitConfirm } from './hooks/useExitConfirm.js';
 import { readRoute, writeSessionHash } from './hashRoute.js';
 import { hasShareFlag, takeSharedFile, clearShareFlag } from './shareIntake.js';
 import { windowManageSubtitle, paneManageSubtitle } from './manageLabels.js';
 import { DEFAULT_SERVER_SHORTCUTS } from './shortcutMerge.js';
 import { recoveryPromptMode } from './workspaceRecovery.js';
-import {
-  desktopInputEnvironment,
-  getKeyboardMode,
-  keyboardModeUsesDesktop,
-  setKeyboardMode,
-} from './desktopInput.js';
-import { useDesktopTerminalInput } from './hooks/useDesktopTerminalInput.js';
-import { isDraftShortcut, shouldRouteTerminalPageKey } from './terminalPageKeyboard.js';
-import {
-  getSnapshotInterval,
-  getTerminalTransport,
-  setSnapshotInterval,
-  setTerminalTransport,
-  terminalStreamEnabled,
-} from './terminalTransport.js';
 
 const COL_STEP = 10; // columns added/removed per ⊟/⊞ tap
 
@@ -102,13 +87,6 @@ const pickId = (items, prefer) =>
   (prefer && items.some((x) => x.id === prefer) ? prefer : items[0].id);
 
 export default function App() {
-  const detectedDesktopInput = useMemo(() => desktopInputEnvironment(), []);
-  const [keyboardMode, setKeyboardModeState] = useState(getKeyboardMode);
-  const desktopInput = keyboardModeUsesDesktop(keyboardMode, detectedDesktopInput);
-  const [terminalTransport, setTerminalTransportState] = useState(getTerminalTransport);
-  const [snapshotInterval, setSnapshotIntervalState] = useState(getSnapshotInterval);
-  const terminalStream = typeof window !== 'undefined'
-    && terminalStreamEnabled(window.location, terminalTransport);
   const [needToken, setNeedToken] = useState(!getToken());
   const serverConfig = useServerConfig({ enabled: !needToken });
   const serverShortcuts = serverConfig?.shortcuts || DEFAULT_SERVER_SHORTCUTS;
@@ -127,7 +105,6 @@ export default function App() {
   const [manageWindow, setManageWindow] = useState(null); // the window long-pressed for its action menu
   const [managePane, setManagePane] = useState(null); // pane id long-pressed in the map
   const [openMapFor, setOpenMapFor] = useState(null); // window id whose split map "管理分屏" asked to open
-  const [paneMapOpen, setPaneMapOpen] = useState(false);
   const [fileManagerOpen, setFileManagerOpen] = useState(false); // file-viewer bottom-sheet visibility
   const [gitOpen, setGitOpen] = useState(false);
   const [pendingShare, setPendingShare] = useState(null); // a File shared in via Web Share Target, awaiting a destination
@@ -143,7 +120,6 @@ export default function App() {
   const [favorites, setFavorites] = useState(getFavorites); // global favorite commands
   const [recent, setRecent] = useState([]); // current session's recent commands (keyed by session name)
   const [current, setCurrent] = useState(null); // { session, windows, window, panes, paneId }
-  const windowSwitchRef = useRef(0); // only the newest async pane lookup may finish a window switch
   const [booting, setBooting] = useState(true);
   const [recoveryPlan, setRecoveryPlan] = useState(null);
   const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false);
@@ -179,9 +155,28 @@ export default function App() {
   const [pendingNotifDetail, setPendingNotifDetail] = useState(null); // deep-link: drill here once the list is open
   const [notifSeenTs, setNotifSeenTsState] = useState(getNotifSeenTs); // newest ts seen by opening the inbox (top-dot high-water)
   // Manual-push inbox open/close/detail/delete — declared this early (ahead of the SW-message and
-  // boot deep-link effects further down) so nothing references them before their const initializer runs.
-  // Settings remains mounted underneath: the inbox is a real child history layer, not a swap to root.
-  const openNotifInbox = () => setNotifInboxOpen(true);
+  // boot deep-link effects further down, and the useBackButton group right below) so nothing references
+  // them before their const initializer runs (TDZ).
+  // Open the inbox AFTER Settings' back-popstate, not in the same frame. Settings' useBackButton pops its
+  // history entry on close (history.back() → an async popstate); opening the inbox immediately, its freshly
+  // mounted useBackButton listener would catch THAT back and close itself — the page flashed open then shut
+  // (Settings vanished, nothing showed). Same trap and same fix as usePreviews' startDynamicPreview. Changelog
+  // dodges it by sharing Settings' guard; the inbox has its own, so it must sequence. Fallback timer covers
+  // the rare case where Settings wasn't back-tracked and no popstate fires.
+  const openNotifInbox = () => {
+    let opened = false;
+    const open = () => {
+      if (opened) return;
+      opened = true;
+      window.removeEventListener('popstate', onPop);
+      clearTimeout(fallback);
+      setNotifInboxOpen(true);
+    };
+    const onPop = () => open();
+    window.addEventListener('popstate', onPop);
+    const fallback = setTimeout(open, 300);
+    setSettingsOpen(false); // → Settings' useBackButton cleanup → history.back() → popstate → open()
+  };
   // Multi-level Back for the inbox, mirroring GitPanel/FileManager (see the comment on their useBackButton
   // group): we MIRROR the nav depth into browser history — one entry for the open list, one more for a drill
   // into a message detail. Back pops one entry → the popstate handler (below) pops one level; at the base
@@ -223,24 +218,6 @@ export default function App() {
   };
   const termRef = useRef(null);
   const dockRef = useRef(null); // imperative handle into BottomDock — idea panel fills its input box
-  const [terminalFocused, setTerminalFocused] = useState(false);
-  const terminalFocusedRef = useRef(false);
-  terminalFocusedRef.current = terminalFocused;
-  const focusTerminal = useCallback(() => termRef.current?.focusInput?.(), []);
-  const focusDraft = useCallback(() => {
-    termRef.current?.blurInput?.();
-    dockRef.current?.focusComposer?.();
-  }, []);
-  const focusOwnerAtPointerRef = useRef({ owner: null, at: 0 });
-  const captureTerminalOwner = useCallback(() => {
-    if (!desktopInput) return;
-    focusOwnerAtPointerRef.current = {
-      owner: terminalFocusedRef.current
-        ? 'terminal'
-        : (dockRef.current?.composerFocused?.() ? 'composer' : null),
-      at: Date.now(),
-    };
-  }, [desktopInput]);
   const tmuxColsRef = useRef(null); // target col count, so taps accumulate (term.cols lags ~1s)
   const savedLayoutRef = useRef(null); // window_layout captured before our first resize, for ↺
   const recoveryPlanRef = useRef(null); recoveryPlanRef.current = recoveryPlan;
@@ -253,12 +230,6 @@ export default function App() {
   const drawerMenuRef = useRef(null);
 
   const onAuthFail = useCallback(() => setNeedToken(true), []);
-  const enqueueDesktopInput = useDesktopTerminalInput({
-    enabled: desktopInput,
-    currentPane: current?.paneId,
-    terminalRef: termRef,
-    onAuthFail,
-  });
   // Shared catch prelude: bounce to the token prompt on an auth failure, and report whether it WAS one so
   // each handler keeps its own non-auth control flow (swallow / return / rethrow). See authGuard.js.
   const handledAuth = useCallback((e) => authHandled(e, onAuthFail), [onAuthFail]);
@@ -308,77 +279,13 @@ export default function App() {
     setRecoveryPlan(null);
   }, [clearRecoveryOperation]);
 
-  // The in-app preview subsystem (registry state, active-preview derivation, start/stop/renew/open).
+  // The in-app preview subsystem (registry state, active-preview derivation, start/stop/renew/open),
+  // extracted verbatim into a hook — it coordinates with Settings' history entry via settingsOpen.
   const {
     previewDomain, dynamicEnabled, previewSheetOpen, setPreviewSheetOpen,
     activePreview, shownPreview, tabs: previewTabs, activeName: previewActiveName, openPreviewSheet,
     startPreview, startDynamicPreview, startUrlPreview, switchTab, closeTab, stopPreview, renewPreview,
-  } = usePreviews(current);
-  const terminalOverlayOpen = !!(
-    drawerOpen || settingsOpen || usageOpen || bindOpen || newWinOpen || renameTarget
-    || manageWindow || managePane || fileManagerOpen || gitOpen || basePrompt || docLinkPrompt
-    || localUrlPrompt || recoveryDialogOpen || takeoverTarget || inboxOpen || ideaOpen
-    || changelogOpen || notifInboxOpen || paneMapOpen || (previewSheetOpen && shownPreview)
-  );
-  const terminalOverlayWasOpenRef = useRef(false);
-  const restoreFocusAfterOverlayRef = useRef(null);
-  const chooseKeyboardMode = useCallback((mode) => {
-    setKeyboardMode(mode);
-    if (mode === 'desktop' && terminalOverlayOpen) restoreFocusAfterOverlayRef.current = 'terminal';
-    setKeyboardModeState(mode);
-  }, [terminalOverlayOpen]);
-  const chooseTerminalTransport = useCallback((mode) => {
-    setTerminalTransportState(setTerminalTransport(mode));
-  }, []);
-  const chooseSnapshotInterval = useCallback((intervalMs) => {
-    setSnapshotIntervalState(setSnapshotInterval(intervalMs));
-  }, []);
-  useEffect(() => {
-    const wasOpen = terminalOverlayWasOpenRef.current;
-    if (desktopInput && terminalOverlayOpen) {
-      if (!wasOpen) {
-        const pointerOwner = focusOwnerAtPointerRef.current;
-        const liveOwner = terminalFocusedRef.current
-          ? 'terminal'
-          : (dockRef.current?.composerFocused?.() ? 'composer' : null);
-        restoreFocusAfterOverlayRef.current = liveOwner
-          || (Date.now() - pointerOwner.at < 1000 ? pointerOwner.owner : null);
-        focusOwnerAtPointerRef.current = { owner: null, at: 0 };
-      }
-      termRef.current?.blurInput?.();
-      dockRef.current?.hideKeyboard?.();
-    } else if (desktopInput && wasOpen && restoreFocusAfterOverlayRef.current) {
-      const owner = restoreFocusAfterOverlayRef.current;
-      restoreFocusAfterOverlayRef.current = null;
-      const raf = requestAnimationFrame(() => {
-        if (lens !== 'terminal') return;
-        if (owner === 'terminal') focusTerminal();
-        else dockRef.current?.focusComposer?.();
-      });
-      terminalOverlayWasOpenRef.current = terminalOverlayOpen;
-      return () => cancelAnimationFrame(raf);
-    }
-    terminalOverlayWasOpenRef.current = terminalOverlayOpen;
-    return undefined;
-  }, [desktopInput, terminalOverlayOpen, current?.paneId, lens, focusTerminal]);
-  useEffect(() => {
-    if (!desktopInput || terminalOverlayOpen || lens !== 'terminal' || !current?.paneId) return undefined;
-    const onPageKeyDown = (event) => {
-      if (!shouldRouteTerminalPageKey(event)) return;
-      if (isDraftShortcut(event)) {
-        event.preventDefault();
-        event.stopPropagation();
-        focusDraft();
-        return;
-      }
-      if (termRef.current?.forwardPageKey?.(event)) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-    };
-    window.addEventListener('keydown', onPageKeyDown, true);
-    return () => window.removeEventListener('keydown', onPageKeyDown, true);
-  }, [desktopInput, terminalOverlayOpen, lens, current?.paneId, focusDraft]);
+  } = usePreviews(current, { settingsOpen, setSettingsOpen });
   const startDynamicPreviewFromSettings = useCallback(async (port) => {
     try { await startDynamicPreview(port); }
     catch (e) { if (!handledAuth(e)) throw e; }
@@ -410,7 +317,7 @@ export default function App() {
   // FileManager and GitPanel own their OWN multi-level Back handling (each Back pops one level —
   // preview→dir→close for files, drill→home→close for git — so Back never blows the whole sheet away
   // mid-navigation).
-  useBackButton(previewSheetOpen && !!shownPreview, () => setPreviewSheetOpen(false));
+  useBackButton(previewSheetOpen, () => setPreviewSheetOpen(false));
   useBackButton(drawerOpen || recoveryDialogOpen, () => {
     if (recoveryDialogOpen) closeRecovery(); else setDrawerOpen(false);
   });
@@ -420,32 +327,31 @@ export default function App() {
   useBackButton(newWinOpen, () => setNewWinOpen(false));
   useBackButton(ideaOpen, () => setIdeaOpen(false));
   useBackButton(!!basePrompt, () => setBasePrompt(null));
-  useBackButton(!!takeoverTarget, () => setTakeoverTarget(null));
-  useBackButton(!!docLinkPrompt || !!localUrlPrompt, () => {
-    if (localUrlPrompt) closeLocalUrl(); else setDocLinkPrompt(null);
+  // Settings → 更新日志 is a *swap* (opening the changelog closes settings in the same commit). One
+  // combined guard keeps history at a single entry across the swap — Back closes whichever is on top.
+  useBackButton(settingsOpen || changelogOpen, () => {
+    if (changelogOpen) setChangelogOpen(false); else setSettingsOpen(false);
   });
-  useBackButton(settingsOpen, () => setSettingsOpen(false));
-  useBackButton(changelogOpen, () => setChangelogOpen(false));
   // Same for 长按窗口管理 → 重命名 (and the topbar long-press rename, which opens the modal alone).
   useBackButton(!!manageWindow || !!renameTarget, () => {
     if (renameTarget) setRenameTarget(null); else setManageWindow(null);
   });
   useBackButton(!!managePane, () => setManagePane(null));
-  // This page owns a multi-level history stack. Register it in the shared layer order so it can sit
-  // above Settings and consume Back/Escape before the parent.
-  useHistoryLayer(notifInboxOpen, () => {
-    notifDepthRef.current = Math.max(0, notifDepthRef.current - 1);
-    if (notifDetailRef.current) { setNotifDetailId(null); return; }
-    setNotifInboxOpen(false);
-  });
   // Inbox multi-level Back (GitPanel pattern — see notifDepthRef above): push the base entry on open, pop one
   // level per Back, close at the base. The handler NEVER pushState()s (Android-WebView-safe). Close-by-button
   // (⌄) sets notifInboxOpen=false → the cleanup unwinds any entries we still own so history stays balanced.
   useEffect(() => {
     if (!notifInboxOpen) return undefined;
     pushNotifHist();                          // base entry for the open list
+    const onPop = () => {
+      notifDepthRef.current = Math.max(0, notifDepthRef.current - 1); // the Back already consumed one entry
+      if (notifDetailRef.current) { setNotifDetailId(null); return; } // drill → back to the list
+      setNotifInboxOpen(false);               // base consumed at the list → leave the panel
+    };
+    window.addEventListener('popstate', onPop);
     return () => {
-      if (notifDepthRef.current > 0) { unwindHistory(notifDepthRef.current); notifDepthRef.current = 0; }
+      window.removeEventListener('popstate', onPop);
+      if (notifDepthRef.current > 0) { window.history.go(-notifDepthRef.current); notifDepthRef.current = 0; }
     };
   }, [notifInboxOpen]); // eslint-disable-line react-hooks/exhaustive-deps -- refs/handlers are stable-by-ref
   // Deep-link (SW postMessage / cold boot) targets a specific message: once the list is open (base entry
@@ -534,15 +440,14 @@ export default function App() {
   // panes (prefer remembered → active → first). Writes the session name into the URL hash so
   // the location deep-links back here. Returns false if the session has no windows/panes.
   const openSession = useCallback(async (session, target = null, { isCancelled = () => false } = {}) => {
-    const switchEpoch = ++windowSwitchRef.current;
     if (isCancelled()) return false;
     const windows = await getWindows(session.id);
-    if (isCancelled() || switchEpoch !== windowSwitchRef.current) return false;
+    if (isCancelled()) return false;
     if (!windows.length) return false;
     const window = (target?.window && windows.find((w) => w.id === target.window))
       || windows.find((w) => w.id === pickId(windows, getLastWindow(session.id)));
     const panes = await getPanes(window.id);
-    if (isCancelled() || switchEpoch !== windowSwitchRef.current) return false;
+    if (isCancelled()) return false;
     if (!panes.length) return false;
     const paneId = (target?.pane && panes.some((p) => p.id === target.pane))
       ? target.pane
@@ -728,21 +633,11 @@ export default function App() {
 
   // Switch to another window within the current session (its active pane). Session/hash unchanged.
   const selectWindow = useCallback(async (window) => {
-    const switchEpoch = ++windowSwitchRef.current;
-    const rememberedPaneId = getLastPane(window.id);
-    const immediatePaneId = rememberedPaneId || window.activePaneId || null;
-    // Commit the user's choice before touching the network. With activePaneId supplied by the existing
-    // window listing, Terminal mounts now and shows its own loading surface while pane metadata catches up.
-    setCurrent((c) => (c ? { ...c, window, panes: [], paneId: immediatePaneId } : c));
-    remember({ sessionId: current.session.id, windowId: window.id, paneId: immediatePaneId });
-    tmuxColsRef.current = window.width ?? null;
-    savedLayoutRef.current = null;
     try {
       const panes = await getPanes(window.id);
-      if (switchEpoch !== windowSwitchRef.current) return null;
       if (!panes.length) return;
       const paneId = pickId(panes, getLastPane(window.id));
-      setCurrent((c) => (c && c.window.id === window.id ? { ...c, window, panes, paneId } : c));
+      setCurrent((c) => (c ? { ...c, window, panes, paneId } : c));
       remember({ sessionId: current.session.id, windowId: window.id, paneId });
       tmuxColsRef.current = panes.find((p) => p.id === paneId)?.width ?? null;
       savedLayoutRef.current = null;
@@ -1006,15 +901,6 @@ export default function App() {
     }
   }, [current?.window?.id, refreshPanes, handledAuth]);
 
-  const refreshPaneMap = useCallback(async (targetWindowId = current?.window?.id) => {
-    if (!targetWindowId) return;
-    try {
-      refreshPanes(targetWindowId, await getPanes(targetWindowId));
-    } catch (e) {
-      handledAuth(e);
-    }
-  }, [current?.window?.id, refreshPanes, handledAuth]);
-
   // Split `paneId` into two (dir 'h' left|right, 'v' top/bottom); jump the phone to the new pane. The
   // decision logic (call the api, refetch, pick the new pane) lives in paneActions.js — unit-tested there.
   const splitPaneAction = useCallback(async (paneId, dir) => {
@@ -1218,13 +1104,7 @@ export default function App() {
         setReadIds(pruneReadInboxIds(list.map((n) => n.id)));
         setNotifError('');
       } catch (e) {
-        if (alive && !handledAuth(e)) {
-          // Preserve known client stages (SW/config timeouts) and HTTP status instead of collapsing
-          // every real failure into the same generic text. Unknown network errors stay user-friendly.
-          const detail = e?.code?.startsWith('push.') ? e.message
-            : (e?.status ? `HTTP ${e.status}` : '');
-          setNotifError(detail ? `${t('pushInbox.loadFailed')} (${detail})` : t('pushInbox.loadFailed'));
-        }
+        if (alive && !handledAuth(e)) setNotifError(t('pushInbox.loadFailed'));
       }
     };
     refresh();
@@ -1544,6 +1424,7 @@ export default function App() {
     if (updateInfo?.latest) { setVersionSeen(updateInfo.latest); setVerSeen(updateInfo.latest); } // acknowledge → clears updateDot
   };
   const openChangelog = () => {
+    setSettingsOpen(false);
     setChangelogOpen(true);
     setChangelogSeen(LATEST_RELEASE); setClSeen(LATEST_RELEASE); // opening clears the unread dot
   };
@@ -1553,8 +1434,7 @@ export default function App() {
     // as one unit: the keys + input land just above the keyboard and the terminal's bottom sits
     // right above the keys (the topbar scrolls off the top, which is fine while typing). Uses a
     // transform — the same lift that worked on the dock — so iOS can't undo it by re-scrolling.
-    <div className="app" data-chat-tone={chatTone} onPointerDownCapture={captureTerminalOwner}
-      style={inset ? { transform: `translateY(-${inset}px)` } : undefined}>
+    <div className="app" data-chat-tone={chatTone} style={inset ? { transform: `translateY(-${inset}px)` } : undefined}>
       <header className="topbar">
         <button ref={drawerMenuRef} className="hamburger" onClick={() => setDrawerOpen(true)}>☰</button>
         <span className="session-name" {...sessionNameLongPress}>{current?.session?.name ?? '—'}</span>
@@ -1602,12 +1482,6 @@ export default function App() {
         onChatTone={pickChatTone}
         chatLensEnabled={chatLensOn}
         onChatLensEnabled={toggleChatLens}
-        keyboardMode={keyboardMode}
-        onKeyboardMode={chooseKeyboardMode}
-        terminalTransport={terminalTransport}
-        onTerminalTransport={chooseTerminalTransport}
-        snapshotInterval={snapshotInterval}
-        onSnapshotInterval={chooseSnapshotInterval}
         hooksStatus={hooksStatus}
         onEnableHooks={enableHooks}
         termRef={termRef}
@@ -1859,11 +1733,9 @@ export default function App() {
             onNewWindow={() => setNewWinOpen(true)}
             onManageWindow={openWindowManagement}
             onManagePane={openPaneManagement}
-            onBeforePaneMapOpen={refreshPaneMap}
             paneSheetOpen={!!managePane}
             openMapFor={openMapFor}
             onMapOpened={() => setOpenMapFor(null)}
-            onPaneMapOpenChange={setPaneMapOpen}
             trackWindowId={manageWindow?.id}
             lens={lens}
             chatLensEnabled={chatLensAvailable}
@@ -1879,21 +1751,10 @@ export default function App() {
                 ref={termRef}
                 key={current.paneId}
                 pane={current.paneId}
-                stream={terminalStream}
-                snapshotIntervalMs={snapshotInterval}
-                desktop={desktopInput}
-                autoFocusInput={!terminalOverlayOpen}
                 inset={inset}
                 onAuthFail={onAuthFail}
                 onDocLinkTap={onDocLinkTap}
-                onInputFocusChange={setTerminalFocused}
-                onInputData={enqueueDesktopInput}
-                onRequestDraft={focusDraft}
-                onKeepKeyboard={() => dockRef.current?.keepKeyboardForGesture?.() ?? false}
-                onTap={() => {
-                  if (desktopInput) focusTerminal();
-                  else dockRef.current?.hideKeyboard();
-                }}
+                onTap={() => dockRef.current?.hideKeyboard()}
               />
             )
           )}
@@ -1901,7 +1762,6 @@ export default function App() {
           {chatLens ? (
             <ChatComposer
               pane={current.paneId}
-              desktop={desktopInput}
               kind={states[current.paneId]?.kind}
               cwd={currentPaneCwd}
               onKey={sendKey}
@@ -1929,10 +1789,6 @@ export default function App() {
               inset={inset}
               shortcuts={serverShortcuts}
               micAvailable={micAvailable}
-              desktopUnified={desktopInput}
-              terminalFocused={terminalFocused}
-              onLeaveTerminal={() => termRef.current?.blurInput?.()}
-              onReturnToTerminal={focusTerminal}
             />
           )}
         </>

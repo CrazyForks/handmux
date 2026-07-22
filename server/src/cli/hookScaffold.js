@@ -5,9 +5,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-// Scripts every agent hook installer deploys. The notify/write pair is shared because Codex mirrors
-// Claude's hook contract; the small Codex usage reader is inert unless handmux-write receives agent=codex.
-export const HOOK_SCRIPTS = ['handmux-notify.sh', 'handmux-write.cjs', 'handmux-codex-usage.cjs'];
+// The two scripts every agent hook installer deploys. Shared because the stdin payloads are identical across
+// agents (Codex mirrors Claude's hook contract), so the same notify/write pair drives both.
+export const HOOK_SCRIPTS = ['handmux-notify.sh', 'handmux-write.cjs'];
 
 // Atomic write (tmp + rename) so a crash can't leave a half-written config file. Text in, text out — callers
 // pass raw TOML for config.toml, or use writeJsonAtomic for pretty-printed settings.json.

@@ -6,7 +6,6 @@ import { gzipSync } from 'node:zlib';
 import { isPaneId, isWindowId } from '../tmux/commands.js';
 import { capTrailingBlankRows } from '../trimCapture.js';
 import { isAllowedKey } from '../keyNames.js';
-import { restoreCaptureBackgrounds } from '../captureBackground.js';
 
 export { isAllowedKey } from '../keyNames.js';
 
@@ -20,16 +19,7 @@ export { isAllowedKey } from '../keyNames.js';
 // beat to ingest the pasted line; without it, the Enter can fold into the input as a newline
 // instead of submitting. 120ms is imperceptible but enough to settle.
 const SUBMIT_GAP_MS = 120;
-const RAW_INPUT_MAX_BYTES = 16 * 1024;
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
-const validHexInput = (hex) => typeof hex === 'string'
-  && hex.length >= 2
-  && hex.length <= RAW_INPUT_MAX_BYTES * 2
-  && hex.length % 2 === 0
-  && /^[0-9a-f]+$/i.test(hex);
-const isMissingPane = (error) =>
-  /(?:can't find|cannot find|no such|unknown|not found).*\bpane\b|\bpane\b.*(?:can't find|cannot find|no such|unknown|not found)/i
-    .test(error instanceof Error ? error.message : String(error));
 
 export function terminalRoutes({ commands }) {
   const r = express.Router();
@@ -47,28 +37,13 @@ export function terminalRoutes({ commands }) {
       // pane as exactly its visible screen (lines=0) and skip the blank-trim. A normal pane still pulls
       // `lines` of scrollback and caps the empty grid below the cursor (fresh shell = "prompt + a wall of
       // blank rows") so the phone's bottom-anchored render shows content, not blank. See trimCapture.js.
-      const captured = await commands.capturePane(req.query.pane, altScreen ? 0 : lines);
-      const restored = typeof commands.capturePaneRow === 'function'
-        ? await restoreCaptureBackgrounds(
-          captured,
-          height,
-          (row) => commands.capturePaneRow(req.query.pane, row),
-        )
-        : {
-          ansi: captured,
-          historyLines: Math.max(
-            0,
-            (captured.endsWith('\n') ? captured.slice(0, -1) : captured).split('\n').length - height,
-          ),
-        };
-      const raw = restored.ansi;
+      const raw = await commands.capturePane(req.query.pane, altScreen ? 0 : lines);
       const ansi = altScreen ? raw : capTrailingBlankRows(raw);
       // The cursor's row counted from the BOTTOM of the (trimmed) capture. The live screen is the
       // capture's last `height` rows, so the cursor sits `height-1-cursorY` rows above the bottom —
       // less however many trailing blank rows capTrailingBlankRows dropped (all of them below the
       // cursor). The client re-places xterm's cursor this many rows up from the seed's last row.
       const rowsOf = (s) => (s.endsWith('\n') ? s.slice(0, -1) : s).split('\n').length;
-      const historyLines = altScreen ? 0 : restored.historyLines;
       const cur = {
         row: Math.max(0, (height - 1 - cursorY) - (rowsOf(raw) - rowsOf(ansi))),
         col: cursorX, vis: cursorVisible,
@@ -83,9 +58,7 @@ export function terminalRoutes({ commands }) {
         .update(`${width}x${height}\n${cur.col},${cursorY},${cur.vis ? 1 : 0}\n${altScreen ? 1 : 0}${mouseAware ? 'm' : ''}\n${ansi}`)
         .digest('hex').slice(0, 16);
       if (req.query.since === hash) return res.status(204).end();
-      const json = JSON.stringify({
-        ansi, width, height, historyLines, hash, cur, alt: altScreen, mouseAware,
-      });
+      const json = JSON.stringify({ ansi, width, height, hash, cur, alt: altScreen, mouseAware });
       res.set('Content-Type', 'application/json');
       res.set('Vary', 'Accept-Encoding'); // both 200 branches vary on encoding (correct for any caching proxy)
       // Capture text is mostly SGR codes + spaces — gzip crushes it ~10x. (204s are empty, never gzipped.)
@@ -112,20 +85,6 @@ export function terminalRoutes({ commands }) {
       }
       res.json({ ok: true });
     } catch (e) { next(e); }
-  });
-
-  r.post('/input', async (req, res, next) => {
-    const { pane, hex } = req.body || {};
-    if (!isPaneId(pane)) return res.status(400).json({ error: 'bad pane id' });
-    if (!validHexInput(hex)) return res.status(400).json({ error: 'bad input bytes' });
-    try {
-      await commands.exitCopyModeIfActive(pane);
-      await commands.sendHexInput(pane, hex);
-      res.json({ ok: true });
-    } catch (error) {
-      if (isMissingPane(error)) return res.status(404).json({ error: 'pane not found' });
-      next(error);
-    }
   });
 
   // Resize the tmux window so it reflows to the phone (auto:false), or hand sizing back to

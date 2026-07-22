@@ -23,7 +23,6 @@ const baseCommands = {
   paneInfo: vi.fn(async () => ({ width: 80, height: 24, cursorX: 0, cursorY: 23, cursorVisible: false, altScreen: false, mouseAware: false, mouseSgr: false })),
   exitCopyModeIfActive: vi.fn(async () => {}),
   sendText: vi.fn(async () => {}),
-  sendHexInput: vi.fn(async () => {}),
   sendEnter: vi.fn(async () => {}),
   sendKey: vi.fn(async () => {}),
   sendWheel: vi.fn(async () => {}),
@@ -185,28 +184,9 @@ describe('REST API', () => {
 
   it('GET /history returns ansi + size + a content hash', async () => {
     const res = await auth(request(appWith(baseCommands)).get('/api/history?pane=%1&lines=100')).expect(200);
-    expect(res.body).toMatchObject({
-      ansi: 'history-text', width: 80, height: 24, historyLines: 0,
-    });
+    expect(res.body).toMatchObject({ ansi: 'history-text', width: 80, height: 24 });
     expect(res.body.hash).toEqual(expect.any(String));
     expect(baseCommands.capturePane).toHaveBeenCalledWith('%1', 100);
-  });
-
-  it('GET /history restores a blank row from its real tmux cell background', async () => {
-    const capturePaneRow = vi.fn(async () => '        \n');
-    const cmds = {
-      ...baseCommands,
-      capturePane: vi.fn(async () => '\x1b[48;5;237m❯ hi   \n        \n\x1b[49mreply\n'),
-      capturePaneRow,
-      paneInfo: vi.fn(async () => ({
-        width: 8, height: 3, cursorX: 0, cursorY: 2, cursorVisible: false,
-        altScreen: false, mouseAware: false, mouseSgr: false,
-      })),
-    };
-    const res = await auth(request(appWith(cmds)).get('/api/history?pane=%1&lines=100')).expect(200);
-
-    expect(capturePaneRow).toHaveBeenCalledWith('%1', 1);
-    expect(res.body.ansi.split('\n')[1]).toBe('\x1b[49m        ');
   });
 
   it('GET /history returns 204 when ?since matches the current hash', async () => {
@@ -307,36 +287,6 @@ describe('REST API', () => {
       .send({ pane: '%1', enter: true }).expect(200);
     expect(cmds.sendText).toHaveBeenCalledWith('%1', '');
     expect(cmds.sendEnter).toHaveBeenCalledWith('%1');
-  });
-
-  it('POST /input exits copy mode and sends validated hex bytes', async () => {
-    await auth(request(appWith(baseCommands)).post('/api/input'))
-      .send({ pane: '%1', hex: '61e4bda0e5a5bd0d' }).expect(200);
-    expect(baseCommands.exitCopyModeIfActive).toHaveBeenCalledWith('%1');
-    expect(baseCommands.sendHexInput).toHaveBeenCalledWith('%1', '61e4bda0e5a5bd0d');
-  });
-
-  it('POST /input returns an actionable 404 token when the target pane disappeared', async () => {
-    const cmds = {
-      ...baseCommands,
-      exitCopyModeIfActive: vi.fn(async () => {
-        throw new Error("can't find pane: %1");
-      }),
-    };
-    await auth(request(appWith(cmds)).post('/api/input'))
-      .send({ pane: '%1', hex: '61' })
-      .expect(404, { error: 'pane not found' });
-  });
-
-  it.each([
-    [{ pane: 'main', hex: '61' }, 'bad pane id'],
-    [{ pane: '%1', hex: '' }, 'bad input bytes'],
-    [{ pane: '%1', hex: '6' }, 'bad input bytes'],
-    [{ pane: '%1', hex: 'zz' }, 'bad input bytes'],
-    [{ pane: '%1', hex: '61'.repeat(16385) }, 'bad input bytes'],
-  ])('POST /input rejects invalid data %#', async (body, error) => {
-    const res = await auth(request(appWith(baseCommands)).post('/api/input')).send(body).expect(400);
-    expect(res.body.error).toBe(error);
   });
 
   it('POST /resize validates window id and clamps size', async () => {

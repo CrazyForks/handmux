@@ -237,11 +237,7 @@ async function resolveScriptPushKey(strict) {
     }, 'push.configTimeout');
     if (r.status === 401) throw new UnauthorizedError();
     if (!r.ok) {
-      if (strict) {
-        const error = new Error('push key lookup failed');
-        error.status = r.status;
-        throw error;
-      }
+      if (strict) throw new Error('push key lookup failed');
       return null;
     }
     return (await r.json()).pushKey || null;
@@ -271,9 +267,6 @@ export async function clearPaneNotification(pane) {
 // device that never subscribed has no pushKey → no inbox. Transport/auth failures MUST reject: treating an
 // outage as [] erases the last good list and falsely tells the user they have no notifications.
 export async function getNotifications() {
-  // The inbox is per push subscription. With the device switch off there is no active identity to
-  // query, so do not wait on serviceWorker.ready and turn that expected state into a load error.
-  if (!notifyEnabled()) return [];
   const key = await resolveScriptPushKey(true);
   if (!key) return [];
   const r = await fetchWithTimeout(
@@ -282,11 +275,7 @@ export async function getNotifications() {
     'push.configTimeout',
   );
   if (r.status === 401) throw new UnauthorizedError();
-  if (!r.ok) {
-    const error = new Error('notification inbox load failed');
-    error.status = r.status;
-    throw error;
-  }
+  if (!r.ok) throw new Error('notification inbox load failed');
   return (await r.json()).items || [];
 }
 

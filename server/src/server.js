@@ -8,12 +8,10 @@ import { createApiRouter } from './httpApi.js';
 import { loadUploadExts } from './uploadTypes.js';
 import { createClaudeEvents } from './claudeEvents.js';
 import { syncHooks } from './cli/claudeHooks.js';
-import { syncCodexHooks } from './cli/codexHooks.js';
 import { claudeStatePath } from './cli/state.js';
 import * as commands from './tmux/commands.js';
 import * as push from './push.js';
 import { cacheControlFor } from './staticCache.js';
-import { compressStaticAssets } from './staticCompression.js';
 import { applyAppName, applyManifestName } from './appName.js';
 import { homedir } from 'node:os';
 import { createPreviews } from './previews.js';
@@ -24,7 +22,6 @@ import { createEnvironmentProvider } from './workspace/environment.js';
 import { createWorkspaceLock } from './workspace/lock.js';
 import { createGracefulShutdown, createWorkspaceBackground } from './workspace/checkpointer.js';
 import { createWorkspaceRuntime } from './workspace/runtime.js';
-import { createTerminalStream } from './terminalStream.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -83,12 +80,6 @@ try {
     stateFile,
   });
 } catch { /* best effort — hook sync never fails startup */ }
-try {
-  syncCodexHooks(home, {
-    srcDir: path.resolve(here, '../hooks'),
-    stateFile,
-  });
-} catch { /* best effort — hook sync never fails startup */ }
 
 // Static-site + dynamic preview. The dynamic side is enabled by HANDMUX_PREVIEW_DOMAIN (the wildcard
 // base domain, e.g. preview.example.com); unset → static only. One registry instance is shared by the
@@ -128,7 +119,6 @@ if (appName) {
 }
 
 // index:false so the renamed shell below owns "/" too (otherwise static would serve the generic one).
-app.use(compressStaticAssets);
 app.use(express.static(staticDir, {
   index: false,
   // Cache-Control policy lives in staticCache.js (unit-tested): index.html + sw.js are never cached
@@ -152,17 +142,10 @@ app.get('*', (req, res, next) => {
 const server = app.listen(cfg.port, cfg.host, () => {
   console.log(`[handmux] listening on http://${cfg.host}:${cfg.port} (serving ${staticDir})`);
 });
-const terminalStream = createTerminalStream({ token, commands });
-// The terminal stream owns one exact path. Every other Upgrade keeps using the existing
-// dynamic-preview router unchanged.
-server.on('upgrade', (req, socket, head) => {
-  if (!terminalStream.onUpgrade(req, socket, head)) preview.onUpgrade(req, socket, head);
-});
+// WebSocket/HMR for dynamic previews: route raw Upgrade by Host to the right loopback port.
+server.on('upgrade', preview.onUpgrade);
 
 const shutdown = createGracefulShutdown({ events, workspace, server });
-const handleSignal = () => {
-  terminalStream.close();
-  shutdown().catch(() => {});
-};
+const handleSignal = () => { shutdown().catch(() => {}); };
 process.on('SIGINT', handleSignal);
 process.on('SIGTERM', handleSignal);

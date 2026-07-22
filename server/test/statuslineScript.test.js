@@ -7,14 +7,15 @@ import { tmpHome } from './tmphome.js';
 const SCRIPT = path.resolve(__dirname, '../hooks/handmux-statusline.cjs');
 
 // Run the capturer with a stdin payload; returns { stdout, snap } where snap is the parsed usage file (or null).
-function run(stdin, { tee = false, file = path.join(tmpHome('sl-cap-'), 'claude-usage.json') } = {}) {
+function run(stdin, { tee = false } = {}) {
+  const file = path.join(tmpHome('sl-cap-'), 'claude-usage.json');
   const stdout = execFileSync('node', [SCRIPT, file], {
     input: stdin,
     env: { ...process.env, ...(tee ? { HANDMUX_STATUS_TEE: '1' } : {}) },
     encoding: 'utf8',
   });
   const snap = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null;
-  return { stdout, snap, file };
+  return { stdout, snap };
 }
 
 const FULL = JSON.stringify({
@@ -60,15 +61,6 @@ describe('handmux-statusline.cjs', () => {
     const { snap } = run(JSON.stringify({ model: { display_name: 'Sonnet' }, context_window: { used_percentage: 5 } }));
     expect(snap.model).toBe('Sonnet');
     expect(snap.rateLimits).toEqual({}); // nothing present
-  });
-
-  it('does not replace the machine-wide quota with a new session empty snapshot', () => {
-    const { snap: before, file } = run(FULL);
-    const { snap: after } = run(
-      JSON.stringify({ model: { display_name: 'Sonnet' }, context_window: { used_percentage: 5 } }),
-      { file },
-    );
-    expect(after).toEqual(before);
   });
 
   it('never crashes on non-JSON stdin (writes nothing meaningful, exits 0)', () => {

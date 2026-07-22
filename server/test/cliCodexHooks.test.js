@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   mergeCodexHooks, stripCodexHooks, codexHooksBlock,
-  codexHooksStatus, installCodexHooks, uninstallCodexHooks, syncCodexHooks,
+  codexHooksStatus, installCodexHooks, uninstallCodexHooks,
 } from '../src/cli/codexHooks.js';
 
 // Presence is gated on the `codex` BINARY being on PATH (not on ~/.codex existing — that dir name isn't
@@ -81,7 +81,6 @@ describe('installCodexHooks / status / uninstall (IO)', () => {
     expect(toml).toContain('[[hooks.Stop]]');
     expect(fs.existsSync(path.join(home, '.codex', 'hooks', 'handmux-notify.sh'))).toBe(true);
     expect(fs.existsSync(path.join(home, '.codex', 'hooks', 'handmux-write.cjs'))).toBe(true);
-    expect(fs.existsSync(path.join(home, '.codex', 'hooks', 'handmux-codex-usage.cjs'))).toBe(true);
     expect(fs.readFileSync(path.join(home, '.codex', 'hooks', 'handmux-notify.env'), 'utf8'))
       .toBe(`HANDMUX_STATE=${stateFile}\n`);
 
@@ -112,37 +111,5 @@ describe('installCodexHooks / status / uninstall (IO)', () => {
     expect(codexHooksStatus(home)).toBe('absent');
     expect(fs.readFileSync(path.join(home, '.codex', 'config.toml'), 'utf8')).toContain('model = "gpt-5"');
     expect(fs.existsSync(path.join(home, '.codex', 'hooks', 'handmux-notify.sh'))).toBe(false);
-    expect(fs.existsSync(path.join(home, '.codex', 'hooks', 'handmux-codex-usage.cjs'))).toBe(false);
-  });
-
-  it('sync refreshes an existing marked install even when the server PATH cannot resolve codex', () => {
-    const home = tmpHome();
-    const stateFile = path.join(home, '.handmux', 'claude-state.json');
-    fs.mkdirSync(path.join(home, '.codex'), { recursive: true });
-    fs.writeFileSync(path.join(home, '.codex', 'config.toml'), mergeCodexHooks('model = "gpt-5"\n', BLOCK));
-    fs.mkdirSync(path.join(home, '.codex', 'hooks'), { recursive: true });
-    const usageScript = path.join(home, '.codex', 'hooks', 'handmux-codex-usage.cjs');
-    fs.writeFileSync(usageScript, '// stale');
-    process.env.PATH = '';
-
-    expect(syncCodexHooks(home, { srcDir, stateFile })).toEqual({ status: 'installed', changed: false });
-    expect(fs.readFileSync(usageScript, 'utf8')).not.toBe('// stale');
-  });
-
-  it('sync refreshes scripts for an existing opt-in without changing user TOML', () => {
-    process.env.PATH = fakeCodexOnPath();
-    const home = tmpHome();
-    const stateFile = path.join(home, '.handmux', 'claude-state.json');
-    fs.mkdirSync(path.join(home, '.codex'), { recursive: true });
-    fs.writeFileSync(path.join(home, '.codex', 'config.toml'), 'model = "gpt-5"\n');
-    installCodexHooks(home, { srcDir, stateFile });
-    const configPath = path.join(home, '.codex', 'config.toml');
-    const before = fs.readFileSync(configPath, 'utf8');
-    const usageScript = path.join(home, '.codex', 'hooks', 'handmux-codex-usage.cjs');
-    fs.writeFileSync(usageScript, '// stale');
-
-    expect(syncCodexHooks(home, { srcDir, stateFile })).toEqual({ status: 'installed', changed: false });
-    expect(fs.readFileSync(usageScript, 'utf8')).not.toBe('// stale');
-    expect(fs.readFileSync(configPath, 'utf8')).toBe(before);
   });
 });

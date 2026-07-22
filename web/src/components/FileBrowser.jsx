@@ -7,7 +7,6 @@ import { joinPath } from '../docPath.js';
 import { FolderIcon, FileIcon, ImageIcon, ArrowUpIcon, DownloadIcon, LocateIcon, FolderPlusIcon, UploadIcon, CopyIcon } from './icons.jsx';
 import ActionSheet from './ActionSheet.jsx';
 import { t } from '../i18n';
-import { useBackButton } from '../hooks/useBackButton.js';
 
 const DOC_EXT_RE = /\.(?:md|markdown|html|htm|txt|log|sh)$/i;
 
@@ -53,7 +52,7 @@ const fmtSize = (n) =>
 // Two-way bound within a directory: tapping a folder rewrites the path box; typing in the box
 // refetches the named dir (debounced) and live-filters its entries by the trailing fragment. Tapping
 // a file (or Enter on a doc path) opens it via onOpenDoc — always an absolute path.
-export default function FileBrowser({ path, onNavigate, onOpenDoc, onJumpToCwd, pendingFile, onPendingConsumed, pickMode = false, allowMkdir = !pickMode, onPick, refreshKey = 0, overlayActive = true }) {
+export default function FileBrowser({ path, onNavigate, onOpenDoc, onJumpToCwd, pendingFile, onPendingConsumed, pickMode = false, allowMkdir = !pickMode, onPick, refreshKey = 0 }) {
   const [input, setInput] = useState('');   // the path text box — relative to the current root
   const [dir, setDir] = useState(null);     // loaded { path, parent, entries }
   const [rootMenuOpen, setRootMenuOpen] = useState(false); // the root-prefix dropdown (~ / tmp / TMPDIR)
@@ -114,9 +113,6 @@ export default function FileBrowser({ path, onNavigate, onOpenDoc, onJumpToCwd, 
     document.addEventListener('pointerdown', onDown, true);
     return () => document.removeEventListener('pointerdown', onDown, true);
   }, [rootMenuOpen]);
-  useBackButton(overlayActive && rootMenuOpen, () => setRootMenuOpen(false));
-  useBackButton(overlayActive && !!confirmName, () => setConfirmName(null));
-  useBackButton(overlayActive && mkdirOpen, () => { setMkdirOpen(false); setMkdirName(''); });
 
   // Friendly transient hint (e.g. unsupported preview) — distinct from the red error, fades on its own.
   const showNotice = (msg) => {

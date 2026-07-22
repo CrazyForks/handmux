@@ -1,16 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { readFileSync } from 'node:fs';
 
-const api = vi.hoisted(() => ({
-  uploadFile: vi.fn(async () => ({ path: '/uploads/picked.txt' })),
-}));
 vi.mock('../src/api.js', () => ({
   sendText: vi.fn(async () => ({ ok: true })),
-  uploadFile: api.uploadFile,
   UnauthorizedError: class UnauthorizedError extends Error {},
-  UploadAbort: class UploadAbort extends Error {},
 }));
 
 // 可驱动的语音 mock:测试改 voice.state/voice.partial 再重渲染来模拟"录音中/实时增量";
@@ -24,8 +18,6 @@ import BottomDock from '../src/components/BottomDock.jsx';
 import { sendText } from '../src/api.js';
 import { t } from '../src/i18n';
 import { cmdScope, saveFavs } from '../src/favStore.js';
-
-const styles = readFileSync(`${process.cwd()}/src/styles.css`, 'utf8');
 
 let container;
 let root;
@@ -43,57 +35,13 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
-  document.querySelectorAll('.test-terminal-focus').forEach((node) => node.remove());
   if ('visualViewport' in window) delete window.visualViewport; // drop any per-test mock
-  vi.useRealTimers();
 });
 
 const render = (props) => act(() => root.render(<BottomDock micAvailable {...props} />));
 const fire = (node, type) => act(() => node.dispatchEvent(new MouseEvent(type, { bubbles: true })));
 // Quick-command chips are HoldButtons (pointer events, no onClick): a clean tap = pointerdown + pointerup.
 const tap = (node) => { fire(node, 'pointerdown'); fire(node, 'pointerup'); };
-const deferred = () => {
-  let resolve;
-  let reject;
-  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
-  return { promise, resolve, reject };
-};
-const chooseFile = (picker, name = 'picked.txt') => {
-  const files = [new File(['picked'], name, { type: 'text/plain' })];
-  let value = 'picked';
-  Object.defineProperty(picker, 'files', {
-    configurable: true,
-    get: () => files,
-  });
-  // Match a real browser's live FileList: resetting the picker empties the same list object
-  // previously returned by `input.files`.
-  Object.defineProperty(picker, 'value', {
-    configurable: true,
-    get: () => value,
-    set: (next) => {
-      value = next;
-      if (next === '') files.length = 0;
-    },
-  });
-  act(() => picker.dispatchEvent(new Event('change', { bubbles: true })));
-};
-const terminalFocusTarget = () => {
-  const target = document.createElement('button');
-  target.className = 'test-terminal-focus';
-  document.body.appendChild(target);
-  return target;
-};
-const captureAnimationFrames = () => {
-  const frames = [];
-  const spy = vi.spyOn(window, 'requestAnimationFrame')
-    .mockImplementation((callback) => { frames.push(callback); return frames.length; });
-  return {
-    flush: () => act(() => {
-      while (frames.length) frames.shift()(performance.now());
-    }),
-    restore: () => spy.mockRestore(),
-  };
-};
 
 // React tracks the controlled value via the native setter; set it then fire `input` so onChange runs.
 const typeInto = (node, text) => act(() => {
@@ -103,11 +51,6 @@ const typeInto = (node, text) => act(() => {
 });
 
 describe('BottomDock', () => {
-  it('keeps the mobile composer placeholder conversational', () => {
-    render({ pane: '%1' });
-    expect(container.querySelector('.input-text').placeholder).toBe('说点什么…');
-  });
-
   it('renders the device-local command order across shared and local global items', () => {
     localStorage.setItem('hm_favs7_command', JSON.stringify([
       { kind: 'cmd', text: 'local', enter: false },
@@ -256,67 +199,6 @@ describe('BottomDock', () => {
     expect(sendText).toHaveBeenCalledWith('%1', 'ls -la', true);
   });
 
-  it('keeps the empty send button available for a bare Enter', async () => {
-    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-    const button = container.querySelector('.input-send');
-    expect(button.disabled).toBe(false);
-    expect(button.classList.contains('is-empty')).toBe(true);
-    await act(async () => {
-      button.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
-      await Promise.resolve();
-    });
-    expect(sendText).toHaveBeenCalledWith('%1', '', true);
-  });
-
-  it('locks editing and ignores repeated send taps until the request finishes', async () => {
-    const request = deferred();
-    sendText.mockReturnValueOnce(request.promise);
-    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-    const input = container.querySelector('.input-text');
-    const button = container.querySelector('.input-send');
-    typeInto(input, '只发一次');
-
-    act(() => {
-      button.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
-      button.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
-    });
-
-    expect(sendText).toHaveBeenCalledTimes(1);
-    expect(button.disabled).toBe(true);
-    expect(input.getAttribute('aria-readonly')).toBe('true');
-    typeInto(input, '发送中不应改写');
-    expect(input.value).toBe('只发一次');
-
-    await act(async () => {
-      request.resolve({ ok: true });
-      await request.promise;
-      await Promise.resolve();
-    });
-    expect(input.value).toBe('');
-    expect(input.getAttribute('aria-readonly')).toBe('false');
-  });
-
-  it('unlocks the original draft after a send failure', async () => {
-    const request = deferred();
-    sendText.mockReturnValueOnce(request.promise);
-    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-    const input = container.querySelector('.input-text');
-    const button = container.querySelector('.input-send');
-    typeInto(input, '失败后保留');
-    fire(button, 'pointerup');
-
-    await act(async () => {
-      request.reject(new Error('offline'));
-      await request.promise.catch(() => {});
-      await Promise.resolve();
-    });
-
-    expect(input.value).toBe('失败后保留');
-    expect(button.disabled).toBe(false);
-    typeInto(input, '可以继续编辑');
-    expect(input.value).toBe('可以继续编辑');
-  });
-
   it('long-pressing the 发送 ↑ types the box text into the pane WITHOUT Enter', async () => {
     vi.useFakeTimers();
     const onSent = vi.fn();
@@ -330,14 +212,12 @@ describe('BottomDock', () => {
     vi.useRealTimers();
   });
 
-  it('发送 ↑ 常驻且空框也可发送裸 Enter', () => {
+  it('发送 ↑ 常驻但空框禁用,有字时启用', () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-    expect(container.querySelector('.input-send')).not.toBe(null);
-    expect(container.querySelector('.input-send').disabled).toBe(false);
-    expect(container.querySelector('.input-send').classList.contains('is-empty')).toBe(true);
+    expect(container.querySelector('.input-send')).not.toBe(null);     // 常驻:空框也在
+    expect(container.querySelector('.input-send').disabled).toBe(true); // …但禁用
     typeInto(container.querySelector('.input-text'), 'ls');
-    expect(container.querySelector('.input-send').disabled).toBe(false);
-    expect(container.querySelector('.input-send').classList.contains('is-empty')).toBe(false);
+    expect(container.querySelector('.input-send').disabled).toBe(false); // 有字 → 启用
   });
 
   it('快捷栏:固定的上传(带图标)+ 一排自定义命令 chip;历史在药丸里', () => {
@@ -654,314 +534,6 @@ describe('BottomDock', () => {
     expect(onSent).toHaveBeenCalledWith('git status');
   });
 
-  it('desktop unified mode shows the existing chat page with every existing capability', () => {
-    render({
-      pane: '%1',
-      desktopUnified: true,
-      terminalFocused: true,
-      shortcuts: { command: [], chat: [{ type: 'text', text: '继续', enter: true }] },
-    });
-    expect(container.querySelector('.dock-page.chat')).not.toBeNull();
-    expect(container.textContent).toContain('继续');
-    expect(container.querySelector(`[aria-label="${t('dock.attach')}"]`)).not.toBeNull();
-    expect(container.querySelector('.input-history')).not.toBeNull();
-    expect(container.querySelector('.input-send')).not.toBeNull();
-    expect(container.querySelector('.input-text').placeholder).toBe('按 Shift + Enter 进入草稿模式');
-    expect(container.querySelector('.dock-page.command')).toBeNull();
-    expect(container.querySelector('.keybar-grid')).toBeNull();
-    expect(container.querySelector('.dock-handle')).toBeNull();
-  });
-
-  it('uses focus styling and dynamic placeholder instead of a terminal-mode label', () => {
-    render({ pane: '%1', desktopUnified: true, terminalFocused: true });
-    const input = container.querySelector('.input-text');
-    expect(container.querySelector('.desktop-terminal-input')).toBeNull();
-    expect(input.placeholder).toBe('按 Shift + Enter 进入草稿模式');
-
-    act(() => input.focus());
-    expect(input.placeholder).toBe('按 Esc 回到终端模式 · Shift + Enter 换行');
-  });
-
-  it('uses a separate rectangular shortcut row and a flat draft field only on desktop', () => {
-    expect(styles).toMatch(/\.quick-cmd\s*\{[^}]*border-radius:\s*12px/);
-    expect(styles).toMatch(/\.input-wrap\s*\{[^}]*border-radius:\s*20px/);
-    expect(styles).toMatch(/\.desktop-unified \.quick-(?:fix|cmd)[^{]*\{[^}]*border-radius:\s*6px/);
-    expect(styles).toMatch(/\.desktop-unified \.input-wrap\s*\{[^}]*padding:\s*3px 4px[^}]*border-radius:\s*8px[^}]*box-shadow:\s*none/);
-    expect(styles).toMatch(/\.desktop-unified \.input-text,[\s\S]*\.desktop-unified \.input-mirror\s*\{[^}]*padding:\s*6px 5px 6px 9px/);
-    expect(styles).toMatch(/@media\s*\(hover:\s*hover\)\s*and\s*\(pointer:\s*fine\)\s*\{[\s\S]*\.desktop-unified \.input-text,[\s\S]*font-size:\s*15px[^}]*line-height:\s*21px/);
-  });
-
-  it('desktop Enter sends and stays in draft mode, Shift+Enter stays multiline, and Escape returns', async () => {
-    const onReturnToTerminal = vi.fn();
-    render({ pane: '%1', desktopUnified: true, onReturnToTerminal });
-    const input = container.querySelector('.input-text');
-    const keydown = (key, opts = {}) =>
-      act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...opts })));
-
-    act(() => input.focus());
-    typeInto(input, '检查修改');
-    await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', {
-      key: 'Enter', bubbles: true,
-    })));
-    await vi.waitFor(() => expect(sendText).toHaveBeenCalledWith('%1', '检查修改', true));
-    expect(onReturnToTerminal).not.toHaveBeenCalled();
-    expect(document.activeElement).toBe(input);
-    expect(input.placeholder).toBe('按 Esc 回到终端模式 · Shift + Enter 换行');
-
-    typeInto(input, '第一行');
-    keydown('Enter', { shiftKey: true });
-    expect(sendText).toHaveBeenCalledTimes(1);
-
-    typeInto(input, '保留草稿');
-    keydown('Escape');
-    expect(input.value).toBe('保留草稿');
-    expect(onReturnToTerminal).toHaveBeenCalledTimes(1);
-  });
-
-  it('desktop IME Enter does not send', () => {
-    render({ pane: '%1', desktopUnified: true, onReturnToTerminal: vi.fn() });
-    const input = container.querySelector('.input-text');
-    typeInto(input, '输入法候选');
-    act(() => input.dispatchEvent(new KeyboardEvent('keydown', {
-      key: 'Enter', bubbles: true, isComposing: true,
-    })));
-    expect(sendText).not.toHaveBeenCalled();
-  });
-
-  it('desktop drawers blur terminal input and restore it only when terminal owned focus before opening', async () => {
-    const onLeaveTerminal = vi.fn();
-    const onReturnToTerminal = vi.fn();
-    render({
-      pane: '%1',
-      desktopUnified: true,
-      terminalFocused: true,
-      onLeaveTerminal,
-      onReturnToTerminal,
-    });
-    fire(container.querySelector('.input-history'), 'click');
-    expect(onLeaveTerminal).toHaveBeenCalledTimes(1);
-    fire(container.querySelector('.input-history'), 'click');
-    await act(async () => Promise.resolve());
-    expect(onReturnToTerminal).toHaveBeenCalledTimes(1);
-
-    render({
-      pane: '%1',
-      desktopUnified: true,
-      terminalFocused: false,
-      onLeaveTerminal,
-      onReturnToTerminal,
-    });
-    fire(container.querySelector('.input-history'), 'click');
-    fire(container.querySelector('.input-history'), 'click');
-    await act(async () => Promise.resolve());
-    expect(onReturnToTerminal).toHaveBeenCalledTimes(1);
-
-    render({
-      pane: '%1',
-      desktopUnified: true,
-      terminalFocused: true,
-      onLeaveTerminal,
-      onReturnToTerminal,
-    });
-    fire(container.querySelector(`[aria-label="${t('dock.attach')}"]`), 'click');
-    expect(onLeaveTerminal).toHaveBeenCalledTimes(3);
-  });
-
-  it('desktop drawers blur and restore the composer when it owned focus before opening', async () => {
-    render({ pane: '%1', desktopUnified: true, terminalFocused: false });
-    const input = container.querySelector('.input-text');
-    act(() => input.focus());
-    expect(document.activeElement).toBe(input);
-
-    fire(container.querySelector('.input-history'), 'click');
-    expect(document.activeElement).not.toBe(input);
-    fire(container.querySelector('.input-history'), 'click');
-    await act(async () => Promise.resolve());
-    expect(document.activeElement).toBe(input);
-  });
-
-  it.each(['terminal', 'composer', 'none'])(
-    'desktop file-picker cancel restores the original %s focus owner exactly once',
-    async (owner) => {
-      const onReturnToTerminal = vi.fn();
-      render({
-        pane: '%1',
-        desktopUnified: true,
-        terminalFocused: owner === 'terminal',
-        onLeaveTerminal: vi.fn(),
-        onReturnToTerminal,
-      });
-      const composer = container.querySelector('.input-text');
-      if (owner === 'composer') act(() => composer.focus());
-
-      fire(container.querySelector(`[aria-label="${t('dock.attach')}"]`), 'click');
-      const picker = container.querySelector('.browse-file-input');
-      fire(picker, 'cancel', Event);
-      fire(picker, 'cancel', Event);
-      await act(async () => Promise.resolve());
-
-      expect(onReturnToTerminal).toHaveBeenCalledTimes(owner === 'terminal' ? 1 : 0);
-      expect(document.activeElement === composer).toBe(owner === 'composer');
-    },
-  );
-
-  it('uses the window-focus fallback when a system file picker closes without change or cancel', async () => {
-    const onReturnToTerminal = vi.fn();
-    render({
-      pane: '%1',
-      desktopUnified: true,
-      terminalFocused: true,
-      onLeaveTerminal: vi.fn(),
-      onReturnToTerminal,
-    });
-    fire(container.querySelector(`[aria-label="${t('dock.attach')}"]`), 'click');
-
-    fire(window, 'blur', Event);
-    fire(window, 'focus', Event);
-    fire(window, 'focus', Event);
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-
-    expect(onReturnToTerminal).toHaveBeenCalledOnce();
-    const picker = container.querySelector('.browse-file-input');
-    fire(picker, 'cancel', Event);
-    fire(picker, 'cancel', Event);
-    await act(async () => Promise.resolve());
-    expect(onReturnToTerminal).toHaveBeenCalledOnce();
-  });
-
-  it.each(['terminal', 'composer'])(
-    're-enters the upload overlay when %s fallback restoration runs before change, then restores after upload',
-    async (owner) => {
-      vi.useFakeTimers();
-      const frames = captureAnimationFrames();
-      const upload = deferred();
-      api.uploadFile.mockReturnValueOnce(upload.promise);
-      const terminal = terminalFocusTarget();
-      const onLeaveTerminal = vi.fn(() => terminal.blur());
-      const onReturnToTerminal = vi.fn(() => terminal.focus());
-      render({
-        pane: '%1',
-        cwd: '/work',
-        desktopUnified: true,
-        terminalFocused: owner === 'terminal',
-        onLeaveTerminal,
-        onReturnToTerminal,
-      });
-      const composer = container.querySelector('.input-text');
-      act(() => (owner === 'composer' ? composer : terminal).focus());
-      fire(container.querySelector(`[aria-label="${t('dock.attach')}"]`), 'click');
-      const picker = container.querySelector('.browse-file-input');
-
-      fire(window, 'blur', Event);
-      fire(window, 'focus', Event);
-      act(() => vi.runOnlyPendingTimers());
-      await act(async () => Promise.resolve());
-      expect(onReturnToTerminal).toHaveBeenCalledTimes(owner === 'terminal' ? 1 : 0);
-      expect(document.activeElement === composer).toBe(owner === 'composer');
-
-      chooseFile(picker);
-      await vi.waitFor(() => expect(api.uploadFile).toHaveBeenCalledOnce());
-      expect(onLeaveTerminal).toHaveBeenCalledTimes(2);
-      expect(document.activeElement).not.toBe(composer);
-      expect(onReturnToTerminal).toHaveBeenCalledTimes(owner === 'terminal' ? 1 : 0);
-
-      await act(async () => {
-        upload.resolve({ path: '/uploads/picked.txt' });
-        await upload.promise;
-        await Promise.resolve();
-      });
-      frames.flush();
-      expect(onReturnToTerminal).toHaveBeenCalledTimes(owner === 'terminal' ? 2 : 0);
-      expect(document.activeElement).toBe(owner === 'terminal' ? terminal : composer);
-      frames.restore();
-      vi.useRealTimers();
-    },
-  );
-
-  it('normal file change restores the terminal owner once only after upload finishes', async () => {
-    const frames = captureAnimationFrames();
-    const upload = deferred();
-    api.uploadFile.mockReturnValueOnce(upload.promise);
-    const terminal = terminalFocusTarget();
-    const onReturnToTerminal = vi.fn(() => terminal.focus());
-    render({
-      pane: '%1',
-      cwd: '/work',
-      desktopUnified: true,
-      terminalFocused: true,
-      onLeaveTerminal: vi.fn(),
-      onReturnToTerminal,
-    });
-    act(() => terminal.focus());
-    fire(container.querySelector(`[aria-label="${t('dock.attach')}"]`), 'click');
-    chooseFile(container.querySelector('.browse-file-input'));
-    await vi.waitFor(() => expect(api.uploadFile).toHaveBeenCalledOnce());
-    expect(onReturnToTerminal).not.toHaveBeenCalled();
-
-    await act(async () => {
-      upload.resolve({ path: '/uploads/picked.txt' });
-      await upload.promise;
-      await Promise.resolve();
-    });
-    frames.flush();
-    expect(onReturnToTerminal).toHaveBeenCalledOnce();
-    expect(document.activeElement).toBe(terminal);
-    frames.restore();
-  });
-
-  it('mobile file upload keeps focusing the composer after inserting the uploaded path', async () => {
-    const frames = captureAnimationFrames();
-    const upload = deferred();
-    api.uploadFile.mockReturnValueOnce(upload.promise);
-    render({ pane: '%1', cwd: '/work' });
-    const composer = container.querySelector('.input-text');
-    fire(container.querySelector(`[aria-label="${t('dock.attach')}"]`), 'click');
-    chooseFile(container.querySelector('.browse-file-input'));
-
-    await act(async () => {
-      upload.resolve({ path: '/uploads/picked.txt' });
-      await upload.promise;
-      await Promise.resolve();
-    });
-    frames.flush();
-
-    expect(composer.value).toContain('/uploads/picked.txt');
-    expect(document.activeElement).toBe(composer);
-    frames.restore();
-  });
-
-  it('desktop upload error restores the terminal owner without a later composer rAF takeover', async () => {
-    const frames = captureAnimationFrames();
-    const upload = deferred();
-    api.uploadFile.mockReturnValueOnce(upload.promise);
-    const terminal = terminalFocusTarget();
-    render({
-      pane: '%1',
-      cwd: '/work',
-      desktopUnified: true,
-      terminalFocused: true,
-      onLeaveTerminal: () => terminal.blur(),
-      onReturnToTerminal: () => terminal.focus(),
-    });
-    act(() => terminal.focus());
-    fire(container.querySelector(`[aria-label="${t('dock.attach')}"]`), 'click');
-    chooseFile(container.querySelector('.browse-file-input'));
-
-    await act(async () => {
-      upload.reject(new Error('offline'));
-      await upload.promise.catch(() => {});
-      await Promise.resolve();
-    });
-    frames.flush();
-
-    expect(container.querySelector('.dock-upload.error')).not.toBeNull();
-    expect(document.activeElement).toBe(terminal);
-    expect(document.activeElement).not.toBe(container.querySelector('.input-text'));
-    frames.restore();
-  });
-
   describe('input mode (command ⇄ agent)', () => {
     const keydown = (node, key, opts = {}) =>
       act(() => node.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...opts })));
@@ -1008,31 +580,6 @@ describe('BottomDock', () => {
       swipe(100); // drag right → command
       expect(dot('command').classList.contains('on')).toBe(true);
       expect(activePage('command')).toBe(true);
-    });
-
-    it('keeps a physically-open keyboard through a horizontal swipe after focus drifts', () => {
-      const originalInnerHeight = Object.getOwnPropertyDescriptor(window, 'innerHeight');
-      Object.defineProperty(window, 'innerHeight', { value: kbdDown, configurable: true });
-      const vv = installVV(kbdDown);
-      try {
-        render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() }); // command
-        act(() => cap().focus());
-        // Model a browser that resizes BOTH layout and visual viewports: the old absolute
-        // innerHeight-vv.height test reads 0 even though the keyboard is physically open.
-        Object.defineProperty(window, 'innerHeight', { value: kbdUp, configurable: true });
-        vv.resize(kbdUp);
-        const driftTarget = document.createElement('button');
-        document.body.appendChild(driftTarget);
-        act(() => driftTarget.focus()); // OS keyboard remains open, but the dock field lost DOM focus
-        expect(document.activeElement).toBe(driftTarget);
-
-        swipe(-100); // → chat; must carry focus instead of running the "keyboard was down" blur path
-        expect(activePage('chat')).toBe(true);
-        expect(document.activeElement).toBe(container.querySelector('.input-text'));
-        driftTarget.remove();
-      } finally {
-        if (originalInnerHeight) Object.defineProperty(window, 'innerHeight', originalInnerHeight);
-      }
     });
 
     it('a drag shorter than the commit threshold snaps back (harder to trigger)', () => {

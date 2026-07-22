@@ -3,10 +3,9 @@
 // 10s. Pure + DOM-free so it unit-tests deterministically (same shape as backoff.js).
 export const FAST_MS = 1000;
 
-// idleMs = time since the last change/activity. <8s → selected active rate; <60s → 5s;
-// longer → 10s (cap).
-export function idleDelay(idleMs, fastMs = FAST_MS) {
-  if (idleMs < 8000) return fastMs;
+// idleMs = time since the last change/activity. <8s → live (1s); <60s → 5s; longer → 10s (cap).
+export function idleDelay(idleMs) {
+  if (idleMs < 8000) return FAST_MS;
   if (idleMs < 60000) return 5000;
   return 10000;
 }

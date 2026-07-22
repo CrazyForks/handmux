@@ -5,7 +5,6 @@ import { ChevronDownIcon, MonitorIcon, RefreshIcon, SmartphoneIcon } from './ico
 import { previewUrl } from '../api.js';
 import { fmtRemainMin, useRemaining } from '../previewCountdown.js';
 import { t } from '../i18n';
-import { useBackButton } from '../hooks/useBackButton.js';
 
 // Desktop viewport width emulated in "PC" mode: the page renders at this width inside the iframe.
 const PC_WIDTH = 1280;
@@ -35,7 +34,6 @@ export default function PreviewSheet({ open, tabs, activeName, name, kind = 'sta
   const bodyRef = useRef(null);
 
   useEffect(() => { if (!open) setPopOpen(false); }, [open]); // never reopen mid-popover
-  useBackButton(open && popOpen, () => setPopOpen(false));
   useEffect(() => { if (device === 'mobile') setZoom(1); }, [device]); // leaving PC resets zoom
   // Measure the body for PC scale-to-fit; ResizeObserver may be absent (jsdom) → guard, measure once.
   useEffect(() => {

@@ -3,7 +3,6 @@ import { useRef, useState } from 'react';
 import { mimeFromName } from '../mime.js';
 import ActionSheet from './ActionSheet.jsx';
 import { t } from '../i18n';
-import { useBackButton } from '../hooks/useBackButton.js';
 
 const MAX = 6;            // max zoom multiplier over fit-to-width
 const LONG_PRESS_MS = 500; // hold this long (single finger, no drag) → save
@@ -36,7 +35,6 @@ export default function ImageViewer({ url, name }) {
   const lpTimer = useRef(null);
   const flags = useRef({ moved: false, lpFired: false, pinched: false });
   const lastTap = useRef(0);
-  useBackButton(menuOpen, () => setMenuOpen(false));
 
   if (!url) return <div className="doc-image-msg">{t('imageviewer.loadFailed')}</div>;
 

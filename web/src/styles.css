@@ -7,9 +7,6 @@
   --green: #34c759;
   --green-rgb: 52,199,89;
   --red: #ff453a;
-  --scroll-thumb: rgba(151,162,178,.34);
-  --scroll-thumb-hover: rgba(174,190,211,.58);
-  --scroll-thumb-active: rgba(80,145,230,.82);
 }
 /* Bundled terminal font: JetBrainsMono Nerd Font carries the Powerline/Nerd icons and the
    Dingbat sparkles Claude Code animates with — glyphs the system monospace fonts are missing.
@@ -135,9 +132,6 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .settings-note { font-size: 13px; color: #9aa0a6; flex: 1 1 auto; min-width: 0; }
 /* Persistent one-liner under the toggle spelling out which two events push (需要你 / 已完成). */
 .settings-hint { font-size: 12px; color: #7c8088; line-height: 1.5; margin-top: 8px; }
-.settings-suboption { margin-top: 12px; }
-.settings-btns--compact { gap: 6px; }
-.settings-btns--compact .fontbtn { min-width: 46px; }
 /* npm-update notice: a tinted card under the version row. The upgrade runs on the computer (`handmux update`),
    so this is informational, not a tappable action. */
 .settings-update { margin-top: 10px; padding: 8px 10px; border-radius: 8px;
@@ -206,7 +200,8 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .bind-confirm:disabled { opacity: .6; }
 /* Nav strip: windows scroll horizontally; the active multi-pane window's tab carries an inline pane menu. */
 .windowbar { display: flex; gap: 8px; align-items: center; padding: 6px 8px; background: #222; }
-.windowbar-scroll { flex: 1; min-width: 0; display: flex; gap: 4px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-x; }
+.windowbar-scroll { flex: 1; min-width: 0; display: flex; gap: 4px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-x; scrollbar-width: none; }
+.windowbar-scroll::-webkit-scrollbar { display: none; }
 /* 终端⇄对话 lens toggle — a single one-tap button, right-aligned in the windowbar row, only rendered for
    agent panes (its slot claims no space when absent, so the row never reflows). The swap glyph + faint
    accent border read "this flips the view"; the label shows the current mode. Sized to sit with .win-tab. */
@@ -218,21 +213,19 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 }
 .lens-toggle:active { background: #262b33; }
 .lens-toggle svg { opacity: .82; }
-.win-tab { display: inline-flex; align-items: center; white-space: nowrap; padding: 4px 10px; border: none; border-radius: 8px; background: #33353a; color: #bbb; font-size: 13px; touch-action: manipulation; }
+.win-tab { white-space: nowrap; padding: 4px 10px; border: none; border-radius: 8px; background: #33353a; color: #bbb; font-size: 13px; touch-action: manipulation; }
 .win-tab.active { background: var(--blue); color: #fff; }
 .win-new { border: 1px dashed #555; color: #8aa; font-weight: 700; background: transparent; }
 .win-panes { margin-left: 5px; font-size: 11px; color: #889; }
 .win-tab.active .win-panes { color: #d6e4ff; }
 /* Active window with >1 pane: the tab expands inline into "name │ ① cmd ▾". The trigger reuses the
    .win-tab look; the menu (below) reuses Dropdown's .dd-menu. wt-dd is the positioning anchor. */
-.wt-dd { position: relative; flex: none; display: flex; }
-/* Match the plain .win-tab metrics so active/inactive tabs read the same. .windowbar-scroll stretches
-   this wrapper to the row height; making it a second flex context stretches the selected trigger too,
-   instead of leaving the blue button slightly shorter than the direct-child, inactive tabs. */
+.wt-dd { position: relative; flex: none; }
+/* Match the plain .win-tab metrics so active/inactive tabs read the same: keep its 4px 10px padding
+   (no override) and let the 4px gap own the logo→name spacing — so zero the logo's own margin, else
+   it'd stack with the gap and the active tab's title would sit further right than an inactive one. */
 .wt-trigger { display: inline-flex; align-items: center; gap: 4px; }
-/* Both tab variants render the logo + first label through this exact wrapper. Keeping that spacing
-   in one place avoids flex-gap vs icon-margin differences between the expanded and plain tabs. */
-.win-title { display: inline-flex; align-items: center; gap: 4px; }
+.wt-trigger .agent-mark { margin-right: 0; }
 /* Tight separator: negative margin pulls the name/pane in so "main│① zsh" reads compact. */
 .wt-sep { margin: 0 -1px; color: #cfe0ff; opacity: .4; font-weight: 400; }
 /* Keep the expanded pane tab compact: cap the name/command widths so a long command can't blow the
@@ -318,11 +311,10 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .terminal-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 /* Width follows the real pane: the terminal renders at its natural cols width and the
    container scrolls horizontally when that exceeds the screen. overscroll-behavior: contain
-   keeps swipes from chaining out to the page (and triggering pull-to-refresh). Both axes are
-   driven in JS: Handmux owns horizontal pane panning and xterm owns vertical scrollback.
-   Declaring touch-action:none prevents the browser from claiming a horizontal native-scroll
-   gesture before our touchmove handler can cancel it (which can dismiss the soft keyboard). */
-.terminal { height: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: none; }
+   keeps swipes from chaining out to the page (and triggering pull-to-refresh). touch-action
+   pan-x pan-y allows one-finger pan/scroll; the two-finger pinch is handled in JS as a font
+   zoom (see Terminal.jsx), not a native page zoom. */
+.terminal { height: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
 /* First-paint gate (Terminal.jsx `ready`): hide the grid while a freshly-switched pane seeds and fit()
    grows/re-fits it, so the finished full-height frame appears in one go instead of filling bottom-half
    first. opacity (not display:none/visibility) keeps the geometry measurable for fit() and lets WebGL
@@ -338,9 +330,11 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 /* flex:none keeps the grid at its natural (font-driven) height — never let flex-shrink squash a
    tall grid back into the container, which would re-clip the bottom row. */
 .terminal .xterm-screen { flex: none; }
-/* Touch movement stays entirely in the two JS handlers above. Inertia for the scrollback is
-   also added in JS — xterm itself tracks touch 1:1 with none; see Terminal.jsx startFling. */
-.terminal .xterm-viewport { touch-action: none; overscroll-behavior: contain; }
+/* The viewport must allow BOTH pan axes (per the touch-action intersection rule a horizontal
+   swipe only pans the ancestor if every element up to it permits pan-x). Vertical swipes
+   scroll the scrollback; horizontal swipes fall through to the container. (Inertia for the
+   scrollback is added in JS — xterm tracks touch 1:1 with none; see Terminal.jsx startFling.) */
+.terminal .xterm-viewport { touch-action: pan-x pan-y; overscroll-behavior: contain; }
 /* Thin, low-key scrollbar on BOTH platforms: the desktop default bar is too heavy and mobile's
    overlay bar auto-hides entirely, so neither signals "there's more above" the way we want. A faint
    rounded thumb over a transparent track defers to the terminal content (HIG) while still marking the
@@ -349,108 +343,24 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .terminal .xterm-viewport::-webkit-scrollbar { width: 7px; height: 7px; }
 .terminal .xterm-viewport::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); border-radius: 4px; }
 .terminal .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
-/* The outer terminal owns horizontal pane scrolling; its bar uses the shared reserved strip below so it
-   never overlays the bottom terminal row. The xterm viewport continues to own vertical scrollback. */
+/* The terminal scrolls HORIZONTALLY when the pane is wider than the phone (overflow-x on .terminal). Hide
+   that horizontal bar so it never overlaps the bottom row / a bottom-aligned cursor — you still pan by
+   touch, and the vertical scrollback indicator above is untouched. */
+.terminal { scrollbar-width: none; }
+.terminal::-webkit-scrollbar { height: 0; }
+.terminal .xterm-viewport::-webkit-scrollbar:horizontal { height: 0; }
 /* Read-only view: don't let taps focus xterm's hidden input textarea (which would pop the
    mobile soft keyboard and steal taps near the cursor, e.g. the back-to-bottom button). */
 .terminal .xterm-helper-textarea { pointer-events: none; opacity: 0; }
-.terminal.desktop-input .xterm-helper-textarea { pointer-events: auto; }
-.terminal__live { position: relative; width: 100%; min-width: 100%; height: 100%; }
-.terminal-history-boundary {
-  background: repeating-linear-gradient(
-    to right,
-    rgba(255,255,255,.16) 0 5px,
-    transparent 5px 10px
-  ) top / 100% 1px no-repeat;
-  pointer-events: none;
-}
-.terminal-connection {
-  position: absolute; z-index: 7;
-  top: calc(var(--terminal-overlay-top, 1px) + 1px); right: 9px;
-  display: flex; align-items: center; gap: 4px;
-  color: rgba(235,235,245,.48);
-  font: 500 11.5px/1.35 -apple-system, system-ui, sans-serif;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap; pointer-events: none;
-  text-shadow: 0 1px 2px rgba(0,0,0,.5);
-}
-.terminal-connection__tag {
-  box-sizing: border-box;
-  display: inline-flex; align-items: center;
-  height: 23px; padding: 0 5px;
-  border: 1px solid rgba(235,235,245,.12);
-  border-radius: 4px;
-  background: rgba(26,28,34,.62);
-}
-.terminal-connection__summary.is-live,
-.terminal-connection__summary.is-snapshot {
-  color: rgba(240,240,245,.88);
-  border-color: rgba(205,208,218,.18);
-  background: rgba(105,109,120,.38);
-}
-.terminal-connection__summary {
-  gap: 4px;
-  font: inherit;
-  cursor: pointer;
-  pointer-events: auto;
-}
-.terminal-connection__mode.is-live { color: rgba(100,174,255,.96); }
-.terminal-connection__separator { color: rgba(235,235,245,.34); }
-.terminal-transport-popover {
-  position: absolute; z-index: 8;
-  top: calc(var(--terminal-overlay-top, 1px) + 30px); right: 9px;
-  width: min(280px, calc(100% - 18px));
-  padding: 11px 12px;
-  border: 1px solid rgba(235,235,245,.14);
-  border-radius: 9px;
-  background: rgba(35,36,40,.96);
-  color: rgba(235,235,245,.86);
-  box-shadow: 0 7px 24px rgba(0,0,0,.42);
-  font: 12px/1.45 -apple-system, system-ui, sans-serif;
-  pointer-events: none;
-}
-.terminal-transport-popover__title { margin-bottom: 8px; color: #fff; font-weight: 650; }
-.terminal-transport-popover__row {
-  display: flex; justify-content: space-between; gap: 12px;
-  align-items: center; min-height: 24px; padding: 2px 0;
-  color: rgba(235,235,245,.55);
-}
-.terminal-transport-popover__value {
-  font-weight: 550;
-}
-.terminal-transport-popover__value.is-live {
-  color: rgba(100,174,255,.96);
-}
-.terminal-transport-popover__value.is-snapshot {
-  color: rgba(190,193,202,.86);
-}
-.terminal-transport-popover__connection { font-weight: 550; }
-.terminal-transport-popover__connection.is-good { color: rgba(100,174,255,.9); }
-.terminal-transport-popover__connection.is-degraded { color: rgba(245,190,83,.88); }
-.terminal-transport-popover__connection.is-poor { color: rgba(255,116,108,.9); }
-.terminal-transport-popover__connection.is-connecting { color: rgba(235,235,245,.52); }
-.terminal-transport-popover p { margin: 8px 0 0; }
-.terminal-transport-popover__recovery { color: rgba(100,174,255,.9); }
-.terminal-connection__latency { color: rgba(235,235,245,.52); }
-.terminal-connection.is-good .terminal-connection__latency {
-  color: rgba(100,174,255,.84);
-}
-.terminal-connection.is-degraded .terminal-connection__latency {
-  color: rgba(255,190,92,.86);
-}
-.terminal-connection.is-poor .terminal-connection__latency {
-  color: rgba(255,120,112,.9);
-}
 .new-output { position: absolute; right: 12px; bottom: 12px; z-index: 5; touch-action: manipulation; padding: 8px 14px; border: none; border-radius: 16px; background: var(--blue); color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
 .dbg { position: absolute; left: 6px; top: 6px; z-index: 6; font: 12px/1.4 monospace; color: #9fe; background: rgba(0,0,0,.6); padding: 2px 6px; border-radius: 4px; pointer-events: none; }
 /* Status banners: a full-width strip across the head of the terminal area. Yellow = browsing history
    (live refresh paused — shows 历史模式 · 行 x/x); red = disconnected/reconnecting. They're mutually
    exclusive in the render (disconnect wins). pointer-events:none so taps pass straight through. */
 .term-banner {
-  /* Terminal.jsx publishes the wrap's real clipped top. One shared anchor keeps banners stable during
-     keyboard animation and aligns their centreline with the connection labels. */
-  position: absolute; left: 0; right: 0; top: var(--terminal-overlay-top, 1px); z-index: 6;
-  box-sizing: border-box; height: 25px;
+  /* Anchor to the top of the VISIBLE slice (--vis-h, set by fit()); with the keyboard up the container's
+     real top is clipped off-screen. Falls back to the container top (100%) when the var is unset. */
+  position: absolute; left: 0; right: 0; top: calc(100% - var(--vis-h, 100%)); z-index: 6;
   font: 12px/1.7 -apple-system, system-ui, sans-serif; text-align: center;
   padding: 2px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   pointer-events: none;
@@ -673,8 +583,6 @@ div.workspace-restore-errors { padding-left: 10px; }
   transform: translate3d(0, 0, 0); transition: transform .3s cubic-bezier(.22,.61,.36,1); }
 .dock-track.at-chat { transform: translate3d(-50%, 0, 0); }
 .dock-track > .dock-page { flex: 0 0 50%; width: 50%; min-width: 0; }
-.bottom-dock.desktop-unified .dock-track { width: 100%; transform: none; transition: none; }
-.bottom-dock.desktop-unified .dock-track > .dock-page.chat { flex-basis: 100%; width: 100%; }
 .dock-page.command { position: relative; } /* anchors the hidden .cmd-capture */
 /* Command keyboard: a fixed 2×7 grid, never scrolls. Equal columns keep the arrows aligned as an
    inverted-T (▲ directly above ▼) left of Enter; ⌫/enter are direct keys; Ctrl/Shift/Alt are sticky
@@ -761,9 +669,10 @@ div.workspace-restore-errors { padding-left: 10px; }
 .quick-fix-kbd svg { color: #d3dcec; }
 .quick-fix-kbd[aria-pressed="true"] { border-color: #3d63a8; background: #2c3849; color: #eaf1ff; }
 .quick-fix-kbd[aria-pressed="true"] svg { color: var(--blue); }
-/* 可横滑的自定义命令区：chip 单行不换、不压缩，横向滚动条使用全局样式。 */
+/* 可横滑的自定义命令区:溢出横向滚动、隐藏滚动条;chip 单行不换、不压缩。 */
 .quick-scroll { flex: 1; min-width: 0; display: flex; align-items: stretch; gap: 5px; overflow-x: auto;
-  -webkit-overflow-scrolling: touch; }
+  scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.quick-scroll::-webkit-scrollbar { display: none; }
 /* 聊天 chip:按类别上色(仅三色):按键(ESC/Tab/⌫)灰、斜杠命令蓝、其余(ok/继续/1/2/3)绿。文字/描边用该
    色、底填淡影,按下加深。竖内边距给足(好按),色相由 .qc-esc/.qc-cmd/.qc-reply 给。rgba(var(--rgb),a) 全面兼容。 */
 .quick-cmd { flex: none; display: inline-flex; align-items: center; white-space: nowrap;
@@ -786,34 +695,6 @@ div.workspace-restore-errors { padding-left: 10px; }
 .quick-cmd-plain { --rgb: 150,157,167; }
 /* Per-window saved commands — green, to set them apart from the grey global ones (shown after them). */
 .quick-cmd-win { --rgb: 95,208,138; }
-/* Desktop uses one compact two-row composer: shortcuts keep their own row and the draft field reads as
-   a regular editor instead of a large mobile pill. Mobile retains the original touch-sized geometry. */
-.bottom-dock.desktop-unified { padding: 6px 8px; }
-.bottom-dock.desktop-unified .dock-left { gap: 0; }
-.desktop-unified .quick-bar { gap: 5px; padding: 0 0 6px; }
-.desktop-unified .quick-fixed { gap: 5px; padding-right: 6px; }
-.desktop-unified .quick-fix, .desktop-unified .quick-cmd {
-  border-radius: 6px; padding: 6px 10px;
-}
-.desktop-unified .input-wrap {
-  margin-top: 0; padding: 3px 4px; border-radius: 8px; box-shadow: none;
-}
-.desktop-unified .input-text,
-.desktop-unified .input-mirror { padding: 6px 5px 6px 9px; }
-.desktop-unified .input-wrap.multi > .input-mic,
-.desktop-unified .input-wrap.multi > .input-send { bottom: 5px; }
-.desktop-unified .input-wrap.multi > .input-send { right: 4px; }
-.desktop-unified .input-wrap.multi > .input-mic { right: 42px; }
-.desktop-unified .input-wrap.multi.crowd > .input-text { padding-bottom: 28px; }
-.desktop-unified .input-wrap:focus-within {
-  box-shadow: none;
-}
-.desktop-unified .dock-page.chat { padding-bottom: 0; }
-@media (hover: hover) and (pointer: fine) {
-  .desktop-unified .input-text,
-  .desktop-unified .input-mirror { font-size: 15px; line-height: 21px; }
-  .desktop-unified .input-wrap.multi.crowd > .input-text { padding-bottom: 27px; }
-}
 /* 上传进度条:浮在输入行上方一条(失败时变红、文案自带原因),沿用 browse-progress 配色。 */
 .dock-upload { padding: 6px 4px 2px; }
 .dock-upload-label { display: block; color: #9fb6d0; font-size: 12px; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
@@ -847,8 +728,8 @@ div.workspace-restore-errors { padding-left: 10px; }
   box-shadow: 0 1px 4px rgba(var(--blue-rgb),.45);
   touch-action: manipulation; -webkit-user-select: none; user-select: none; }
 .input-send:active { background: var(--blue-press); }
-/* 空框仍可发送裸 Enter，但视觉沿用原来的待命状态；提交中也保持同一外观。 */
-.input-send.is-empty, .input-send:disabled { background: rgba(0,0,0,.25); color: #b6c0cc; box-shadow: none; }
+/* 空框:仍不可发送,但别用扎眼的禁用灰——沿用麦克风的待命外观(暗底+柔和图标),不给人"点不了/坏了"的感觉。 */
+.input-send:disabled { background: rgba(0,0,0,.25); color: #b6c0cc; box-shadow: none; }
 .input-send svg { width: 20px; height: 20px; display: block; }
 /* 历史:麦克风左侧的图标按钮,只在空框时出现(打字即整体隐藏)。仅一个图标。 */
 .input-history { flex: none; width: 34px; height: 34px;
@@ -1211,8 +1092,9 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .preview-tabs {
   display: flex; gap: 6px; align-items: center; flex: 0 0 auto;
   padding: 6px 10px; overflow-x: auto; -webkit-overflow-scrolling: touch;
-  border-top: 1px solid #24262b; background: #1a1c20;
+  border-top: 1px solid #24262b; background: #1a1c20; scrollbar-width: none;
 }
+.preview-tabs::-webkit-scrollbar { display: none; }
 .preview-tab {
   display: inline-flex; align-items: center; flex: 0 0 auto;
   background: #26282e; border: 1px solid #34363c; border-radius: 999px; overflow: hidden;
@@ -1708,7 +1590,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 /* Agent brand logo (Claude / Codex) — flush in the inbox row and on a single-pane window tab. */
 .agent-mark { width: 15px; height: 15px; flex: none; display: inline-block; }
 .agent-mark svg { display: block; width: 100%; height: 100%; }
-.win-tab .agent-mark { margin: 0; }
+.win-tab .agent-mark { vertical-align: -2px; margin-right: 4px; }
 .inbox-chip { font-size: 11px; padding: 1px 6px; border-radius: 4px; flex: none; }
 .inbox-chip.needs { background: #e0a020; color: #111; }
 .inbox-chip.done { background: var(--green); color: #fff; }
@@ -2333,7 +2215,8 @@ button.cmd-text { background: none; border: none; text-align: left; }
   display: flex; flex-direction: column; gap: 6px;
   padding: 6px 8px calc(8px + env(safe-area-inset-bottom, 0px)); background: var(--ct-bar);
 }
-.cc-quick { display: flex; gap: 6px; overflow-x: auto; }
+.cc-quick { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.cc-quick::-webkit-scrollbar { display: none; }
 /* The card: textarea on top, action row beneath. Buttons never overlay the text (own row) → none of the
    dock's multi/crowd/ghost-hit machinery is needed. Subtle border, faint accent on focus, green while dictating. */
 .cc-card {
@@ -2392,114 +2275,3 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .chat-composer .input-mic.on { color: #fff; background: var(--green); }
 
 .push-inbox-detail-del { display: block; margin-top: 24px; }
-
-/* Desktop scrollbars: keep the browser's reliable wheel, trackpad, drag and keyboard behaviour while
-   replacing each platform's native chrome with one quiet app-wide skin. */
-@media (hover: hover) and (pointer: fine) {
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: var(--scroll-thumb) transparent;
-  }
-  *::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-  }
-  *::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  *::-webkit-scrollbar-thumb {
-    min-width: 32px;
-    min-height: 32px;
-    border: 3px solid transparent;
-    border-radius: 999px;
-    background-color: var(--scroll-thumb);
-    background-clip: padding-box;
-  }
-  *:hover::-webkit-scrollbar-thumb {
-    background-color: var(--scroll-thumb-hover);
-  }
-  *::-webkit-scrollbar-thumb:active {
-    background-color: var(--scroll-thumb-active);
-  }
-  *::-webkit-scrollbar-corner {
-    background: transparent;
-  }
-
-  /* The terminal had its own cross-platform indicator before the global desktop skin. Override that
-     stronger selector here so desktop uses the same thumb in both directions. */
-  .terminal .xterm-viewport {
-    scrollbar-color: var(--scroll-thumb) transparent;
-  }
-  .terminal .xterm-viewport::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-  }
-  .terminal .xterm-viewport::-webkit-scrollbar-thumb {
-    border: 3px solid transparent;
-    border-radius: 999px;
-    background-color: var(--scroll-thumb);
-    background-clip: padding-box;
-  }
-  .terminal .xterm-viewport:hover::-webkit-scrollbar-thumb {
-    background-color: var(--scroll-thumb-hover);
-  }
-  .terminal .xterm-viewport::-webkit-scrollbar-thumb:active {
-    background-color: var(--scroll-thumb-active);
-  }
-
-}
-
-/* Only an actually-overflowing terminal gets a horizontal scrollbar. Every other horizontal scroller
-   stays gesture/wheel-scrollable without adding a second bar to the interface. This rule comes after the
-   desktop skin so its zero height wins there too. */
-.windowbar-scroll,
-.quick-scroll,
-.file-tabs-scroll,
-.preview-tabs,
-.git-tabs-scroll,
-.cc-quick {
-  scrollbar-width: none;
-}
-*::-webkit-scrollbar:horizontal {
-  height: 0;
-}
-*::-webkit-scrollbar-button:horizontal {
-  display: none;
-  width: 0;
-  height: 0;
-}
-.terminal {
-  scrollbar-width: thin;
-  scrollbar-color: var(--scroll-thumb) transparent;
-}
-.terminal::-webkit-scrollbar:horizontal {
-  height: 10px;
-}
-.terminal::-webkit-scrollbar-track:horizontal {
-  background: transparent;
-}
-.terminal::-webkit-scrollbar-thumb:horizontal {
-  min-width: 32px;
-  border: 3px solid transparent;
-  border-radius: 999px;
-  background-color: var(--scroll-thumb);
-  background-clip: padding-box;
-}
-.terminal::-webkit-scrollbar-thumb:horizontal:active {
-  background-color: var(--scroll-thumb-active);
-}
-.terminal::-webkit-scrollbar-button {
-  display: none;
-  width: 0;
-  height: 0;
-}
-/* Mobile keeps only the horizontal overflow indicator. Vertical history remains touch-scrollable but
-   has no persistent rail, leaving the terminal content at full width. */
-.terminal-y-scrollbar { display: none; }
-@media (hover: none) and (pointer: coarse) {
-  .terminal.terminal--x-overflow { padding-bottom: 4px; }
-  .terminal::-webkit-scrollbar:horizontal { height: 4px; }
-  .terminal::-webkit-scrollbar-thumb:horizontal { border: 0; }
-  .terminal .xterm-viewport { scrollbar-width: none; }
-  .terminal .xterm-viewport::-webkit-scrollbar:vertical { width: 0; }
-}
