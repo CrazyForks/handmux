@@ -47,6 +47,10 @@ afterEach(async () => {
 
 const render = (model) => act(() => root.render(<BrowserSheet browser={model} />));
 const click = (node) => act(() => node.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+const clickAndFlush = (node) => act(async () => {
+  node.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await Promise.resolve();
+});
 const submit = (form) => act(() => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
 const setInput = (input, value) => act(() => {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
@@ -114,7 +118,7 @@ describe('BrowserSheet', () => {
   it('switches, closes, starts a new address and minimizes through the model', async () => {
     const model = browser();
     await render(model);
-    click([...document.querySelectorAll('[role="tab"]')][2]);
+    await clickAndFlush([...document.querySelectorAll('[role="tab"]')][2]);
     click(document.querySelector('button[aria-label="关闭 Alpha"]'));
     click(document.querySelector('button[aria-label="新建标签页"]'));
     click(document.querySelector('button[aria-label="收起"]'));
@@ -138,6 +142,58 @@ describe('BrowserSheet', () => {
       ]));
       expect(sandbox.some((value) => value.startsWith('allow-top-navigation'))).toBe(false);
     }
+  });
+
+  it('keeps iframe state mounted and reloads a tab after its selection is committed', async () => {
+    const model = browser({ switchTab: vi.fn().mockResolvedValue(true) });
+    await render(model);
+    const first = document.querySelector('iframe[data-tab-id="a"]');
+    const second = document.querySelector('iframe[data-tab-id="b"]');
+    const postFirst = vi.spyOn(first.contentWindow, 'postMessage');
+    const postSecond = vi.spyOn(second.contentWindow, 'postMessage');
+    const tabButtons = [...document.querySelectorAll('[role="tab"]')];
+
+    await clickAndFlush(tabButtons[2]);
+    expect(postSecond).not.toHaveBeenCalled();
+    await render({ ...model, activeId: 'b' });
+    await clickAndFlush([...document.querySelectorAll('[role="tab"]')][2]);
+    await render({ ...model, activeId: 'b' });
+    await clickAndFlush([...document.querySelectorAll('[role="tab"]')][1]);
+    await render({ ...model, activeId: 'a' });
+
+    expect(document.querySelector('iframe[data-tab-id="a"]')).toBe(first);
+    expect(document.querySelector('iframe[data-tab-id="b"]')).toBe(second);
+    expect(postSecond.mock.calls.map(([message]) => message)).toEqual([
+      { source: 'handmux-browser-parent', channel: 'cb', command: 'reload' },
+      { source: 'handmux-browser-parent', channel: 'cb', command: 'reload' },
+    ]);
+    expect(postFirst).toHaveBeenCalledWith({ source: 'handmux-browser-parent', channel: 'ca', command: 'reload' }, '*');
+  });
+
+  it('reloads only the last tab clicked when switch promises finish out of order', async () => {
+    let resolveA;
+    let resolveB;
+    const switchTab = vi.fn((id) => new Promise((resolve) => {
+      if (id === 'a') resolveA = resolve;
+      if (id === 'b') resolveB = resolve;
+    }));
+    const model = browser({ switchTab });
+    await render(model);
+    const first = document.querySelector('iframe[data-tab-id="a"]');
+    const second = document.querySelector('iframe[data-tab-id="b"]');
+    const postFirst = vi.spyOn(first.contentWindow, 'postMessage');
+    const postSecond = vi.spyOn(second.contentWindow, 'postMessage');
+    const tabButtons = [...document.querySelectorAll('[role="tab"]')];
+
+    click(tabButtons[2]);
+    click(tabButtons[1]);
+    await act(async () => { resolveA(true); await Promise.resolve(); });
+    await render({ ...model, activeId: 'a' });
+    await act(async () => { resolveB(true); await Promise.resolve(); });
+    await render({ ...model, activeId: 'b' });
+
+    expect(postFirst).toHaveBeenCalledWith({ source: 'handmux-browser-parent', channel: 'ca', command: 'reload' }, '*');
+    expect(postSecond).not.toHaveBeenCalled();
   });
 
   it('accepts bridge messages only from the matching iframe and channel', async () => {

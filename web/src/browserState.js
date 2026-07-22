@@ -84,6 +84,13 @@ export function addBrowserHistory(entry) {
   localStorage.setItem(HISTORY_KEY, JSON.stringify([clean, ...readBrowserHistory()].slice(0, HISTORY_LIMIT)));
 }
 
+export function upsertBrowserHistory(entry) {
+  const clean = sanitizedHistoryEntry(entry);
+  if (!clean) return;
+  const remaining = readBrowserHistory().filter((item) => item.url !== clean.url);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify([clean, ...remaining].slice(0, HISTORY_LIMIT)));
+}
+
 export function clearBrowserHistory() {
   localStorage.removeItem(HISTORY_KEY);
 }

@@ -266,7 +266,12 @@ describe('browser preview manager', () => {
     expect(payload).toContain('parseProxyUrl');
     expect(payload).toContain("addEventListener('popstate', () => send('urlchange'))");
     expect(payload).toContain("addEventListener('hashchange', () => send('urlchange'))");
+    expect(payload).toContain("for (const name of ['pushState', 'replaceState'])");
+    expect(payload).toContain("send('urlchange')");
     expect(payload).toContain("send('navigate', url)");
+    expect(payload).toContain("addEventListener('DOMContentLoaded', observeTitle");
+    expect(payload).toContain('observer.observe(document.head');
+    expect(payload).toContain('if (title === lastTitle && url === lastTitleUrl) return');
     expect(await session.getIframePayloadScript()).toBe('');
   });
 

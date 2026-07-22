@@ -50,10 +50,35 @@ function bridgeScript(channel) {
     addEventListener('load', () => send('load'));
     addEventListener('popstate', () => send('urlchange'));
     addEventListener('hashchange', () => send('urlchange'));
+    for (const name of ['pushState', 'replaceState']) {
+      const original = history[name];
+      history[name] = function (...args) {
+        const result = original.apply(this, args);
+        send('urlchange');
+        return result;
+      };
+    }
     if (hammerhead?.EVENTS?.pageNavigationTriggered) {
       hammerhead.on(hammerhead.EVENTS.pageNavigationTriggered, (url) => send('navigate', url));
     }
-    new MutationObserver(() => send('title')).observe(document.querySelector('title') || document.documentElement, { subtree: true, childList: true, characterData: true });
+    let lastTitle;
+    let lastTitleUrl;
+    const sendTitle = () => {
+      const title = document.title;
+      const url = destinationUrl(location.href);
+      if (title === lastTitle && url === lastTitleUrl) return;
+      lastTitle = title;
+      lastTitleUrl = url;
+      send('title', url);
+    };
+    const observeTitle = () => {
+      if (!document.head) return;
+      const observer = new MutationObserver(sendTitle);
+      observer.observe(document.head, { subtree: true, childList: true, characterData: true });
+      sendTitle();
+    };
+    if (document.head) observeTitle();
+    else addEventListener('DOMContentLoaded', observeTitle, { once: true });
     addEventListener('message', (event) => {
       if (event.source !== parent || event.data?.source !== 'handmux-browser-parent' || event.data?.channel !== channel) return;
       if (event.data.command === 'back') history.back();

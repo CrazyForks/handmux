@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ChevronDownIcon,
@@ -34,11 +34,13 @@ export default function BrowserSheet({ browser }) {
   const [bodySize, setBodySize] = useState({ width: 0, height: 0 });
   const [loadedTabs, setLoadedTabs] = useState(() => new Set());
   const [refreshingTabs, setRefreshingTabs] = useState(() => new Set());
+  const [reloadIntent, setReloadIntent] = useState(null);
   const frames = useRef(new Map());
   const frameUrls = useRef(new Map());
   const switchingOrigins = useRef(new Map());
   const addressRef = useRef(null);
   const bodyRef = useRef(null);
+  const selectionEpoch = useRef(0);
 
   useEffect(() => {
     setAddress(historyActive ? '' : (active?.originalUrl || ''));
@@ -77,7 +79,9 @@ export default function BrowserSheet({ browser }) {
         }
         return;
       }
-      updateTabMeta(tab.id, { url: event.data.url, title: event.data.title });
+      if (['ready', 'load', 'urlchange', 'title'].includes(event.data.type)) {
+        updateTabMeta(tab.id, { url: event.data.url, title: event.data.title });
+      }
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -116,13 +120,45 @@ export default function BrowserSheet({ browser }) {
     return () => observer.disconnect();
   }, [open]);
 
-  const postCommand = (command) => {
-    if (!active) return;
-    frames.current.get(active.id)?.contentWindow?.postMessage({
+  const postTabCommand = useCallback((tab, command) => {
+    if (!tab) return;
+    frames.current.get(tab.id)?.contentWindow?.postMessage({
       source: 'handmux-browser-parent',
-      channel: active.channel,
+      channel: tab.channel,
       command,
     }, '*');
+  }, []);
+
+  useEffect(() => {
+    if (!reloadIntent) return;
+    if (reloadIntent.epoch !== selectionEpoch.current) {
+      setReloadIntent(null);
+      return;
+    }
+    if (historyActive || activeId !== reloadIntent.id) return;
+    const tab = tabs.find((item) => item.id === reloadIntent.id);
+    if (!tab) {
+      setReloadIntent(null);
+      return;
+    }
+    setRefreshingTabs((current) => new Set(current).add(tab.id));
+    postTabCommand(tab, 'reload');
+    setReloadIntent(null);
+  }, [activeId, historyActive, postTabCommand, reloadIntent, tabs]);
+
+  const postCommand = (command) => postTabCommand(active, command);
+
+  const selectTab = async (tab) => {
+    const epoch = ++selectionEpoch.current;
+    const switched = await switchTab(tab.id);
+    if (!switched || epoch !== selectionEpoch.current) return;
+    setReloadIntent({ id: tab.id, epoch });
+  };
+
+  const selectHistory = () => {
+    selectionEpoch.current += 1;
+    setReloadIntent(null);
+    return switchTab('history');
   };
 
   const refreshActive = () => {
@@ -148,7 +184,7 @@ export default function BrowserSheet({ browser }) {
   };
 
   const newTab = () => {
-    switchTab('history');
+    selectHistory();
     setAddress('');
     requestAnimationFrame(() => addressRef.current?.focus());
   };
@@ -189,7 +225,7 @@ export default function BrowserSheet({ browser }) {
     <div className={`file-sheet browser-sheet ${open ? 'open' : ''}`} aria-hidden={!open}>
       <div className="browser-tabs" role="tablist" aria-label={t('browser.openTabs')}>
         <button className={`browser-tab browser-history-tab ${historyActive ? 'active' : ''}`} role="tab"
-          aria-selected={historyActive} onClick={() => switchTab('history')}>
+          aria-selected={historyActive} onClick={selectHistory}>
           <ClockIcon />{t('browser.history')}
         </button>
         <div className="browser-tabs-scroll">
@@ -199,7 +235,7 @@ export default function BrowserSheet({ browser }) {
             return (
               <span className={`browser-tab-wrap ${selected ? 'active' : ''}`} key={tab.id}>
                 <button className="browser-tab" role="tab" aria-selected={selected} title={tab.originalUrl}
-                  onClick={() => switchTab(tab.id)}>{label}</button>
+                  onClick={() => selectTab(tab)}>{label}</button>
                 <button className="browser-tab-close" aria-label={t('browser.closeTab', { title: label })}
                   onClick={() => closeTab(tab.id)}><XIcon /></button>
               </span>

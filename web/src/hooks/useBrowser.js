@@ -7,17 +7,37 @@ import {
   setBrowserTabVisible,
 } from '../api.js';
 import {
-  addBrowserHistory,
   clearBrowserHistory,
   normalizeBrowserInput,
   readBrowserHistory,
   readBrowserPrefs,
   setBrowserCloseAfter,
+  upsertBrowserHistory,
 } from '../browserState.js';
 import { isBrowserAccessEnabled, setBrowserAccessEnabled } from '../storage.js';
 
 function replaceTab(tabs, next) {
   return tabs.map((tab) => (tab.id === next.id ? { ...tab, ...next } : tab));
+}
+
+function mirrorVisibleTab(tabs, next, closeAfter) {
+  if (!next.visible) return replaceTab(tabs, next);
+  const hiddenAt = Date.now();
+  let found = false;
+  const updated = tabs.map((tab) => {
+    if (tab.id === next.id) {
+      found = true;
+      return { ...tab, ...next };
+    }
+    if (!tab.visible) return tab;
+    return {
+      ...tab,
+      visible: false,
+      hiddenAt,
+      expiresAt: closeAfter == null ? null : hiddenAt + closeAfter * 60_000,
+    };
+  });
+  return found ? updated : [...updated, next];
 }
 
 export function useBrowser({ enabled = true } = {}) {
@@ -33,10 +53,45 @@ export function useBrowser({ enabled = true } = {}) {
   const [error, setError] = useState(null);
   const enablePromise = useRef(null);
   const openPromises = useRef(new Map());
+  const switchQueue = useRef(Promise.resolve());
+  const tabsRef = useRef(tabs);
+  const activeIdRef = useRef(activeId);
+  const historyActiveRef = useRef(historyActive);
+  const openRef = useRef(open);
+  tabsRef.current = tabs;
+  activeIdRef.current = activeId;
+  historyActiveRef.current = historyActive;
+  openRef.current = open;
+
+  const commitTabs = useCallback((update) => {
+    const next = typeof update === 'function' ? update(tabsRef.current) : update;
+    tabsRef.current = next;
+    setTabs(next);
+    return next;
+  }, []);
+  const commitActiveId = useCallback((update) => {
+    const next = typeof update === 'function' ? update(activeIdRef.current) : update;
+    activeIdRef.current = next;
+    setActiveId(next);
+    return next;
+  }, []);
+  const commitHistoryActive = useCallback((next) => {
+    historyActiveRef.current = next;
+    setHistoryActive(next);
+  }, []);
+  const commitOpen = useCallback((next) => {
+    openRef.current = next;
+    setOpenState(next);
+  }, []);
+  const enqueueTransition = useCallback((work) => {
+    const task = switchQueue.current.then(work);
+    switchQueue.current = task.then(() => undefined, () => undefined);
+    return task;
+  }, []);
 
   const recordHistory = useCallback((tab) => {
     if (!tab?.originalUrl) return;
-    addBrowserHistory({ url: tab.originalUrl, title: tab.title, visitedAt: Date.now() });
+    upsertBrowserHistory({ url: tab.originalUrl, title: tab.title, visitedAt: Date.now() });
     setHistory(readBrowserHistory());
   }, []);
 
@@ -45,68 +100,82 @@ export function useBrowser({ enabled = true } = {}) {
     let live = true;
     getBrowserTabs().then(({ tabs: loaded = [] }) => {
       if (!live) return;
-      setTabs(loaded);
+      commitTabs(loaded);
       const visible = loaded.find((tab) => tab.visible);
       const selected = visible || loaded[0] || null;
-      setActiveId(selected?.id || null);
-      setHistoryActive(!selected);
-      setOpenState(!!visible);
+      commitActiveId(selected?.id || null);
+      commitHistoryActive(!selected);
+      commitOpen(!!visible);
     }).catch((nextError) => { if (live) setError(nextError); });
     return () => { live = false; };
-  }, [enabled]); // access is loaded explicitly by enableAccess on first consent
+  }, [commitActiveId, commitHistoryActive, commitOpen, commitTabs, enabled]); // access is loaded explicitly by enableAccess on first consent
 
   useEffect(() => {
     const timers = tabs
       .filter((tab) => !tab.visible && tab.expiresAt != null)
       .map((tab) => setTimeout(() => {
         recordHistory(tab);
-        setTabs((current) => current.filter((item) => item.id !== tab.id));
-        setActiveId((current) => {
+        commitTabs((current) => current.filter((item) => item.id !== tab.id));
+        commitActiveId((current) => {
           if (current !== tab.id) return current;
-          setHistoryActive(true);
+          commitHistoryActive(true);
           return null;
         });
       }, Math.max(0, tab.expiresAt - Date.now())));
     return () => timers.forEach(clearTimeout);
-  }, [tabs, recordHistory]);
+  }, [commitActiveId, commitHistoryActive, commitTabs, tabs, recordHistory]);
 
   const updateVisibility = useCallback(async (id, visible, duration = closeAfter) => {
     const next = await setBrowserTabVisible(id, visible, duration);
-    setTabs((current) => replaceTab(current, next));
+    commitTabs((current) => mirrorVisibleTab(current, next, duration));
     return next;
-  }, [closeAfter]);
+  }, [closeAfter, commitTabs]);
 
-  const switchTab = useCallback(async (id) => {
-    setError(null);
-    try {
-      if (id === 'history') {
-        if (open && activeId && !historyActive) await updateVisibility(activeId, false);
-        setHistoryActive(true);
-        return;
+  const switchTab = useCallback((id) => {
+    return enqueueTransition(async () => {
+      setError(null);
+      try {
+        const currentActiveId = activeIdRef.current;
+        const currentHistoryActive = historyActiveRef.current;
+        if (id === 'history') {
+          if (openRef.current && currentActiveId && !currentHistoryActive) {
+            await updateVisibility(currentActiveId, false);
+          }
+          commitHistoryActive(true);
+          return true;
+        }
+        if (!tabsRef.current.some((tab) => tab.id === id)) return false;
+        if (openRef.current) await updateVisibility(id, true);
+        if (!tabsRef.current.some((tab) => tab.id === id)) return false;
+        commitActiveId(id);
+        commitHistoryActive(false);
+        return true;
+      } catch (nextError) {
+        setError(nextError);
+        return false;
       }
-      if (!tabs.some((tab) => tab.id === id)) return;
-      if (open && activeId && activeId !== id && !historyActive) await updateVisibility(activeId, false);
-      if (open && (activeId !== id || historyActive)) await updateVisibility(id, true);
-      setActiveId(id);
-      setHistoryActive(false);
-    } catch (nextError) {
-      setError(nextError);
-    }
-  }, [activeId, historyActive, open, tabs, updateVisibility]);
+    });
+  }, [commitActiveId, commitHistoryActive, enqueueTransition, updateVisibility]);
 
-  const setOpen = useCallback(async (visible) => {
+  const setOpen = useCallback((visible) => {
     if (visible && !accessEnabled) {
       setConsentOpen(true);
-      return;
+      return Promise.resolve(false);
     }
-    setError(null);
-    try {
-      if (activeId && !historyActive) await updateVisibility(activeId, visible);
-      setOpenState(visible);
-    } catch (nextError) {
-      setError(nextError);
-    }
-  }, [accessEnabled, activeId, historyActive, updateVisibility]);
+    return enqueueTransition(async () => {
+      setError(null);
+      try {
+        if (activeIdRef.current && !historyActiveRef.current) {
+          await updateVisibility(activeIdRef.current, visible);
+        }
+        commitOpen(visible);
+        return true;
+      } catch (nextError) {
+        setError(nextError);
+        return false;
+      }
+    });
+  }, [accessEnabled, commitOpen, enqueueTransition, updateVisibility]);
 
   const openUrl = useCallback((input, options = {}) => {
     const url = normalizeBrowserInput(input);
@@ -124,14 +193,13 @@ export function useBrowser({ enabled = true } = {}) {
     const task = (async () => {
       setError(null);
       try {
-        if (open && activeId && !historyActive) await updateVisibility(activeId, false);
         const created = options.signal
           ? await createBrowserTab(url, closeAfter, { signal: options.signal })
           : await createBrowserTab(url, closeAfter);
-        setTabs((current) => [...current, created]);
-        setActiveId(created.id);
-        setHistoryActive(false);
-        setOpenState(true);
+        commitTabs((current) => mirrorVisibleTab(current, created, closeAfter));
+        commitActiveId(created.id);
+        commitHistoryActive(false);
+        commitOpen(true);
         return created;
       } catch (nextError) {
         if (options.signal?.aborted) return null;
@@ -143,7 +211,7 @@ export function useBrowser({ enabled = true } = {}) {
     });
     openPromises.current.set(url, task);
     return task;
-  }, [accessEnabled, activeId, closeAfter, historyActive, open, updateVisibility]);
+  }, [accessEnabled, closeAfter, commitActiveId, commitHistoryActive, commitOpen, commitTabs]);
 
   const enableAccess = useCallback(() => {
     if (enablePromise.current) return enablePromise.current;
@@ -156,17 +224,17 @@ export function useBrowser({ enabled = true } = {}) {
         const { tabs: loaded = [] } = await getBrowserTabs();
         if (pendingUrl) {
           const created = await createBrowserTab(pendingUrl, closeAfter);
-          setTabs([...loaded, created]);
-          setActiveId(created.id);
-          setHistoryActive(false);
+          commitTabs(mirrorVisibleTab(loaded, created, closeAfter));
+          commitActiveId(created.id);
+          commitHistoryActive(false);
           setPendingUrl(null);
         } else {
-          setTabs(loaded);
+          commitTabs(loaded);
           const selected = loaded.find((tab) => tab.visible) || loaded[0] || null;
-          setActiveId(selected?.id || null);
-          setHistoryActive(!selected);
+          commitActiveId(selected?.id || null);
+          commitHistoryActive(!selected);
         }
-        setOpenState(true);
+        commitOpen(true);
       } catch (nextError) {
         setError(nextError);
       }
@@ -175,7 +243,7 @@ export function useBrowser({ enabled = true } = {}) {
     });
     enablePromise.current = task;
     return task;
-  }, [closeAfter, pendingUrl]);
+  }, [closeAfter, commitActiveId, commitHistoryActive, commitOpen, commitTabs, pendingUrl]);
 
   const cancelAccess = useCallback(() => {
     setPendingUrl(null);
@@ -183,26 +251,24 @@ export function useBrowser({ enabled = true } = {}) {
   }, []);
 
   const closeTab = useCallback(async (id) => {
-    const closing = tabs.find((tab) => tab.id === id);
+    const closing = tabsRef.current.find((tab) => tab.id === id);
     if (!closing) return;
     setError(null);
     try {
       await deleteBrowserTab(id);
       recordHistory(closing);
-      let remaining = tabs.filter((tab) => tab.id !== id);
-      if (activeId === id) {
-        if (open && remaining.length) {
-          const shown = await updateVisibility(remaining[0].id, true);
-          remaining = replaceTab(remaining, shown);
+      const remaining = commitTabs((current) => current.filter((tab) => tab.id !== id));
+      if (activeIdRef.current === id) {
+        if (openRef.current && remaining.length) {
+          await updateVisibility(remaining[0].id, true);
         }
-        setActiveId(remaining[0]?.id || null);
-        setHistoryActive(!remaining.length);
+        commitActiveId(remaining[0]?.id || null);
+        commitHistoryActive(!remaining.length);
       }
-      setTabs(remaining);
     } catch (nextError) {
       setError(nextError);
     }
-  }, [activeId, open, recordHistory, tabs, updateVisibility]);
+  }, [commitActiveId, commitHistoryActive, commitTabs, recordHistory, updateVisibility]);
 
   const navigateTab = useCallback(async (id, input) => {
     const url = normalizeBrowserInput(input);
@@ -212,22 +278,27 @@ export function useBrowser({ enabled = true } = {}) {
     }
     try {
       const next = await navigateBrowserTab(id, url);
-      setTabs((current) => replaceTab(current, next));
+      commitTabs((current) => replaceTab(current, next));
       setError(null);
       return next;
     } catch (nextError) {
       setError(nextError);
       return null;
     }
-  }, []);
+  }, [commitTabs]);
 
   const updateTabMeta = useCallback((id, patch) => {
-    setTabs((current) => current.map((tab) => (tab.id === id ? {
-      ...tab,
-      ...(typeof patch?.title === 'string' ? { title: patch.title } : {}),
-      ...(normalizeBrowserInput(patch?.url) ? { originalUrl: normalizeBrowserInput(patch.url) } : {}),
-    } : tab)));
-  }, []);
+    const current = tabsRef.current.find((tab) => tab.id === id);
+    if (!current) return;
+    const url = normalizeBrowserInput(patch?.url) || current.originalUrl;
+    const title = typeof patch?.title === 'string' ? patch.title : current.title;
+    if (url === current.originalUrl && title === current.title) return;
+    commitTabs((all) => replaceTab(all, { ...current, originalUrl: url, title }));
+    if (url && title?.trim()) {
+      upsertBrowserHistory({ url, title, visitedAt: Date.now() });
+      setHistory(readBrowserHistory());
+    }
+  }, [commitTabs]);
 
   const setCloseAfter = useCallback((value) => {
     setBrowserCloseAfter(value);

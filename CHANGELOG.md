@@ -18,7 +18,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 - `handmux shortcuts` 保存后会立即更新正在运行的 server，无需重启；手机端在 App 启动及每次回到前台时读取配置，不再每 15 秒轮询。
 
 ### Fixed
-- 内置浏览器地址栏不再显示代理包装地址；打开链接会防止重复提交，刷新和页面加载过程现在有明确反馈。
+- 内置浏览器地址栏不再显示代理包装地址；打开链接会防止重复提交，刷新和页面加载过程现在有明确反馈；切换页签会保留页面并重新刷新，网页标题会同步到页签与历史。
 - 窗口管理与分屏管理现在会在打开时重新读取 tmux 实时尺寸，不再显示会话首次载入时的旧宽高。
 - tmux server 完全退出且尚未创建新 session 时，手机也能立即识别旧工作区并提示恢复；handmux 内主动删除最后会话仍不会产生恢复历史。
 - tmux 3.0+ 的旧版 client/server 不再因控制字符格式分隔符而错误解析工作区；从未 attach 的 session 和 linked window 的重复 pane 输出也会被兼容处理，矛盾数据仍安全拒绝。

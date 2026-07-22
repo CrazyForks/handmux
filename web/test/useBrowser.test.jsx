@@ -122,7 +122,7 @@ describe('useBrowser', () => {
     expect(api.getBrowserTabs).toHaveBeenCalledOnce();
   });
 
-  it('hides the old tab before showing the selected tab', async () => {
+  it('shows the selected tab atomically and mirrors the displaced tab locally', async () => {
     const a = tab('a');
     const b = tab('b', { visible: false, expiresAt: Date.now() + 600_000 });
     api.getBrowserTabs.mockResolvedValue({ tabs: [a, b] });
@@ -136,9 +136,87 @@ describe('useBrowser', () => {
 
     await act(async () => { await result.current.switchTab('b'); });
 
-    expect(order).toEqual(['a:false', 'b:true']);
+    expect(order).toEqual(['b:true']);
     expect(result.current.activeId).toBe('b');
     expect(result.current.historyActive).toBe(false);
+    expect(result.current.tabs.find((item) => item.id === 'a').visible).toBe(false);
+  });
+
+  it('keeps the current tab visible when showing the selected tab fails', async () => {
+    const a = tab('a');
+    const b = tab('b', { visible: false, expiresAt: Date.now() + 600_000 });
+    api.getBrowserTabs.mockResolvedValue({ tabs: [a, b] });
+    api.setBrowserTabVisible.mockRejectedValue(new Error('show failed'));
+    const { result } = renderHook(() => useBrowser());
+    await flush();
+
+    let switched;
+    await act(async () => { switched = await result.current.switchTab('b'); });
+
+    expect(switched).toBe(false);
+    expect(api.setBrowserTabVisible.mock.calls).toEqual([['b', true, 10]]);
+    expect(result.current.activeId).toBe('a');
+    expect(result.current.tabs.find((item) => item.id === 'a').visible).toBe(true);
+  });
+
+  it('serializes rapid tab switches so the last click remains active', async () => {
+    const a = tab('a');
+    const b = tab('b', { visible: false, expiresAt: Date.now() + 600_000 });
+    api.getBrowserTabs.mockResolvedValue({ tabs: [a, b] });
+    const releases = [];
+    api.setBrowserTabVisible.mockImplementation((id, visible) => new Promise((resolve) => {
+      releases.push(() => resolve(tab(id, { visible, expiresAt: visible ? null : Date.now() + 600_000 })));
+    }));
+    const { result } = renderHook(() => useBrowser());
+    await flush();
+
+    let selectB;
+    let selectA;
+    act(() => {
+      selectB = result.current.switchTab('b');
+      selectA = result.current.switchTab('a');
+    });
+    await flush();
+    expect(api.setBrowserTabVisible.mock.calls).toEqual([['b', true, 10]]);
+
+    await act(async () => { releases.shift()(); await Promise.resolve(); });
+    expect(api.setBrowserTabVisible.mock.calls).toEqual([
+      ['b', true, 10], ['a', true, 10],
+    ]);
+    await act(async () => { releases.shift()(); await Promise.all([selectB, selectA]); });
+
+    expect(result.current.activeId).toBe('a');
+    expect(result.current.tabs.find((item) => item.id === 'a').visible).toBe(true);
+    expect(result.current.tabs.find((item) => item.id === 'b').visible).toBe(false);
+  });
+
+  it('hides the newly selected tab when minimized during a pending switch', async () => {
+    const a = tab('a');
+    const b = tab('b', { visible: false, expiresAt: Date.now() + 600_000 });
+    api.getBrowserTabs.mockResolvedValue({ tabs: [a, b] });
+    const releases = [];
+    api.setBrowserTabVisible.mockImplementation((id, visible) => new Promise((resolve) => {
+      releases.push(() => resolve(tab(id, { visible, expiresAt: visible ? null : Date.now() + 600_000 })));
+    }));
+    const { result } = renderHook(() => useBrowser());
+    await flush();
+
+    let selecting;
+    let minimizing;
+    act(() => {
+      selecting = result.current.switchTab('b');
+      minimizing = result.current.setOpen(false);
+    });
+    await flush();
+    expect(api.setBrowserTabVisible.mock.calls).toEqual([['b', true, 10]]);
+
+    await act(async () => { releases.shift()(); await Promise.resolve(); });
+    expect(api.setBrowserTabVisible.mock.calls).toEqual([['b', true, 10], ['b', false, 10]]);
+    await act(async () => { releases.shift()(); await Promise.all([selecting, minimizing]); });
+
+    expect(result.current.activeId).toBe('b');
+    expect(result.current.open).toBe(false);
+    expect(result.current.tabs.find((item) => item.id === 'b').visible).toBe(false);
   });
 
   it('starts the active tab timer when minimized and cancels it when reopened', async () => {
@@ -161,7 +239,7 @@ describe('useBrowser', () => {
     expect(result.current.tabs[0].expiresAt).toBeNull();
   });
 
-  it('opens a normalized URL in a new active tab after hiding the old one', async () => {
+  it('opens a normalized URL atomically and mirrors the old tab as hidden', async () => {
     const a = tab('a');
     const b = tab('b', { originalUrl: 'http://127.0.0.1:5173/' });
     api.getBrowserTabs.mockResolvedValue({ tabs: [a] });
@@ -172,10 +250,11 @@ describe('useBrowser', () => {
 
     await act(async () => { await result.current.openUrl('5173'); });
 
-    expect(api.setBrowserTabVisible).toHaveBeenCalledWith('a', false, 10);
+    expect(api.setBrowserTabVisible).not.toHaveBeenCalled();
     expect(api.createBrowserTab).toHaveBeenCalledWith('http://127.0.0.1:5173/', 10);
     expect(result.current.activeId).toBe('b');
     expect(result.current.open).toBe(true);
+    expect(result.current.tabs.find((item) => item.id === 'a').visible).toBe(false);
   });
 
   it('moves each independently expired background tab into device history', async () => {
@@ -235,5 +314,40 @@ describe('useBrowser', () => {
     expect(api.setBrowserTabVisible).toHaveBeenCalledWith('b', true, 10);
     expect(result.current.activeId).toBe('b');
     expect(result.current.tabs).toEqual([expect.objectContaining({ id: 'b', visible: true, expiresAt: null })]);
+  });
+
+  it('uses the latest page title when moving a tab into history', async () => {
+    api.getBrowserTabs.mockResolvedValue({ tabs: [tab('a', { title: '' })] });
+    api.deleteBrowserTab.mockResolvedValue({ ok: true });
+    const { result } = renderHook(() => useBrowser());
+    await flush();
+
+    act(() => result.current.updateTabMeta('a', { url: 'https://example.com/a', title: 'Actual page title' }));
+    expect(readBrowserHistory()).toEqual([
+      expect.objectContaining({ url: 'https://example.com/a', title: 'Actual page title' }),
+    ]);
+    await act(async () => { await result.current.closeTab('a'); });
+
+    expect(readBrowserHistory()[0]).toMatchObject({ url: 'https://example.com/a', title: 'Actual page title' });
+    expect(readBrowserHistory()).toHaveLength(1);
+  });
+
+  it('does not rewrite or restore history when page metadata has not changed', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    api.getBrowserTabs.mockResolvedValue({ tabs: [tab('a', { title: '' })] });
+    const { result } = renderHook(() => useBrowser());
+    await flush();
+
+    act(() => result.current.updateTabMeta('a', { url: 'https://example.com/a', title: 'Actual title' }));
+    expect(readBrowserHistory()[0].visitedAt).toBe(1_000);
+
+    vi.setSystemTime(2_000);
+    act(() => result.current.updateTabMeta('a', { url: 'https://example.com/a', title: 'Actual title' }));
+    expect(readBrowserHistory()[0].visitedAt).toBe(1_000);
+
+    act(() => result.current.clearHistory());
+    act(() => result.current.updateTabMeta('a', { url: 'https://example.com/a', title: 'Actual title' }));
+    expect(readBrowserHistory()).toEqual([]);
   });
 });
