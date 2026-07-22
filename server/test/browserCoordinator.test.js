@@ -16,6 +16,8 @@ function proxyBackend() {
   let failCreate = false;
   let failDelete = false;
   let failVisibility = false;
+  const visibilityStatuses = [];
+  const visibilityDelays = [];
   const byDevice = new Map();
   const calls = [];
   const tabs = (device) => byDevice.get(device) || [];
@@ -52,6 +54,10 @@ function proxyBackend() {
     }
     if (method === 'PATCH' && match[2] === 'visibility') {
       if (failVisibility) return json(503, { error: 'browser unavailable' });
+      const delay = visibilityDelays.shift();
+      if (delay) await delay;
+      const queuedStatus = visibilityStatuses.shift();
+      if (queuedStatus && queuedStatus !== 200) return json(queuedStatus, { error: 'browser unavailable' });
       const hiddenAt = body.visible ? null : Date.now();
       const updated = {
         ...current, visible: body.visible, closeAfterMinutes: body.closeAfterMinutes, hiddenAt,
@@ -73,6 +79,13 @@ function proxyBackend() {
     setFailCreate(value) { failCreate = value; },
     setFailDelete(value) { failDelete = value; },
     setFailVisibility(value) { failVisibility = value; },
+    queueVisibilityStatuses(...statuses) { visibilityStatuses.push(...statuses); },
+    deferNextVisibility() {
+      let release;
+      visibilityDelays.push(new Promise((resolve) => { release = resolve; }));
+      return release;
+    },
+    drop(device, id) { save(device, tabs(device).filter((tab) => tab.id !== id)); },
     setVisible(device, id, visible) {
       save(device, tabs(device).map((tab) => tab.id === id ? { ...tab, visible } : tab));
     },
@@ -194,6 +207,49 @@ describe('browser main-process coordinator', () => {
     })]);
   });
 
+  it('forgets a stale proxy after worker restart and creates a direct tab on PATCH 404', async () => {
+    const backend = proxyBackend();
+    const app = appFor(backend);
+    const oldProxy = await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://old-proxy.example/', closeAfterMinutes: 10, mode: 'proxy',
+    }).expect(201);
+    const proxy = await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://proxy.example/', closeAfterMinutes: 10, mode: 'proxy',
+    }).expect(201);
+    backend.drop(DEVICE_A, oldProxy.body.id);
+    backend.drop(DEVICE_A, proxy.body.id);
+
+    const direct = await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://direct.example/', closeAfterMinutes: 30, mode: 'direct',
+    }).expect(201);
+
+    const beforeNavigate = backend.calls.length;
+    await asDevice(request(app).post(`/api/browser-tabs/${oldProxy.body.id}/navigate`))
+      .send({ url: oldProxy.body.originalUrl, mode: 'direct' })
+      .expect(404);
+    expect(backend.calls.slice(beforeNavigate)).toContainEqual(expect.objectContaining({
+      method: 'GET', path: '/api/browser-tabs',
+    }));
+    const listed = await asDevice(request(app).get('/api/browser-tabs')).expect(200);
+    expect(listed.body.tabs).toEqual([expect.objectContaining({ id: direct.body.id, visible: true })]);
+  });
+
+  it('does not swallow non-404 client errors while hiding a proxy for direct create', async () => {
+    const backend = proxyBackend();
+    const app = appFor(backend);
+    const proxy = await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://proxy.example/', closeAfterMinutes: 10, mode: 'proxy',
+    }).expect(201);
+    backend.queueVisibilityStatuses(409);
+
+    await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://direct.example/', closeAfterMinutes: 30, mode: 'direct',
+    }).expect(409);
+
+    const listed = await asDevice(request(app).get('/api/browser-tabs')).expect(200);
+    expect(listed.body.tabs).toEqual([expect.objectContaining({ id: proxy.body.id, visible: true })]);
+  });
+
   it('does not mark a direct tab visible when hiding the proxy fails', async () => {
     const backend = proxyBackend();
     const app = appFor(backend);
@@ -213,6 +269,27 @@ describe('browser main-process coordinator', () => {
     expect(listed.body.tabs.filter((tab) => tab.visible)).toEqual([
       expect.objectContaining({ mode: 'proxy' }),
     ]);
+  });
+
+  it('forgets a stale proxy after worker restart and restores direct visibility on PATCH 404', async () => {
+    const backend = proxyBackend();
+    const app = appFor(backend);
+    const direct = await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://direct.example/', closeAfterMinutes: 30, mode: 'direct',
+    }).expect(201);
+    const proxy = await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://proxy.example/', closeAfterMinutes: 10, mode: 'proxy',
+    }).expect(201);
+    backend.drop(DEVICE_A, proxy.body.id);
+
+    await asDevice(request(app).patch(`/api/browser-tabs/${direct.body.id}/visibility`))
+      .send({ visible: true, closeAfterMinutes: 30 })
+      .expect(200);
+
+    const listed = await asDevice(request(app).get('/api/browser-tabs')).expect(200);
+    expect(listed.body.tabs).toEqual([expect.objectContaining({
+      id: direct.body.id, visible: true, closeAfterMinutes: 30, hiddenAt: null, expiresAt: null,
+    })]);
   });
 
   it('does not synthesize a hidden proxy when GET reconciliation cannot hide it', async () => {
@@ -274,6 +351,89 @@ describe('browser main-process coordinator', () => {
     await new Promise((resolve) => setTimeout(resolve, 120));
 
     await asDevice(request(app).get('/api/browser-tabs')).expect(200, { tabs: [] });
+  });
+
+  it('restores the displaced direct tab and its close timing when direct create is aborted', async () => {
+    const backend = proxyBackend();
+    const app = appFor(backend, () => 1_000, { responseDelayMs: 100 });
+    const original = await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://original.example/', closeAfterMinutes: 30, mode: 'direct',
+    }).expect(201);
+
+    await expect(asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://aborted.example/', closeAfterMinutes: 10, mode: 'direct',
+    }).timeout({ response: 20 })).rejects.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 140));
+
+    const listed = await asDevice(request(app).get('/api/browser-tabs')).expect(200);
+    expect(listed.body.tabs).toEqual([expect.objectContaining({
+      id: original.body.id, visible: true, closeAfterMinutes: 30, hiddenAt: null, expiresAt: null,
+    })]);
+  });
+
+  it('restores the displaced proxy tab when direct create is aborted', async () => {
+    const backend = proxyBackend();
+    const app = appFor(backend, () => 1_000, { responseDelayMs: 100 });
+    const proxy = await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://proxy.example/', closeAfterMinutes: 30, mode: 'proxy',
+    }).expect(201);
+
+    await expect(asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://aborted.example/', closeAfterMinutes: 10, mode: 'direct',
+    }).timeout({ response: 20 })).rejects.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 140));
+
+    const listed = await asDevice(request(app).get('/api/browser-tabs')).expect(200);
+    expect(listed.body.tabs).toEqual([expect.objectContaining({
+      id: proxy.body.id, mode: 'proxy', visible: true, closeAfterMinutes: 30,
+      hiddenAt: null, expiresAt: null,
+    })]);
+  });
+
+  it('keeps worker truth when restoring a displaced proxy after abort fails', async () => {
+    const backend = proxyBackend();
+    const app = appFor(backend, () => 1_000, { responseDelayMs: 100 });
+    const proxy = await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://proxy.example/', closeAfterMinutes: 30, mode: 'proxy',
+    }).expect(201);
+    backend.queueVisibilityStatuses(200, 503);
+
+    await expect(asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://aborted.example/', closeAfterMinutes: 10, mode: 'direct',
+    }).timeout({ response: 20 })).rejects.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 140));
+
+    const listed = await asDevice(request(app).get('/api/browser-tabs')).expect(200);
+    expect(listed.body.tabs).toEqual([expect.objectContaining({
+      id: proxy.body.id, mode: 'proxy', visible: false, closeAfterMinutes: 30,
+    })]);
+  });
+
+  it('rolls back after aborting while proxy hide is still in flight', async () => {
+    const backend = proxyBackend();
+    const app = appFor(backend);
+    const proxy = await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://proxy.example/', closeAfterMinutes: 30, mode: 'proxy',
+    }).expect(201);
+    const releaseHide = backend.deferNextVisibility();
+
+    const pending = asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://aborted.example/', closeAfterMinutes: 10, mode: 'direct',
+    });
+    const outcome = pending.then(() => null, (error) => error);
+    await vi.waitFor(() => expect(backend.calls).toContainEqual(expect.objectContaining({
+      method: 'PATCH', body: expect.objectContaining({ visible: false }),
+    })));
+    pending.abort();
+    expect(await outcome).toBeInstanceOf(Error);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    releaseHide();
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    const listed = await asDevice(request(app).get('/api/browser-tabs')).expect(200);
+    expect(listed.body.tabs).toEqual([expect.objectContaining({
+      id: proxy.body.id, mode: 'proxy', visible: true, closeAfterMinutes: 30,
+    })]);
   });
 
   it('clears direct expiry timers when the coordinator closes', async () => {

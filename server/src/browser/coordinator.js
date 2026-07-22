@@ -104,6 +104,10 @@ export function createBrowserCoordinator({
         forgetDeviceProxy(req.get('x-handmux-browser-device'));
         return { unavailable: true };
       }
+      if (response.status === 404) {
+        forgetDeviceProxy(req.get('x-handmux-browser-device'));
+        return { stale: true };
+      }
       const updated = jsonBody(response);
       if (response.status !== 200 || !updated) return { response };
       rememberProxy(updated, tab.id, req.get('x-handmux-browser-device'));
@@ -115,6 +119,57 @@ export function createBrowserCoordinator({
     return direct.add({
       id, mode: 'direct', channel, url, originalUrl: url, title: '', closeAfterMinutes, ownerDevice: deviceId,
     });
+  };
+  const visibleSnapshot = (deviceId) => ({
+    direct: listDirect(deviceId).filter((tab) => tab.visible),
+    proxy: [...proxyTabs.values()]
+      .filter((tab) => tab.ownerDevice === deviceId && tab.visible)
+      .map((tab) => ({ ...tab, internalId: workerId(tab.id) })),
+  });
+  const restoreVisibleSnapshot = async (req, deviceId, snapshot) => {
+    for (const tab of snapshot.direct) {
+      if (directFor(tab.id, deviceId)) direct.setVisible(tab.id, true, tab.closeAfterMinutes);
+    }
+    for (const tab of snapshot.proxy) {
+      const response = await proxyCall(
+        req, 'PATCH', `/api/browser-tabs/${encodeURIComponent(tab.internalId)}/visibility`,
+        { visible: true, closeAfterMinutes: tab.closeAfterMinutes },
+      );
+      if (!response) {
+        forgetDeviceProxy(deviceId);
+        continue;
+      }
+      if (response.status === 404) {
+        forgetDeviceProxy(deviceId);
+        continue;
+      }
+      const restored = jsonBody(response);
+      if (response.status === 200 && restored) rememberProxy(restored, tab.id, deviceId);
+    }
+  };
+  const createDirectTransaction = (req, deviceId) => {
+    const snapshot = visibleSnapshot(deviceId);
+    let preparePromise = null;
+    let created = null;
+    let rollbackPromise = null;
+    return {
+      prepare() {
+        if (!preparePromise) preparePromise = hideVisibleProxy(req, snapshot.proxy);
+        return preparePromise;
+      },
+      commit(input) {
+        created = addDirect(input);
+        return created;
+      },
+      rollback() {
+        if (!rollbackPromise) rollbackPromise = (async () => {
+          if (preparePromise) await preparePromise;
+          if (created) direct.remove(created.id);
+          await restoreVisibleSnapshot(req, deviceId, snapshot);
+        })();
+        return rollbackPromise;
+      },
+    };
   };
 
   const browserCoordinator = async (req, res) => {
@@ -137,14 +192,29 @@ export function createBrowserCoordinator({
       if (mode !== 'direct' && mode !== 'proxy') return res.status(400).json({ error: 'unsupported browser mode' });
       if (mode === 'proxy' && !previewDomain) return res.status(503).json({ error: 'browser proxy unavailable' });
       if (mode === 'direct') {
-        const hidden = await hideVisibleProxy(
-          req, [...proxyTabs.values()].filter((tab) => tab.ownerDevice === deviceId),
-        );
-        if (hidden.response) return sendProxy(res, hidden.response);
-        const created = addDirect({ url, closeAfterMinutes, deviceId });
         let finished = false;
+        let cancelled = req.aborted || res.destroyed;
+        const transaction = createDirectTransaction(req, deviceId);
+        const cancel = () => {
+          if (finished) return;
+          cancelled = true;
+          void transaction.rollback().catch(() => {});
+        };
+        req.once('aborted', cancel);
+        res.once('close', cancel);
         res.once('finish', () => { finished = true; });
-        res.once('close', () => { if (!finished) direct.remove(created.id); });
+        const hidden = await transaction.prepare();
+        cancelled ||= req.aborted || res.destroyed;
+        if (cancelled) {
+          await transaction.rollback();
+          return undefined;
+        }
+        if (hidden.response) return sendProxy(res, hidden.response);
+        const created = transaction.commit({ url, closeAfterMinutes, deviceId });
+        if (cancelled) {
+          await transaction.rollback();
+          return undefined;
+        }
         return res.status(201).json(publicTab(created));
       }
       const response = await proxyCall(req, 'POST', '/api/browser-tabs', { url, closeAfterMinutes, mode });
@@ -174,7 +244,7 @@ export function createBrowserCoordinator({
           for (const tab of local) {
             if (tab.visible) direct.setVisible(tab.id, false, tab.closeAfterMinutes);
           }
-        } else if (hidden.unavailable) {
+        } else if (hidden.unavailable || hidden.stale) {
           confirmedProxy = [];
         } else {
           confirmedProxy = confirmedProxy.map((tab) => proxyTabs.get(tab.id) || tab);
