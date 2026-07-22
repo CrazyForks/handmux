@@ -167,6 +167,7 @@ export default function BrowserSheet({ browser }) {
 
   const selectTab = async (tab) => {
     setModeOpen(false);
+    setHistoryError(null);
     const epoch = ++selectionEpoch.current;
     const switched = await switchTab(tab.id);
     if (!switched || epoch !== selectionEpoch.current) return;
@@ -175,6 +176,7 @@ export default function BrowserSheet({ browser }) {
 
   const selectHistory = () => {
     setModeOpen(false);
+    setHistoryError(null);
     selectionEpoch.current += 1;
     setReloadIntent(null);
     return switchTab('history');
@@ -211,6 +213,7 @@ export default function BrowserSheet({ browser }) {
 
   const submitAddress = (event) => {
     event.preventDefault();
+    setHistoryError(null);
     if (historyActive || !active) openUrl(address);
     else navigateTab(active.id, address);
   };
@@ -220,6 +223,7 @@ export default function BrowserSheet({ browser }) {
       setModeOpen(false);
       return;
     }
+    setHistoryError(null);
     navigateTab(active.id, active.originalUrl, mode);
     setModeOpen(false);
   };

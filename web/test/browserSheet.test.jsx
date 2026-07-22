@@ -206,6 +206,26 @@ describe('BrowserSheet', () => {
     expect(document.querySelector('.browser-error').textContent).toContain('当前服务器未开启浏览器代理');
   });
 
+  it('clears stale history errors when switching tabs or starting a valid address operation', async () => {
+    const model = browser({
+      proxyAvailable: false, historyActive: true, activeId: null, defaultMode: 'direct',
+      history: [{ url: 'https://old.example/', title: 'Old', visitedAt: 1000, lastMode: 'proxy' }],
+    });
+    await render(model);
+    click(document.querySelector('.browser-history-main'));
+    expect(document.querySelector('.browser-error')).not.toBeNull();
+
+    await clickAndFlush([...document.querySelectorAll('[role="tab"]')]
+      .find((node) => node.textContent.includes('Alpha')));
+    expect(document.querySelector('.browser-error')).toBeNull();
+
+    click(document.querySelector('.browser-history-main'));
+    setInput(document.querySelector('.browser-address'), 'https://valid.example/');
+    submit(document.querySelector('.browser-address-form'));
+    expect(model.openUrl).toHaveBeenCalledWith('https://valid.example/');
+    expect(document.querySelector('.browser-error')).toBeNull();
+  });
+
   it('submits the editable address and sends browser navigation commands', async () => {
     const model = browser();
     await render(model);
