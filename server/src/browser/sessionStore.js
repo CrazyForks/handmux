@@ -31,7 +31,8 @@ export function createBrowserSessionStore({
   return {
     add(input) {
       if (tabs.has(input.id)) throw new Error(`browser tab already exists: ${input.id}`);
-      const tab = { ...input, visible: true, hiddenAt: null, expiresAt: null, timer: null };
+      const mode = input.mode === 'direct' ? 'direct' : 'proxy';
+      const tab = { ...input, mode, visible: true, hiddenAt: null, expiresAt: null, timer: null };
       tabs.set(tab.id, tab);
       return view(tab);
     },

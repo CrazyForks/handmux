@@ -35,6 +35,14 @@ describe('browser session store', () => {
     expect(clock.timers.size).toBe(0);
   });
 
+  it('treats stored tabs without a mode as legacy proxy tabs', () => {
+    const store = createBrowserSessionStore();
+
+    store.add(tab('legacy'));
+
+    expect(store.get('legacy').mode).toBe('proxy');
+  });
+
   it('expires hidden tabs independently', () => {
     let now = 1_000;
     const clock = scheduler();

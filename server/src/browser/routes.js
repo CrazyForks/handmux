@@ -48,7 +48,7 @@ export function browserRoutes({
   const publicBase = previewBase(previewDomain);
   if (publicBase && !browserBootstrap) throw new Error('browser bootstrap required with previewDomain');
   const publicTab = (tab, deviceId) => {
-    if (!publicBase || !tab?.url) return tab;
+    if (!publicBase || !tab?.url || tab.mode === 'direct') return tab;
     const origin = new URL(tab.url).origin;
     return { ...tab, url: browserBootstrap.issue({ url: tab.url, origin, deviceId }) };
   };
@@ -65,9 +65,10 @@ export function browserRoutes({
 
   r.post('/browser-tabs', async (req, res, next) => {
     if (!browser) return res.status(503).json({ error: 'browser unavailable' });
-    const { url, closeAfterMinutes } = req.body || {};
+    const { url, closeAfterMinutes, mode = 'proxy' } = req.body || {};
     if (!validTarget(url)) return res.status(400).json({ error: 'browser URL must use http or https' });
     if (!validCloseAfter(closeAfterMinutes)) return res.status(400).json({ error: 'unsupported background close time' });
+    if (mode !== 'direct' && mode !== 'proxy') return res.status(400).json({ error: 'unsupported browser mode' });
     let created = null;
     let responseFinished = false;
     let responseClosed = false;
@@ -90,7 +91,7 @@ export function browserRoutes({
       const origin = publicBase
         ? wildcardOrigin(publicBase, new URL(url).origin, browserHostForTarget)
         : browserRequestOrigin(req);
-      created = await browser.create({ url, origin, closeAfterMinutes, deviceId: req.browserDeviceId });
+      created = await browser.create({ url, origin, closeAfterMinutes, deviceId: req.browserDeviceId, mode });
       if (responseClosed && !responseFinished) return cleanupUnsentTab();
       res.status(201).json(publicTab(created, req.browserDeviceId));
     } catch (error) {
@@ -117,13 +118,14 @@ export function browserRoutes({
 
   r.post('/browser-tabs/:id/navigate', async (req, res, next) => {
     if (!browser) return res.status(503).json({ error: 'browser unavailable' });
-    const { url } = req.body || {};
+    const { url, mode = 'proxy' } = req.body || {};
     if (!validTarget(url)) return res.status(400).json({ error: 'browser URL must use http or https' });
+    if (mode !== 'direct' && mode !== 'proxy') return res.status(400).json({ error: 'unsupported browser mode' });
     try {
       const origin = publicBase
         ? wildcardOrigin(publicBase, new URL(url).origin, browserHostForTarget)
         : browserRequestOrigin(req);
-      const tab = await browser.navigate(req.params.id, url, req.browserDeviceId, origin);
+      const tab = await browser.navigate(req.params.id, url, req.browserDeviceId, origin, mode);
       if (!tab) return res.status(404).json({ error: 'browser tab not found' });
       res.json(publicTab(tab, req.browserDeviceId));
     } catch (error) { next(error); }

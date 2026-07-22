@@ -322,31 +322,42 @@ export async function createBrowserPreviewManager({
       let origin;
       try { origin = normalizedOrigin(rawOrigin); } catch { return null; }
       const sessionId = sessionIdForPath(pathname);
-      const sameOriginTabs = store.list().filter((item) => item.ownerDevice === deviceId && item.publicOrigin === origin);
+      const sameOriginTabs = store.list().filter((item) => item.mode === 'proxy'
+        && item.ownerDevice === deviceId && item.publicOrigin === origin);
       const tab = sessionId
         ? tabForPath(pathname, deviceId, origin)
         : sameOriginTabs.find((item) => item.visible) || sameOriginTabs[0];
       return tab ? { port: tab.pool.ports[0], origin: tab.publicOrigin } : null;
     },
 
-    async create({ url, origin, closeAfterMinutes, deviceId }) {
+    async create({ url, origin, closeAfterMinutes, deviceId, mode: rawMode }) {
       if (!deviceId) throw new Error('browser device id required');
+      if (closing) throw new Error('browser manager closing');
       const target = normalizedTarget(url);
       const requestedOrigin = normalizedOrigin(origin);
+      const mode = rawMode === 'direct' ? 'direct' : 'proxy';
       const id = randomId();
       const channel = randomChannel();
-      const context = await contextFor({ deviceId, target, origin: requestedOrigin, sessionId: () => id });
-      if (closing) {
-        releaseEmptyContext(context);
-        throw new Error('browser manager closing');
+      let context = null;
+      let publicUrl = target;
+      if (mode === 'proxy') {
+        context = await contextFor({ deviceId, target, origin: requestedOrigin, sessionId: () => id });
+        if (closing) {
+          releaseEmptyContext(context);
+          throw new Error('browser manager closing');
+        }
+        context.policy.authorizeTopLevel?.(target);
+        try { publicUrl = openTabSession(context, target, channel); }
+        catch (error) {
+          releaseEmptyContext(context);
+          throw error;
+        }
       }
-      context.policy.authorizeTopLevel?.(target);
-      const publicUrl = openTabSession(context, target, channel);
       const displacedTabs = hideOtherTabs(deviceId, id, closeAfterMinutes);
-      context.tabIds.add(id);
+      context?.tabIds.add(id);
       const created = publicTab(store.add({
-        id, session: context.session, channel, url: publicUrl, originalUrl: target, title: '', closeAfterMinutes,
-        ownerDevice: deviceId, publicOrigin: requestedOrigin, pool: context.pool, contextKey: context.key,
+        id, mode, session: context?.session || null, channel, url: publicUrl, originalUrl: target, title: '', closeAfterMinutes,
+        ownerDevice: deviceId, publicOrigin: requestedOrigin, pool: context?.pool || null, contextKey: context?.key || null,
       }));
       Object.defineProperty(created, '_displacedTabs', { value: displacedTabs });
       return created;
@@ -364,11 +375,27 @@ export async function createBrowserPreviewManager({
       return publicTab(store.setVisible(id, visible, closeAfterMinutes));
     },
 
-    async navigate(id, url, deviceId, origin) {
+    async navigate(id, url, deviceId, origin, rawMode) {
       const initialTab = store.get(id);
       if (!initialTab || initialTab.ownerDevice !== deviceId) return null;
       const target = normalizedTarget(url);
       const requestedOrigin = normalizedOrigin(origin || initialTab.publicOrigin);
+      const mode = rawMode === 'direct' ? 'direct' : 'proxy';
+      if (mode === 'direct') {
+        const tab = store.get(id);
+        if (!tab || tab.ownerDevice !== deviceId) return null;
+        const updated = store.update(id, {
+          mode,
+          url: target,
+          originalUrl: target,
+          session: null,
+          publicOrigin: requestedOrigin,
+          pool: null,
+          contextKey: null,
+        });
+        releaseTabContext(tab);
+        return publicTab(updated);
+      }
       const context = await contextFor({ deviceId, target, origin: requestedOrigin, sessionId: randomId });
       const tab = store.get(id);
       if (!tab || tab.ownerDevice !== deviceId) {
@@ -376,19 +403,26 @@ export async function createBrowserPreviewManager({
         return null;
       }
       context.policy.authorizeTopLevel?.(target);
-      const publicUrl = openTabSession(context, target, tab.channel);
+      let publicUrl;
+      try { publicUrl = openTabSession(context, target, tab.channel); }
+      catch (error) {
+        releaseEmptyContext(context);
+        throw error;
+      }
       if (context.key !== tab.contextKey) {
         context.tabIds.add(id);
-        releaseTabContext(tab);
       }
-      return publicTab(store.update(id, {
+      const updated = store.update(id, {
+        mode,
         url: publicUrl,
         originalUrl: target,
         session: context.session,
         publicOrigin: context.publicOrigin,
         pool: context.pool,
         contextKey: context.key,
-      }));
+      });
+      if (context.key !== tab.contextKey) releaseTabContext(tab);
+      return publicTab(updated);
     },
 
     closeTab(id, deviceId) {

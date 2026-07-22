@@ -6,6 +6,7 @@ const DEVICE = 'device-test';
 
 function fakeHammerhead() {
   const proxies = [];
+  let openSessionError = null;
   class Session {
     constructor(_uploads, options) {
       this.id = 'generated';
@@ -25,6 +26,7 @@ function fakeHammerhead() {
       });
       this.windowIds = [];
       this.openSession = vi.fn((url, session) => {
+        if (openSessionError) throw openSessionError;
         this.windowIds.push(session.options.windowId);
         return `${this.server1Info.domain}/${session.id}/${url}`;
       });
@@ -33,10 +35,110 @@ function fakeHammerhead() {
       proxies.push(this);
     }
   }
-  return { api: { Proxy, Session, ResponseMock, RequestFilterRule: { ANY: { id: 'any' } } }, proxies };
+  return {
+    api: { Proxy, Session, ResponseMock, RequestFilterRule: { ANY: { id: 'any' } } },
+    proxies,
+    failOpenSession(error) { openSessionError = error; },
+  };
 }
 
 describe('browser preview manager', () => {
+  it('creates a direct tab without allocating a Hammerhead context', async () => {
+    const fake = fakeHammerhead();
+    const target = 'https://direct.example/path';
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      randomId: () => 'tab-direct',
+      randomChannel: () => 'direct-channel',
+    });
+
+    const tab = await manager.create({
+      url: target,
+      origin: 'https://handmux.example',
+      closeAfterMinutes: 10,
+      deviceId: DEVICE,
+      mode: 'direct',
+    });
+
+    expect(tab).toMatchObject({ mode: 'direct', url: target, originalUrl: target });
+    expect(manager.list(DEVICE)[0]).toMatchObject({ mode: 'direct', url: target, originalUrl: target });
+    expect(fake.proxies).toHaveLength(0);
+  });
+
+  it('rejects a direct create after manager shutdown', async () => {
+    const fake = fakeHammerhead();
+    const manager = await createBrowserPreviewManager({ hammerhead: fake.api });
+    await manager.close();
+
+    await expect(manager.create({
+      url: 'https://direct.example/',
+      origin: 'https://handmux.example',
+      closeAfterMinutes: 10,
+      deviceId: DEVICE,
+      mode: 'direct',
+    })).rejects.toThrow(/closing/);
+  });
+
+  it('keeps missing create mode compatible with proxy tabs', async () => {
+    const fake = fakeHammerhead();
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      randomId: () => 'tab-legacy',
+    });
+
+    await manager.create({
+      url: 'https://legacy.example/', origin: 'https://handmux.example', closeAfterMinutes: 10, deviceId: DEVICE,
+    });
+
+    expect(manager.get('tab-legacy', DEVICE).mode).toBe('proxy');
+    expect(fake.proxies[0].openSession).toHaveBeenCalledOnce();
+  });
+
+  it('switches a proxy tab to direct before releasing its Hammerhead context', async () => {
+    const fake = fakeHammerhead();
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      randomId: () => 'tab-a',
+    });
+    const first = await manager.create({
+      url: 'https://proxy.example/', origin: 'https://handmux.example', closeAfterMinutes: 10, deviceId: DEVICE,
+    });
+    fake.proxies[0].closeSession.mockImplementation(() => {
+      expect(manager.get(first.id, DEVICE)).toMatchObject({
+        mode: 'direct', url: 'https://direct.example/', originalUrl: 'https://direct.example/',
+      });
+    });
+
+    const next = await manager.navigate(
+      first.id, 'https://direct.example/', DEVICE, 'https://handmux.example', 'direct',
+    );
+
+    expect(next).toMatchObject({ id: first.id, mode: 'direct', url: 'https://direct.example/' });
+    expect(fake.proxies[0].openSession).toHaveBeenCalledOnce();
+    expect(fake.proxies[0].closeSession).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a direct tab unchanged when switching to proxy cannot open a session', async () => {
+    const fake = fakeHammerhead();
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      randomId: () => 'tab-a',
+    });
+    const first = await manager.create({
+      url: 'https://direct.example/', origin: 'https://handmux.example', closeAfterMinutes: 10, deviceId: DEVICE, mode: 'direct',
+    });
+    fake.failOpenSession(new Error('open failed'));
+    const navigating = manager.navigate(
+      first.id, 'https://proxy.example/', DEVICE, 'https://handmux.example', 'proxy',
+    );
+
+    await expect(navigating).rejects.toThrow('open failed');
+    expect(manager.get(first.id, DEVICE)).toMatchObject({
+      id: first.id, mode: 'direct', url: 'https://direct.example/', originalUrl: 'https://direct.example/',
+    });
+    expect(fake.proxies[0].closeSession).toHaveBeenCalledOnce();
+  });
+
   it('registers request hooks through the actual Hammerhead 31.7.8 session provider', async () => {
     const manager = await createBrowserPreviewManager({ hammerhead });
     try {

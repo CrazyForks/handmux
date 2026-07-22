@@ -34,9 +34,30 @@ describe('browser routes', () => {
 
     expect(res.status).toBe(201);
     expect(browser.create).toHaveBeenCalledWith({
-      url: 'https://target.example/path', origin: 'https://internal.example:30443', closeAfterMinutes: 10, deviceId: DEVICE,
+      url: 'https://target.example/path', origin: 'https://internal.example:30443', closeAfterMinutes: 10, deviceId: DEVICE, mode: 'proxy',
     });
     expect(res.body.id).toBe('tab-a');
+  });
+
+  it.each(['direct', 'proxy'])('accepts mode=%s when creating a tab', async (mode) => {
+    const browser = browserFake();
+
+    await asDevice(request(appFor(browser)).post('/browser-tabs'))
+      .send({ url: 'https://target.example/', closeAfterMinutes: 10, mode })
+      .expect(201);
+
+    expect(browser.create).toHaveBeenCalledWith(expect.objectContaining({ mode }));
+  });
+
+  it('rejects an unsupported create mode', async () => {
+    const browser = browserFake();
+
+    const res = await asDevice(request(appFor(browser)).post('/browser-tabs'))
+      .send({ url: 'https://target.example/', closeAfterMinutes: 10, mode: 'reader' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('unsupported browser mode');
+    expect(browser.create).not.toHaveBeenCalled();
   });
 
   it('closes a tab created after disconnect and restores the exact tab displaced at commit time', async () => {
@@ -114,6 +135,22 @@ describe('browser routes', () => {
     expect(res.body.url).toBe('https://browser-idata.handmux.example.com:30443/_browser-bootstrap/ticket');
     expect(res.headers['set-cookie'][0]).not.toContain('Domain=');
     expect(res.headers['set-cookie'][0]).toContain('Secure');
+  });
+
+  it('keeps a direct tab URL unchanged when previewDomain is configured', async () => {
+    const browser = browserFake();
+    browser.create.mockImplementation(({ url, mode }) => ({
+      id: 'tab-a', mode, originalUrl: url, url,
+    }));
+    const browserBootstrap = { issue: vi.fn() };
+
+    const res = await asDevice(request(appFor(browser, 'preview.example', browserBootstrap))
+      .post('/browser-tabs'))
+      .send({ url: 'https://target.example/', closeAfterMinutes: 10, mode: 'direct' })
+      .expect(201);
+
+    expect(res.body.url).toBe('https://target.example/');
+    expect(browserBootstrap.issue).not.toHaveBeenCalled();
   });
 
   it('rolls back a created tab when bootstrap serialization fails', async () => {
@@ -209,7 +246,28 @@ describe('browser routes', () => {
     const browser = browserFake();
     const res = await asDevice(request(appFor(browser)).post('/browser-tabs/tab-a/navigate')).send({ url: 'https://next.example/' });
     expect(res.status).toBe(200);
-    expect(browser.navigate).toHaveBeenCalledWith('tab-a', 'https://next.example/', DEVICE, expect.any(String));
+    expect(browser.navigate).toHaveBeenCalledWith('tab-a', 'https://next.example/', DEVICE, expect.any(String), 'proxy');
+  });
+
+  it.each(['direct', 'proxy'])('accepts mode=%s when navigating a tab', async (mode) => {
+    const browser = browserFake();
+
+    await asDevice(request(appFor(browser)).post('/browser-tabs/tab-a/navigate'))
+      .send({ url: 'https://next.example/', mode })
+      .expect(200);
+
+    expect(browser.navigate).toHaveBeenCalledWith('tab-a', 'https://next.example/', DEVICE, expect.any(String), mode);
+  });
+
+  it('rejects an unsupported navigation mode', async () => {
+    const browser = browserFake();
+
+    const res = await asDevice(request(appFor(browser)).post('/browser-tabs/tab-a/navigate'))
+      .send({ url: 'https://next.example/', mode: 'reader' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('unsupported browser mode');
+    expect(browser.navigate).not.toHaveBeenCalled();
   });
 
   it('reissues a preview-origin bootstrap URL after navigation', async () => {
