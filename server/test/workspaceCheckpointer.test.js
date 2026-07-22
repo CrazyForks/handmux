@@ -339,7 +339,7 @@ describe('workspace graceful shutdown', () => {
     const shutdown = createGracefulShutdown({
       events: { stop: vi.fn(() => { order.push('events'); }) },
       workspace: { stop: vi.fn(async () => { order.push('workspace'); }) },
-      browser: { close: vi.fn(() => { order.push('browser'); }) },
+      browser: { close: vi.fn(async () => { order.push('browser'); await Promise.resolve(); }) },
       server: { close: vi.fn(() => { order.push('server'); }) },
     });
 

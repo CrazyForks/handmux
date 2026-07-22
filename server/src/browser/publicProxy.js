@@ -9,14 +9,47 @@ const SERVICE_PATHS = new Set([
   '/transport-worker.js',
   '/worker-hammerhead.js',
 ]);
+const DEVICE_COOKIE = 'tw_browser_device';
 
 export function isBrowserServicePath(pathname) {
   return SERVICE_PATHS.has(String(pathname || '').split('?')[0]);
 }
 
-function browserRequest(browser, req) {
+function cookieValue(raw, name) {
+  for (const part of String(raw || '').split(';')) {
+    const [key, ...rest] = part.trim().split('=');
+    if (key === name) return rest.join('=');
+  }
+  return null;
+}
+
+function browserTarget(browser, req, deviceId) {
   const pathname = String(req.url || '').split('?')[0];
-  return isBrowserServicePath(pathname) || browser.ownsPublicPath(pathname);
+  if (!claimedBrowserRequest(req)) return null;
+  if (typeof browser.resolvePublicRequest === 'function') {
+    return browser.resolvePublicRequest(pathname, deviceId, browserRequestOrigin(req));
+  }
+  const allowed = isBrowserServicePath(pathname) ? browser.hasDevice(deviceId) : browser.ownsPublicPath(pathname, deviceId);
+  return allowed ? { port: browser.internalPorts[0] } : null;
+}
+
+function isLoopback(address) {
+  return address === '127.0.0.1' || address === '::1' || String(address || '').startsWith('::ffff:127.');
+}
+
+export function browserRequestOrigin(req) {
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const protocol = isLoopback(req.socket?.remoteAddress) && (forwardedProto === 'http' || forwardedProto === 'https')
+    ? forwardedProto
+    : (req.socket?.encrypted ? 'https' : 'http');
+  const host = req.headers.host;
+  if (!host) return null;
+  try { return new URL(`${protocol}://${host}`).origin; } catch { return null; }
+}
+
+function claimedBrowserRequest(req) {
+  const pathname = String(req.url || '').split('?')[0];
+  return isBrowserServicePath(pathname) || String(pathname).split('/')[1]?.startsWith('_browser-');
 }
 
 function filteredCookie(raw) {
@@ -24,7 +57,7 @@ function filteredCookie(raw) {
     .split(';')
     .map((value) => value.trim())
     .filter(Boolean)
-    .filter((value) => !value.startsWith('tw_preview='));
+    .filter((value) => !value.startsWith('tw_preview=') && !value.startsWith(`${DEVICE_COOKIE}=`));
   return values.join('; ');
 }
 
@@ -46,8 +79,14 @@ export function createBrowserPublicProxy({
   connect = net.connect,
 } = {}) {
   const handler = (req, res, next) => {
-    if (!browser || !browserRequest(browser, req)) return next();
-    const port = browser.internalPorts[0];
+    if (!browser) return next();
+    const deviceId = cookieValue(req.headers.cookie, DEVICE_COOKIE);
+    const target = browserTarget(browser, req, deviceId);
+    if (!target) {
+      if (claimedBrowserRequest(req)) return res.status(403).json({ error: 'browser session unavailable' });
+      return next();
+    }
+    const { port } = target;
     const upstream = request({
       hostname: '127.0.0.1',
       port,
@@ -66,8 +105,10 @@ export function createBrowserPublicProxy({
   };
 
   const onUpgrade = (req, socket, head) => {
-    if (!browser || !browserRequest(browser, req)) return false;
-    const port = browser.internalPorts[0];
+    const deviceId = cookieValue(req.headers.cookie, DEVICE_COOKIE);
+    const target = browser && browserTarget(browser, req, deviceId);
+    if (!target) return false;
+    const { port } = target;
     const upstream = connect({ host: '127.0.0.1', port });
     upstream.once('connect', () => {
       const headers = upstreamHeaders(req.headers, port, token);

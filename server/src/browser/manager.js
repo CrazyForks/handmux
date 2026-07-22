@@ -7,7 +7,7 @@ const defaultHammerhead = importedHammerhead.default || importedHammerhead;
 
 function publicTab(tab) {
   if (!tab) return null;
-  const { session: _session, ...out } = tab;
+  const { session: _session, ownerDevice: _ownerDevice, pool: _pool, publicOrigin: _publicOrigin, ...out } = tab;
   return out;
 }
 
@@ -86,8 +86,17 @@ function applyPublicOrigin(proxy, origin) {
 async function waitForListening(server) {
   if (!server || server.listening || typeof server.once !== 'function') return;
   await new Promise((resolve, reject) => {
-    server.once('listening', resolve);
-    server.once('error', reject);
+    const cleanup = () => {
+      server.removeListener?.('listening', onListening);
+      server.removeListener?.('error', onError);
+      server.removeListener?.('close', onClose);
+    };
+    const onListening = () => { cleanup(); resolve(); };
+    const onError = (error) => { cleanup(); reject(error); };
+    const onClose = () => { cleanup(); reject(new Error('browser manager closing')); };
+    server.once('listening', onListening);
+    server.once('error', onError);
+    server.once('close', onClose);
   });
 }
 
@@ -103,52 +112,121 @@ export async function createBrowserPreviewManager({
 } = {}) {
   const ProxyClass = hammerhead.Proxy;
   const SessionClass = browserSessionClass(hammerhead);
-  const proxy = new ProxyClass();
-  proxy.start({
-    hostname: '127.0.0.1',
-    port1: internalPorts[0],
-    port2: internalPorts[1],
-    disableCrossDomain: true,
-    disableHttp2: true,
-  });
-  await Promise.all([waitForListening(proxy.server1), waitForListening(proxy.server2)]);
-  const boundPorts = [
-    proxy.server1?.address?.()?.port ?? internalPorts[0],
-    proxy.server2?.address?.()?.port ?? internalPorts[1],
-  ];
-  let publicOrigin = null;
+  const pools = new Map();
+  const pendingPools = new Map();
+  let poolCount = 0;
+  let closing = false;
+  let closePromise = null;
   const policies = new WeakMap();
+  const closedProxies = new WeakSet();
+
+  const closeProxy = (proxy) => {
+    if (!proxy || closedProxies.has(proxy)) return;
+    closedProxies.add(proxy);
+    proxy.close();
+  };
+
+  const createPool = (origin) => {
+    const proxy = new ProxyClass();
+    const requestedPorts = poolCount++ === 0 ? internalPorts : [0, 0];
+    let promise;
+    try {
+      proxy.start({
+        hostname: '127.0.0.1',
+        port1: requestedPorts[0],
+        port2: requestedPorts[1],
+        disableCrossDomain: true,
+        disableHttp2: true,
+      });
+      promise = (async () => {
+        try {
+          await Promise.all([waitForListening(proxy.server1), waitForListening(proxy.server2)]);
+          if (closing) throw new Error('browser manager closing');
+          const ports = [
+            proxy.server1?.address?.()?.port ?? requestedPorts[0],
+            proxy.server2?.address?.()?.port ?? requestedPorts[1],
+          ];
+          applyPublicOrigin(proxy, origin);
+          const pool = { origin, proxy, ports };
+          pools.set(origin, pool);
+          return pool;
+        } catch (error) {
+          closeProxy(proxy);
+          throw error;
+        } finally {
+          if (pendingPools.get(origin)?.promise === promise) pendingPools.delete(origin);
+        }
+      })();
+    } catch (error) {
+      closeProxy(proxy);
+      throw error;
+    }
+    const pending = { proxy, promise };
+    pendingPools.set(origin, pending);
+    return pending;
+  };
+  const poolFor = async (origin) => {
+    if (closing) throw new Error('browser manager closing');
+    if (pools.has(origin)) return pools.get(origin);
+    if (!pendingPools.has(origin)) createPool(origin);
+    return pendingPools.get(origin).promise;
+  };
 
   const closeHammerheadSession = (tab) => {
-    if (tab?.session) proxy.closeSession(tab.session);
+    if (tab?.session) tab.pool.proxy.closeSession(tab.session);
   };
   const store = createBrowserSessionStore({ now, setTimer, clearTimer, onExpire: closeHammerheadSession });
+  const hideOtherTabs = (deviceId, exceptId, closeAfterMinutes) => {
+    for (const tab of store.list()) {
+      if (tab.ownerDevice === deviceId && tab.id !== exceptId && tab.visible) {
+        store.setVisible(tab.id, false, closeAfterMinutes);
+      }
+    }
+  };
+
+  const sessionIdForPath = (pathname) => {
+    const descriptor = String(pathname || '').split('/')[1] || '';
+    const sessionId = descriptor.split(/[!*]/, 1)[0];
+    return sessionId.startsWith('_browser-') ? sessionId : null;
+  };
+  const tabForPath = (pathname, deviceId, origin) => {
+    const sessionId = sessionIdForPath(pathname);
+    if (!sessionId) return null;
+    return store.list().find((tab) => tab.session?.id === sessionId
+      && tab.ownerDevice === deviceId && (!origin || tab.publicOrigin === origin)) || null;
+  };
 
   const manager = {
-    internalPorts: boundPorts,
-
-    ownsPublicPath(pathname) {
-      const descriptor = String(pathname || '').split('/')[1] || '';
-      const sessionId = descriptor.split(/[!*]/, 1)[0];
-      return sessionId.startsWith('_browser-')
-        && store.list().some((tab) => tab.session?.id === sessionId);
+    ownsPublicPath(pathname, deviceId) {
+      return !!tabForPath(pathname, deviceId);
     },
 
-    create({ url, origin, closeAfterMinutes }) {
+    hasDevice(deviceId) {
+      return !!deviceId && store.list().some((tab) => tab.ownerDevice === deviceId);
+    },
+
+    resolvePublicRequest(pathname, deviceId, rawOrigin) {
+      let origin;
+      try { origin = normalizedOrigin(rawOrigin); } catch { return null; }
+      const sessionId = sessionIdForPath(pathname);
+      const sameOriginTabs = store.list().filter((item) => item.ownerDevice === deviceId && item.publicOrigin === origin);
+      const tab = sessionId
+        ? tabForPath(pathname, deviceId, origin)
+        : sameOriginTabs.find((item) => item.visible) || sameOriginTabs[0];
+      return tab ? { port: tab.pool.ports[0], origin: tab.publicOrigin } : null;
+    },
+
+    async create({ url, origin, closeAfterMinutes, deviceId }) {
+      if (!deviceId) throw new Error('browser device id required');
       const target = normalizedTarget(url);
       const requestedOrigin = normalizedOrigin(origin);
-      if (publicOrigin && publicOrigin !== requestedOrigin && store.list().length) {
-        throw new Error('browser sessions already use a different Handmux origin');
-      }
-      if (publicOrigin !== requestedOrigin) {
-        publicOrigin = requestedOrigin;
-        applyPublicOrigin(proxy, publicOrigin);
-      }
+      const pool = await poolFor(requestedOrigin);
+      if (closing) throw new Error('browser manager closing');
       const id = randomId();
       const channel = randomChannel();
       const session = new SessionClass(channel);
       session.id = `_browser-${id}`;
-      const policy = targetPolicyFactory({ topLevelUrl: target, handmuxOrigin: publicOrigin });
+      const policy = targetPolicyFactory({ topLevelUrl: target, handmuxOrigin: requestedOrigin });
       policies.set(session, policy);
       // 31.7.8's declarations expose addRequestEventListeners on Session, while the compiled runtime
       // delegates through requestHookEventProvider. Keep the version-specific seam in this one adapter.
@@ -156,7 +234,16 @@ export async function createBrowserPreviewManager({
       requestHooks.addRequestEventListeners(hammerhead.RequestFilterRule.ANY, {
         onRequest: async (event) => {
           const result = await policy.check(event._requestInfo.url);
-          if (result.allowed) return;
+          if (result.allowed) {
+            if (result.address && event.requestOptions) {
+              event.requestOptions.lookup = (_hostname, options, callback) => {
+                const approved = { address: result.address, family: result.family };
+                if (options?.all) callback(null, [approved]);
+                else callback(null, approved.address, approved.family);
+              };
+            }
+            return;
+          }
           await event.setMock(new hammerhead.ResponseMock(
             JSON.stringify({ error: 'browser target blocked', reason: result.reason }),
             403,
@@ -164,37 +251,55 @@ export async function createBrowserPreviewManager({
           ));
         },
       }, () => {});
-      const publicUrl = proxy.openSession(target, session);
+      const publicUrl = pool.proxy.openSession(target, session);
+      hideOtherTabs(deviceId, id, closeAfterMinutes);
       return publicTab(store.add({
         id, session, channel, url: publicUrl, originalUrl: target, title: '', closeAfterMinutes,
+        ownerDevice: deviceId, publicOrigin: requestedOrigin, pool,
       }));
     },
 
-    get(id) { return publicTab(store.get(id)); },
-    list() { return store.list().map(publicTab); },
+    get(id, deviceId) {
+      const tab = store.get(id);
+      return tab?.ownerDevice === deviceId ? publicTab(tab) : null;
+    },
+    list(deviceId) { return store.list().filter((tab) => tab.ownerDevice === deviceId).map(publicTab); },
 
-    setVisible(id, visible, closeAfterMinutes) {
+    setVisible(id, visible, closeAfterMinutes, deviceId) {
+      if (!manager.get(id, deviceId)) return null;
+      if (visible) hideOtherTabs(deviceId, id, closeAfterMinutes);
       return publicTab(store.setVisible(id, visible, closeAfterMinutes));
     },
 
-    navigate(id, url) {
+    navigate(id, url, deviceId) {
       const tab = store.get(id);
-      if (!tab) return null;
+      if (!tab || tab.ownerDevice !== deviceId) return null;
       const target = normalizedTarget(url);
       policies.get(tab.session)?.authorizeTopLevel?.(target);
-      const publicUrl = proxy.openSession(target, tab.session);
+      const publicUrl = tab.pool.proxy.openSession(target, tab.session);
       return publicTab(store.update(id, { url: publicUrl, originalUrl: target }));
     },
 
-    closeTab(id) {
+    closeTab(id, deviceId) {
+      if (!manager.get(id, deviceId)) return null;
       const tab = store.remove(id);
       closeHammerheadSession(tab);
       return publicTab(tab);
     },
 
     close() {
-      for (const tab of store.close()) closeHammerheadSession(tab);
-      proxy.close();
+      if (!closePromise) {
+        closing = true;
+        closePromise = (async () => {
+          for (const tab of store.close()) closeHammerheadSession(tab);
+          const pending = [...pendingPools.values()];
+          for (const entry of pending) closeProxy(entry.proxy);
+          await Promise.allSettled(pending.map((entry) => entry.promise));
+          for (const pool of pools.values()) closeProxy(pool.proxy);
+          pools.clear();
+        })();
+      }
+      return closePromise;
     },
   };
   return manager;

@@ -173,7 +173,7 @@ export function createGracefulShutdown({ events, workspace, browser, server }) {
           try {
             await workspace.stop();
           } finally {
-            try { browser?.close(); } finally { server.close(); }
+            try { await browser?.close(); } finally { server.close(); }
           }
         }
       })();

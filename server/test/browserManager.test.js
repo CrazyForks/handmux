@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { EventEmitter } from 'node:events';
 import hammerhead from 'testcafe-hammerhead';
 import { createBrowserPreviewManager } from '../src/browser/manager.js';
+const DEVICE = 'device-test';
 
 function fakeHammerhead() {
   const proxies = [];
@@ -34,10 +36,10 @@ describe('browser preview manager', () => {
   it('registers request hooks through the actual Hammerhead 31.7.8 session provider', async () => {
     const manager = await createBrowserPreviewManager({ hammerhead });
     try {
-      const tab = manager.create({ url: 'https://example.com/', origin: 'https://handmux.example', closeAfterMinutes: 10 });
+      const tab = await manager.create({ url: 'https://example.com/', origin: 'https://handmux.example', closeAfterMinutes: 10, deviceId: DEVICE });
       expect(tab.url).toContain('/_browser-');
     } finally {
-      manager.close();
+      await manager.close();
     }
   });
 
@@ -51,8 +53,8 @@ describe('browser preview manager', () => {
       randomChannel: () => 'private-channel',
     });
 
-    const a = manager.create({ url: 'https://a.example/', origin: 'https://handmux.example:30443', closeAfterMinutes: 10 });
-    const b = manager.create({ url: 'https://b.example/', origin: 'https://handmux.example:30443', closeAfterMinutes: 30 });
+    const a = await manager.create({ url: 'https://a.example/', origin: 'https://handmux.example:30443', closeAfterMinutes: 10, deviceId: 'device-a' });
+    const b = await manager.create({ url: 'https://b.example/', origin: 'https://handmux.example:30443', closeAfterMinutes: 30, deviceId: 'device-b' });
 
     expect(fake.proxies).toHaveLength(1);
     expect(fake.proxies[0].start).toHaveBeenCalledWith(expect.objectContaining({
@@ -64,13 +66,18 @@ describe('browser preview manager', () => {
     expect(a.url).toContain('/_browser-tab-a/https://a.example/');
     expect(b.url).toContain('/_browser-tab-b/https://b.example/');
     expect(fake.proxies[0].openSession.mock.calls[0][1]).not.toBe(fake.proxies[0].openSession.mock.calls[1][1]);
+    expect(manager.list('device-a').map((tab) => tab.id)).toEqual(['tab-a']);
+    expect(manager.list('device-b').map((tab) => tab.id)).toEqual(['tab-b']);
+    expect(manager.get('tab-a', 'device-b')).toBeNull();
+    expect(manager.ownsPublicPath(new URL(a.url).pathname, 'device-b')).toBe(false);
+    expect(manager.ownsPublicPath(new URL(a.url).pathname, 'device-a')).toBe(true);
   });
 
   it('adapts generated URLs to the current public Handmux origin', async () => {
     const fake = fakeHammerhead();
     const manager = await createBrowserPreviewManager({ hammerhead: fake.api, internalPorts: [4311, 4312], randomId: () => 'tab-a' });
 
-    const tab = manager.create({ url: 'http://127.0.0.1:5173/', origin: 'https://phone.example:30443', closeAfterMinutes: 10 });
+    const tab = await manager.create({ url: 'http://127.0.0.1:5173/', origin: 'https://phone.example:30443', closeAfterMinutes: 10, deviceId: DEVICE });
 
     expect(tab.url).toMatch(/^https:\/\/phone\.example:30443\/_browser-tab-a\//);
     expect(fake.proxies[0].server1Info).toMatchObject({
@@ -78,14 +85,61 @@ describe('browser preview manager', () => {
     });
   });
 
-  it('rejects a second public origin while live sessions exist', async () => {
+  it('keeps independent proxy pools for two live public Handmux origins', async () => {
     const fake = fakeHammerhead();
     const ids = ['tab-a', 'tab-b'];
     const manager = await createBrowserPreviewManager({ hammerhead: fake.api, internalPorts: [4311, 4312], randomId: () => ids.shift() });
-    manager.create({ url: 'https://a.example/', origin: 'https://one.example', closeAfterMinutes: 10 });
+    const [first, second] = await Promise.all([
+      manager.create({ url: 'https://a.example/', origin: 'https://one.example', closeAfterMinutes: 10, deviceId: 'device-one' }),
+      manager.create({ url: 'https://b.example/', origin: 'https://two.example', closeAfterMinutes: 10, deviceId: 'device-two' }),
+    ]);
 
-    expect(() => manager.create({ url: 'https://b.example/', origin: 'https://two.example', closeAfterMinutes: 10 }))
-      .toThrowError(/different Handmux origin/);
+    expect(first.url).toMatch(/^https:\/\/one\.example\//);
+    expect(second.url).toMatch(/^https:\/\/two\.example\//);
+    expect(fake.proxies).toHaveLength(2);
+    expect(fake.proxies[0].start).toHaveBeenCalledWith(expect.objectContaining({ port1: 4311, port2: 4312 }));
+    expect(fake.proxies[1].start).toHaveBeenCalledWith(expect.objectContaining({ port1: 0, port2: 0 }));
+    expect(fake.proxies[0].closeSession).not.toHaveBeenCalled();
+    expect(fake.proxies[1].closeSession).not.toHaveBeenCalled();
+  });
+
+  it('routes the same device only within the matching public origin', async () => {
+    const fake = fakeHammerhead();
+    const ids = ['tab-a', 'tab-b'];
+    const manager = await createBrowserPreviewManager({ hammerhead: fake.api, internalPorts: [4311, 4312], randomId: () => ids.shift() });
+    const first = await manager.create({ url: 'https://a.example/', origin: 'https://one.example', closeAfterMinutes: 10, deviceId: DEVICE });
+    const second = await manager.create({ url: 'https://b.example/', origin: 'https://two.example', closeAfterMinutes: 10, deviceId: DEVICE });
+
+    expect(manager.resolvePublicRequest('/task.js', DEVICE, 'https://one.example')).toMatchObject({ port: 4311 });
+    expect(manager.resolvePublicRequest('/task.js', DEVICE, 'https://two.example')).toMatchObject({ port: 0 });
+    expect(manager.resolvePublicRequest(new URL(first.url).pathname, DEVICE, 'https://one.example')).toMatchObject({ port: 4311 });
+    expect(manager.resolvePublicRequest(new URL(first.url).pathname, DEVICE, 'https://two.example')).toBeNull();
+    expect(manager.resolvePublicRequest(new URL(second.url).pathname, DEVICE, 'https://one.example')).toBeNull();
+  });
+
+  it('closes a proxy that is still starting when manager shutdown begins', async () => {
+    const fake = fakeHammerhead();
+    class PendingProxy extends fake.api.Proxy {
+      constructor() {
+        super();
+        this.server1 = new EventEmitter();
+        this.server1.listening = false;
+        this.server2 = new EventEmitter();
+        this.server2.listening = false;
+        this.close.mockImplementation(() => {
+          this.server1.emit('close');
+          this.server2.emit('close');
+        });
+      }
+    }
+    const manager = await createBrowserPreviewManager({ hammerhead: { ...fake.api, Proxy: PendingProxy } });
+    const creating = manager.create({ url: 'https://a.example/', origin: 'https://one.example', closeAfterMinutes: 10, deviceId: DEVICE });
+
+    await manager.close();
+
+    await expect(creating).rejects.toThrow(/closing/);
+    expect(fake.proxies[0].close).toHaveBeenCalled();
+    await expect(manager.create({ url: 'https://b.example/', origin: 'https://two.example', closeAfterMinutes: 10, deviceId: DEVICE })).rejects.toThrow(/closing/);
   });
 
   it('closes only the expired tab session and closes all remaining sessions at shutdown', async () => {
@@ -99,30 +153,49 @@ describe('browser preview manager', () => {
       setTimer: (fn) => { timers.push(fn); return timers.length; },
       clearTimer: vi.fn(),
     });
-    manager.create({ url: 'https://a.example/', origin: 'https://handmux.example', closeAfterMinutes: 10 });
-    manager.create({ url: 'https://b.example/', origin: 'https://handmux.example', closeAfterMinutes: 30 });
-    manager.setVisible('tab-a', false, 10);
-    manager.setVisible('tab-b', false, 30);
+    await manager.create({ url: 'https://a.example/', origin: 'https://handmux.example', closeAfterMinutes: 10, deviceId: DEVICE });
+    await manager.create({ url: 'https://b.example/', origin: 'https://handmux.example', closeAfterMinutes: 30, deviceId: DEVICE });
+    manager.setVisible('tab-a', false, 10, DEVICE);
+    manager.setVisible('tab-b', false, 30, DEVICE);
 
     timers[0]();
 
-    expect(manager.get('tab-a')).toBeNull();
-    expect(manager.get('tab-b')).not.toBeNull();
+    expect(manager.get('tab-a', DEVICE)).toBeNull();
+    expect(manager.get('tab-b', DEVICE)).not.toBeNull();
     expect(fake.proxies[0].closeSession).toHaveBeenCalledTimes(1);
     expect(fake.proxies[0].closeSession.mock.calls[0][0].id).toBe('_browser-tab-a');
 
-    manager.close();
+    await manager.close();
     expect(fake.proxies[0].closeSession).toHaveBeenCalledTimes(2);
     expect(fake.proxies[0].close).toHaveBeenCalledOnce();
+  });
+
+  it('keeps at most one visible tab per device when tabs are created or shown', async () => {
+    const fake = fakeHammerhead();
+    const ids = ['tab-a', 'tab-b'];
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      internalPorts: [4311, 4312],
+      randomId: () => ids.shift(),
+    });
+    await manager.create({ url: 'https://a.example/', origin: 'https://handmux.example', closeAfterMinutes: 10, deviceId: DEVICE });
+    await manager.create({ url: 'https://b.example/', origin: 'https://handmux.example', closeAfterMinutes: 10, deviceId: DEVICE });
+
+    expect(manager.list(DEVICE).filter((tab) => tab.visible).map((tab) => tab.id)).toEqual(['tab-b']);
+
+    manager.setVisible('tab-a', true, 10, DEVICE);
+
+    expect(manager.list(DEVICE).filter((tab) => tab.visible).map((tab) => tab.id)).toEqual(['tab-a']);
+    expect(manager.get('tab-b', DEVICE)).toMatchObject({ visible: false, closeAfterMinutes: 10 });
   });
 
   it('reuses a tab session when navigating and exposes a channel-bound payload bridge', async () => {
     const fake = fakeHammerhead();
     const manager = await createBrowserPreviewManager({ hammerhead: fake.api, internalPorts: [4311, 4312], randomId: () => 'tab-a' });
-    const first = manager.create({ url: 'https://a.example/', origin: 'https://handmux.example', closeAfterMinutes: 10 });
+    const first = await manager.create({ url: 'https://a.example/', origin: 'https://handmux.example', closeAfterMinutes: 10, deviceId: DEVICE });
     const session = fake.proxies[0].openSession.mock.calls[0][1];
 
-    const next = manager.navigate('tab-a', 'https://a.example/next');
+    const next = manager.navigate('tab-a', 'https://a.example/next', DEVICE);
     const payload = await session.getPayloadScript();
 
     expect(next).toMatchObject({ id: first.id, originalUrl: 'https://a.example/next' });
@@ -145,9 +218,9 @@ describe('browser preview manager', () => {
       randomId: () => 'tab-a',
       targetPolicyFactory,
     });
-    manager.create({ url: 'http://127.0.0.1:5173/', origin: 'https://handmux.example', closeAfterMinutes: 10 });
+    await manager.create({ url: 'http://127.0.0.1:5173/', origin: 'https://handmux.example', closeAfterMinutes: 10, deviceId: DEVICE });
 
-    manager.navigate('tab-a', 'http://127.0.0.1:3000/');
+    manager.navigate('tab-a', 'http://127.0.0.1:3000/', DEVICE);
 
     expect(authorizeTopLevel).toHaveBeenCalledWith('http://127.0.0.1:3000/');
   });
@@ -164,7 +237,7 @@ describe('browser preview manager', () => {
       randomId: () => 'tab-a',
       targetPolicyFactory,
     });
-    manager.create({ url: 'https://portal.example/', origin: 'https://handmux.example', closeAfterMinutes: 10 });
+    await manager.create({ url: 'https://portal.example/', origin: 'https://handmux.example', closeAfterMinutes: 10, deviceId: DEVICE });
     const session = fake.proxies[0].openSession.mock.calls[0][1];
     const allowedEvent = { _requestInfo: { url: 'https://cdn.example/app.js' }, setMock: vi.fn() };
     const blockedEvent = { _requestInfo: { url: 'http://169.254.169.254/' }, setMock: vi.fn() };
@@ -178,5 +251,39 @@ describe('browser preview manager', () => {
     expect(allowedEvent.setMock).not.toHaveBeenCalled();
     expect(blockedEvent.setMock).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
     expect(blockedEvent.setMock.mock.calls[0][0].body).toMatch(/link-local/);
+  });
+
+  it('pins an allowed request to the DNS address checked by the target policy', async () => {
+    const fake = fakeHammerhead();
+    const check = vi.fn().mockResolvedValue({ allowed: true, address: '10.20.30.40', family: 4 });
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      internalPorts: [4311, 4312],
+      randomId: () => 'tab-a',
+      targetPolicyFactory: () => ({ check }),
+    });
+    await manager.create({ url: 'https://portal.example/', origin: 'https://handmux.example', closeAfterMinutes: 10, deviceId: DEVICE });
+    const session = fake.proxies[0].openSession.mock.calls[0][1];
+    const event = {
+      _requestInfo: { url: 'https://cdn.example/app.js' },
+      requestOptions: {},
+      setMock: vi.fn(),
+    };
+
+    await session.requestListeners.onRequest(event);
+
+    expect(event.requestOptions.lookup).toEqual(expect.any(Function));
+    await expect(new Promise((resolve, reject) => {
+      event.requestOptions.lookup('cdn.example', {}, (error, address, family) => {
+        if (error) reject(error);
+        else resolve({ address, family });
+      });
+    })).resolves.toEqual({ address: '10.20.30.40', family: 4 });
+    await expect(new Promise((resolve, reject) => {
+      event.requestOptions.lookup('cdn.example', { all: true }, (error, addresses) => {
+        if (error) reject(error);
+        else resolve(addresses);
+      });
+    })).resolves.toEqual([{ address: '10.20.30.40', family: 4 }]);
   });
 });

@@ -1,7 +1,7 @@
 import http from 'node:http';
 import express from 'express';
 import request from 'supertest';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createBrowserPublicProxy, isBrowserServicePath } from '../src/browser/publicProxy.js';
 
 const servers = [];
@@ -17,13 +17,15 @@ afterEach(async () => {
 });
 
 describe('browser public proxy', () => {
+  const DEVICE = 'device_abcdefghijklmnopqrstuvwxyz123456';
+  const cookie = `tw_browser_device=${DEVICE}`;
   it.each(['/hammerhead.js', '/task.js', '/iframe-task.js', '/messaging', '/transport-worker.js', '/worker-hammerhead.js'])(
     'recognizes Hammerhead service route %s',
     (path) => expect(isBrowserServicePath(path)).toBe(true),
   );
 
   it('falls through for ordinary Handmux routes', async () => {
-    const browser = { internalPorts: [1, 2], ownsPublicPath: () => false };
+    const browser = { internalPorts: [1, 2], ownsPublicPath: () => false, hasDevice: () => false };
     const proxy = createBrowserPublicProxy({ browser, token: 'handmux-secret' });
     const app = express();
     app.use(proxy.handler);
@@ -35,6 +37,19 @@ describe('browser public proxy', () => {
     expect(res.text).toBe('handmux');
   });
 
+  it('never asks the browser manager to proxy ordinary Handmux routes', async () => {
+    const resolvePublicRequest = vi.fn(() => ({ port: 9 }));
+    const proxy = createBrowserPublicProxy({ browser: { resolvePublicRequest } });
+    const app = express();
+    app.use(proxy.handler);
+    app.get('*', (_req, res) => res.status(218).send('handmux'));
+
+    const res = await request(app).get('/api/browser-tabs').set('Cookie', cookie);
+
+    expect(res.status).toBe(218);
+    expect(resolvePublicRequest).not.toHaveBeenCalled();
+  });
+
   it('preserves target Authorization while removing only the Handmux bearer token', async () => {
     const received = [];
     const upstream = http.createServer((req, res) => {
@@ -42,13 +57,13 @@ describe('browser public proxy', () => {
       res.end('proxied');
     });
     const port = await listen(upstream);
-    const browser = { internalPorts: [port, port + 1], ownsPublicPath: () => true };
+    const browser = { internalPorts: [port, port + 1], ownsPublicPath: (_path, device) => device === DEVICE, hasDevice: () => true };
     const proxy = createBrowserPublicProxy({ browser, token: 'handmux-secret' });
     const app = express();
     app.use(proxy.handler);
 
-    await request(app).get('/_browser-tab-a/https://target.example/').set('Authorization', 'Bearer handmux-secret');
-    await request(app).get('/_browser-tab-a/https://target.example/').set('Authorization', 'Basic dXNlcjpwYXNz');
+    await request(app).get('/_browser-tab-a/https://target.example/').set('Cookie', cookie).set('Authorization', 'Bearer handmux-secret');
+    await request(app).get('/_browser-tab-a/https://target.example/').set('Cookie', cookie).set('Authorization', 'Basic dXNlcjpwYXNz');
 
     expect(received).toEqual([undefined, 'Basic dXNlcjpwYXNz']);
   });
@@ -63,7 +78,8 @@ describe('browser public proxy', () => {
     const port = await listen(upstream);
     const browser = {
       internalPorts: [port, port + 1],
-      ownsPublicPath: (path) => path.startsWith('/_browser-tab-a/'),
+      ownsPublicPath: (path, device) => device === DEVICE && path.startsWith('/_browser-tab-a/'),
+      hasDevice: (device) => device === DEVICE,
     };
     const proxy = createBrowserPublicProxy({ browser, token: 'handmux-secret' });
     const app = express();
@@ -72,8 +88,8 @@ describe('browser public proxy', () => {
     const page = await request(app)
       .get('/_browser-tab-a/https://target.example/')
       .set('Authorization', 'Bearer handmux-secret')
-      .set('Cookie', 'tw_preview=handmux-secret; hammerhead-sync=value');
-    const asset = await request(app).get('/hammerhead.js');
+      .set('Cookie', `tw_preview=handmux-secret; ${cookie}; hammerhead-sync=value`);
+    const asset = await request(app).get('/hammerhead.js').set('Cookie', cookie);
 
     expect(page.status).toBe(200);
     expect(page.text).toBe('proxied');
@@ -84,15 +100,79 @@ describe('browser public proxy', () => {
     expect(received[0].headers.host).toBe(`127.0.0.1:${port}`);
   });
 
-  it('returns a specific 502 when the internal proxy is unavailable', async () => {
-    const browser = { internalPorts: [9, 10], ownsPublicPath: () => true };
+  it('routes two devices to their independent public-origin proxy pools', async () => {
+    const received = [];
+    const first = http.createServer((req, res) => { received.push(`one:${req.url}`); res.end('one'); });
+    const second = http.createServer((req, res) => { received.push(`two:${req.url}`); res.end('two'); });
+    const firstPort = await listen(first);
+    const secondPort = await listen(second);
+    const browser = {
+      resolvePublicRequest: (pathname, deviceId, origin) => {
+        if (deviceId === 'device-one' && origin === 'https://one.example' && pathname.startsWith('/_browser-one/')) return { port: firstPort };
+        if (deviceId === 'device-two' && origin === 'https://two.example' && pathname.startsWith('/_browser-two/')) return { port: secondPort };
+        return null;
+      },
+    };
     const proxy = createBrowserPublicProxy({ browser });
     const app = express();
     app.use(proxy.handler);
 
-    const res = await request(app).get('/_browser-tab-a/https://target.example/');
+    const one = await request(app).get('/_browser-one/https://a.example/')
+      .set('Cookie', 'tw_browser_device=device-one').set('Host', 'one.example').set('X-Forwarded-Proto', 'https');
+    const two = await request(app).get('/_browser-two/https://b.example/')
+      .set('Cookie', 'tw_browser_device=device-two').set('Host', 'two.example').set('X-Forwarded-Proto', 'https');
+
+    expect(one.text).toBe('one');
+    expect(two.text).toBe('two');
+    expect(received).toEqual(['one:/_browser-one/https://a.example/', 'two:/_browser-two/https://b.example/']);
+  });
+
+  it('does not let forwarded host claim another origin over HTTP or WebSocket', async () => {
+    const resolvePublicRequest = vi.fn((_pathname, _deviceId, origin) => (
+      origin === 'https://two.example' ? { port: 9 } : null
+    ));
+    const connect = vi.fn();
+    const proxy = createBrowserPublicProxy({ browser: { resolvePublicRequest }, connect });
+    const app = express();
+    app.use(proxy.handler);
+
+    const httpResult = await request(app).get('/_browser-two/https://target.example/')
+      .set('Cookie', cookie)
+      .set('Host', 'one.example')
+      .set('X-Forwarded-Host', 'two.example')
+      .set('X-Forwarded-Proto', 'https');
+    const wsClaimed = proxy.onUpgrade({
+      url: '/messaging', method: 'GET', httpVersion: '1.1',
+      headers: { host: 'one.example', 'x-forwarded-host': 'two.example', 'x-forwarded-proto': 'https', cookie },
+      socket: { remoteAddress: '127.0.0.1' },
+    }, { destroy: vi.fn(), once: vi.fn() }, Buffer.alloc(0));
+
+    expect(httpResult.status).toBe(403);
+    expect(wsClaimed).toBe(false);
+    expect(connect).not.toHaveBeenCalled();
+    expect(resolvePublicRequest).toHaveBeenCalledWith(expect.any(String), DEVICE, 'https://one.example');
+  });
+
+  it('returns a specific 502 when the internal proxy is unavailable', async () => {
+    const browser = { internalPorts: [9, 10], ownsPublicPath: () => true, hasDevice: () => true };
+    const proxy = createBrowserPublicProxy({ browser });
+    const app = express();
+    app.use(proxy.handler);
+
+    const res = await request(app).get('/_browser-tab-a/https://target.example/').set('Cookie', cookie);
 
     expect(res.status).toBe(502);
     expect(res.body.error).toMatch(/browser proxy unavailable/i);
+  });
+
+  it('does not expose a session or Hammerhead service routes to another device', async () => {
+    const browser = { internalPorts: [9, 10], ownsPublicPath: () => false, hasDevice: () => false };
+    const proxy = createBrowserPublicProxy({ browser });
+    const app = express();
+    app.use(proxy.handler);
+    app.get('*', (_req, res) => res.status(218).end());
+
+    await request(app).get('/_browser-tab-a/https://target.example/').set('Cookie', 'tw_browser_device=other').expect(403);
+    await request(app).get('/task.js').set('Cookie', 'tw_browser_device=other').expect(403);
   });
 });
