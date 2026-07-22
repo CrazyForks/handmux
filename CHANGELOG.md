@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-07-22
+
 ### Added
 - 新增 Tmux 工作区恢复：电脑或 Tmux 重启后，可从手机或 `handmux restore` 恢复上次的 session、window、pane、工作目录和布局，Claude Code / Codex 会话可以继续原对话。
 - 新增 `handmux shortcuts`，可分别配置命令 / 聊天模式的共享快捷项；每台手机也能自由混排共享与本机项，或只在本机移除共享项。
