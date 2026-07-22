@@ -712,6 +712,26 @@ describe('previews API', () => {
   });
 });
 
+describe('browser API composition', () => {
+  const browser = {
+    create: vi.fn(({ url }) => ({ id: 'tab-a', originalUrl: url, url: 'https://handmux.example/_browser-tab-a/https://target/' })),
+    list: vi.fn(() => []),
+  };
+  const app = express();
+  app.use('/api', createApiRouter({ token: 'good', commands: baseCommands, browser }));
+
+  it('requires the normal Handmux authorization', async () => {
+    await request(app).post('/api/browser-tabs').send({ url: 'https://target.example/', closeAfterMinutes: 10 }).expect(401);
+  });
+
+  it('mounts browser routes behind the authenticated API', async () => {
+    const res = await auth(request(app).post('/api/browser-tabs'))
+      .send({ url: 'https://target.example/', closeAfterMinutes: 10 })
+      .expect(201);
+    expect(res.body.id).toBe('tab-a');
+  });
+});
+
 describe('git viewer routes', () => {
   const appWithGit = (git) => {
     const app = express();

@@ -162,7 +162,7 @@ export function createWorkspaceBackground({ store, tmux, observeEnvironment, loc
   });
 }
 
-export function createGracefulShutdown({ events, workspace, server }) {
+export function createGracefulShutdown({ events, workspace, browser, server }) {
   let closing = null;
   return function shutdown() {
     if (!closing) {
@@ -170,7 +170,11 @@ export function createGracefulShutdown({ events, workspace, server }) {
         try {
           await events.stop();
         } finally {
-          try { await workspace.stop(); } finally { server.close(); }
+          try {
+            await workspace.stop();
+          } finally {
+            try { browser?.close(); } finally { server.close(); }
+          }
         }
       })();
     }

@@ -334,16 +334,17 @@ describe('workspace checkpointer', () => {
 });
 
 describe('workspace graceful shutdown', () => {
-  it('runs events, workspace and HTTP shutdown once and in order', async () => {
+  it('runs events, workspace, browser and HTTP shutdown once and in order', async () => {
     const order = [];
     const shutdown = createGracefulShutdown({
       events: { stop: vi.fn(() => { order.push('events'); }) },
       workspace: { stop: vi.fn(async () => { order.push('workspace'); }) },
+      browser: { close: vi.fn(() => { order.push('browser'); }) },
       server: { close: vi.fn(() => { order.push('server'); }) },
     });
 
     await Promise.all([shutdown(), shutdown()]);
 
-    expect(order).toEqual(['events', 'workspace', 'server']);
+    expect(order).toEqual(['events', 'workspace', 'browser', 'server']);
   });
 });

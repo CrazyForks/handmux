@@ -40,6 +40,13 @@ export function createBrowserSessionStore({
 
     list() { return [...tabs.values()].map(view); },
 
+    update(id, patch) {
+      const tab = tabs.get(id);
+      if (!tab) return null;
+      Object.assign(tab, patch);
+      return view(tab);
+    },
+
     setVisible(id, visible, closeAfterMinutes) {
       const tab = tabs.get(id);
       if (!tab) return null;

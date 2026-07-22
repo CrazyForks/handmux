@@ -24,6 +24,7 @@ import { notificationRoutes } from './routes/notifications.js';
 import { transcriptRoutes } from './routes/transcript.js';
 import { DEFAULT_SHORTCUTS } from './shortcutConfig.js';
 import { workspaceRoutes } from './routes/workspace.js';
+import { browserRoutes } from './browser/routes.js';
 
 // Re-exported for tests (test/keys.test.js) and any caller that imported it by this path historically.
 export { isAllowedKey } from './routes/terminal.js';
@@ -33,6 +34,7 @@ export function createApiRouter({
   uploadExts = DEFAULT_UPLOAD_EXTS, maxUploadBytes = MAX_TRANSFER_BYTES,
   asrEnv = process.env, previews, previewDomain = null,
   shortcuts = DEFAULT_SHORTCUTS,
+  browser,
   workspace,
   home = homedir(), stateFile = process.env.CLAUDE_STATE_FILE || claudeStatePath(homedir()),
 } = {}) {
@@ -43,7 +45,7 @@ export function createApiRouter({
 
   const deps = {
     token, commands, docs, git, push, notifications, claudeEvents,
-    uploadExts, maxUploadBytes, asrEnv, previews, previewDomain, shortcuts, home, stateFile, workspace,
+    uploadExts, maxUploadBytes, asrEnv, previews, previewDomain, shortcuts, home, stateFile, workspace, browser,
   };
 
   r.use(sessionRoutes(deps));
@@ -54,6 +56,7 @@ export function createApiRouter({
   r.use(notificationRoutes(deps));
   r.use(systemRoutes(deps));
   r.use(previewRoutes(deps));
+  r.use(browserRoutes(deps));
   r.use(transcriptRoutes(deps));
   if (workspace) r.use(workspaceRoutes(deps));
 
