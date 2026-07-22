@@ -1282,6 +1282,7 @@ export default function App() {
   // Confirm a terminal web link → open it as a new built-in browser tab.
   const [localUrlError, setLocalUrlError] = useState(null);
   const [localUrlOpening, setLocalUrlOpening] = useState(false);
+  const [localUrlBusyMode, setLocalUrlBusyMode] = useState(null);
   const localUrlAbortRef = useRef(null);
   const localUrlRequestRef = useRef(0);
   const confirmLocalUrl = async (_path, mode = browser.defaultMode) => {
@@ -1291,6 +1292,7 @@ export default function App() {
     const requestId = ++localUrlRequestRef.current;
     const controller = new AbortController();
     localUrlAbortRef.current = controller;
+    setLocalUrlBusyMode(mode);
     setLocalUrlOpening(true);
     try {
       const opened = await browser.openUrl(p.raw, { mode, signal: controller.signal });
@@ -1305,6 +1307,7 @@ export default function App() {
     } finally {
       if (requestId === localUrlRequestRef.current) {
         localUrlAbortRef.current = null;
+        setLocalUrlBusyMode(null);
         setLocalUrlOpening(false);
       }
     }
@@ -1313,6 +1316,7 @@ export default function App() {
     localUrlRequestRef.current += 1;
     localUrlAbortRef.current?.abort();
     localUrlAbortRef.current = null;
+    setLocalUrlBusyMode(null);
     setLocalUrlOpening(false);
     setLocalUrlPrompt(null);
     setLocalUrlError(null);
@@ -1721,6 +1725,7 @@ export default function App() {
           x={localUrlPrompt.x}
           y={localUrlPrompt.y}
           busy={localUrlOpening}
+          busyMode={localUrlBusyMode}
           allowRepeat={true}
           modeChoices={true}
           proxyAvailable={browser.proxyAvailable}

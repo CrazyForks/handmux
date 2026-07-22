@@ -22,6 +22,8 @@ describe('built-in browser App composition', () => {
     expect(source).toContain('await browser.openUrl(p.raw, { mode, signal: controller.signal })');
     expect(source).toContain('modeChoices={true}');
     expect(source).toContain('proxyAvailable={browser.proxyAvailable}');
+    expect(source).toContain('const [localUrlBusyMode, setLocalUrlBusyMode] = useState(null)');
+    expect(source).toContain('busyMode={localUrlBusyMode}');
     expect(source).not.toContain('if (!p || localUrlOpeningRef.current) return');
     expect(source).toMatch(/const p = localUrlPrompt;[\s\S]*?localUrlAbortRef\.current\?\.abort\(\);[\s\S]*?const controller = new AbortController\(\)/);
     expect(source).toContain('allowRepeat={true}');

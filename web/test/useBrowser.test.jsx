@@ -11,7 +11,7 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('../src/api.js', () => api);
 
-import { readBrowserHistory } from '../src/browserState.js';
+import { readBrowserHistory, upsertBrowserHistory } from '../src/browserState.js';
 import { useBrowser } from '../src/hooks/useBrowser.js';
 
 const tab = (id, extra = {}) => ({
@@ -371,6 +371,24 @@ describe('useBrowser', () => {
 
     act(() => { result.current.setDefaultMode('direct'); });
     expect(result.current.defaultMode).toBe('direct');
+  });
+
+  it('updates a history mode in storage and hook state even when opening it fails', async () => {
+    const entry = { url: 'https://old.example/', title: 'Old', visitedAt: 1000, lastMode: 'direct' };
+    upsertBrowserHistory(entry);
+    api.createBrowserTab.mockRejectedValue(new Error('open failed'));
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+
+    act(() => { result.current.setHistoryMode(entry, 'proxy'); });
+    expect(result.current.history[0].lastMode).toBe('proxy');
+    expect(readBrowserHistory()[0].lastMode).toBe('proxy');
+
+    await act(async () => {
+      await result.current.openUrl(entry.url, { mode: result.current.history[0].lastMode });
+    });
+    expect(result.current.history[0].lastMode).toBe('proxy');
+    expect(readBrowserHistory()[0].lastMode).toBe('proxy');
   });
 
   it('rejects unavailable proxy actions locally without falling back to direct', async () => {

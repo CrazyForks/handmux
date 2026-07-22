@@ -11,7 +11,7 @@ import {
   StopIcon,
   XIcon,
 } from './icons.jsx';
-import { BROWSER_CLOSE_AFTER_OPTIONS, upsertBrowserHistory } from '../browserState.js';
+import { BROWSER_CLOSE_AFTER_OPTIONS } from '../browserState.js';
 import { t } from '../i18n';
 
 // Temporary compatibility validation only: unsafe while proxied pages share the Handmux origin.
@@ -27,7 +27,7 @@ export default function BrowserSheet({ browser }) {
     open, consentOpen, tabs, activeId, historyActive, closeAfter, history, error,
     defaultMode, proxyAvailable,
     openUrl, switchTab, closeTab, setOpen, setCloseAfter,
-    navigateTab, updateTabMeta, clearHistory, enableAccess, cancelAccess,
+    navigateTab, updateTabMeta, clearHistory, setHistoryMode, enableAccess, cancelAccess,
   } = browser;
   const active = tabs.find((tab) => tab.id === activeId) || null;
   const proxied = active?.mode === 'proxy';
@@ -52,6 +52,11 @@ export default function BrowserSheet({ browser }) {
   useEffect(() => {
     setAddress(historyActive ? '' : (active?.originalUrl || ''));
   }, [active?.originalUrl, historyActive]);
+
+  useEffect(() => {
+    setModeOpen(false);
+    if (!historyActive) setHistoryModeOpen(null);
+  }, [activeId, historyActive, open]);
 
   useEffect(() => {
     const onMessage = (event) => {
@@ -160,6 +165,7 @@ export default function BrowserSheet({ browser }) {
   const postCommand = (command) => postTabCommand(active, command);
 
   const selectTab = async (tab) => {
+    setModeOpen(false);
     const epoch = ++selectionEpoch.current;
     const switched = await switchTab(tab.id);
     if (!switched || epoch !== selectionEpoch.current) return;
@@ -167,6 +173,7 @@ export default function BrowserSheet({ browser }) {
   };
 
   const selectHistory = () => {
+    setModeOpen(false);
     selectionEpoch.current += 1;
     setReloadIntent(null);
     return switchTab('history');
@@ -218,7 +225,7 @@ export default function BrowserSheet({ browser }) {
 
   const openHistory = (entry, mode = entry.lastMode || defaultMode, persistMode = false) => {
     setHistoryModeOpen(null);
-    if (persistMode) upsertBrowserHistory({ ...entry, lastMode: mode });
+    if (persistMode) setHistoryMode(entry, mode);
     openUrl(entry.url, { mode });
   };
 
@@ -296,7 +303,8 @@ export default function BrowserSheet({ browser }) {
           })}
         </div>
         <button className="browser-head-button" aria-label={t('browser.newTab')} title={t('browser.newTab')} onClick={newTab}><PlusIcon /></button>
-        <button className="browser-head-button" aria-label={t('browser.minimize')} title={t('browser.minimize')} onClick={() => setOpen(false)}><ChevronDownIcon /></button>
+        <button className="browser-head-button" aria-label={t('browser.minimize')} title={t('browser.minimize')}
+          onClick={() => { setModeOpen(false); setOpen(false); }}><ChevronDownIcon /></button>
       </div>
 
       <div className="browser-nav">
@@ -317,7 +325,7 @@ export default function BrowserSheet({ browser }) {
         <button className={`browser-nav-button browser-mode-switch ${proxied ? 'proxy' : ''}`}
           aria-label={t('browser.switchMode')} aria-expanded={modeOpen} disabled={!active || historyActive}
           onClick={() => setModeOpen((value) => !value)}>{proxied ? '●' : '○'}</button>
-        {modeOpen && active && (
+        {modeOpen && active && !historyActive && open && (
           <div className="browser-mode-menu" role="dialog" aria-label={t('browser.switchMode')}>
             <button className="browser-mode-option" aria-pressed={active.mode === 'direct'} onClick={() => chooseMode('direct')}>{t('browser.directMode')}</button>
             <button className="browser-mode-option proxy" aria-pressed={active.mode === 'proxy'} disabled={!proxyAvailable}

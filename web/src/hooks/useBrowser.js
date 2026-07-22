@@ -511,6 +511,14 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     return saved;
   }, []);
 
+  const setHistoryMode = useCallback((entry, mode) => {
+    if (mode !== 'direct' && mode !== 'proxy') return null;
+    upsertBrowserHistory({ ...entry, lastMode: mode });
+    const next = readBrowserHistory();
+    setHistory(next);
+    return next.find((item) => item.url === entry?.url) || null;
+  }, []);
+
   const clearHistory = useCallback(() => {
     clearBrowserHistory();
     setHistory([]);
@@ -536,6 +544,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     setOpen,
     setCloseAfter,
     setDefaultMode,
+    setHistoryMode,
     navigateTab,
     updateTabMeta,
     clearHistory,

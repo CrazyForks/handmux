@@ -27,6 +27,23 @@ describe('DocLinkPopover', () => {
     expect(onOpen).toHaveBeenCalledWith('https://example.com', 'direct');
   });
 
+  it('keeps both mode labels identifiable while only the pending mode is busy', async () => {
+    const onOpen = vi.fn();
+    await render({
+      path: 'https://example.com', x: 20, y: 20, onOpen, onClose: vi.fn(),
+      modeChoices: true, proxyAvailable: true, busy: true, busyMode: 'proxy', allowRepeat: true,
+    });
+    const [direct, proxy] = [...container.querySelectorAll('.doclink-open')];
+    expect(direct.textContent).toBe('手机直连');
+    expect(direct.getAttribute('aria-busy')).toBeNull();
+    expect(direct.disabled).toBe(false);
+    expect(proxy.textContent).toBe('经电脑代理 · 加载中…');
+    expect(proxy.getAttribute('aria-busy')).toBe('true');
+    expect(proxy.disabled).toBe(false);
+    click(direct);
+    expect(onOpen).toHaveBeenCalledWith('https://example.com', 'direct');
+  });
+
   it('can keep a pending URL action repeatable so the latest confirmation replaces it', async () => {
     const onOpen = vi.fn();
     await render({ path: 'https://example.com', x: 20, y: 20, busy: true, allowRepeat: true, onOpen, onClose: vi.fn() });

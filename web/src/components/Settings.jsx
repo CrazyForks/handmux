@@ -168,11 +168,12 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
             </button>
             <button type="button" className={browserDefaultMode === 'proxy' ? 'on' : ''}
               aria-pressed={browserDefaultMode === 'proxy'} disabled={!browserProxyAvailable}
+              aria-describedby={!browserProxyAvailable ? 'browser-proxy-unavailable' : undefined}
               onClick={() => onBrowserDefaultMode('proxy')}>
               {t('browser.proxyMode')}
             </button>
           </div>
-          {!browserProxyAvailable && <div className="settings-hint">{t('browser.proxyUnavailable')}</div>}
+          {!browserProxyAvailable && <div id="browser-proxy-unavailable" className="settings-hint">{t('browser.proxyUnavailable')}</div>}
           <div className="settings-hint">{t('settings.browserDefaultModeHint')}</div>
         </div>
 

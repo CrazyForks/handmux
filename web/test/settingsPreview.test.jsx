@@ -30,6 +30,8 @@ describe('Settings preview section', () => {
     expect(direct.getAttribute('aria-pressed')).toBe('true');
     expect(proxy.disabled).toBe(true);
     expect(container.textContent).toContain('当前服务器未开启浏览器代理');
+    expect(proxy.getAttribute('aria-describedby')).toBe('browser-proxy-unavailable');
+    expect(container.querySelector('#browser-proxy-unavailable').textContent).toContain('当前服务器未开启浏览器代理');
     click(direct);
     expect(setDefaultMode).toHaveBeenCalledWith('direct');
   });

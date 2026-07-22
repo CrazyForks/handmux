@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import BrowserSheet from '../src/components/BrowserSheet.jsx';
-import { readBrowserHistory } from '../src/browserState.js';
 
 const styles = readFileSync(path.resolve(process.cwd(), 'src/styles.css'), 'utf8');
 
@@ -34,6 +33,7 @@ const browser = (overrides = {}) => ({
   closeTab: vi.fn(),
   setOpen: vi.fn(),
   setCloseAfter: vi.fn(),
+  setHistoryMode: vi.fn(),
   navigateTab: vi.fn(),
   updateTabMeta: vi.fn(),
   clearHistory: vi.fn(),
@@ -94,6 +94,20 @@ describe('BrowserSheet', () => {
     expect(model.navigateTab).toHaveBeenCalledWith('a', 'https://a.example/', 'direct');
   });
 
+  it('closes the mode menu when entering History and does not revive it on return', async () => {
+    const model = browser();
+    await render(model);
+    click(document.querySelector('button[aria-label="切换浏览模式"]'));
+    expect(document.querySelector('.browser-mode-menu')).not.toBeNull();
+
+    click(document.querySelector('.browser-history-tab'));
+    await render({ ...model, historyActive: true });
+    expect(document.querySelector('.browser-mode-menu')).toBeNull();
+    await render({ ...model, historyActive: false });
+    expect(document.querySelector('.browser-mode-menu')).toBeNull();
+    expect(model.navigateTab).not.toHaveBeenCalled();
+  });
+
   it('hides bridge-only controls on direct tabs and refreshes the iframe locally', async () => {
     const directTabs = tabs.map((tab) => tab.id === 'b'
       ? { ...tab, mode: 'direct', url: tab.originalUrl }
@@ -141,7 +155,30 @@ describe('BrowserSheet', () => {
     click(document.querySelector('.browser-history-more'));
     click([...document.querySelectorAll('.browser-history-mode-option')].find((node) => node.textContent === '经电脑代理'));
     expect(model.openUrl).toHaveBeenLastCalledWith('https://old.example/', { mode: 'proxy' });
-    expect(readBrowserHistory().find((entry) => entry.url === 'https://old.example/')?.lastMode).toBe('proxy');
+    expect(model.setHistoryMode).toHaveBeenCalledWith(model.history[0], 'proxy');
+  });
+
+  it('uses an overridden history mode again in the same mount even when the first open fails', async () => {
+    const model = browser({ historyActive: true, activeId: null, openUrl: vi.fn().mockResolvedValue(null) });
+    function Harness() {
+      const [history, setHistory] = useState(model.history);
+      return <BrowserSheet browser={{
+        ...model,
+        history,
+        setHistoryMode: (entry, mode) => {
+          model.setHistoryMode(entry, mode);
+          setHistory((current) => current.map((item) => item.url === entry.url ? { ...item, lastMode: mode } : item));
+        },
+      }} />;
+    }
+    await act(() => root.render(<Harness />));
+
+    click(document.querySelector('.browser-history-more'));
+    click([...document.querySelectorAll('.browser-history-mode-option')].find((node) => node.textContent === '经电脑代理'));
+    click(document.querySelector('.browser-history-main'));
+
+    expect(model.openUrl).toHaveBeenNthCalledWith(1, 'https://old.example/', { mode: 'proxy' });
+    expect(model.openUrl).toHaveBeenNthCalledWith(2, 'https://old.example/', { mode: 'proxy' });
   });
 
   it('disables unavailable proxy choices in history and mode switching', async () => {

@@ -14,7 +14,7 @@ const GAP = 12;     // vertical gap between the tap point and the card
 // Also serves the terminal URL confirm via optional display overrides. Most async actions disable while
 // pending; Browser opts into `allowRepeat` so a newer confirmation can cancel and replace the old request.
 export default function DocLinkPopover({ path, x, y, onOpen, onClose, icon, name: nameProp, openLabel, note,
-  disabled = false, busy = false, allowRepeat = false, modeChoices = false, proxyAvailable = false }) {
+  disabled = false, busy = false, busyMode = null, allowRepeat = false, modeChoices = false, proxyAvailable = false }) {
   const name = nameProp ?? (path.split('/').filter(Boolean).pop() || path);
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
@@ -50,9 +50,15 @@ export default function DocLinkPopover({ path, x, y, onOpen, onClose, icon, name
           {!disabled && (modeChoices ? (
             <>
               <button className="doclink-open" disabled={busy && !allowRepeat}
-                onClick={() => onOpen(path, 'direct')}>{busy ? t('common.loading') : t('browser.directMode')}</button>
+                aria-busy={busy && busyMode === 'direct' ? 'true' : undefined}
+                onClick={() => onOpen(path, 'direct')}>
+                {t('browser.directMode')}{busy && busyMode === 'direct' ? ` · ${t('common.loading')}` : ''}
+              </button>
               <button className="doclink-open proxy" disabled={!proxyAvailable || (busy && !allowRepeat)}
-                onClick={() => onOpen(path, 'proxy')}>{busy ? t('common.loading') : t('browser.proxyMode')}</button>
+                aria-busy={busy && busyMode === 'proxy' ? 'true' : undefined}
+                onClick={() => onOpen(path, 'proxy')}>
+                {t('browser.proxyMode')}{busy && busyMode === 'proxy' ? ` · ${t('common.loading')}` : ''}
+              </button>
             </>
           ) : (
             <button className="doclink-open" disabled={busy && !allowRepeat} onClick={() => onOpen(path)}>{busy ? t('common.loading') : (openLabel ?? t('common.open'))}</button>
