@@ -1,0 +1,195 @@
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  ChevronDownIcon,
+  ClockIcon,
+  GlobeIcon,
+  MonitorIcon,
+  PlusIcon,
+  RefreshIcon,
+  SmartphoneIcon,
+  XIcon,
+} from './icons.jsx';
+import { BROWSER_CLOSE_AFTER_OPTIONS } from '../browserState.js';
+import { t } from '../i18n';
+
+const FRAME_SANDBOX = 'allow-scripts allow-forms allow-downloads allow-modals allow-popups';
+
+function tabLabel(tab) {
+  if (tab.title) return tab.title;
+  try { return new URL(tab.originalUrl).hostname; } catch { return tab.originalUrl; }
+}
+
+export default function BrowserSheet({ browser }) {
+  const {
+    open, tabs, activeId, historyActive, closeAfter, history, error,
+    openUrl, switchTab, closeTab, setOpen, setCloseAfter,
+    navigateTab, updateTabMeta, clearHistory,
+  } = browser;
+  const active = tabs.find((tab) => tab.id === activeId) || null;
+  const [address, setAddress] = useState(active?.originalUrl || '');
+  const [timeOpen, setTimeOpen] = useState(false);
+  const [device, setDevice] = useState('mobile');
+  const [bodySize, setBodySize] = useState({ width: 0, height: 0 });
+  const frames = useRef(new Map());
+  const addressRef = useRef(null);
+  const bodyRef = useRef(null);
+
+  useEffect(() => {
+    setAddress(historyActive ? '' : (active?.originalUrl || ''));
+  }, [active?.originalUrl, historyActive]);
+
+  useEffect(() => {
+    const onMessage = (event) => {
+      if (event.data?.source !== 'handmux-browser') return;
+      const tab = tabs.find((item) => item.channel === event.data.channel);
+      if (!tab || frames.current.get(tab.id)?.contentWindow !== event.source) return;
+      updateTabMeta(tab.id, { url: event.data.url, title: event.data.title });
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [tabs, updateTabMeta]);
+
+  useEffect(() => {
+    if (!open || !bodyRef.current) return undefined;
+    const measure = () => setBodySize({
+      width: bodyRef.current.clientWidth,
+      height: bodyRef.current.clientHeight,
+    });
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(bodyRef.current);
+    return () => observer.disconnect();
+  }, [open]);
+
+  const postCommand = (command) => {
+    if (!active) return;
+    frames.current.get(active.id)?.contentWindow?.postMessage({
+      source: 'handmux-browser-parent',
+      channel: active.channel,
+      command,
+    }, '*');
+  };
+
+  const submitAddress = (event) => {
+    event.preventDefault();
+    if (historyActive || !active) openUrl(address);
+    else navigateTab(active.id, address);
+  };
+
+  const newTab = () => {
+    switchTab('history');
+    setAddress('');
+    requestAnimationFrame(() => addressRef.current?.focus());
+  };
+
+  const pickTime = (value) => {
+    setCloseAfter(value);
+    setTimeOpen(false);
+  };
+  const desktopScale = device === 'desktop' && bodySize.width > 0 ? bodySize.width / 1280 : 1;
+  const scalerStyle = device === 'desktop' && bodySize.height > 0
+    ? { width: `${1280 * desktopScale}px`, height: `${bodySize.height}px` }
+    : undefined;
+  const frameStyle = device === 'desktop' && bodySize.height > 0
+    ? { width: '1280px', height: `${bodySize.height / desktopScale}px`, transform: `scale(${desktopScale})`, transformOrigin: '0 0' }
+    : undefined;
+
+  return createPortal(
+    <div className={`file-sheet browser-sheet ${open ? 'open' : ''}`} aria-hidden={!open}>
+      <div className="browser-tabs" role="tablist" aria-label={t('browser.openTabs')}>
+        <button className={`browser-tab browser-history-tab ${historyActive ? 'active' : ''}`} role="tab"
+          aria-selected={historyActive} onClick={() => switchTab('history')}>
+          <ClockIcon />{t('browser.history')}
+        </button>
+        <div className="browser-tabs-scroll">
+          {tabs.map((tab) => {
+            const selected = !historyActive && tab.id === activeId;
+            const label = tabLabel(tab);
+            return (
+              <span className={`browser-tab-wrap ${selected ? 'active' : ''}`} key={tab.id}>
+                <button className="browser-tab" role="tab" aria-selected={selected} title={tab.originalUrl}
+                  onClick={() => switchTab(tab.id)}>{label}</button>
+                <button className="browser-tab-close" aria-label={t('browser.closeTab', { title: label })}
+                  onClick={() => closeTab(tab.id)}><XIcon /></button>
+              </span>
+            );
+          })}
+        </div>
+        <button className="browser-head-button" aria-label={t('browser.newTab')} title={t('browser.newTab')} onClick={newTab}><PlusIcon /></button>
+        <button className="browser-head-button" aria-label={t('browser.minimize')} title={t('browser.minimize')} onClick={() => setOpen(false)}><ChevronDownIcon /></button>
+      </div>
+
+      <div className="browser-nav">
+        <button className="browser-nav-button" aria-label={t('browser.back')} disabled={!active || historyActive} onClick={() => postCommand('back')}>‹</button>
+        <button className="browser-nav-button" aria-label={t('browser.forward')} disabled={!active || historyActive} onClick={() => postCommand('forward')}>›</button>
+        <form className="browser-address-form" onSubmit={submitAddress}>
+          <GlobeIcon />
+          <input ref={addressRef} className="browser-address" aria-label={t('browser.address')}
+            value={address} onChange={(event) => setAddress(event.target.value)}
+            placeholder={t('browser.addressPlaceholder')} autoCapitalize="none" autoCorrect="off" spellCheck="false" />
+        </form>
+        <button className="browser-nav-button" aria-label={t('browser.refresh')} disabled={!active || historyActive} onClick={() => postCommand('reload')}><RefreshIcon /></button>
+        <button className="browser-nav-button" aria-label={t('browser.viewMode')}
+          title={device === 'mobile' ? t('browser.desktopView') : t('browser.mobileView')}
+          aria-pressed={device === 'desktop'} onClick={() => setDevice((value) => (value === 'mobile' ? 'desktop' : 'mobile'))}>
+          {device === 'mobile' ? <MonitorIcon /> : <SmartphoneIcon />}
+        </button>
+        <button className="browser-nav-button" aria-label={t('browser.closeTiming')} aria-expanded={timeOpen}
+          onClick={() => setTimeOpen((value) => !value)}><ClockIcon /></button>
+        {timeOpen && (
+          <div className="browser-time-menu" role="dialog" aria-label={t('browser.closeTiming')}>
+            {BROWSER_CLOSE_AFTER_OPTIONS.map((value) => (
+              <button key={value ?? 'never'} className="browser-time-option" aria-pressed={closeAfter === value}
+                onClick={() => pickTime(value)}>
+                {value == null ? t('browser.neverClose') : t('browser.minutes', { value })}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div ref={bodyRef} className={`browser-content ${device === 'desktop' ? 'desktop' : ''}`}>
+        <section className="browser-history" hidden={!historyActive}>
+          <div className="browser-history-head">
+            <h2>{t('browser.history')}</h2>
+            {history.length > 0 && <button onClick={clearHistory}>{t('browser.clearHistory')}</button>}
+          </div>
+          {history.length === 0 ? <p className="browser-empty">{t('browser.emptyHistory')}</p> : (
+            <div className="browser-history-list">
+              {history.map((entry, index) => (
+                <button key={`${entry.visitedAt}-${entry.url}-${index}`} onClick={() => openUrl(entry.url)}>
+                  <strong>{entry.title || entry.url}</strong>
+                  <span>{entry.url}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+        {tabs.map((tab) => (
+          <div key={tab.id} className="browser-pane" hidden={historyActive || tab.id !== activeId}>
+            <div className="browser-frame-scaler" style={scalerStyle}>
+              <iframe
+                ref={(node) => { if (node) frames.current.set(tab.id, node); else frames.current.delete(tab.id); }}
+                data-tab-id={tab.id}
+                className="browser-frame"
+                title={tabLabel(tab)}
+                src={tab.url}
+                sandbox={FRAME_SANDBOX}
+                style={frameStyle}
+              />
+            </div>
+          </div>
+        ))}
+        {error && (
+          <div className="browser-error" role="alert">
+            <span>{error.message || t('browser.loadFailed')}</span>
+            {active && <button onClick={() => navigateTab(active.id, active.originalUrl)}>{t('browser.retry')}</button>}
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}

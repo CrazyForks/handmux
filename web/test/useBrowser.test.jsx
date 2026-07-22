@@ -42,6 +42,19 @@ afterEach(() => {
 });
 
 describe('useBrowser', () => {
+  it('waits for Handmux authentication before loading server tabs', async () => {
+    const { rerender } = renderHook(
+      ({ enabled }) => useBrowser({ enabled }),
+      { initialProps: { enabled: false } },
+    );
+    await flush();
+    expect(api.getBrowserTabs).not.toHaveBeenCalled();
+
+    rerender({ enabled: true });
+    await flush();
+    expect(api.getBrowserTabs).toHaveBeenCalledOnce();
+  });
+
   it('hides the old tab before showing the selected tab', async () => {
     const a = tab('a');
     const b = tab('b', { visible: false, expiresAt: Date.now() + 600_000 });

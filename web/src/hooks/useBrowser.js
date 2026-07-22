@@ -19,7 +19,7 @@ function replaceTab(tabs, next) {
   return tabs.map((tab) => (tab.id === next.id ? { ...tab, ...next } : tab));
 }
 
-export function useBrowser() {
+export function useBrowser({ enabled = true } = {}) {
   const [open, setOpenState] = useState(false);
   const [tabs, setTabs] = useState([]);
   const [activeId, setActiveId] = useState(null);
@@ -35,6 +35,7 @@ export function useBrowser() {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return undefined;
     let live = true;
     getBrowserTabs().then(({ tabs: loaded = [] }) => {
       if (!live) return;
@@ -46,7 +47,7 @@ export function useBrowser() {
       setOpenState(!!visible);
     }).catch((nextError) => { if (live) setError(nextError); });
     return () => { live = false; };
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     const timers = tabs

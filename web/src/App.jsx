@@ -26,6 +26,7 @@ import {
 } from './api.js';
 import { runSplitPane, runClosePane } from './paneActions.js';
 import PreviewSheet from './components/PreviewSheet.jsx';
+import BrowserSheet from './components/BrowserSheet.jsx';
 import { inboxRows, topView, maxTs } from './inbox.js';
 import { moveTarget } from './windowOrder.js';
 import { reportBound, clearPaneNotification, getNotifications, deleteNotification } from './push.js';
@@ -34,6 +35,7 @@ import { isAbsolute, joinPath } from './docPath.js';
 import { isImageName } from './mime.js';
 import { useDocTabs } from './hooks/useDocTabs.js';
 import { usePreviews } from './hooks/usePreviews.js';
+import { useBrowser } from './hooks/useBrowser.js';
 import { previewStartError } from './previewErrors.js';
 import { usePollingLoop } from './hooks/usePollingLoop.js';
 import { useServerConfig } from './hooks/useServerConfig.js';
@@ -66,7 +68,7 @@ import DirPicker from './components/DirPicker.jsx';
 import DocLinkPopover from './components/DocLinkPopover.jsx';
 import IdeaPanel from './components/IdeaPanel.jsx';
 import Changelog from './components/Changelog.jsx';
-import { FolderIcon, GearIcon, BulbIcon, MonitorIcon, GitIcon, GaugeIcon, SplitHIcon, SplitVIcon, PaneMapIcon, XIcon } from './components/icons.jsx';
+import { FolderIcon, GearIcon, BulbIcon, MonitorIcon, GlobeIcon, GitIcon, GaugeIcon, SplitHIcon, SplitVIcon, PaneMapIcon, XIcon } from './components/icons.jsx';
 import { useKeyboardInset } from './hooks/useKeyboardInset.js';
 import { useAsrAvailable } from './voice/useAsrAvailable.js';
 import { usePageScrollLock } from './hooks/usePageScrollLock.js';
@@ -116,6 +118,7 @@ export default function App() {
   const [docLinkPrompt, setDocLinkPrompt] = useState(null); // { path, x, y } confirm popover for a tapped terminal path
   const [localUrlPrompt, setLocalUrlPrompt] = useState(null); // { port, path, raw, x, y } for a tapped loopback URL
   const docTabs = useDocTabs(); // file-viewer tab state, kept across sheet open/close
+  const browser = useBrowser({ enabled: !needToken });
   const [bound, setBound] = useState(getBoundSessions); // session names pinned on this device
   const [favorites, setFavorites] = useState(getFavorites); // global favorite commands
   const [recent, setRecent] = useState([]); // current session's recent commands (keyed by session name)
@@ -318,6 +321,7 @@ export default function App() {
   // preview→dir→close for files, drill→home→close for git — so Back never blows the whole sheet away
   // mid-navigation).
   useBackButton(previewSheetOpen, () => setPreviewSheetOpen(false));
+  useBackButton(browser.open, () => browser.setOpen(false));
   useBackButton(drawerOpen || recoveryDialogOpen, () => {
     if (recoveryDialogOpen) closeRecovery(); else setDrawerOpen(false);
   });
@@ -1438,12 +1442,8 @@ export default function App() {
       <header className="topbar">
         <button ref={drawerMenuRef} className="hamburger" onClick={() => setDrawerOpen(true)}>☰</button>
         <span className="session-name" {...sessionNameLongPress}>{current?.session?.name ?? '—'}</span>
-        {/* Leftmost of the right-hand icon group; steady green signals a live preview (window default OR a
-            tapped-URL proxy preview). Reopens whatever the sheet last showed — setPreviewSheetOpen keeps openTarget. */}
-        {shownPreview && (
-          <button className="topbar-icon preview-live" onClick={() => setPreviewSheetOpen(true)}
-            aria-label={t('app.preview')} title={t('app.openPreview')}><MonitorIcon /></button>
-        )}
+        <button className="topbar-icon browser-entry" onClick={() => browser.setOpen(true)}
+          aria-label={t('app.browser')} title={t('app.browser')}><GlobeIcon /></button>
         {/* Always render so it doesn't pop in late once `current` loads — just disable until ready. */}
         <button className="topbar-icon" onClick={() => setIdeaOpen(true)} aria-label={t('app.ideas')} title={t('app.ideas')}
           disabled={!current}>
@@ -1668,6 +1668,7 @@ export default function App() {
         onStop={stopPreview}
         onMinimize={() => setPreviewSheetOpen(false)}
       />
+      <BrowserSheet browser={browser} />
       {docToast && (
         <div className="doc-toast" role="alert" onClick={() => setDocToast(null)}>{docToast}</div>
       )}
