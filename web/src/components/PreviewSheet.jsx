@@ -18,13 +18,13 @@ const PC_MAX_ZOOM = 6; // multiplier over fit-to-width
 // PC view emulates a 1280-wide desktop page and scales the WHOLE page with the + / − buttons (100% =
 // fit-to-width). The iframe stays fully interactive: it scrolls its own content, takes input, and the
 // + / − buttons resize the whole page — so one mode covers slide + zoom + type.
-export default function PreviewSheet({ open, tabs, activeName, name, kind = 'static', domain = null, port, dir, expiresAt, initialPath = '/', onSwitchTab, onCloseTab, onRenew, onStop, onMinimize }) {
+export default function PreviewSheet({ open, tabs, activeName, name, kind = 'static', dir, expiresAt, initialPath = '/', onSwitchTab, onCloseTab, onRenew, onStop, onMinimize }) {
   // Normalize to a tab list. App passes `tabs` (+ `activeName`); the single-preview props are a fallback
   // (used by tests / any caller that hasn't adopted tabs). All tabs' iframes stay mounted in parallel;
   // only the active one is shown, so switching keeps each preview's live state (HMR, scroll, form input).
   const tabList = (tabs && tabs.length)
     ? tabs
-    : (name ? [{ name, kind, port, dir, expiresAt, path: initialPath }] : []);
+    : (name ? [{ name, kind, dir, expiresAt, path: initialPath }] : []);
   const active = tabList.find((tb) => tb.name === activeName) || tabList[0] || null;
   const [popOpen, setPopOpen] = useState(false); // the time chip's 续期/停止 popover
   const [device, setDevice] = useState('mobile'); // 'mobile' (device width) | 'pc' (emulate desktop)
@@ -48,10 +48,8 @@ export default function PreviewSheet({ open, tabs, activeName, name, kind = 'sta
   }, [open]);
 
   const remainMs = useRemaining(active?.expiresAt, open);
-  // What to show after the name: a dynamic preview's port, a static preview's source dir.
-  const detail = active?.kind === 'dynamic' ? (active.port != null ? `:${active.port}` : '') : (active?.dir || '');
-  // Short tab label: a dynamic preview's :port, a static preview's dir basename (or 静态预览).
-  const tabLabel = (tb) => (tb.kind === 'dynamic' ? (tb.port != null ? `:${tb.port}` : tb.name) : (tb.dir ? tb.dir.split('/').filter(Boolean).pop() : t('preview.static')));
+  const detail = active?.dir || '';
+  const tabLabel = (tb) => (tb.dir ? tb.dir.split('/').filter(Boolean).pop() : t('preview.static'));
 
   const pc = device === 'pc' && bodySize.w > 0;
   const scaleFit = bodySize.w > 0 ? bodySize.w / PC_WIDTH : 1; // zoom 1 = whole desktop width fits
@@ -64,8 +62,7 @@ export default function PreviewSheet({ open, tabs, activeName, name, kind = 'sta
     : undefined;
   const zoomBy = (d) => setZoom((z) => Math.min(PC_MAX_ZOOM, Math.max(1, +(z + d).toFixed(2))));
 
-  // Reload the previewed page: contentWindow.location works for same-origin (static) previews; a
-  // dynamic preview is a cross-origin subdomain so the reload throws → caught, fall back to re-assigning src.
+  // Reload the previewed page; assigning src is a fallback for browsers that block frame access.
   const refresh = () => {
     const f = frameRef.current;
     if (!f) return;
@@ -77,7 +74,7 @@ export default function PreviewSheet({ open, tabs, activeName, name, kind = 'sta
       <div className="file-tabs preview-head">
         <span className="preview-status">
           <MonitorIcon />
-          <span className="preview-state">{active?.kind === 'dynamic' ? t('preview.dynamic') : t('preview.static')}</span>
+          <span className="preview-state">{t('preview.static')}</span>
           {active?.name && (
             <span className="preview-name" title={`${active.name}${detail ? '  ' + detail : ''}`}>
               {active.name}{detail && <span className="preview-detail">{detail}</span>}
@@ -124,7 +121,7 @@ export default function PreviewSheet({ open, tabs, activeName, name, kind = 'sta
         {tabList.map((tb) => {
           const isActive = active && tb.name === active.name;
           const setRef = (el) => { if (isActive) frameRef.current = el; };
-          const src = previewUrl({ name: tb.name, kind: tb.kind }, domain, tb.path || '/');
+          const src = previewUrl({ name: tb.name });
           return (
             <div key={tb.name} className="preview-pane" style={isActive ? undefined : { display: 'none' }}>
               {isActive && pc ? (

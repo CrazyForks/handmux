@@ -36,7 +36,6 @@ import { isImageName } from './mime.js';
 import { useDocTabs } from './hooks/useDocTabs.js';
 import { usePreviews } from './hooks/usePreviews.js';
 import { useBrowser } from './hooks/useBrowser.js';
-import { previewStartError } from './previewErrors.js';
 import { usePollingLoop } from './hooks/usePollingLoop.js';
 import { useServerConfig } from './hooks/useServerConfig.js';
 import { authHandled } from './authGuard.js';
@@ -116,7 +115,7 @@ export default function App() {
   const [docToast, setDocToast] = useState(null); // transient error toast for absolute-path doc failures
   const [exitHint, setExitHint] = useState(false); // "press Back again to exit" hint (double-back guard)
   const [docLinkPrompt, setDocLinkPrompt] = useState(null); // { path, x, y } confirm popover for a tapped terminal path
-  const [localUrlPrompt, setLocalUrlPrompt] = useState(null); // { port, path, raw, x, y } for a tapped loopback URL
+  const [localUrlPrompt, setLocalUrlPrompt] = useState(null); // { raw, x, y } for a tapped web URL
   const docTabs = useDocTabs(); // file-viewer tab state, kept across sheet open/close
   const browser = useBrowser({ enabled: !needToken });
   const [bound, setBound] = useState(getBoundSessions); // session names pinned on this device
@@ -163,7 +162,7 @@ export default function App() {
   // Open the inbox AFTER Settings' back-popstate, not in the same frame. Settings' useBackButton pops its
   // history entry on close (history.back() → an async popstate); opening the inbox immediately, its freshly
   // mounted useBackButton listener would catch THAT back and close itself — the page flashed open then shut
-  // (Settings vanished, nothing showed). Same trap and same fix as usePreviews' startDynamicPreview. Changelog
+  // (Settings vanished, nothing showed). Keep overlay history transitions on separate frames. Changelog
   // dodges it by sharing Settings' guard; the inbox has its own, so it must sequence. Fallback timer covers
   // the rare case where Settings wasn't back-tracked and no popstate fires.
   const openNotifInbox = () => {
@@ -285,14 +284,10 @@ export default function App() {
   // The in-app preview subsystem (registry state, active-preview derivation, start/stop/renew/open),
   // extracted verbatim into a hook — it coordinates with Settings' history entry via settingsOpen.
   const {
-    previewDomain, dynamicEnabled, previewSheetOpen, setPreviewSheetOpen,
+    previewSheetOpen, setPreviewSheetOpen,
     activePreview, shownPreview, tabs: previewTabs, activeName: previewActiveName, openPreviewSheet,
-    startPreview, startDynamicPreview, startUrlPreview, switchTab, closeTab, stopPreview, renewPreview,
+    startPreview, switchTab, closeTab, stopPreview, renewPreview,
   } = usePreviews(current, { settingsOpen, setSettingsOpen });
-  const startDynamicPreviewFromSettings = useCallback(async (port) => {
-    try { await startDynamicPreview(port); }
-    catch (e) { if (!handledAuth(e)) throw e; }
-  }, [startDynamicPreview, handledAuth]);
 
   // Update check: once per app launch (not polled), ask the server whether the installed CLI is behind the
   // latest npm release. The result lights the gear's dot and drives the "run `handmux update`" hint in Settings.
@@ -1267,7 +1262,7 @@ export default function App() {
   };
 
   // A tapped terminal link doesn't act straight away (anti-误触): pop a confirm card near the tap. The
-  // link carries its kind — a doc path opens the reader/image viewer; a loopback URL asks to 开启代理并预览.
+  // link carries its kind — a doc path opens the reader/image viewer; a web URL asks to open Browser.
   // Pass the raw tap point — DocLinkPopover clamps its own measured box inside the viewport.
   const onDocLinkTap = (link, cx, cy) => {
     if (link?.kind === 'url') setLocalUrlPrompt({ protocol: link.protocol, port: link.port, path: link.urlPath, raw: link.raw, x: cx, y: cy });
@@ -1275,22 +1270,47 @@ export default function App() {
   };
   const confirmDocLink = (path) => { setDocLinkPrompt(null); onOpenDoc(path); };
 
-  // Confirm a loopback-URL tap → register a dynamic-preview reverse-proxy to that local port and open it
-  // at the URL's path. On failure (port not listening), keep the popover and swap in the reason.
+  // Confirm a terminal web link → open it as a new built-in browser tab.
   const [localUrlError, setLocalUrlError] = useState(null);
+  const [localUrlOpening, setLocalUrlOpening] = useState(false);
+  const localUrlOpeningRef = useRef(false);
+  const localUrlAbortRef = useRef(null);
+  const localUrlRequestRef = useRef(0);
   const confirmLocalUrl = async () => {
     const p = localUrlPrompt;
-    if (!p) return;
+    if (!p || localUrlOpeningRef.current) return;
+    const requestId = ++localUrlRequestRef.current;
+    const controller = new AbortController();
+    localUrlAbortRef.current = controller;
+    localUrlOpeningRef.current = true;
+    setLocalUrlOpening(true);
     try {
-      await startUrlPreview({ protocol: p.protocol, port: p.port, path: p.path });
+      const opened = await browser.openUrl(p.raw, { signal: controller.signal });
+      if (requestId !== localUrlRequestRef.current) return;
+      if (!opened) { setLocalUrlError(t('localurl.failed')); return; }
       setLocalUrlPrompt(null);
       setLocalUrlError(null);
     } catch (e) {
+      if (requestId !== localUrlRequestRef.current) return;
       if (handledAuth(e)) return;
-      setLocalUrlError(previewStartError(e, { port: p.port }));
+      setLocalUrlError(e.message || t('localurl.failed'));
+    } finally {
+      if (requestId === localUrlRequestRef.current) {
+        localUrlAbortRef.current = null;
+        localUrlOpeningRef.current = false;
+        setLocalUrlOpening(false);
+      }
     }
   };
-  const closeLocalUrl = () => { setLocalUrlPrompt(null); setLocalUrlError(null); };
+  const closeLocalUrl = () => {
+    localUrlRequestRef.current += 1;
+    localUrlAbortRef.current?.abort();
+    localUrlAbortRef.current = null;
+    localUrlOpeningRef.current = false;
+    setLocalUrlOpening(false);
+    setLocalUrlPrompt(null);
+    setLocalUrlError(null);
+  };
 
   // Auto-dismiss the doc toast after a few seconds (also dismissible by tap).
   useEffect(() => {
@@ -1497,9 +1517,7 @@ export default function App() {
         activePreview={activePreview}
         pane={current?.paneId}
         lastPreviewDir={getPreviewDir(current?.window?.id)}
-        dynamicEnabled={dynamicEnabled}
         onStartPreview={startPreview}
-        onStartDynamicPreview={startDynamicPreviewFromSettings}
         onOpenPreview={openPreviewSheet}
         onRenew={renewPreview}
         onStop={stopPreview}
@@ -1661,7 +1679,6 @@ export default function App() {
         open={previewSheetOpen && !!shownPreview}
         tabs={previewTabs}
         activeName={previewActiveName}
-        domain={previewDomain}
         onSwitchTab={switchTab}
         onCloseTab={closeTab}
         onRenew={renewPreview}
@@ -1689,14 +1706,14 @@ export default function App() {
       )}
       {localUrlPrompt && (
         <DocLinkPopover
-          icon={<MonitorIcon />}
+          icon={<GlobeIcon />}
           name={t('localurl.title')}
           path={localUrlPrompt.raw}
           openLabel={t('localurl.open')}
-          note={localUrlError ?? (dynamicEnabled ? undefined : t('localurl.disabled'))}
-          disabled={!dynamicEnabled}
+          note={localUrlError}
           x={localUrlPrompt.x}
           y={localUrlPrompt.y}
+          busy={localUrlOpening}
           onOpen={confirmLocalUrl}
           onClose={closeLocalUrl}
         />

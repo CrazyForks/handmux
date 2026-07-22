@@ -17,6 +17,19 @@ describe('DocLinkPopover', () => {
     expect(container.querySelector('.doclink-name').textContent).toContain('口播稿-纯配音版.md');
     expect(container.querySelector('.doclink-path').textContent).toBe('/home/u/口播稿-纯配音版.md');
   });
+
+  it('disables repeated confirmation while opening', async () => {
+    const onOpen = vi.fn();
+    const onClose = vi.fn();
+    await render({ path: 'https://example.com', x: 10, y: 10, onOpen, onClose, busy: true });
+    const button = container.querySelector('.doclink-open');
+    expect(button.disabled).toBe(true);
+    await click(button);
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(container.querySelector('.doclink-cancel').disabled).toBe(false);
+    await click(container.querySelector('.doclink-cancel'));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
   it('opens only on 打开 (not on a stray render) and passes the path', async () => {
     const onOpen = vi.fn();
     await render({ ...base, onOpen });

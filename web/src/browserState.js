@@ -3,6 +3,7 @@ export const BROWSER_CLOSE_AFTER_OPTIONS = [10, 30, 60, 120, null];
 const PREF_KEY = 'hm_browser_close_after1';
 const HISTORY_KEY = 'hm_browser_history1';
 const HISTORY_LIMIT = 200;
+const SENSITIVE_URL_FIELD = /^(?:access_token|id_token|refresh_token|token|code|authorization|api_?key)$/i;
 
 function isCloseAfter(value) {
   return BROWSER_CLOSE_AFTER_OPTIONS.includes(value);
@@ -51,6 +52,12 @@ function sanitizedHistoryEntry(entry) {
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
     url.username = '';
     url.password = '';
+    for (const key of [...url.searchParams.keys()]) {
+      if (SENSITIVE_URL_FIELD.test(key)) url.searchParams.delete(key);
+    }
+    if (/(?:^|[&#])(?:access_token|id_token|refresh_token|token|code|authorization|api_?key)=/i.test(url.hash)) {
+      url.hash = '';
+    }
     return {
       url: url.toString(),
       title: String(entry?.title || ''),

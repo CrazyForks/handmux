@@ -7,7 +7,7 @@ export function previewSlug(s) {
     .replace(/[^A-Za-z0-9._-]+/g, '-') // non-safe runs → one dash
     .replace(/-{2,}/g, '-')            // collapse repeats
     .replace(/^[-.]+|-+$/g, '')        // trim leading dashes/dots and trailing dashes
-    .toLowerCase();                    // dynamic previews are reached via a subdomain → must be lowercase
+    .toLowerCase();                    // canonical registry spelling
                                        // (browsers lowercase the host); keep it consistent for static too
 }
 

@@ -200,26 +200,6 @@ describe('previews api', () => {
     vi.stubGlobal('localStorage', { getItem: () => 'tok123' });
     expect(previewUrl({ name: 'main-build-3', kind: 'static' })).toBe('/preview/main-build-3/?token=tok123');
   });
-  it('previewUrl builds a dynamic subdomain url for a dynamic entry', () => {
-    vi.stubGlobal('localStorage', { getItem: () => 'tok123' });
-    expect(previewUrl({ name: 'app', kind: 'dynamic' }, 'preview.example.com'))
-      .toBe('https://app.preview.example.com/?token=tok123');
-  });
-  it('previewUrl threads a deep-link path into a dynamic url', () => {
-    vi.stubGlobal('localStorage', { getItem: () => 'tok123' });
-    expect(previewUrl({ name: 'app', kind: 'dynamic' }, 'preview.example.com', '/admin/login'))
-      .toBe('https://app.preview.example.com/admin/login?token=tok123');
-  });
-  it('previewUrl appends token with & when the path already has a query', () => {
-    vi.stubGlobal('localStorage', { getItem: () => 'tok123' });
-    expect(previewUrl({ name: 'app', kind: 'dynamic' }, 'preview.example.com', '/x?tab=1'))
-      .toBe('https://app.preview.example.com/x?tab=1&token=tok123');
-  });
-  it('previewUrl inserts the token before a URL fragment', () => {
-    vi.stubGlobal('localStorage', { getItem: () => 'tok123' });
-    expect(previewUrl({ name: 'app', kind: 'dynamic' }, 'preview.example.com', '/x?tab=1#section'))
-      .toBe('https://app.preview.example.com/x?tab=1&token=tok123#section');
-  });
   it('createPreview POSTs {name,dir} for a static start', async () => {
     const fetch = vi.fn(async () => jsonRes(200, { name: 'foo', kind: 'static', url: '/preview/foo/?token=x', expiresAt: 9 }));
     vi.stubGlobal('fetch', fetch);
@@ -228,21 +208,6 @@ describe('previews api', () => {
     const [, opts] = fetch.mock.calls[0];
     expect(opts.method).toBe('POST');
     expect(JSON.parse(opts.body)).toEqual({ name: 'foo', dir: '/home/u/site' });
-  });
-  it('createPreview POSTs {name,port} for a dynamic start', async () => {
-    const fetch = vi.fn(async () => jsonRes(200, { name: 'app', kind: 'dynamic', url: 'https://app.preview.example.com/?token=x', expiresAt: 9 }));
-    vi.stubGlobal('fetch', fetch);
-    vi.stubGlobal('localStorage', { getItem: () => 't' });
-    await createPreview('app', { port: 3000 });
-    const [, opts] = fetch.mock.calls[0];
-    expect(JSON.parse(opts.body)).toEqual({ name: 'app', port: 3000 });
-  });
-  it('createPreview forwards an HTTPS upstream protocol for a tapped local URL', async () => {
-    const fetch = vi.fn(async () => jsonRes(200, { name: 'app', kind: 'dynamic', expiresAt: 9 }));
-    vi.stubGlobal('fetch', fetch);
-    vi.stubGlobal('localStorage', { getItem: () => 't' });
-    await createPreview('app', { port: 8443, protocol: 'https' });
-    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ name: 'app', port: 8443, protocol: 'https' });
   });
   it('getPreviews GETs the list', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonRes(200, { previews: [] })));

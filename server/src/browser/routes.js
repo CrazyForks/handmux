@@ -68,13 +68,35 @@ export function browserRoutes({
     const { url, closeAfterMinutes } = req.body || {};
     if (!validTarget(url)) return res.status(400).json({ error: 'browser URL must use http or https' });
     if (!validCloseAfter(closeAfterMinutes)) return res.status(400).json({ error: 'unsupported background close time' });
+    let created = null;
+    let responseFinished = false;
+    let responseClosed = false;
+    let cleaned = false;
+    const cleanupUnsentTab = () => {
+      if (cleaned || responseFinished || !created) return;
+      cleaned = true;
+      browser.closeTab(created.id, req.browserDeviceId);
+      const remaining = browser.list(req.browserDeviceId);
+      const displaced = created._displacedTabs || [];
+      const restore = displaced.find((tab) => remaining.some((item) => item.id === tab.id));
+      if (restore && !remaining.some((tab) => tab.visible)) {
+        browser.setVisible(restore.id, true, restore.closeAfterMinutes, req.browserDeviceId);
+      }
+    };
+    req.once('aborted', () => { responseClosed = true; cleanupUnsentTab(); });
+    res.once('finish', () => { responseFinished = true; });
+    res.once('close', () => { responseClosed = true; cleanupUnsentTab(); });
     try {
       const origin = publicBase
         ? wildcardOrigin(publicBase, new URL(url).origin, browserHostForTarget)
         : browserRequestOrigin(req);
-      const tab = await browser.create({ url, origin, closeAfterMinutes, deviceId: req.browserDeviceId });
-      res.status(201).json(publicTab(tab, req.browserDeviceId));
-    } catch (error) { next(error); }
+      created = await browser.create({ url, origin, closeAfterMinutes, deviceId: req.browserDeviceId });
+      if (responseClosed && !responseFinished) return cleanupUnsentTab();
+      res.status(201).json(publicTab(created, req.browserDeviceId));
+    } catch (error) {
+      cleanupUnsentTab();
+      if (!responseClosed) next(error);
+    }
   });
 
   r.get('/browser-tabs', (req, res) => {

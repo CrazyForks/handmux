@@ -652,9 +652,9 @@ describe('previews API', () => {
     remove: vi.fn(),
     ...over,
   });
-  const appPv = (previews, previewDomain) => {
+  const appPv = (previews) => {
     const app = express();
-    app.use('/api', createApiRouter({ token: 'good', commands: baseCommands, previews, previewDomain }));
+    app.use('/api', createApiRouter({ token: 'good', commands: baseCommands, previews }));
     return app;
   };
 
@@ -664,17 +664,10 @@ describe('previews API', () => {
     expect(res.body).toEqual({ name: 'foo', kind: 'static', url: '/preview/foo/?token=good', expiresAt: 42 });
     expect(pv.register).toHaveBeenCalledWith({ name: 'foo', dir: '/home/u/site' });
   });
-  it('POST {name,port} returns a subdomain url (dynamic enabled)', async () => {
-    const pv = fakePreviews({ register: vi.fn(async () => ({ name: 'app', kind: 'dynamic', expiresAt: 99 })) });
-    const res = await auth(request(appPv(pv, 'preview.example.com')).post('/api/previews')).send({ name: 'app', port: 3000 }).expect(200);
-    expect(res.body).toEqual({ name: 'app', kind: 'dynamic', url: 'https://app.preview.example.com/?token=good', expiresAt: 99 });
-    expect(pv.register).toHaveBeenCalledWith({ name: 'app', port: 3000 });
-  });
-  it('POST forwards an HTTPS loopback protocol to the registry', async () => {
-    const pv = fakePreviews({ register: vi.fn(async () => ({ name: 'app', kind: 'dynamic', expiresAt: 99 })) });
-    await auth(request(appPv(pv, 'preview.example.com')).post('/api/previews'))
-      .send({ name: 'app', port: 8443, protocol: 'https' }).expect(200);
-    expect(pv.register).toHaveBeenCalledWith({ name: 'app', port: 8443, protocol: 'https' });
+  it('POST rejects port previews', async () => {
+    const pv = fakePreviews();
+    await auth(request(appPv(pv)).post('/api/previews')).send({ name: 'app', port: 3000 }).expect(400);
+    expect(pv.register).not.toHaveBeenCalled();
   });
   it('POST maps a registry error to its status', async () => {
     const pv = fakePreviews({ register: vi.fn(async () => ({ error: 'outside home', status: 400 })) });
@@ -683,17 +676,9 @@ describe('previews API', () => {
   it('POST 400s when neither dir nor port is given', async () => {
     await auth(request(appPv(fakePreviews())).post('/api/previews')).send({ name: 'foo' }).expect(400);
   });
-  it('GET lists active + reports dynamicEnabled/domain', async () => {
-    const res = await auth(request(appPv(fakePreviews(), 'preview.example.com')).get('/api/previews')).expect(200);
-    expect(res.body).toEqual({
-      previews: [{ name: 'foo', kind: 'static', dir: '/home/u/site', expiresAt: 42 }],
-      dynamicEnabled: true, domain: 'preview.example.com',
-    });
-  });
-  it('GET reports dynamic disabled when no domain', async () => {
+  it('GET lists static previews only', async () => {
     const res = await auth(request(appPv(fakePreviews())).get('/api/previews')).expect(200);
-    expect(res.body.dynamicEnabled).toBe(false);
-    expect(res.body.domain).toBeNull();
+    expect(res.body).toEqual({ previews: [{ name: 'foo', kind: 'static', dir: '/home/u/site', expiresAt: 42 }] });
   });
   it('DELETE /previews/:name removes', async () => {
     const pv = fakePreviews();
@@ -726,6 +711,7 @@ describe('browser API composition', () => {
 
   it('mounts browser routes behind the authenticated API', async () => {
     const res = await auth(request(app).post('/api/browser-tabs'))
+      .set('X-Handmux-Browser-Device', 'device_abcdefghijklmnopqrstuvwxyz123456')
       .send({ url: 'https://target.example/', closeAfterMinutes: 10 })
       .expect(201);
     expect(res.body.id).toBe('tab-a');

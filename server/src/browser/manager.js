@@ -34,7 +34,12 @@ function bridgeScript(channel) {
   const encoded = JSON.stringify(channel);
   return `(() => {
     const channel = ${encoded};
-    const send = (type, url = location.href) => parent.postMessage({ source: 'handmux-browser', channel, type, url, title: document.title }, '*');
+    const hammerhead = window['%hammerhead%'];
+    const destinationUrl = (url) => {
+      try { return hammerhead?.utils?.url?.parseProxyUrl(url)?.destUrl || url; }
+      catch { return url; }
+    };
+    const send = (type, url) => parent.postMessage({ source: 'handmux-browser', channel, type, url: url === undefined ? destinationUrl(location.href) : url, title: document.title }, '*');
     let pending = false;
     const activity = () => {
       if (pending) return;
@@ -43,9 +48,8 @@ function bridgeScript(channel) {
     };
     for (const name of ['pointerdown', 'keydown', 'input', 'scroll']) addEventListener(name, activity, { capture: true, passive: true });
     addEventListener('load', () => send('load'));
-    addEventListener('popstate', () => send('navigate'));
-    addEventListener('hashchange', () => send('navigate'));
-    const hammerhead = window['%hammerhead%'];
+    addEventListener('popstate', () => send('urlchange'));
+    addEventListener('hashchange', () => send('urlchange'));
     if (hammerhead?.EVENTS?.pageNavigationTriggered) {
       hammerhead.on(hammerhead.EVENTS.pageNavigationTriggered, (url) => send('navigate', url));
     }
@@ -257,11 +261,14 @@ export async function createBrowserPreviewManager({
   };
   const store = createBrowserSessionStore({ now, setTimer, clearTimer, onExpire: releaseTabContext });
   const hideOtherTabs = (deviceId, exceptId, closeAfterMinutes) => {
+    const displaced = [];
     for (const tab of store.list()) {
       if (tab.ownerDevice === deviceId && tab.id !== exceptId && tab.visible) {
+        displaced.push({ id: tab.id, closeAfterMinutes: tab.closeAfterMinutes });
         store.setVisible(tab.id, false, closeAfterMinutes);
       }
     }
+    return displaced;
   };
 
   const sessionIdForPath = (pathname) => {
@@ -309,12 +316,14 @@ export async function createBrowserPreviewManager({
       }
       context.policy.authorizeTopLevel?.(target);
       const publicUrl = openTabSession(context, target, channel);
-      hideOtherTabs(deviceId, id, closeAfterMinutes);
+      const displacedTabs = hideOtherTabs(deviceId, id, closeAfterMinutes);
       context.tabIds.add(id);
-      return publicTab(store.add({
+      const created = publicTab(store.add({
         id, session: context.session, channel, url: publicUrl, originalUrl: target, title: '', closeAfterMinutes,
         ownerDevice: deviceId, publicOrigin: requestedOrigin, pool: context.pool, contextKey: context.key,
       }));
+      Object.defineProperty(created, '_displacedTabs', { value: displacedTabs });
+      return created;
     },
 
     get(id, deviceId) {

@@ -1,4 +1,5 @@
 import express from 'express';
+import http from 'node:http';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 import { browserRoutes } from '../src/browser/routes.js';
@@ -36,6 +37,42 @@ describe('browser routes', () => {
       url: 'https://target.example/path', origin: 'https://internal.example:30443', closeAfterMinutes: 10, deviceId: DEVICE,
     });
     expect(res.body.id).toBe('tab-a');
+  });
+
+  it('closes a tab created after disconnect and restores the exact tab displaced at commit time', async () => {
+    let releaseCreate;
+    const browser = browserFake();
+    browser.list.mockReturnValue([{ id: 'previous', visible: false, closeAfterMinutes: 30 }, { id: 'newer', visible: false, closeAfterMinutes: 10 }]);
+    browser.create.mockReturnValue(new Promise((resolve) => { releaseCreate = resolve; }));
+    const server = appFor(browser).listen(0);
+    try {
+      await new Promise((resolve) => server.once('listening', resolve));
+      const body = JSON.stringify({ url: 'https://target.example/path', closeAfterMinutes: 10 });
+      const pending = http.request({
+        port: server.address().port,
+        path: '/browser-tabs',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+          'X-Handmux-Browser-Device': DEVICE,
+        },
+      });
+      pending.on('error', () => {});
+      pending.end(body);
+      await vi.waitFor(() => expect(browser.create).toHaveBeenCalledOnce());
+
+      pending.destroy();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      releaseCreate({
+        id: 'tab-a', originalUrl: 'https://target.example/path', url: 'https://handmux.example/proxy',
+        _displacedTabs: [{ id: 'newer', closeAfterMinutes: 10 }],
+      });
+      await vi.waitFor(() => expect(browser.closeTab).toHaveBeenCalledWith('tab-a', DEVICE));
+      expect(browser.setVisible).toHaveBeenCalledWith('newer', true, 10, DEVICE);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 
   it('ignores a forwarded host when creating the public session origin', async () => {
@@ -77,6 +114,24 @@ describe('browser routes', () => {
     expect(res.body.url).toBe('https://browser-idata.handmux.example.com:30443/_browser-bootstrap/ticket');
     expect(res.headers['set-cookie'][0]).not.toContain('Domain=');
     expect(res.headers['set-cookie'][0]).toContain('Secure');
+  });
+
+  it('rolls back a created tab when bootstrap serialization fails', async () => {
+    const browser = browserFake();
+    browser.create.mockReturnValue({
+      id: 'tab-a', originalUrl: 'https://target.example/',
+      url: 'https://browser-target.preview.example/_browser-tab-a/https://target.example/',
+      _displacedTabs: [{ id: 'previous', closeAfterMinutes: 30 }],
+    });
+    browser.list.mockReturnValue([{ id: 'previous', visible: false, closeAfterMinutes: 30 }]);
+    const browserBootstrap = { issue: vi.fn(() => { throw new Error('ticket failed'); }) };
+
+    await asDevice(request(appFor(browser, 'preview.example', browserBootstrap)).post('/browser-tabs'))
+      .send({ url: 'https://target.example/', closeAfterMinutes: 10 })
+      .expect(500);
+
+    expect(browser.closeTab).toHaveBeenCalledWith('tab-a', DEVICE);
+    expect(browser.setVisible).toHaveBeenCalledWith('previous', true, 30, DEVICE);
   });
 
   it('maps the same target origin to one subdomain and treats another port as a different origin', async () => {

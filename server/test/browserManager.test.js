@@ -99,6 +99,8 @@ describe('browser preview manager', () => {
     expect(fake.proxies[0].windowIds[0]).not.toBe(fake.proxies[0].windowIds[1]);
     expect(first.channel).not.toBe(second.channel);
     expect(new URL(first.url).origin).toBe(new URL(second.url).origin);
+    expect(second._displacedTabs).toEqual([{ id: first.id, closeAfterMinutes: 10 }]);
+    expect(Object.keys(second)).not.toContain('_displacedTabs');
 
     manager.closeTab(first.id, DEVICE);
     expect(fake.proxies[0].closeSession).not.toHaveBeenCalled();
@@ -261,6 +263,10 @@ describe('browser preview manager', () => {
     expect(payload).toContain('history.forward');
     expect(payload).toContain('location.reload');
     expect(payload).toContain('pageNavigationTriggered');
+    expect(payload).toContain('parseProxyUrl');
+    expect(payload).toContain("addEventListener('popstate', () => send('urlchange'))");
+    expect(payload).toContain("addEventListener('hashchange', () => send('urlchange'))");
+    expect(payload).toContain("send('navigate', url)");
     expect(await session.getIframePayloadScript()).toBe('');
   });
 

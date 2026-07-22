@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createBrowserTab,
   deleteBrowserTab,
@@ -7,6 +7,7 @@ import {
   setBrowserTabVisible,
 } from '../src/api.js';
 
+beforeEach(() => localStorage.clear());
 afterEach(() => vi.unstubAllGlobals());
 
 const response = (status, body = {}) => ({
@@ -16,6 +17,17 @@ const response = (status, body = {}) => ({
 });
 
 describe('browser API client', () => {
+  it('can abort a pending browser request', async () => {
+    const controller = new AbortController();
+    vi.stubGlobal('fetch', vi.fn((url, options) => new Promise((resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    })));
+
+    const pending = createBrowserTab('https://a.example/', 10, { signal: controller.signal });
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+  });
   it('maps tab lifecycle calls to the authenticated browser endpoints', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response(201, { id: 'a' }))
@@ -48,5 +60,9 @@ describe('browser API client', () => {
       method: 'POST', body: JSON.stringify({ url: 'https://b.example/' }),
     });
     expect(fetchMock.mock.calls[4][1]).toMatchObject({ method: 'DELETE' });
+    const deviceIds = fetchMock.mock.calls.map(([, options]) => options.headers['X-Handmux-Browser-Device']);
+    expect(deviceIds.every((id) => /^[A-Za-z0-9_-]{32,128}$/.test(id))).toBe(true);
+    expect(new Set(deviceIds).size).toBe(1);
+    expect(localStorage.getItem('hm_browser_device1')).toBe(deviceIds[0]);
   });
 });

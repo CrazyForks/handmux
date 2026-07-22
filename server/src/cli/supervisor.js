@@ -39,6 +39,10 @@ export function bareUrl(base) {
   return `${base.replace(/\/$/, '')}/`;
 }
 
+export function browserPublicOriginEnv(cfg) {
+  return cfg.previewDomain ? { HANDMUX_PREVIEW_DOMAIN: cfg.previewDomain } : {};
+}
+
 export function supervise(cfg, { home, log = console } = {}) {
   const driver = getDriver(cfg.tunnel);
   const children = {};
@@ -54,7 +58,6 @@ export function supervise(cfg, { home, log = console } = {}) {
     port: cfg.port,
     host: cfg.host,
     token: cfg.token,
-    previewDomain: cfg.previewDomain || null,
     localUrl: `http://localhost:${cfg.port}`,
     lanUrl: lanUrl(cfg.port),
     publicUrl: null,
@@ -89,8 +92,8 @@ export function supervise(cfg, { home, log = console } = {}) {
       PUSH_STORE: pushStorePath(home),
       PREVIEW_STORE: previewStorePath(home),
       NOTIF_DIR: notificationsDirPath(home),
+      ...browserPublicOriginEnv(cfg),
     };
-    if (cfg.previewDomain) env.HANDMUX_PREVIEW_DOMAIN = cfg.previewDomain;
     if (cfg.name) env.HANDMUX_APP_NAME = cfg.name;
     if (cfg.staticDir) env.HANDMUX_STATIC_DIR = cfg.staticDir;
     if (cfg.uploadExts) env.HANDMUX_UPLOAD_EXTS = cfg.uploadExts;

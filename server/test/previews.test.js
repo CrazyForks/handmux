@@ -1,7 +1,6 @@
 // server/test/previews.test.js
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fsp } from 'node:fs';
-import net from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createPreviews, safePreviewName } from '../src/previews.js';
@@ -85,89 +84,15 @@ describe('get / list / remove', () => {
   });
 });
 
-describe('dynamic register', () => {
-  it('rejects a port when dynamic is disabled', async () => {
-    // default `previews` in beforeEach has no dynamicEnabled flag → disabled
-    expect(await previews.register({ name: 'app', port: 3000 })).toMatchObject({ error: 'dynamic disabled', status: 400 });
-  });
-
-  describe('with dynamic enabled', () => {
-    let dyn;
-    beforeEach(() => {
-      dyn = createPreviews({
-        home, store, now: () => clock.t, ttlMs: 600_000,
-        dynamicEnabled: true,
-        probePort: async (p) => (p === 3000 ? '127.0.0.1' : null), // only 3000 is "listening"
-      });
-    });
-    it('registers a listening port as a dynamic entry', async () => {
-      const out = await dyn.register({ name: 'app', port: 3000 });
-      expect(out).toMatchObject({ name: 'app', kind: 'dynamic', expiresAt: 1_000_000 + 600_000 });
-      expect(dyn.get('app')).toMatchObject({ state: 'active', entry: { kind: 'dynamic', port: 3000 } });
-    });
-    it('stores HTTPS for an HTTPS loopback upstream and defaults legacy callers to HTTP', async () => {
-      await dyn.register({ name: 'secure', port: 3000, protocol: 'https' });
-      await dyn.register({ name: 'plain', port: 3000 });
-      expect(dyn.get('secure').entry.protocol).toBe('https');
-      expect(dyn.get('plain').entry.protocol).toBe('http');
-    });
-    it('rejects an unsupported upstream protocol', async () => {
-      expect(await dyn.register({ name: 'bad', port: 3000, protocol: 'file' }))
-        .toMatchObject({ error: 'bad protocol', status: 400 });
-    });
-    it('list exposes kind + port for a dynamic entry (no dir)', async () => {
-      await dyn.register({ name: 'app', port: 3000 });
-      expect(dyn.list()).toEqual([{ name: 'app', kind: 'dynamic', port: 3000, protocol: 'http', expiresAt: 1_000_000 + 600_000 }]);
-    });
-    it('rejects a non-numeric / out-of-range port', async () => {
-      expect(await dyn.register({ name: 'app', port: 0 })).toMatchObject({ status: 400 });
-      expect(await dyn.register({ name: 'app', port: 70000 })).toMatchObject({ status: 400 });
-      expect(await dyn.register({ name: 'app', port: 'abc' })).toMatchObject({ status: 400 });
-    });
-    it('rejects a port that is not listening', async () => {
-      expect(await dyn.register({ name: 'app', port: 4321 })).toMatchObject({ error: 'port not listening', status: 400 });
-    });
-    it('stores the loopback host the probe found (so the proxy connects to the right IPv4/IPv6)', async () => {
-      const dyn6 = createPreviews({
-        home, store, now: () => clock.t, ttlMs: 600_000, dynamicEnabled: true,
-        probePort: async () => '::1', // app bound IPv6-only localhost
-      });
-      await dyn6.register({ name: 'app', port: 5173 });
-      expect(dyn6.get('app').entry).toMatchObject({ kind: 'dynamic', port: 5173, host: '::1' });
-    });
-    // The real (uninjected) probe must find a server bound ONLY to IPv6 localhost (::1) — the macOS
-    // `localhost` default that previously read as "port not listening".
-    it('the real probe finds an IPv6-only (::1) localhost server', async () => {
-      const srv = net.createServer((s) => s.destroy());
-      await new Promise((r, j) => { srv.once('error', j); srv.listen(0, '::1', r); });
-      const port = srv.address().port;
-      try {
-        const real = createPreviews({ home, store, now: () => clock.t, ttlMs: 600_000, dynamicEnabled: true });
-        const out = await real.register({ name: 'app6', port });
-        expect(out).toMatchObject({ name: 'app6', kind: 'dynamic' });
-        expect(real.get('app6').entry.host).toBe('::1');
-      } finally {
-        await new Promise((r) => srv.close(r));
-      }
-    });
-    it('can switch a name from static to dynamic (upsert + reset expiry)', async () => {
-      await dyn.register({ name: 'x', dir: join(home, 'site') });
-      clock.t = 1_200_000;
-      const out = await dyn.register({ name: 'x', port: 3000 });
-      expect(out.kind).toBe('dynamic');
-      expect(out.expiresAt).toBe(1_200_000 + 600_000);
-      expect(dyn.list()).toHaveLength(1);
-    });
-    it('list defaults a legacy entry (no kind) to static', async () => {
-      await dyn.register({ name: 'x', dir: join(home, 'site') });
-      // simulate a pre-kind entry written by an older build
-      const raw = JSON.parse(await fsp.readFile(store, 'utf8'));
-      delete raw[0].kind;
-      await fsp.writeFile(store, JSON.stringify(raw));
-      // The registry is in-memory (loaded once), so a legacy row on disk is adopted at the next boot —
-      // a fresh instance reads it and defaults the missing kind to static.
-      const reloaded = createPreviews({ home, store, now: () => clock.t, ttlMs: 600_000, dynamicEnabled: true });
-      expect(reloaded.list()[0].kind).toBe('static');
-    });
+describe('legacy registry migration', () => {
+  it('drops old dynamic entries and keeps rows without a kind as static', async () => {
+    await fsp.writeFile(store, JSON.stringify([
+      { name: 'old-port', kind: 'dynamic', port: 3000, expiresAt: clock.t + 1000 },
+      { name: 'old-dir', dir: join(home, 'site'), expiresAt: clock.t + 1000 },
+    ]));
+    const reloaded = createPreviews({ home, store, now: () => clock.t, ttlMs: 600_000 });
+    expect(reloaded.list()).toEqual([
+      { name: 'old-dir', kind: 'static', dir: join(home, 'site'), expiresAt: clock.t + 1000 },
+    ]);
   });
 });

@@ -6,7 +6,6 @@ import { fetchPaneCwd, getPanes } from '../api.js';
 import { fmtRemainMin, useRemaining } from '../previewCountdown.js';
 import { getDocHighlight, setDocHighlight } from '../storage.js';
 import { t, getLangCode, setLang, AVAILABLE } from '../i18n';
-import { previewStartError } from '../previewErrors.js';
 
 // Settings modal: the screen-column controls (⊟/⊞/↺, previously in the topbar) plus an explicit
 // font-size control. Font reads/writes the live terminal through termRef — the same persisted
@@ -17,9 +16,9 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   notifUnread = false, onOpenInbox,
   updateInfo = null, windowId = null,
   workspaceProtection = null,
-  activePreview = null, pane = null, lastPreviewDir = null, dynamicEnabled = false,
+  activePreview = null, pane = null, lastPreviewDir = null,
   getColCount = null,
-  onStartPreview, onStartDynamicPreview, onOpenPreview, onRenew, onStop }) {
+  onStartPreview, onOpenPreview, onRenew, onStop }) {
   const [font, setFont] = useState(null); // { size, auto } snapshot for display
   const [docHl, setDocHl] = useState(getDocHighlight()); // doc-path highlight toggle (default off)
   const [cols, setCols] = useState(null); // current pane's live col count (null = loading/unknown/restored)
@@ -44,25 +43,10 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   const [scriptPushKey, setScriptPushKey] = useState(null);
   const [dirOpen, setDirOpen] = useState(false);
   const [seedCwd, setSeedCwd] = useState(null); // dir the picker lands on (the pane's live cwd)
-  const [previewKind, setPreviewKind] = useState('off');    // start mode: off (default) / static / dynamic
-  const [port, setPort] = useState('');                     // dynamic port input (string)
+  const [previewKind, setPreviewKind] = useState('off');    // start mode: off (default) / static
   const [confirmStop, setConfirmStop] = useState(false);    // two-tap guard on 停止 (no nested modal)
-  const [startErr, setStartErr] = useState('');             // dynamic-start failure shown inline (e.g. 端口未监听)
-  const [starting, setStarting] = useState(false);          // disable 启动 while the request is in flight
   const remainMs = useRemaining(activePreview?.expiresAt, !!activePreview && open); // live TTL countdown
-  useEffect(() => { setConfirmStop(false); setStartErr(''); }, [activePreview?.name, open]); // reset guards per preview/open
-  const startDynamic = async () => {
-    const p = Number(port);
-    if (!p) return;
-    setStartErr(''); setStarting(true);
-    // On success, onStartDynamicPreview (in App) closes Settings ITSELF and opens the preview sheet,
-    // sequenced on Settings' back-popstate so the sheet doesn't catch Settings' own Back — so we must NOT
-    // call onClose() here (App owns the close). On failure it throws and we keep Settings open to show the
-    // inline error below.
-    try { await onStartDynamicPreview?.(p); }
-    catch (e) { setStartErr(previewStartError(e, { port: p })); }
-    finally { setStarting(false); }
-  };
+  useEffect(() => { setConfirmStop(false); }, [activePreview?.name, open]); // reset guards per preview/open
   // Open the dir picker seeded at the LAST preview dir for this window (so re-previewing the same
   // build is one tap), else the pane's current cwd (re-fetched, honoring a mid-session `cd`), else
   // $HOME. The picker also has a "jump to cwd" shortcut for switching dirs on the spot.
@@ -348,11 +332,11 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
         </div>
 
         <div className="settings-section">
-          <div className="settings-label">{dynamicEnabled ? t('settings.preview_site') : t('settings.preview_static_site')}</div>
+          <div className="settings-label">{t('settings.preview_static_site')}</div>
           {activePreview ? (
             <div className="preview-active">
               <div className="preview-active-head">
-                <span className="preview-running"><span className="live-dot" />{activePreview.kind === 'dynamic' ? t('settings.preview_running_dynamic') : t('settings.preview_running_static')}</span>
+                <span className="preview-running"><span className="live-dot" />{t('settings.preview_running_static')}</span>
                 <span className="preview-remain-s" title={t('settings.preview_remain_title')}>{t('settings.preview_remain', { time: fmtRemainMin(remainMs) })}</span>
               </div>
               <div className="settings-btns">
@@ -368,9 +352,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
                 )}
               </div>
               <div className="settings-hint">
-                {t('settings.preview_name', { name: activePreview.name })}{activePreview.kind === 'dynamic'
-                  ? t('settings.preview_port', { port: activePreview.port })
-                  : (activePreview.dir ? `(${activePreview.dir})` : '')}
+                {t('settings.preview_name', { name: activePreview.name })}{activePreview.dir ? `(${activePreview.dir})` : ''}
               </div>
             </div>
           ) : (
@@ -378,17 +360,9 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
               <div className="preview-seg" role="tablist" aria-label={t('settings.preview_type')}>
                 <button role="tab" className={previewKind === 'off' ? 'on' : ''} aria-selected={previewKind === 'off'} onClick={() => setPreviewKind('off')}>{t('settings.preview_off')}</button>
                 <button role="tab" className={previewKind === 'static' ? 'on' : ''} aria-selected={previewKind === 'static'} onClick={() => setPreviewKind('static')}>{t('settings.preview_static')}</button>
-                {dynamicEnabled && (
-                  <button role="tab" className={previewKind === 'dynamic' ? 'on' : ''} aria-selected={previewKind === 'dynamic'} onClick={() => { setStartErr(''); setPreviewKind('dynamic'); }}>{t('settings.preview_dynamic')}</button>
-                )}
               </div>
               {previewKind === 'off' && (
-                <>
-                  <div className="settings-hint">{dynamicEnabled ? t('settings.preview_off_hint_both') : t('settings.preview_off_hint')}</div>
-                  {!dynamicEnabled && (
-                    <div className="settings-hint preview-dynamic-disabled">{t('settings.preview_dynamic_disabled')}</div>
-                  )}
-                </>
+                <div className="settings-hint">{t('settings.preview_off_hint')}</div>
               )}
               {previewKind === 'static' && (
                 <>
@@ -396,18 +370,6 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
                     <button className="fontbtn" onClick={openDirPicker}>{t('settings.preview_pick_dir')}</button>
                   </div>
                   <div className="settings-hint">{t('settings.preview_static_hint')}</div>
-                </>
-              )}
-              {previewKind === 'dynamic' && (
-                <>
-                  <div className="settings-btns">
-                    <input className="preview-port" type="number" inputMode="numeric" min="1" max="65535"
-                      placeholder={t('settings.preview_port_placeholder')} value={port} onChange={(e) => { setPort(e.target.value); setStartErr(''); }} aria-label={t('settings.preview_port_label')} />
-                    <button className="fontbtn" disabled={!port || starting} onClick={startDynamic}>{starting ? t('settings.preview_starting') : t('settings.preview_start')}</button>
-                  </div>
-                  {startErr
-                    ? <div className="settings-hint settings-err">{startErr}</div>
-                    : <div className="settings-hint">{t('settings.preview_dynamic_hint')}</div>}
                 </>
               )}
             </div>

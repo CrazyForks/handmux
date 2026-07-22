@@ -171,7 +171,6 @@ export default {
   'setup.choose': 'choose 1-6',
   'setup.invalid': 'invalid choice',
   'setup.askPort': 'server port',
-  'setup.askPreviewDomain': 'preview domain (no http://, https://, or *.)',
   'setup.askHostname': 'public hostname (e.g. handmux.example.com)',
   'setup.askTunnelName': 'tunnel name',
   'setup.askSshHost': 'ssh host (user@host[:port])',
@@ -193,7 +192,6 @@ export default {
   'setup.secName': 'Name',
   'setup.secPort': 'Port',
   'setup.secToken': 'Token',
-  'setup.secPreview': 'Dynamic preview',
   'setup.tokenAuto': 'auto · new each start',
   'setup.tokenCustom': 'Set a custom token…',
   'setup.tokenRandom': 'Generate a random one',
@@ -206,7 +204,6 @@ export default {
   'setup.secPush': 'Push',
   'setup.secVoice': 'Voice',
   'setup.default': '(default)',
-  'setup.previewOff': 'Not configured',
   'setup.on': 'on',
   'setup.off': 'off',
   'setup.yes': 'Yes',
@@ -287,11 +284,6 @@ export default {
   'setup.sshHelp1': 'Server side (one-time): point a reverse proxy at the forwarded loopback port.',
   'setup.sshHelpNginx': '  nginx:  proxy_pass http://127.0.0.1:{port};  (add client_max_body_size 60m; proxy_read_timeout 90s;)',
   'setup.sshHelpCaddy': '  caddy:  {url} {  reverse_proxy 127.0.0.1:{port}  }',
-  'setup.previewAbout': 'Open a development service running on this machine by port from your phone. Static directory preview still works without this setting.',
-  'setup.previewRoute': 'Enter only the preview domain (for example, preview.example.com). handmux uses <project-name>.preview.example.com; route *.preview.example.com to the handmux gateway.',
-  'setup.previewHttps': 'The preview domain itself must support HTTPS. The local development service may use HTTP or HTTPS.',
-  'setup.previewTlsCf': "  TLS: Cloudflare's free cert covers ONE level (*.example.com); deeper (*.preview.example.com) needs Advanced Certificate Manager.",
-  'setup.previewTlsEdge': "  TLS: your edge serves the wildcard cert (e.g. a Let's Encrypt *.preview.your.domain).",
 
   // workspace restore
   'restore.usage': 'Usage: handmux restore [--dry-run] [--checkpoint <id>] [--session <name>] | handmux restore --list',
@@ -381,7 +373,6 @@ start flags (matching env var in parens):
   --cf-tunnel-name N            tunnel name for cloudflare-named (HANDMUX_CF_TUNNEL_NAME, default: handmux)
   --authtoken T                 authtoken for natapp / cpolar (HANDMUX_AUTHTOKEN)
   --cpolar-region R             cpolar edge region, e.g. cn (HANDMUX_CPOLAR_REGION)
-  --preview-domain D            enable dynamic previews, needs wildcard subdomain (HANDMUX_PREVIEW_DOMAIN)
   --foreground, -f              run in the foreground (don't daemonize)
   --no-qr                       don't render the QR code
 

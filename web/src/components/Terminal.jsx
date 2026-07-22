@@ -231,10 +231,9 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       // cursorSeq puts it (and DECTCEM-hidden when the cursor is hidden and we're not forcing it).
       cursorInactiveStyle: 'block',
       // OSC 8 hyperlinks (ESC ]8;;URL … ESC ]8;;) are natively clickable in xterm and by default open in
-      // the browser. Some programs print a localhost URL AS an OSC 8 link (not plain text), so xterm's
-      // native handler would win the tap and navigate away — bypassing our loopback-URL proxy-preview. A
-      // custom linkHandler intercepts activation: a loopback URL routes to onDocLinkTap (the same
-      // 「开启代理并预览」flow as a tapped plain-text URL); anything else opens in a new tab as before. The
+      // the browser. Some programs print a URL AS an OSC 8 link (not plain text), so xterm's native handler
+      // would win the tap and navigate away from Handmux. A custom linkHandler intercepts activation: every
+      // HTTP(S) URL routes to onDocLinkTap (the same built-in Browser confirmation as a plain-text URL). The
       // plain-text case is unaffected — it has no OSC 8 link, so our registerLinkProvider (below) handles it.
       linkHandler: {
         activate: (event, text) => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createBrowserTab,
   deleteBrowserTab,
@@ -14,6 +14,7 @@ import {
   readBrowserPrefs,
   setBrowserCloseAfter,
 } from '../browserState.js';
+import { isBrowserAccessEnabled, setBrowserAccessEnabled } from '../storage.js';
 
 function replaceTab(tabs, next) {
   return tabs.map((tab) => (tab.id === next.id ? { ...tab, ...next } : tab));
@@ -21,12 +22,17 @@ function replaceTab(tabs, next) {
 
 export function useBrowser({ enabled = true } = {}) {
   const [open, setOpenState] = useState(false);
+  const [accessEnabled, setAccessEnabled] = useState(isBrowserAccessEnabled);
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [pendingUrl, setPendingUrl] = useState(null);
   const [tabs, setTabs] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [historyActive, setHistoryActive] = useState(true);
   const [closeAfter, setCloseAfterState] = useState(() => readBrowserPrefs().closeAfter);
   const [history, setHistory] = useState(() => readBrowserHistory());
   const [error, setError] = useState(null);
+  const enablePromise = useRef(null);
+  const openPromises = useRef(new Map());
 
   const recordHistory = useCallback((tab) => {
     if (!tab?.originalUrl) return;
@@ -35,7 +41,7 @@ export function useBrowser({ enabled = true } = {}) {
   }, []);
 
   useEffect(() => {
-    if (!enabled) return undefined;
+    if (!enabled || !accessEnabled) return undefined;
     let live = true;
     getBrowserTabs().then(({ tabs: loaded = [] }) => {
       if (!live) return;
@@ -47,7 +53,7 @@ export function useBrowser({ enabled = true } = {}) {
       setOpenState(!!visible);
     }).catch((nextError) => { if (live) setError(nextError); });
     return () => { live = false; };
-  }, [enabled]);
+  }, [enabled]); // access is loaded explicitly by enableAccess on first consent
 
   useEffect(() => {
     const timers = tabs
@@ -89,6 +95,10 @@ export function useBrowser({ enabled = true } = {}) {
   }, [activeId, historyActive, open, tabs, updateVisibility]);
 
   const setOpen = useCallback(async (visible) => {
+    if (visible && !accessEnabled) {
+      setConsentOpen(true);
+      return;
+    }
     setError(null);
     try {
       if (activeId && !historyActive) await updateVisibility(activeId, visible);
@@ -96,28 +106,81 @@ export function useBrowser({ enabled = true } = {}) {
     } catch (nextError) {
       setError(nextError);
     }
-  }, [activeId, historyActive, updateVisibility]);
+  }, [accessEnabled, activeId, historyActive, updateVisibility]);
 
-  const openUrl = useCallback(async (input) => {
+  const openUrl = useCallback((input, options = {}) => {
     const url = normalizeBrowserInput(input);
     if (!url) {
       setError(new Error('browser URL must use http or https'));
-      return null;
+      return Promise.resolve(null);
     }
-    setError(null);
-    try {
-      if (open && activeId && !historyActive) await updateVisibility(activeId, false);
-      const created = await createBrowserTab(url, closeAfter);
-      setTabs((current) => [...current, created]);
-      setActiveId(created.id);
-      setHistoryActive(false);
-      setOpenState(true);
-      return created;
-    } catch (nextError) {
-      setError(nextError);
-      return null;
+    if (!accessEnabled) {
+      setPendingUrl(url);
+      setConsentOpen(true);
+      return Promise.resolve({ pending: true });
     }
-  }, [activeId, closeAfter, historyActive, open, updateVisibility]);
+    const pending = openPromises.current.get(url);
+    if (pending) return pending;
+    const task = (async () => {
+      setError(null);
+      try {
+        if (open && activeId && !historyActive) await updateVisibility(activeId, false);
+        const created = options.signal
+          ? await createBrowserTab(url, closeAfter, { signal: options.signal })
+          : await createBrowserTab(url, closeAfter);
+        setTabs((current) => [...current, created]);
+        setActiveId(created.id);
+        setHistoryActive(false);
+        setOpenState(true);
+        return created;
+      } catch (nextError) {
+        if (options.signal?.aborted) return null;
+        setError(nextError);
+        return null;
+      }
+    })().finally(() => {
+      if (openPromises.current.get(url) === task) openPromises.current.delete(url);
+    });
+    openPromises.current.set(url, task);
+    return task;
+  }, [accessEnabled, activeId, closeAfter, historyActive, open, updateVisibility]);
+
+  const enableAccess = useCallback(() => {
+    if (enablePromise.current) return enablePromise.current;
+    const task = (async () => {
+      setBrowserAccessEnabled(true);
+      setAccessEnabled(true);
+      setConsentOpen(false);
+      setError(null);
+      try {
+        const { tabs: loaded = [] } = await getBrowserTabs();
+        if (pendingUrl) {
+          const created = await createBrowserTab(pendingUrl, closeAfter);
+          setTabs([...loaded, created]);
+          setActiveId(created.id);
+          setHistoryActive(false);
+          setPendingUrl(null);
+        } else {
+          setTabs(loaded);
+          const selected = loaded.find((tab) => tab.visible) || loaded[0] || null;
+          setActiveId(selected?.id || null);
+          setHistoryActive(!selected);
+        }
+        setOpenState(true);
+      } catch (nextError) {
+        setError(nextError);
+      }
+    })().finally(() => {
+      if (enablePromise.current === task) enablePromise.current = null;
+    });
+    enablePromise.current = task;
+    return task;
+  }, [closeAfter, pendingUrl]);
+
+  const cancelAccess = useCallback(() => {
+    setPendingUrl(null);
+    setConsentOpen(false);
+  }, []);
 
   const closeTab = useCallback(async (id) => {
     const closing = tabs.find((tab) => tab.id === id);
@@ -126,16 +189,20 @@ export function useBrowser({ enabled = true } = {}) {
     try {
       await deleteBrowserTab(id);
       recordHistory(closing);
-      const remaining = tabs.filter((tab) => tab.id !== id);
-      setTabs(remaining);
+      let remaining = tabs.filter((tab) => tab.id !== id);
       if (activeId === id) {
+        if (open && remaining.length) {
+          const shown = await updateVisibility(remaining[0].id, true);
+          remaining = replaceTab(remaining, shown);
+        }
         setActiveId(remaining[0]?.id || null);
         setHistoryActive(!remaining.length);
       }
+      setTabs(remaining);
     } catch (nextError) {
       setError(nextError);
     }
-  }, [activeId, recordHistory, tabs]);
+  }, [activeId, open, recordHistory, tabs, updateVisibility]);
 
   const navigateTab = useCallback(async (id, input) => {
     const url = normalizeBrowserInput(input);
@@ -176,6 +243,8 @@ export function useBrowser({ enabled = true } = {}) {
 
   return {
     open,
+    accessEnabled,
+    consentOpen,
     tabs,
     activeId,
     historyActive,
@@ -183,6 +252,8 @@ export function useBrowser({ enabled = true } = {}) {
     history,
     error,
     openUrl,
+    enableAccess,
+    cancelAccess,
     switchTab,
     closeTab,
     setOpen,

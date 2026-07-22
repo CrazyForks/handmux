@@ -11,10 +11,9 @@ const GAP = 12;     // vertical gap between the tap point and the card
 // alone overflowed off the right edge (the buttons became unreachable). Below the tap by default;
 // flips above when it would run off the bottom. Hidden until measured so it never flashes mispositioned.
 //
-// Also serves the loopback-URL "开启代理并预览" confirm, via the optional overrides: `icon`, `name`
-// (title line), `openLabel` (confirm button text), `note` (a grey explainer line — used when the proxy
-// is unavailable), and `disabled` (hide the confirm button, leaving only Cancel). Same positioning.
-export default function DocLinkPopover({ path, x, y, onOpen, onClose, icon, name: nameProp, openLabel, note, disabled = false }) {
+// Also serves the terminal URL confirm via optional display overrides. `busy` keeps the card stable while
+// its async action is pending, so a repeated tap cannot launch another request.
+export default function DocLinkPopover({ path, x, y, onOpen, onClose, icon, name: nameProp, openLabel, note, disabled = false, busy = false }) {
   const name = nameProp ?? (path.split('/').filter(Boolean).pop() || path);
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
@@ -46,7 +45,7 @@ export default function DocLinkPopover({ path, x, y, onOpen, onClose, icon, name
         {note && <div className="doclink-note">{note}</div>}
         <div className="doclink-actions">
           <button className="doclink-cancel" onClick={onClose}>{t('common.cancel')}</button>
-          {!disabled && <button className="doclink-open" onClick={() => onOpen(path)}>{openLabel ?? t('common.open')}</button>}
+          {!disabled && <button className="doclink-open" disabled={busy} onClick={() => onOpen(path)}>{busy ? t('common.loading') : (openLabel ?? t('common.open'))}</button>}
         </div>
       </div>
     </>

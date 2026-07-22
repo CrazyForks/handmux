@@ -19,6 +19,9 @@ const browser = (overrides = {}) => ({
   closeAfter: 10,
   history: [{ url: 'https://old.example/', title: 'Old', visitedAt: 1000 }],
   error: null,
+  consentOpen: false,
+  enableAccess: vi.fn(),
+  cancelAccess: vi.fn(),
   openUrl: vi.fn(),
   switchTab: vi.fn(),
   closeTab: vi.fn(),
@@ -52,6 +55,13 @@ const setInput = (input, value) => act(() => {
 });
 
 describe('BrowserSheet', () => {
+  it('explains computer-side access before first use and requires an explicit enable action', async () => {
+    const model = browser({ open: false, consentOpen: true });
+    await render(model);
+    expect(document.querySelector('.browser-consent').textContent).toContain('通过你的电脑访问网页');
+    click(document.querySelector('.browser-consent-enable'));
+    expect(model.enableAccess).toHaveBeenCalledOnce();
+  });
   it('renders tabs above navigation with fixed History first', async () => {
     await render(browser());
     const sheet = document.querySelector('.browser-sheet');
@@ -77,6 +87,28 @@ describe('BrowserSheet', () => {
     click(document.querySelector('button[aria-label="刷新"]'));
     expect(post.mock.calls.map(([message]) => message.command)).toEqual(['back', 'forward', 'reload']);
     expect(post.mock.calls.every(([message]) => message.channel === 'ca')).toBe(true);
+  });
+
+  it('shows page loading state initially and while refresh is in flight', async () => {
+    await render(browser());
+    const frame = document.querySelector('iframe[data-tab-id="a"]');
+    expect(document.querySelector('.browser-page-loading')).not.toBeNull();
+
+    act(() => frame.dispatchEvent(new Event('load')));
+    expect(document.querySelector('.browser-page-loading')).toBeNull();
+
+    click(document.querySelector('button[aria-label="刷新"]'));
+    expect(document.querySelector('.browser-page-loading')).not.toBeNull();
+    act(() => frame.dispatchEvent(new Event('load')));
+    expect(document.querySelector('.browser-page-loading')).toBeNull();
+
+    act(() => window.dispatchEvent(new MessageEvent('message', {
+      source: frame.contentWindow,
+      data: { source: 'handmux-browser', channel: 'ca', type: 'navigate', url: 'https://a.example/next' },
+    })));
+    expect(document.querySelector('.browser-page-loading')).not.toBeNull();
+    act(() => frame.dispatchEvent(new Event('load')));
+    expect(document.querySelector('.browser-page-loading')).toBeNull();
   });
 
   it('switches, closes, starts a new address and minimizes through the model', async () => {

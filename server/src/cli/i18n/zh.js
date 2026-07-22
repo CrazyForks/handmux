@@ -170,7 +170,6 @@ export default {
   'setup.choose': '选择 1-6',
   'setup.invalid': '无效选择',
   'setup.askPort': '服务端口',
-  'setup.askPreviewDomain': '预览域名（不要填 http://、https:// 或 *.）',
   'setup.askHostname': '公网域名(例如 handmux.example.com)',
   'setup.askTunnelName': '隧道名称',
   'setup.askSshHost': 'ssh 主机(user@host[:port])',
@@ -192,7 +191,6 @@ export default {
   'setup.secName': '名称',
   'setup.secPort': '端口',
   'setup.secToken': '令牌',
-  'setup.secPreview': '动态预览',
   'setup.tokenAuto': '自动 · 每次启动新生成',
   'setup.tokenCustom': '自定义令牌…',
   'setup.tokenRandom': '随机生成一个',
@@ -205,7 +203,6 @@ export default {
   'setup.secPush': '推送',
   'setup.secVoice': '语音',
   'setup.default': '(默认)',
-  'setup.previewOff': '未配置',
   'setup.on': '开',
   'setup.off': '关',
   'setup.yes': '是',
@@ -286,11 +283,6 @@ export default {
   'setup.sshHelp1': '服务端(一次性):把反向代理指向被转发的 loopback 端口。',
   'setup.sshHelpNginx': '  nginx:  proxy_pass http://127.0.0.1:{port};  (加上 client_max_body_size 60m; proxy_read_timeout 90s;)',
   'setup.sshHelpCaddy': '  caddy:  {url} {  reverse_proxy 127.0.0.1:{port}  }',
-  'setup.previewAbout': '用于在手机上按端口打开本机正在运行的开发服务；不配置时，静态目录预览仍可使用。',
-  'setup.previewRoute': '只填预览域名（如 preview.example.com）。handmux 会使用 <项目名>.preview.example.com；请将 *.preview.example.com 路由到 handmux 网关。',
-  'setup.previewHttps': '预览域名本身必须支持 HTTPS；本机开发服务可使用 HTTP 或 HTTPS。',
-  'setup.previewTlsCf': '  TLS:Cloudflare 的免费证书只覆盖一级(*.example.com);更深一层(*.preview.example.com)需要 Advanced Certificate Manager。',
-  'setup.previewTlsEdge': '  TLS:由你自己的边缘提供通配证书(例如 Let\'s Encrypt 的 *.preview.your.domain)。',
 
   // 工作区恢复
   'restore.usage': '用法: handmux restore [--dry-run] [--checkpoint <id>] [--session <name>] | handmux restore --list',
@@ -380,7 +372,6 @@ start flag(括号内为对应环境变量):
   --cf-tunnel-name N            cloudflare-named 的隧道名(HANDMUX_CF_TUNNEL_NAME,默认:handmux)
   --authtoken T                 natapp / cpolar 的 authtoken(HANDMUX_AUTHTOKEN)
   --cpolar-region R             cpolar 边缘区域,如 cn(HANDMUX_CPOLAR_REGION)
-  --preview-domain D            启用动态预览,需要通配子域名(HANDMUX_PREVIEW_DOMAIN)
   --foreground, -f              前台运行(不后台化)
   --no-qr                       不渲染二维码
 

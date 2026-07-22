@@ -152,8 +152,6 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .settings-update-how { font-size: 12px; color: #9aa0a8; line-height: 1.5; margin-top: 6px; }
 .settings-update-how code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
   color: #e6e8ec; background: rgba(120,120,128,.22); padding: 1px 5px; border-radius: 5px; }
-/* "dynamic preview not enabled" explainer: dimmer + left rule so it reads as an aside, not an action. */
-.settings-hint.preview-dynamic-disabled { color: #6b6f77; border-left: 2px solid #34373d; padding-left: 8px; margin-top: 6px; }
 /* Small spinner shown while (un)subscribing, so the user waits instead of mis-tapping. */
 @keyframes tw-spin { to { transform: rotate(360deg); } }
 .spinner {
@@ -1191,6 +1189,12 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-pane[hidden] { display: none; }
 .browser-frame-scaler { width: 100%; height: 100%; position: relative; }
 .browser-frame { width: 100%; height: 100%; display: block; border: 0; background: #fff; }
+.browser-page-loading {
+  position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 9px;
+  background: rgba(255,255,255,.88); color: #4d5966; font-size: 14px; pointer-events: none;
+}
+.browser-page-loading .spinner { border-color: #c4cbd2; border-top-color: #3478f6; }
+.browser-refresh.loading svg { animation: tw-spin .7s linear infinite; }
 .browser-content.desktop { overflow: auto; -webkit-overflow-scrolling: touch; }
 .browser-content.desktop .browser-pane { flex: none; }
 .browser-content.desktop .browser-frame { position: absolute; inset: 0 auto auto 0; }
@@ -1207,13 +1211,26 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-error { position: absolute; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 3; width: min(92%, 420px); display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: rgba(35,38,43,.96); border: 1px solid #454b54; border-radius: 12px; color: #f0f2f4; font-size: 13px; box-shadow: 0 10px 28px rgba(0,0,0,.4); }
 .browser-error span { flex: 1; }
 .browser-error button { min-height: 36px; border: 0; background: transparent; color: var(--blue); font-weight: 600; }
+.browser-consent { display: flex; align-items: center; justify-content: center; padding: 22px; }
+.browser-consent-card { width: min(460px, 100%); padding: 26px 22px; border: 1px solid #383b42;
+  border-radius: 18px; background: #1c1d21; box-shadow: 0 18px 50px rgba(0,0,0,.45); }
+.browser-consent-card > svg { width: 30px; height: 30px; color: var(--blue); }
+.browser-consent-card h2 { margin: 14px 0 8px; font-size: 21px; }
+.browser-consent-card p, .browser-consent-card li { color: #b5bac3; line-height: 1.55; }
+.browser-consent-card ul { margin: 16px 0 22px; padding-left: 20px; }
+.browser-consent-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.browser-consent-actions button { border: 0; border-radius: 10px; padding: 10px 14px; color: #d9dce2; background: #303238; }
+.browser-consent-actions .browser-consent-enable { color: #fff; background: var(--blue); font-weight: 650; }
 .browser-entry[aria-pressed="true"] { color: var(--blue); }
 @media (max-width: 430px) {
   .browser-nav { gap: 1px; padding-inline: 3px; }
   .browser-nav-button { width: 36px; }
   .browser-tab { padding-inline: 10px; }
 }
-@media (prefers-reduced-motion: reduce) { .browser-sheet { transition: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .browser-sheet { transition: none; }
+  .browser-refresh.loading svg, .browser-page-loading .spinner { animation: none; }
+}
 /* 停止 confirm — overlaid INSIDE the sheet (which is its own z50 stacking context) so it sits above
    the iframe; a settings-card dialog would render beneath the sheet. */
 .preview-confirm-backdrop { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.5); }
@@ -1236,16 +1253,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 /* "运行中" inline status in the settings preview row. */
 .preview-running { display: inline-flex; align-items: center; gap: 6px; color: var(--green); font-weight: 600; font-size: 13px; }
 .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
-.preview-port {
-  width: 9em;
-  padding: 6px 10px;
-  font-size: 15px;
-  color: #e8e8ea;
-  background: #1b1c1f;
-  border: 1px solid #3a3c42;
-  border-radius: 8px;
-}
-/* 静态/动态 segmented control (settings preview row). */
+/* Static preview off/on segmented control. */
 .preview-seg {
   display: inline-flex; align-self: flex-start; gap: 2px;
   background: rgba(118,118,128,.22); border-radius: 9px; padding: 2px;

@@ -1,4 +1,6 @@
 const TOKEN_KEY = 'tw_token';
+const BROWSER_DEVICE_KEY = 'hm_browser_device1';
+const BROWSER_ACCESS_KEY = 'hm_browser_access1';
 const FONT_KEY = 'tw_font';
 const BOUND_KEY = 'tw_bound';               // string[] of session NAMES the user has bound (client-only)
 const LAST_SESSION_KEY = 'tw_last_session'; // sessionId of the last-opened session (boot fallback)
@@ -33,6 +35,23 @@ const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t);
 export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
+
+// Opaque per-install identity for isolating authenticated Browser sessions between phones. It is not an
+// account credential: the normal Handmux token is still required for every API request.
+export function getBrowserDeviceId() {
+  const stored = localStorage.getItem(BROWSER_DEVICE_KEY);
+  if (/^[A-Za-z0-9_-]{32,128}$/.test(stored || '')) return stored;
+  const bytes = new Uint8Array(24);
+  globalThis.crypto.getRandomValues(bytes);
+  const value = `device_${[...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+  localStorage.setItem(BROWSER_DEVICE_KEY, value);
+  return value;
+}
+export const isBrowserAccessEnabled = () => localStorage.getItem(BROWSER_ACCESS_KEY) === '1';
+export const setBrowserAccessEnabled = (enabled) => {
+  if (enabled) localStorage.setItem(BROWSER_ACCESS_KEY, '1');
+  else localStorage.removeItem(BROWSER_ACCESS_KEY);
+};
 
 // Bound sessions live only in the browser — the server never knows which sessions a given
 // device has pinned. We store names (not ids): a tmux name is stable and user-chosen, while

@@ -55,6 +55,15 @@ describe('device-local browser history', () => {
     }]);
   });
 
+  it('removes common authentication secrets from device-local history URLs', () => {
+    addBrowserHistory({
+      url: 'https://portal.example/callback?code=secret&token=secret&tab=keys#access_token=secret',
+      title: 'Portal',
+      visitedAt: 123,
+    });
+    expect(readBrowserHistory()[0].url).toBe('https://portal.example/callback?tab=keys');
+  });
+
   it('keeps the newest 200 records and can clear them', () => {
     for (let i = 0; i < 205; i += 1) {
       addBrowserHistory({ url: `https://example.com/${i}`, title: `Page ${i}`, visitedAt: i });

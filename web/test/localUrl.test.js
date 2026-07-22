@@ -44,9 +44,9 @@ describe('findLocalUrls', () => {
     expect(one('(http://localhost:8080/a)').path).toBe('/a');
   });
 
-  it('rejects a non-loopback host', () => {
-    expect(findLocalUrls('http://example.com:3000/foo')).toHaveLength(0);
-    expect(findLocalUrls('http://192.168.1.5:3000/foo')).toHaveLength(0);
+  it('matches ordinary and private-network websites for the built-in browser', () => {
+    expect(one('https://portal.example.com/keys')).toMatchObject({ raw: 'https://portal.example.com/keys' });
+    expect(one('http://192.168.1.5:3000/foo')).toMatchObject({ port: 3000, path: '/foo' });
   });
 
   it('finds several on one line', () => {

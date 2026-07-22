@@ -1,4 +1,4 @@
-import { getToken } from './storage.js';
+import { getBrowserDeviceId, getToken } from './storage.js';
 import { mimeFromName } from './mime.js';
 import { t } from './i18n';
 
@@ -18,14 +18,17 @@ export class ApiError extends Error {
 
 async function req(path, opts = {}) {
   const token = getToken();
-  const { timeoutMs, ...rest } = opts;
+  const { timeoutMs, signal: externalSignal, ...rest } = opts;
   const headers = { Authorization: `Bearer ${token ?? ''}`, ...(rest.headers || {}) };
   if (rest.body) headers['Content-Type'] = 'application/json';
   let controller = null;
   let to = null;
-  if (timeoutMs) {
+  const forwardAbort = () => controller?.abort();
+  if (timeoutMs || externalSignal) {
     controller = new AbortController();
-    to = setTimeout(() => controller.abort(), timeoutMs);
+    if (externalSignal?.aborted) controller.abort();
+    else externalSignal?.addEventListener('abort', forwardAbort, { once: true });
+    if (timeoutMs) to = setTimeout(() => controller.abort(), timeoutMs);
   }
   try {
     const res = await fetch(path, { cache: 'no-store', ...rest, headers, signal: controller?.signal });
@@ -43,10 +46,11 @@ async function req(path, opts = {}) {
   } catch (e) {
     // An abort surfaces as a DOMException — normalize it to a plain Error so callers only ever
     // special-case UnauthorizedError and treat everything else (incl. timeouts) as a poll failure.
-    if (controller?.signal.aborted) throw new Error(`${path} -> timeout`);
+    if (controller?.signal.aborted && !externalSignal?.aborted) throw new Error(`${path} -> timeout`);
     throw e;
   } finally {
     if (to) clearTimeout(to);
+    externalSignal?.removeEventListener('abort', forwardAbort);
   }
 }
 
@@ -144,21 +148,26 @@ export const installClaudeHooks = () => req('/api/hooks/install', { method: 'POS
 export const getStates = (sessions = []) =>
   req(`/api/states?sessions=${encodeURIComponent(sessions.join(','))}`, { timeoutMs: 4000 });
 
-export const createBrowserTab = (url, closeAfterMinutes) =>
-  req('/api/browser-tabs', { method: 'POST', body: JSON.stringify({ url, closeAfterMinutes }) });
-export const getBrowserTabs = () => req('/api/browser-tabs');
+const browserReq = (path, options = {}) => req(path, {
+  timeoutMs: 15000,
+  ...options,
+  headers: { ...(options.headers || {}), 'X-Handmux-Browser-Device': getBrowserDeviceId() },
+});
+export const createBrowserTab = (url, closeAfterMinutes, options = {}) =>
+  browserReq('/api/browser-tabs', { ...options, method: 'POST', body: JSON.stringify({ url, closeAfterMinutes }) });
+export const getBrowserTabs = () => browserReq('/api/browser-tabs');
 export const setBrowserTabVisible = (id, visible, closeAfterMinutes) =>
-  req(`/api/browser-tabs/${encodeURIComponent(id)}/visibility`, {
+  browserReq(`/api/browser-tabs/${encodeURIComponent(id)}/visibility`, {
     method: 'PATCH',
     body: JSON.stringify({ visible, closeAfterMinutes }),
   });
 export const navigateBrowserTab = (id, url) =>
-  req(`/api/browser-tabs/${encodeURIComponent(id)}/navigate`, {
+  browserReq(`/api/browser-tabs/${encodeURIComponent(id)}/navigate`, {
     method: 'POST',
     body: JSON.stringify({ url }),
   });
 export const deleteBrowserTab = (id) =>
-  req(`/api/browser-tabs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  browserReq(`/api/browser-tabs/${encodeURIComponent(id)}`, { method: 'DELETE' });
 
 // Orphan Claude sessions running outside tmux (see server/src/orphans.js). getOrphans returns the roster;
 // takeoverOrphan spawns `claude --resume` in tmux and (default) SIGTERMs the original. Takeover involves a
@@ -255,26 +264,12 @@ export function fetchImageUrl(path, sinceMtime = null) {
   });
 }
 
-// Preview registry. previewUrl carries the token so a raw browser navigation can set the preview
-// cookie. Static → same-origin /preview path; dynamic → the wildcard subdomain (needs `domain`).
-export const previewUrl = (entry, domain, path = '/') => {
-  if (entry?.kind === 'dynamic') {
-    // `path` is a proxied deep link (e.g. '/admin?tab=1#top' from a tapped terminal URL). URL/searchParams
-    // puts the token in the query BEFORE any fragment, so the browser actually sends it. Static previews
-    // own their own routing under /preview/<name>/, so they ignore `path`.
-    const p = path && path.startsWith('/') ? path : '/';
-    const url = new URL(p, `https://${encodeURIComponent(entry.name)}.${domain}/`);
-    url.searchParams.set('token', getToken() ?? '');
-    return url.toString();
-  }
+// Static preview URL carries the token so a raw iframe navigation can establish its cookie.
+export const previewUrl = (entry) => {
   return `/preview/${encodeURIComponent(entry?.name)}/?token=${encodeURIComponent(getToken() ?? '')}`;
 };
-// opts = { dir } (static) | { port, protocol? } (dynamic; protocol defaults to http server-side).
-export const createPreview = (name, opts = {}) => {
-  const body = opts.port != null ? { name, port: opts.port } : { name, dir: opts.dir };
-  if (opts.port != null && opts.protocol) body.protocol = opts.protocol;
-  return req('/api/previews', { method: 'POST', body: JSON.stringify(body) });
-};
+export const createPreview = (name, { dir } = {}) =>
+  req('/api/previews', { method: 'POST', body: JSON.stringify({ name, dir }) });
 export const getPreviews = () => req('/api/previews');
 export const deletePreview = (name) =>
   req(`/api/previews/${encodeURIComponent(name)}`, { method: 'DELETE' });

@@ -1,9 +1,9 @@
 import { findDocLinks } from './docPath.js';
 import { findLocalUrls } from './localUrl.js';
 
-// Merge the two kinds of tappable spans on ONE logical line: loopback URLs (kind:'url') and doc paths
+// Merge the two kinds of tappable spans on ONE logical line: web URLs (kind:'url') and doc paths
 // (kind:'doc'). URLs win — a doc-path match that OVERLAPS a URL span is dropped, because `:` is a
-// doc-path delimiter, so `localhost:3000/foo.html` would otherwise also surface a spurious `3000/foo.html`
+// doc-path delimiter, so `example.com:3000/foo.html` would otherwise also surface a spurious `3000/foo.html`
 // doc link. Returns start/end (char offsets into `text`) + a small payload the tap handler routes on:
 //   url → { protocol, port, urlPath, raw };  doc → {}  (its path is text.slice(start,end), same as before).
 function findAllLinks(text) {

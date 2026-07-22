@@ -43,7 +43,7 @@ export function findTunnelId(listJsonOut, name) {
 // preserved untouched. `token` IS owned so the Token row can pin one AND clear it back to auto — but it
 // round-trips through answersFromConfig, so a re-run that never touches the row still writes it back.
 const WIZARD_KEYS = [
-  'lang', 'name', 'port', 'tunnel', 'token', 'previewDomain',
+  'lang', 'name', 'port', 'tunnel', 'token',
   'sshHost', 'remotePort', 'sshJump', 'cfHostname', 'cfTunnelName', 'publicUrl',
   'authtoken', 'cpolarRegion',
   'vapid', 'xfyun',
@@ -58,7 +58,6 @@ export function configFromAnswers(a) {
   if (a.lang) cfg.lang = a.lang;
   if (a.name) cfg.name = a.name;
   if (a.token) cfg.token = a.token;   // blank = don't pin one → the server mints a fresh token each start
-  if (a.previewDomain) cfg.previewDomain = a.previewDomain;
   if (a.tunnel === 'ssh') {
     cfg.sshHost = a.sshHost;
     cfg.remotePort = a.remotePort;
@@ -95,7 +94,6 @@ export function answersFromConfig(cfg = {}) {
     lang: cfg.lang || getLocale(),
     name: cfg.name || '',
     token: cfg.token || '',   // '' = not pinned (auto each start); seeded so an untouched re-run rewrites it
-    previewDomain: cfg.previewDomain || '',
     tunnel: cfg.tunnel || 'none',
     port: Number(cfg.port) || 19999,
   };
@@ -126,13 +124,6 @@ export const validateNonEmpty = (label) => (v) => (String(v || '').trim() ? unde
 export function validateHost(v) {
   const s = String(v || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
   return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(s) ? undefined : t('setup.valHost');
-}
-// Dynamic previews use `https://<name>.<previewDomain>/`; only the base domain belongs in config. Blank
-// deliberately disables the optional feature, while a URL / wildcard would produce a broken host name.
-export function validatePreviewDomain(v) {
-  const s = String(v || '').trim();
-  if (!s) return undefined;
-  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(s) ? undefined : t('setup.valPreviewDomain');
 }
 // VAPID subject: Apple (APNs) rejects a fake/.local domain with BadJwtToken, so require a real-looking
 // mailto:you@host.tld or an https:// URL and reject the known-bad .local. Keeps push from silently

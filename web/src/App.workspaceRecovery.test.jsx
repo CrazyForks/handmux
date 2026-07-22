@@ -36,8 +36,6 @@ vi.mock('./push.js', async (importOriginal) => ({
 }));
 vi.mock('./hooks/usePreviews.js', () => ({
   usePreviews: () => ({
-    previewDomain: null,
-    dynamicEnabled: false,
     previewSheetOpen: false,
     setPreviewSheetOpen: vi.fn(),
     activePreview: null,
@@ -46,8 +44,6 @@ vi.mock('./hooks/usePreviews.js', () => ({
     activeName: null,
     openPreviewSheet: vi.fn(),
     startPreview: vi.fn(),
-    startDynamicPreview: vi.fn(),
-    startUrlPreview: vi.fn(),
     switchTab: vi.fn(),
     closeTab: vi.fn(),
     stopPreview: vi.fn(),

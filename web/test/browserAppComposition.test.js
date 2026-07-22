@@ -16,4 +16,10 @@ describe('built-in browser App composition', () => {
     expect(source).toMatch(/className="topbar-icon browser-entry"[^>]+onClick=\{\(\) => browser\.setOpen\(true\)\}/);
     expect(source).not.toMatch(/\{shownPreview && \(\s*<button className="topbar-icon preview-live"/);
   });
+
+  it('routes confirmed terminal web links into the built-in browser', () => {
+    expect(source).toContain('await browser.openUrl(p.raw, { signal: controller.signal })');
+    expect(source).not.toContain('startUrlPreview({');
+    expect(source).not.toContain('disabled={!dynamicEnabled}');
+  });
 });

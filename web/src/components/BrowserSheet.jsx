@@ -23,16 +23,19 @@ function tabLabel(tab) {
 
 export default function BrowserSheet({ browser }) {
   const {
-    open, tabs, activeId, historyActive, closeAfter, history, error,
+    open, consentOpen, tabs, activeId, historyActive, closeAfter, history, error,
     openUrl, switchTab, closeTab, setOpen, setCloseAfter,
-    navigateTab, updateTabMeta, clearHistory,
+    navigateTab, updateTabMeta, clearHistory, enableAccess, cancelAccess,
   } = browser;
   const active = tabs.find((tab) => tab.id === activeId) || null;
   const [address, setAddress] = useState(active?.originalUrl || '');
   const [timeOpen, setTimeOpen] = useState(false);
   const [device, setDevice] = useState('mobile');
   const [bodySize, setBodySize] = useState({ width: 0, height: 0 });
+  const [loadedTabs, setLoadedTabs] = useState(() => new Set());
+  const [refreshingTabs, setRefreshingTabs] = useState(() => new Set());
   const frames = useRef(new Map());
+  const frameUrls = useRef(new Map());
   const switchingOrigins = useRef(new Map());
   const addressRef = useRef(null);
   const bodyRef = useRef(null);
@@ -48,6 +51,9 @@ export default function BrowserSheet({ browser }) {
         .find(([, frame]) => frame.contentWindow === event.source);
       const tab = frameEntry && tabs.find((item) => item.id === frameEntry[0]);
       if (!tab || tab.channel !== event.data.channel) return;
+      if (event.data.type === 'navigate') {
+        setRefreshingTabs((current) => new Set(current).add(tab.id));
+      }
       const originOf = (raw) => { try { return new URL(raw).origin; } catch { return null; } };
       const currentOrigin = originOf(tab.originalUrl);
       const nextOrigin = originOf(event.data.url);
@@ -76,6 +82,17 @@ export default function BrowserSheet({ browser }) {
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [navigateTab, tabs, updateTabMeta]);
+
+  useEffect(() => {
+    setLoadedTabs((current) => {
+      const next = new Set();
+      for (const tab of tabs) {
+        if (current.has(tab.id) && frameUrls.current.get(tab.id) === tab.url) next.add(tab.id);
+      }
+      frameUrls.current = new Map(tabs.map((tab) => [tab.id, tab.url]));
+      return next;
+    });
+  }, [tabs]);
 
   useEffect(() => {
     for (const [id, origin] of switchingOrigins.current) {
@@ -108,6 +125,22 @@ export default function BrowserSheet({ browser }) {
     }, '*');
   };
 
+  const refreshActive = () => {
+    if (!active) return;
+    setRefreshingTabs((current) => new Set(current).add(active.id));
+    postCommand('reload');
+  };
+
+  const frameLoaded = (tab) => {
+    frameUrls.current.set(tab.id, tab.url);
+    setLoadedTabs((current) => new Set(current).add(tab.id));
+    setRefreshingTabs((current) => {
+      const next = new Set(current);
+      next.delete(tab.id);
+      return next;
+    });
+  };
+
   const submitAddress = (event) => {
     event.preventDefault();
     if (historyActive || !active) openUrl(address);
@@ -131,6 +164,26 @@ export default function BrowserSheet({ browser }) {
   const frameStyle = device === 'desktop' && bodySize.height > 0
     ? { width: '1280px', height: `${bodySize.height / desktopScale}px`, transform: `scale(${desktopScale})`, transformOrigin: '0 0' }
     : undefined;
+
+  if (consentOpen) return createPortal(
+    <div className="file-sheet browser-sheet open browser-consent" role="dialog" aria-modal="true" aria-label={t('browser.consentTitle')}>
+      <div className="browser-consent-card">
+        <GlobeIcon />
+        <h2>{t('browser.consentTitle')}</h2>
+        <p>{t('browser.consentBody')}</p>
+        <ul>
+          <li>{t('browser.consentComputer')}</li>
+          <li>{t('browser.consentPrivate')}</li>
+          <li>{t('browser.consentIdle')}</li>
+        </ul>
+        <div className="browser-consent-actions">
+          <button onClick={cancelAccess}>{t('common.cancel')}</button>
+          <button className="browser-consent-enable" onClick={enableAccess}>{t('browser.enable')}</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
 
   return createPortal(
     <div className={`file-sheet browser-sheet ${open ? 'open' : ''}`} aria-hidden={!open}>
@@ -166,7 +219,9 @@ export default function BrowserSheet({ browser }) {
             value={address} onChange={(event) => setAddress(event.target.value)}
             placeholder={t('browser.addressPlaceholder')} autoCapitalize="none" autoCorrect="off" spellCheck="false" />
         </form>
-        <button className="browser-nav-button" aria-label={t('browser.refresh')} disabled={!active || historyActive} onClick={() => postCommand('reload')}><RefreshIcon /></button>
+        <button className={`browser-nav-button browser-refresh ${active && refreshingTabs.has(active.id) ? 'loading' : ''}`}
+          aria-label={t('browser.refresh')} aria-busy={active ? refreshingTabs.has(active.id) : false}
+          disabled={!active || historyActive} onClick={refreshActive}><RefreshIcon /></button>
         <button className="browser-nav-button" aria-label={t('browser.viewMode')}
           title={device === 'mobile' ? t('browser.desktopView') : t('browser.mobileView')}
           aria-pressed={device === 'desktop'} onClick={() => setDevice((value) => (value === 'mobile' ? 'desktop' : 'mobile'))}>
@@ -203,8 +258,11 @@ export default function BrowserSheet({ browser }) {
             </div>
           )}
         </section>
-        {tabs.map((tab) => (
-          <div key={tab.id} className="browser-pane" hidden={historyActive || tab.id !== activeId}>
+        {tabs.map((tab) => {
+          const selected = !historyActive && tab.id === activeId;
+          const loading = selected && (!loadedTabs.has(tab.id) || frameUrls.current.get(tab.id) !== tab.url || refreshingTabs.has(tab.id));
+          return (
+          <div key={tab.id} className="browser-pane" hidden={!selected}>
             <div className="browser-frame-scaler" style={scalerStyle}>
               <iframe
                 ref={(node) => { if (node) frames.current.set(tab.id, node); else frames.current.delete(tab.id); }}
@@ -214,10 +272,13 @@ export default function BrowserSheet({ browser }) {
                 src={tab.url}
                 sandbox={FRAME_SANDBOX}
                 style={frameStyle}
+                onLoad={() => frameLoaded(tab)}
               />
+              {loading && <div className="browser-page-loading" role="status"><span className="spinner" aria-hidden="true" />{t('common.loading')}</div>}
             </div>
           </div>
-        ))}
+          );
+        })}
         {error && (
           <div className="browser-error" role="alert">
             <span>{error.message || t('browser.loadFailed')}</span>

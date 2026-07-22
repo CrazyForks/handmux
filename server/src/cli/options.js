@@ -65,7 +65,6 @@ export function resolveConfig(flags = {}, fileCfg = {}, env = process.env, gen =
     name: pick('name', env.HANDMUX_APP_NAME) || null,
     host: pick('host', env.HANDMUX_HOST, '0.0.0.0'),
     token: pick('token', env.HANDMUX_TOKEN) || gen(),
-    previewDomain: pick('previewDomain', env.HANDMUX_PREVIEW_DOMAIN) || null,
     foreground: !!pick('foreground', false),
     qr: pick('qr', true) !== false,
     // Unified config — what used to live in .env. The supervisor injects these into the server child's
@@ -73,6 +72,7 @@ export function resolveConfig(flags = {}, fileCfg = {}, env = process.env, gen =
     staticDir: pick('staticDir', env.HANDMUX_STATIC_DIR) || null,
     uploadExts: pick('uploadExts', env.HANDMUX_UPLOAD_EXTS) || null,
     previewTtl: pick('previewTtl', env.HANDMUX_PREVIEW_TTL) || null,
+    previewDomain: pick('previewDomain', env.HANDMUX_PREVIEW_DOMAIN) || null,
     vapid: fileCfg.vapid || null,   // { public, private, subject } — push notifications
     xfyun: fileCfg.xfyun || null,   // { appId, apiKey, apiSecret } — voice input
     shortcuts: normalizeShortcuts(fileCfg.shortcuts),
@@ -183,8 +183,8 @@ export function explainConfig(flags = {}, fileCfg = {}, cfgPath = null, env = pr
   }
   add('publicUrl', pub, pub.value == null ? '(none — derived from tunnel if any)' : String(pub.value));
 
-  const preview = trace(flags, fileCfg, env, cfgPath, 'previewDomain', 'HANDMUX_PREVIEW_DOMAIN', null);
-  add('previewDomain', preview, preview.value == null ? '(off)' : String(preview.value));
+  const previewDomain = trace(flags, fileCfg, env, cfgPath, 'previewDomain', 'HANDMUX_PREVIEW_DOMAIN', null);
+  add('previewDomain', previewDomain, previewDomain.value == null ? '(none)' : String(previewDomain.value));
 
   if (t === 'ssh') {
     add('sshHost', trace(flags, fileCfg, env, cfgPath, 'sshHost', 'HANDMUX_SSH_HOST', null));

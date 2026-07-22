@@ -10,8 +10,8 @@ describe('parseArgs', () => {
     expect(parseArgs(['start', '--foreground', '--no-qr']).flags).toEqual({ foreground: true, qr: false });
   });
   it('aliases -f to foreground and camel-cases dashed keys', () => {
-    expect(parseArgs(['start', '-f', '--preview-domain', 'p.example.com']).flags)
-      .toEqual({ foreground: true, previewDomain: 'p.example.com' });
+    expect(parseArgs(['start', '-f', '--public-url', 'https://example.com']).flags)
+      .toEqual({ foreground: true, publicUrl: 'https://example.com' });
   });
   it('defaults the command to help when empty', () => {
     expect(parseArgs([]).command).toBe('help');
@@ -155,6 +155,17 @@ describe('resolveConfig', () => {
     expect(c.staticDir).toBeNull();
     expect(c.vapid).toBeNull();
     expect(c.xfyun).toBeNull();
+  });
+  it('keeps previewDomain as the built-in browser public origin', () => {
+    const c = resolveConfig(
+      { previewDomain: 'flag.example.com' },
+      { previewDomain: 'file.example.com' },
+      { HANDMUX_PREVIEW_DOMAIN: 'env.example.com' }, gen,
+    );
+    expect(c.previewDomain).toBe('flag.example.com');
+    const keys = explainConfig({}, { previewDomain: 'old.example.com' }, '/c.json', { HANDMUX_PREVIEW_DOMAIN: 'env.example.com' })
+      .filter((row) => row.key === 'previewDomain');
+    expect(keys).toEqual([{ key: 'previewDomain', origin: '/c.json', display: 'old.example.com' }]);
   });
   it('normalizes shortcuts from the config file and keeps explicit empty lists', () => {
     const c = resolveConfig({}, {
