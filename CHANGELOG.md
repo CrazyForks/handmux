@@ -5,22 +5,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Added
-- 新增 `handmux shortcuts` 交互式向导，可分别配置命令 / 聊天模式的共享常用项；两种模式默认都有 `Ctrl+C`。手机 ⚙ 面板按快捷栏实际顺序统一显示共享与本机项，可在本机混排或移除共享项，并提供即时撤销，不影响其他设备。
-- `handmux setup` 新增“动态预览”入口：可直接配置预览裸域，并说明通配路由、外部 HTTPS 与本机 HTTP/HTTPS 服务的关系。
-- 自动维护最新 tmux 工作区的双份元数据，并在电脑或 tmux 环境换代时归档可恢复 checkpoint；手机可在重启后一小时内非破坏性恢复，CLI 可随时列出、预览或按 checkpoint / session 恢复历史。
-- 恢复会安全重建 session、linked window、pane、工作目录与布局，并只对经过验证的 Claude Code / Codex 会话执行 resume；同名会话自动使用 `-restored` 后缀，当前会话与普通 pane 命令不会被修改或重放。
-- 手机会在首次打开时等待恢复状态核对；恢复后显示实际恢复的 session / window / pane 数量，不自动进入或绑定恢复会话，并提供手动重新绑定入口。
-
-### Changed
-- 窗口管理与分屏管理弹窗现在使用明确标题，并在标题下以小字显示当前终端的列×行尺寸。
-- 手动新增命令 / 聊天快捷项成功后会显示明确提示，并直接返回快捷项列表。
-- `handmux shortcuts` 保存后会立即更新正在运行的 server，无需重启；手机端在 App 启动及每次回到前台时读取配置，不再每 15 秒轮询。
-
-### Fixed
-- 分屏地图、窗口管理与分屏管理现在会在打开时重新读取 tmux 实时尺寸，不再显示会话首次载入时的旧宽高。
-- tmux server 完全退出且尚未创建新 session 时，手机也能立即识别旧工作区并提示恢复；handmux 内主动删除最后会话仍不会产生恢复历史。
-- 优化动态预览续期策略：打开预览后不再自动续期；需要延长时可手动点「续期」或重新打开本机链接。
-- tmux 3.0+ 的旧版 client/server 不再因控制字符格式分隔符而错误解析工作区；从未 attach 的 session 和 linked window 的重复 pane 输出也会被兼容处理，矛盾数据仍安全拒绝。
+- 新增 Tmux 工作区恢复：电脑或 Tmux 重启后，可从手机或 `handmux restore` 恢复上次的 session、window、pane、工作目录和布局，Claude Code / Codex 会话可以继续原对话。
+- 新增 `handmux shortcuts`，可分别配置命令 / 聊天模式的共享快捷项；每台手机也能自由混排共享与本机项，或只在本机移除共享项。
+- 动态预览现在可在 `handmux setup` 中配置域名；打开后不再自动续期，需要延长时可手动点「续期」或重新打开本机链接。
 
 ## [0.17.8] - 2026-07-20
 

@@ -11,6 +11,26 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.18.0',
+    date: '2026-07-22',
+    highlight: {
+      zh: 'Tmux 工作区恢复 · 快捷栏自由定制',
+      en: 'Tmux workspace recovery · customizable shortcuts',
+    },
+    items: {
+      zh: [
+        '新增 Tmux 工作区恢复:电脑或 Tmux 重启后,可从手机或 handmux restore 恢复上次的会话、窗口、分屏、目录和布局;Claude Code / Codex 会话还能继续原对话。',
+        '新增 handmux shortcuts:可分别配置命令与聊天模式的共享快捷项;每台手机也能自由混排共享与本机项,或只在本机移除共享项。',
+        'handmux setup 现在可以配置动态预览域名;预览不再自动续期,需要延长时由你手动续期或重新打开。',
+      ],
+      en: [
+        'Added Tmux workspace recovery: after the computer or Tmux restarts, restore the previous sessions, windows, panes, working directories, and layouts from the phone or handmux restore; Claude Code and Codex sessions can also continue their original conversations.',
+        'Added handmux shortcuts to configure shared command-mode and chat-mode items; each phone can also freely mix shared and local items or remove a shared item only on that device.',
+        'handmux setup can now configure the dynamic-preview domain; previews no longer renew automatically and can be extended manually or reopened when needed.',
+      ],
+    },
+  },
+  {
     version: '0.17.8',
     date: '2026-07-20',
     highlight: {
