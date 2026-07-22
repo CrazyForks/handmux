@@ -90,10 +90,10 @@ const previewDomain = process.env.HANDMUX_PREVIEW_DOMAIN || null;
 const browserWorker = createBrowserWorkerClient({ appToken: token, previewDomain });
 
 const app = express();
-// Browser APIs stay behind normal Handmux auth, but their unparsed request streams and all claimed
-// Hammerhead paths are forwarded to the isolated browser worker. Ordinary app paths fall through.
+// Browser APIs stay behind normal Handmux auth. Direct-tab metadata lives in the main process;
+// proxy operations and all claimed Hammerhead paths use the isolated browser worker.
 app.use(browserWorker.publicHandler);
-app.use('/api/browser-tabs', expressAuth(token), browserWorker.apiHandler);
+app.use('/api/browser-tabs', expressAuth(token), express.json(), browserWorker.apiHandler);
 app.use('/api', createApiRouter({
   token, events, uploadExts, previews, shortcuts: cfg.shortcuts, workspace, previewDomain,
 }));

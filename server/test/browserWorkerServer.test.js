@@ -60,9 +60,9 @@ describe('browser worker server', () => {
     await expect(health.json()).resolves.toEqual({ ok: true });
   });
 
-  it('keeps the public Host/X-Forwarded-Proto when serving browser APIs', async () => {
+  it('uses the dedicated preview origin instead of the Handmux Host for proxy tabs', async () => {
     const browser = browserFake();
-    const worker = await start({ browser });
+    const worker = await start({ browser, previewDomain: 'preview.example' });
     const body = JSON.stringify({ url: 'https://target.example/', closeAfterMinutes: 10 });
     const response = await rawRequest(worker, '/api/browser-tabs', {
       method: 'POST',
@@ -79,7 +79,8 @@ describe('browser worker server', () => {
 
     expect(response.status).toBe(201);
     expect(browser.create).toHaveBeenCalledWith(expect.objectContaining({
-      origin: 'https://phone.example:30443', deviceId: DEVICE,
+      origin: expect.stringMatching(/^https:\/\/browser-[a-f0-9]{24}\.preview\.example$/),
+      deviceId: DEVICE,
     }));
   });
 

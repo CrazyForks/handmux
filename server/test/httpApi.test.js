@@ -712,7 +712,7 @@ describe('browser API composition', () => {
   it('mounts browser routes behind the authenticated API', async () => {
     const res = await auth(request(app).post('/api/browser-tabs'))
       .set('X-Handmux-Browser-Device', 'device_abcdefghijklmnopqrstuvwxyz123456')
-      .send({ url: 'https://target.example/', closeAfterMinutes: 10 })
+      .send({ url: 'https://target.example/', closeAfterMinutes: 10, mode: 'direct' })
       .expect(201);
     expect(res.body.id).toBe('tab-a');
   });

@@ -69,6 +69,7 @@ export function browserRoutes({
     if (!validTarget(url)) return res.status(400).json({ error: 'browser URL must use http or https' });
     if (!validCloseAfter(closeAfterMinutes)) return res.status(400).json({ error: 'unsupported background close time' });
     if (mode !== 'direct' && mode !== 'proxy') return res.status(400).json({ error: 'unsupported browser mode' });
+    if (mode === 'proxy' && !publicBase) return res.status(503).json({ error: 'browser proxy unavailable' });
     let created = null;
     let responseFinished = false;
     let responseClosed = false;
@@ -121,6 +122,7 @@ export function browserRoutes({
     const { url, mode = 'proxy' } = req.body || {};
     if (!validTarget(url)) return res.status(400).json({ error: 'browser URL must use http or https' });
     if (mode !== 'direct' && mode !== 'proxy') return res.status(400).json({ error: 'unsupported browser mode' });
+    if (mode === 'proxy' && !publicBase) return res.status(503).json({ error: 'browser proxy unavailable' });
     try {
       const origin = publicBase
         ? wildcardOrigin(publicBase, new URL(url).origin, browserHostForTarget)

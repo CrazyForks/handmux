@@ -25,16 +25,16 @@ function browserFake() {
 }
 
 describe('browser routes', () => {
-  it('creates a tab using the current forwarded Handmux origin', async () => {
+  it('creates a direct tab without using a fallback proxy origin', async () => {
     const browser = browserFake();
     const res = await asDevice(request(appFor(browser)).post('/browser-tabs'))
       .set('Host', 'internal.example:30443')
       .set('X-Forwarded-Proto', 'https')
-      .send({ url: 'https://target.example/path', closeAfterMinutes: 10 });
+      .send({ url: 'https://target.example/path', closeAfterMinutes: 10, mode: 'direct' });
 
     expect(res.status).toBe(201);
     expect(browser.create).toHaveBeenCalledWith({
-      url: 'https://target.example/path', origin: 'https://internal.example:30443', closeAfterMinutes: 10, deviceId: DEVICE, mode: 'proxy',
+      url: 'https://target.example/path', origin: 'https://internal.example:30443', closeAfterMinutes: 10, deviceId: DEVICE, mode: 'direct',
     });
     expect(res.body.id).toBe('tab-a');
   });
@@ -42,11 +42,28 @@ describe('browser routes', () => {
   it.each(['direct', 'proxy'])('accepts mode=%s when creating a tab', async (mode) => {
     const browser = browserFake();
 
-    await asDevice(request(appFor(browser)).post('/browser-tabs'))
+    const configured = mode === 'proxy'
+      ? appFor(browser, 'preview.example', { issue: vi.fn(({ url }) => url) })
+      : appFor(browser);
+    await asDevice(request(configured).post('/browser-tabs'))
       .send({ url: 'https://target.example/', closeAfterMinutes: 10, mode })
       .expect(201);
 
     expect(browser.create).toHaveBeenCalledWith(expect.objectContaining({ mode }));
+  });
+
+  it.each([
+    ['explicit proxy', { mode: 'proxy' }],
+    ['legacy missing mode', {}],
+  ])('rejects %s create when previewDomain is not configured', async (_label, extra) => {
+    const browser = browserFake();
+
+    const res = await asDevice(request(appFor(browser)).post('/browser-tabs'))
+      .send({ url: 'https://target.example/', closeAfterMinutes: 10, ...extra });
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBe('browser proxy unavailable');
+    expect(browser.create).not.toHaveBeenCalled();
   });
 
   it('rejects an unsupported create mode', async () => {
@@ -68,7 +85,7 @@ describe('browser routes', () => {
     const server = appFor(browser).listen(0);
     try {
       await new Promise((resolve) => server.once('listening', resolve));
-      const body = JSON.stringify({ url: 'https://target.example/path', closeAfterMinutes: 10 });
+      const body = JSON.stringify({ url: 'https://target.example/path', closeAfterMinutes: 10, mode: 'direct' });
       const pending = http.request({
         port: server.address().port,
         path: '/browser-tabs',
@@ -102,7 +119,7 @@ describe('browser routes', () => {
       .set('Host', 'actual.example')
       .set('X-Forwarded-Host', 'spoofed.example')
       .set('X-Forwarded-Proto', 'https')
-      .send({ url: 'https://target.example/', closeAfterMinutes: 10 })
+      .send({ url: 'https://target.example/', closeAfterMinutes: 10, mode: 'direct' })
       .expect(201);
 
     expect(browser.create).toHaveBeenCalledWith(expect.objectContaining({ origin: 'https://actual.example' }));
@@ -192,7 +209,7 @@ describe('browser routes', () => {
 
   it.each([10, 30, 60, 120, null])('accepts closeAfterMinutes=%s', async (closeAfterMinutes) => {
     const browser = browserFake();
-    const res = await asDevice(request(appFor(browser)).post('/browser-tabs')).send({ url: 'https://target.example/', closeAfterMinutes });
+    const res = await asDevice(request(appFor(browser)).post('/browser-tabs')).send({ url: 'https://target.example/', closeAfterMinutes, mode: 'direct' });
     expect(res.status).toBe(201);
   });
 
@@ -244,7 +261,8 @@ describe('browser routes', () => {
 
   it('navigates an existing tab', async () => {
     const browser = browserFake();
-    const res = await asDevice(request(appFor(browser)).post('/browser-tabs/tab-a/navigate')).send({ url: 'https://next.example/' });
+    const configured = appFor(browser, 'preview.example', { issue: vi.fn(({ url }) => url) });
+    const res = await asDevice(request(configured).post('/browser-tabs/tab-a/navigate')).send({ url: 'https://next.example/' });
     expect(res.status).toBe(200);
     expect(browser.navigate).toHaveBeenCalledWith('tab-a', 'https://next.example/', DEVICE, expect.any(String), 'proxy');
   });
@@ -252,11 +270,28 @@ describe('browser routes', () => {
   it.each(['direct', 'proxy'])('accepts mode=%s when navigating a tab', async (mode) => {
     const browser = browserFake();
 
-    await asDevice(request(appFor(browser)).post('/browser-tabs/tab-a/navigate'))
+    const configured = mode === 'proxy'
+      ? appFor(browser, 'preview.example', { issue: vi.fn(({ url }) => url) })
+      : appFor(browser);
+    await asDevice(request(configured).post('/browser-tabs/tab-a/navigate'))
       .send({ url: 'https://next.example/', mode })
       .expect(200);
 
     expect(browser.navigate).toHaveBeenCalledWith('tab-a', 'https://next.example/', DEVICE, expect.any(String), mode);
+  });
+
+  it.each([
+    ['explicit proxy', { mode: 'proxy' }],
+    ['legacy missing mode', {}],
+  ])('rejects %s navigation when previewDomain is not configured', async (_label, extra) => {
+    const browser = browserFake();
+
+    const res = await asDevice(request(appFor(browser)).post('/browser-tabs/tab-a/navigate'))
+      .send({ url: 'https://next.example/', ...extra });
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBe('browser proxy unavailable');
+    expect(browser.navigate).not.toHaveBeenCalled();
   });
 
   it('rejects an unsupported navigation mode', async () => {

@@ -5,6 +5,7 @@ import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { claimedBrowserRequest } from './publicProxy.js';
 import { BROWSER_INTERNAL_HEADER } from './protocol.js';
+import { createBrowserCoordinator } from './coordinator.js';
 
 const WORKER_FILE = fileURLToPath(new URL('./worker.js', import.meta.url));
 
@@ -173,15 +174,45 @@ export function createBrowserWorkerClient({
     return true;
   };
 
-  start();
+  const proxyRequest = ({ req, method, path, body }) => new Promise((resolve) => {
+    const targetPort = port;
+    if (!targetPort) return resolve(null);
+    const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
+    const headers = forwardedHeaders(req.headers, internalToken, appToken, true);
+    if (payload) {
+      headers['content-type'] = 'application/json';
+      headers['content-length'] = String(payload.length);
+    } else {
+      delete headers['content-length'];
+      delete headers['content-type'];
+    }
+    const upstream = request({ hostname: '127.0.0.1', port: targetPort, method, path, headers }, (incoming) => {
+      const chunks = [];
+      incoming.on('data', (chunk) => chunks.push(chunk));
+      incoming.on('end', () => resolve({
+        status: incoming.statusCode || 502,
+        headers: incoming.headers,
+        body: Buffer.concat(chunks),
+      }));
+    });
+    upstream.setTimeout?.(requestTimeoutMs, () => upstream.destroy(new Error('browser worker request timeout')));
+    upstream.once('error', () => resolve(null));
+    req.once('aborted', () => upstream.destroy());
+    upstream.end(payload || undefined);
+  });
+
+  const apiHandler = createBrowserCoordinator({ previewDomain, proxyRequest, setTimer, clearTimer });
+
+  if (previewDomain) start();
   let closePromise = null;
   return {
-    apiHandler: proxyHttp(true),
+    apiHandler,
     publicHandler: proxyHttp(false),
     onUpgrade,
     close() {
       if (!closePromise) {
         stopping = true;
+        apiHandler.close();
         if (restartTimer != null) clearTimer(restartTimer);
         restartTimer = null;
         clearReadyTimer();

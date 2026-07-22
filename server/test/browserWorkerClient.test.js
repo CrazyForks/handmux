@@ -8,6 +8,7 @@ import { createBrowserWorkerClient } from '../src/browser/workerClient.js';
 
 const servers = [];
 const clients = [];
+const DEVICE = 'device_abcdefghijklmnopqrstuvwxyz123456';
 
 afterEach(async () => {
   await Promise.all(clients.splice(0).map((client) => client.close()));
@@ -42,6 +43,7 @@ function clientFor(port, options = {}) {
       children.push(child);
       return child;
     }),
+    previewDomain: 'preview.example',
     ...options,
   });
   clients.push(client);
@@ -49,7 +51,59 @@ function clientFor(port, options = {}) {
 }
 
 describe('browser worker client', () => {
-  it('returns browser-only unavailable errors before the worker is ready', async () => {
+  it('does not fork the proxy worker without a preview domain and still serves direct tabs', async () => {
+    const forkWorker = vi.fn();
+    const client = createBrowserWorkerClient({
+      appToken: 'app-secret', forkWorker, randomToken: () => 'internal-secret',
+    });
+    clients.push(client);
+    const app = express();
+    app.use(express.json());
+    app.use('/api/browser-tabs', expressAuth('app-secret'), client.apiHandler);
+
+    await request(app).post('/api/browser-tabs')
+      .set('Authorization', 'Bearer app-secret')
+      .set('X-Handmux-Browser-Device', DEVICE)
+      .send({ url: 'https://direct.example/', closeAfterMinutes: 30, mode: 'direct' })
+      .expect(201);
+
+    expect(forkWorker).not.toHaveBeenCalled();
+  });
+
+  it('creates and lists direct tabs while the proxy worker is not ready or has exited', async () => {
+    const child = new EventEmitter();
+    child.kill = vi.fn(() => {
+      queueMicrotask(() => child.emit('exit', 0, 'SIGTERM'));
+      return true;
+    });
+    const client = createBrowserWorkerClient({
+      appToken: 'app-secret', previewDomain: 'preview.example',
+      forkWorker: () => child, randomToken: () => 'internal-secret',
+    });
+    clients.push(client);
+    const app = express();
+    app.use(express.json());
+    app.use('/api/browser-tabs', expressAuth('app-secret'), client.apiHandler);
+
+    const created = await request(app).post('/api/browser-tabs')
+      .set('Authorization', 'Bearer app-secret')
+      .set('X-Handmux-Browser-Device', DEVICE)
+      .send({ url: 'https://direct.example/', closeAfterMinutes: 30, mode: 'direct' })
+      .expect(201);
+    expect(created.body).toMatchObject({
+      mode: 'direct', url: 'https://direct.example/', originalUrl: 'https://direct.example/',
+      closeAfterMinutes: 30, visible: true,
+    });
+
+    child.emit('exit', 1, null);
+    const listed = await request(app).get('/api/browser-tabs')
+      .set('Authorization', 'Bearer app-secret')
+      .set('X-Handmux-Browser-Device', DEVICE)
+      .expect(200);
+    expect(listed.body.tabs).toEqual([expect.objectContaining({ id: created.body.id, mode: 'direct' })]);
+  });
+
+  it('returns an empty unified tab list and browser-only public errors before the worker is ready', async () => {
     const child = new EventEmitter();
     child.kill = vi.fn(() => {
       queueMicrotask(() => child.emit('exit', 0, 'SIGTERM'));
@@ -64,7 +118,10 @@ describe('browser worker client', () => {
     app.use('/api/browser-tabs', expressAuth('app-secret'), client.apiHandler);
     app.get('*', (_req, res) => res.status(218).send('main'));
 
-    await request(app).get('/api/browser-tabs').set('Authorization', 'Bearer app-secret').expect(503);
+    await request(app).get('/api/browser-tabs')
+      .set('Authorization', 'Bearer app-secret')
+      .set('X-Handmux-Browser-Device', DEVICE)
+      .expect(200, { tabs: [] });
     await request(app).get('/_browser-a/https://target.example/').expect(502);
     await request(app).get('/_browser-bootstrap/ticket').expect(502);
     await request(app).get('/api/states').expect(218, 'main');
@@ -87,13 +144,15 @@ describe('browser worker client', () => {
     const { client } = clientFor(port);
     await new Promise((resolve) => setImmediate(resolve));
     const app = express();
+    app.use(express.json());
     app.use('/api/browser-tabs', expressAuth('app-secret'), client.apiHandler);
 
     const response = await request(app).post('/api/browser-tabs')
       .set('Authorization', 'Bearer app-secret')
       .set('Host', 'phone.example:30443')
       .set('X-Forwarded-Proto', 'https')
-      .send({ url: 'https://target.example/' });
+      .set('X-Handmux-Browser-Device', DEVICE)
+      .send({ url: 'https://target.example/', closeAfterMinutes: 10, mode: 'proxy' });
 
     expect(response.status).toBe(201);
     expect(response.headers['set-cookie'][0]).toContain('tw_browser_device=device');
@@ -129,7 +188,7 @@ describe('browser worker client', () => {
     const timers = [];
     const forkWorker = vi.fn(() => fakeChild(9));
     const client = createBrowserWorkerClient({
-      appToken: 'app-secret', forkWorker, randomToken: () => 'internal-secret',
+      appToken: 'app-secret', previewDomain: 'preview.example', forkWorker, randomToken: () => 'internal-secret',
       setTimer: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
       clearTimer: vi.fn(), readyTimeoutMs: 10_000,
     });
@@ -152,7 +211,7 @@ describe('browser worker client', () => {
 
     expect(() => {
       const client = createBrowserWorkerClient({
-        appToken: 'app-secret', forkWorker, randomToken: () => 'internal-secret',
+        appToken: 'app-secret', previewDomain: 'preview.example', forkWorker, randomToken: () => 'internal-secret',
         setTimer: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
         clearTimer: vi.fn(),
       });
@@ -168,7 +227,7 @@ describe('browser worker client', () => {
     const child = new EventEmitter();
     child.kill = vi.fn();
     const client = createBrowserWorkerClient({
-      appToken: 'app-secret', forkWorker: () => child, randomToken: () => 'internal-secret',
+      appToken: 'app-secret', previewDomain: 'preview.example', forkWorker: () => child, randomToken: () => 'internal-secret',
       setTimer: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
       clearTimer: vi.fn(),
     });
@@ -184,7 +243,7 @@ describe('browser worker client', () => {
     const child = new EventEmitter();
     child.kill = vi.fn();
     const client = createBrowserWorkerClient({
-      appToken: 'app-secret', forkWorker: () => child, randomToken: () => 'internal-secret',
+      appToken: 'app-secret', previewDomain: 'preview.example', forkWorker: () => child, randomToken: () => 'internal-secret',
     });
     clients.push(client);
 
@@ -199,7 +258,7 @@ describe('browser worker client', () => {
   it('does not expose Handmux or tunnel credentials to the browser worker environment', async () => {
     const forkWorker = vi.fn(() => fakeChild(9));
     const client = createBrowserWorkerClient({
-      appToken: 'app-secret', forkWorker, randomToken: () => 'internal-secret',
+      appToken: 'app-secret', previewDomain: 'preview.example', forkWorker, randomToken: () => 'internal-secret',
       parentEnv: {
         PATH: '/usr/bin',
         HTTPS_PROXY: 'http://proxy.example',

@@ -19,6 +19,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ### Fixed
 - 内置浏览器地址栏不再显示代理包装地址；连续打开链接时只保留最后一次请求，刷新与加载过程使用顶部进度条并可随时停止，同时阻止误触；切换页签会保留页面并重新刷新，网页标题会同步到页签与历史；浏览代理改由独立工作进程承载，异常退出不会带停终端主应用。
+- 未配置 `previewDomain` 时，服务端现在会拒绝所有代理页签请求且不启动代理 worker；手机直连页签由主进程独立维护，不再因代理 worker 未就绪或重启而无法打开或被清除，跨模式切换失败也会保留原页签。
 - 分屏地图、窗口管理与分屏管理现在会在打开时重新读取 tmux 实时尺寸，不再显示会话首次载入时的旧宽高。
 - tmux server 完全退出且尚未创建新 session 时，手机也能立即识别旧工作区并提示恢复；handmux 内主动删除最后会话仍不会产生恢复历史。
 - tmux 3.0+ 的旧版 client/server 不再因控制字符格式分隔符而错误解析工作区；从未 attach 的 session 和 linked window 的重复 pane 输出也会被兼容处理，矛盾数据仍安全拒绝。
