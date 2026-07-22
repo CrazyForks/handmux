@@ -66,10 +66,13 @@ const setInput = (input, value) => act(() => {
 });
 
 describe('BrowserSheet', () => {
-  it('explains computer-side access before first use and requires an explicit enable action', async () => {
+  it('explains direct and proxy access accurately before first use and requires an explicit enable action', async () => {
     const model = browser({ open: false, consentOpen: true });
     await render(model);
-    expect(document.querySelector('.browser-consent').textContent).toContain('通过你的电脑访问网页');
+    const consent = document.querySelector('.browser-consent').textContent;
+    expect(consent).toContain('手机直连');
+    expect(consent).toContain('经电脑代理');
+    expect(consent).not.toContain('关闭并销毁登录状态');
     click(document.querySelector('.browser-consent-enable'));
     expect(model.enableAccess).toHaveBeenCalledOnce();
   });
@@ -188,6 +191,19 @@ describe('BrowserSheet', () => {
     const proxy = [...document.querySelectorAll('.browser-history-mode-option')].find((node) => node.textContent === '经电脑代理');
     expect(proxy.disabled).toBe(true);
     expect(document.querySelector('.browser-history-mode-menu').textContent).toContain('当前服务器未开启浏览器代理');
+  });
+
+  it('shows localized proxyUnavailable instead of opening stale proxy history', async () => {
+    const model = browser({
+      proxyAvailable: false, historyActive: true, activeId: null,
+      history: [{ url: 'https://old.example/', title: 'Old', visitedAt: 1000, lastMode: 'proxy' }],
+    });
+    await render(model);
+
+    click(document.querySelector('.browser-history-main'));
+
+    expect(model.openUrl).not.toHaveBeenCalled();
+    expect(document.querySelector('.browser-error').textContent).toContain('当前服务器未开启浏览器代理');
   });
 
   it('submits the editable address and sends browser navigation commands', async () => {

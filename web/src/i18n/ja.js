@@ -36,11 +36,11 @@ export default {
   'browser.emptyHistory': '閲覧履歴はまだありません',
   'browser.loadFailed': 'ページを読み込めません。アドレスを確認して再試行してください。',
   'browser.retry': '再試行',
-  'browser.consentTitle': 'パソコン経由でウェブを閲覧',
-  'browser.consentBody': '内蔵ブラウザは、このパソコンから到達できる公開、社内、localhost サイトを開けます。',
-  'browser.consentComputer': 'リクエストはパソコンから送信され、社内サイトは公開されません。',
-  'browser.consentPrivate': 'タブとログイン状態はこのデバイス専用です。',
-  'browser.consentIdle': 'バックグラウンドタブは既定で10分後に閉じ、ログイン状態を破棄します。',
+  'browser.consentTitle': 'ウェブサイトの接続方法を選択',
+  'browser.consentBody': 'スマホから直接開くか、設定済みの場合はパソコンのプロキシ経由で開けます。',
+  'browser.consentComputer': '直接接続はスマホの回線を使います。プロキシ接続はパソコンから送信され、公開せずに社内ネットワークや localhost にアクセスできます。',
+  'browser.consentPrivate': '直接接続とプロキシでは Cookie とログイン状態が分かれ、プロキシセッションはこのデバイスごとに分離されます。',
+  'browser.consentIdle': 'バックグラウンドタブは既定で10分後に閉じます。直接接続したサイトの Cookie はスマホのブラウザに残ります。',
   'browser.enable': '内蔵ブラウザを有効化',
   'browser.directMode': 'スマホから直接',
   'browser.proxyMode': 'PC プロキシ経由',
@@ -57,7 +57,7 @@ export default {
 
   'settings.language': '言語 Language',
   'settings.browserDefaultMode': 'ウェブの既定モード',
-  'settings.browserDefaultModeHint': '端末リンクと閲覧履歴に使用します。',
+  'settings.browserDefaultModeHint': 'アドレスバーから開く新しいタブと、保存済みモードがない履歴に使用します。',
 
   // home / drawer / windowbar
   'home.empty': 'ファイルが開かれていません',

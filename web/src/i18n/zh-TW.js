@@ -36,11 +36,11 @@ export default {
   'browser.emptyHistory': '尚無瀏覽記錄',
   'browser.loadFailed': '無法載入此網頁，請檢查網址後再試。',
   'browser.retry': '重試',
-  'browser.consentTitle': '透過你的電腦瀏覽網站',
-  'browser.consentBody': '內建瀏覽器可開啟這台電腦能存取的公網、內網與 localhost 網站。',
-  'browser.consentComputer': '網站請求由你的電腦發出，不會公開內網網站。',
-  'browser.consentPrivate': '分頁與登入狀態只屬於目前裝置。',
-  'browser.consentIdle': '背景分頁預設 10 分鐘後關閉並銷毀登入狀態。',
+  'browser.consentTitle': '選擇網站連線方式',
+  'browser.consentBody': '網站可由手機直連；設定完成後，也可透過電腦代理存取。',
+  'browser.consentComputer': '手機直連使用手機網路；電腦代理的請求由電腦發出，可存取電腦所在的內網與 localhost，但不會將它們公開。',
+  'browser.consentPrivate': '直連與代理使用不同的 Cookie 和登入狀態；代理工作階段依目前裝置隔離。',
+  'browser.consentIdle': '背景分頁預設 10 分鐘後關閉；直連網站的 Cookie 仍保留在手機瀏覽器中。',
   'browser.enable': '開啟內建瀏覽器',
   'browser.directMode': '手機直連',
   'browser.proxyMode': '透過電腦代理',
@@ -57,7 +57,7 @@ export default {
 
   'settings.language': '語言 Language',
   'settings.browserDefaultMode': '網頁預設開啟方式',
-  'settings.browserDefaultModeHint': '開啟終端連結與瀏覽紀錄時使用。',
+  'settings.browserDefaultModeHint': '用於網址列新分頁，以及未儲存開啟方式的歷史記錄。',
 
   // home / drawer / windowbar
   'home.empty': '尚未開啟任何檔案',

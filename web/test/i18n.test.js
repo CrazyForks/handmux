@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { detectLang, translate, AVAILABLE } from '../src/i18n/index.js';
+import en from '../src/i18n/en.js';
+import zh from '../src/i18n/zh.js';
+import zhTW from '../src/i18n/zh-TW.js';
+import ja from '../src/i18n/ja.js';
+import ko from '../src/i18n/ko.js';
 
 const LOCALES = { en: {}, zh: {} };
 
@@ -45,5 +50,20 @@ describe('AVAILABLE', () => {
     expect(codes).toContain('en');
     expect(codes).toContain('zh');
     AVAILABLE.forEach((l) => { expect(l.label).toBeTruthy(); });
+  });
+});
+
+describe('browser dual-mode copy', () => {
+  it.each([
+    ['en', en, 'phone', 'proxy', 'destroyed'],
+    ['zh', zh, '手机', '代理', '销毁'],
+    ['zh-TW', zhTW, '手機', '代理', '銷毀'],
+    ['ja', ja, 'スマホ', 'プロキシ', '破棄'],
+    ['ko', ko, '휴대폰', '프록시', '삭제'],
+  ])('%s consent covers both paths without claiming direct sign-in is destroyed', (_code, dict, directWord, proxyWord, destroyedWord) => {
+    const consent = [dict['browser.consentTitle'], dict['browser.consentBody'], dict['browser.consentComputer'], dict['browser.consentIdle']].join(' ');
+    expect(consent).toContain(directWord);
+    expect(consent).toContain(proxyWord);
+    expect(dict['browser.consentIdle']).not.toContain(destroyedWord);
   });
 });

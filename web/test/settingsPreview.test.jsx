@@ -32,6 +32,9 @@ describe('Settings preview section', () => {
     expect(container.textContent).toContain('当前服务器未开启浏览器代理');
     expect(proxy.getAttribute('aria-describedby')).toBe('browser-proxy-unavailable');
     expect(container.querySelector('#browser-proxy-unavailable').textContent).toContain('当前服务器未开启浏览器代理');
+    expect(container.textContent).toContain('地址栏新页签');
+    expect(container.textContent).toContain('没有保存打开方式的历史记录');
+    expect(container.textContent).not.toContain('终端链接');
     click(direct);
     expect(setDefaultMode).toHaveBeenCalledWith('direct');
   });

@@ -37,11 +37,11 @@ export default {
   'browser.emptyHistory': '还没有浏览记录',
   'browser.loadFailed': '无法加载此网页，请检查地址后重试。',
   'browser.retry': '重试',
-  'browser.consentTitle': '通过你的电脑访问网页',
-  'browser.consentBody': '内置浏览器可访问这台电脑能够访问的公网、内网和 localhost 网站。',
-  'browser.consentComputer': '网页请求由你的电脑发起，不会公开内网网站。',
-  'browser.consentPrivate': '浏览页签与登录状态仅属于当前设备。',
-  'browser.consentIdle': '后台页签默认 10 分钟后关闭并销毁登录状态。',
+  'browser.consentTitle': '选择网页连接方式',
+  'browser.consentBody': '网页可由手机直连；配置完成后，也可经电脑代理访问。',
+  'browser.consentComputer': '手机直连使用手机网络；经电脑代理的请求由电脑发起，可访问电脑所在的内网与 localhost，但不会将它们公开。',
+  'browser.consentPrivate': '直连与代理使用不同的 Cookie 和登录态；代理会话按当前设备隔离。',
+  'browser.consentIdle': '后台页签默认 10 分钟后关闭；直连网站的 Cookie 仍保留在手机浏览器中。',
   'browser.enable': '开启内置浏览器',
   'browser.directMode': '手机直连',
   'browser.proxyMode': '经电脑代理',
@@ -58,7 +58,7 @@ export default {
 
   'settings.language': '语言 Language',
   'settings.browserDefaultMode': '网页默认打开方式',
-  'settings.browserDefaultModeHint': '打开终端链接和浏览记录时使用。',
+  'settings.browserDefaultModeHint': '用于地址栏新页签，以及没有保存打开方式的历史记录。',
 
   // home / drawer / windowbar
   'home.empty': '还没有打开过文件',

@@ -41,6 +41,7 @@ export default function BrowserSheet({ browser }) {
   const [reloadKeys, setReloadKeys] = useState({});
   const [modeOpen, setModeOpen] = useState(false);
   const [historyModeOpen, setHistoryModeOpen] = useState(null);
+  const [historyError, setHistoryError] = useState(null);
   const [slowDirectId, setSlowDirectId] = useState(null);
   const frames = useRef(new Map());
   const frameUrls = useRef(new Map());
@@ -225,6 +226,11 @@ export default function BrowserSheet({ browser }) {
 
   const openHistory = (entry, mode = entry.lastMode || defaultMode, persistMode = false) => {
     setHistoryModeOpen(null);
+    if (mode === 'proxy' && !proxyAvailable) {
+      setHistoryError(t('browser.proxyUnavailable'));
+      return;
+    }
+    setHistoryError(null);
     if (persistMode) setHistoryMode(entry, mode);
     openUrl(entry.url, { mode });
   };
@@ -414,12 +420,12 @@ export default function BrowserSheet({ browser }) {
           </div>
           );
         })}
-        {error && (
+        {(error || historyError) && (
           <div className="browser-error" role="alert">
-            <span>{error.message || t('browser.loadFailed')}</span>
-            {active && active.mode === 'direct' && proxyAvailable
+            <span>{historyError || error?.message || t('browser.loadFailed')}</span>
+            {!historyError && active && active.mode === 'direct' && proxyAvailable
               ? <button onClick={() => navigateTab(active.id, active.originalUrl, 'proxy')}>{t('browser.tryProxy')}</button>
-              : active && <button onClick={() => navigateTab(active.id, active.originalUrl, active.mode)}>{t('browser.retry')}</button>}
+              : !historyError && active && <button onClick={() => navigateTab(active.id, active.originalUrl, active.mode)}>{t('browser.retry')}</button>}
           </div>
         )}
       </div>

@@ -38,11 +38,11 @@ export default {
   'browser.emptyHistory': 'No browsing history yet',
   'browser.loadFailed': 'This page could not be loaded. Check the address and try again.',
   'browser.retry': 'Retry',
-  'browser.consentTitle': 'Browse through your computer',
-  'browser.consentBody': 'The built-in browser can open public, intranet, and localhost sites reachable from this computer.',
-  'browser.consentComputer': 'Requests originate from your computer; intranet sites are not made public.',
-  'browser.consentPrivate': 'Tabs and signed-in sessions belong only to this device.',
-  'browser.consentIdle': 'Background tabs close after 10 minutes by default and their sign-in state is destroyed.',
+  'browser.consentTitle': 'Choose how websites connect',
+  'browser.consentBody': 'Open websites directly from your phone, or through the computer proxy when it is configured.',
+  'browser.consentComputer': 'Direct uses your phone network. Proxy requests originate from your computer and can reach its intranet and localhost without publishing them.',
+  'browser.consentPrivate': 'Direct and proxy use separate cookies and sign-in state; proxy sessions are isolated to this device.',
+  'browser.consentIdle': 'Background tabs close after 10 minutes by default. Direct-site cookies remain in your phone browser.',
   'browser.enable': 'Enable built-in browser',
   'browser.directMode': 'Direct from phone',
   'browser.proxyMode': 'Through computer proxy',
@@ -59,7 +59,7 @@ export default {
 
   'settings.language': 'Language',
   'settings.browserDefaultMode': 'Default web mode',
-  'settings.browserDefaultModeHint': 'Used for terminal links and browsing history.',
+  'settings.browserDefaultModeHint': 'Used for new address-bar tabs and history entries without a saved mode.',
 
   // home / drawer / windowbar
   'home.empty': 'No files opened yet',
