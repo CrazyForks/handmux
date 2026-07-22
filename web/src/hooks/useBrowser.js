@@ -66,6 +66,8 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const openRequest = useRef(null);
   const openEpoch = useRef(0);
   const navigateEpoch = useRef(new Map());
+  const navigateQueue = useRef(new Map());
+  const mutationGeneration = useRef(0);
   const browserProxyRef = useRef(browserProxy);
   const switchQueue = useRef(Promise.resolve());
   const tabsRef = useRef(tabs);
@@ -113,6 +115,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     const request = {
       controller,
       epoch: ++openEpoch.current,
+      generation: ++mutationGeneration.current,
       previousVisibleId: tabsRef.current.find((tab) => tab.visible)?.id || null,
       detachCaller: () => signal?.removeEventListener('abort', abortFromCaller),
     };
@@ -137,9 +140,10 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
 
   const resyncLostWorker = useCallback(async (nextError, isCurrent = () => true) => {
     if (nextError?.status !== 404 && nextError?.status !== 503) return false;
+    const generation = mutationGeneration.current;
     try {
       const { tabs: loaded = [] } = await getBrowserTabs();
-      if (!isCurrent()) return true;
+      if (!isCurrent() || mutationGeneration.current !== generation) return true;
       const normalized = normalizeServerTabs(loaded);
       commitTabs(normalized);
       const visible = normalized.find((tab) => tab.visible);
@@ -154,8 +158,9 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   useEffect(() => {
     if (!enabled || !accessEnabled) return undefined;
     let live = true;
+    const generation = mutationGeneration.current;
     getBrowserTabs().then(({ tabs: loaded = [] }) => {
-      if (!live) return;
+      if (!live || mutationGeneration.current !== generation) return;
       const normalized = normalizeServerTabs(loaded);
       commitTabs(normalized);
       const visible = normalized.find((tab) => tab.visible);
@@ -176,6 +181,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     const timers = tabs
       .filter((tab) => !tab.visible && tab.expiresAt != null)
       .map((tab) => setTimeout(() => {
+        mutationGeneration.current += 1;
         recordHistory(tab);
         commitTabs((current) => current.filter((item) => item.id !== tab.id));
         commitActiveId((current) => {
@@ -188,12 +194,14 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   }, [commitActiveId, commitHistoryActive, commitTabs, tabs, recordHistory]);
 
   const updateVisibility = useCallback(async (id, visible, duration = closeAfter) => {
+    mutationGeneration.current += 1;
     const next = normalizeServerTab(await setBrowserTabVisible(id, visible, duration));
     commitTabs((current) => mirrorVisibleTab(current, next, duration));
     return next;
   }, [closeAfter, commitTabs]);
 
   const switchTab = useCallback((id) => {
+    mutationGeneration.current += 1;
     return enqueueTransition(async () => {
       setError(null);
       try {
@@ -225,6 +233,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       setConsentOpen(true);
       return Promise.resolve(false);
     }
+    mutationGeneration.current += 1;
     return enqueueTransition(async () => {
       setError(null);
       try {
@@ -300,6 +309,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     if (enablePromise.current) return enablePromise.current;
     const task = (async () => {
       const expectedOpenEpoch = openEpoch.current;
+      const expectedGeneration = mutationGeneration.current;
       const pending = pendingUrl;
       setBrowserAccessEnabled(true);
       setAccessEnabled(true);
@@ -310,7 +320,12 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
         const normalized = normalizeServerTabs(loaded);
         if (pending) {
           const { request } = pending;
-          if (request.controller.signal.aborted || openEpoch.current !== request.epoch || openRequest.current !== request) {
+          if (
+            request.controller.signal.aborted
+            || openEpoch.current !== request.epoch
+            || openRequest.current !== request
+            || mutationGeneration.current !== expectedGeneration
+          ) {
             return;
           }
           if (pending.mode === 'proxy' && !browserProxyRef.current) {
@@ -327,7 +342,10 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
           commitActiveId(created.id);
           commitHistoryActive(false);
         } else {
-          if (openEpoch.current !== expectedOpenEpoch) return;
+          if (
+            openEpoch.current !== expectedOpenEpoch
+            || mutationGeneration.current !== expectedGeneration
+          ) return;
           commitTabs(normalized);
           const selected = normalized.find((tab) => tab.visible) || normalized[0] || null;
           commitActiveId(selected?.id || null);
@@ -364,6 +382,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const closeTab = useCallback(async (id) => {
     const closing = tabsRef.current.find((tab) => tab.id === id);
     if (!closing) return;
+    mutationGeneration.current += 1;
     setError(null);
     try {
       await deleteBrowserTab(id);
@@ -382,9 +401,6 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   }, [commitActiveId, commitHistoryActive, commitTabs, recordHistory, resyncLostWorker, updateVisibility]);
 
   const navigateTab = useCallback(async (id, input, mode) => {
-    const epoch = (navigateEpoch.current.get(id) || 0) + 1;
-    navigateEpoch.current.set(id, epoch);
-    const isCurrent = () => navigateEpoch.current.get(id) === epoch;
     const url = normalizeBrowserInput(input);
     if (!url) {
       setError(new Error('browser URL must use http or https'));
@@ -396,8 +412,17 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       setError(new Error('browser proxy unavailable'));
       return null;
     }
+    const epoch = (navigateEpoch.current.get(id) || 0) + 1;
+    navigateEpoch.current.set(id, epoch);
+    mutationGeneration.current += 1;
+    const isCurrent = () => navigateEpoch.current.get(id) === epoch;
+    const previous = navigateQueue.current.get(id) || Promise.resolve();
+    const request = previous.catch(() => undefined).then(
+      () => navigateBrowserTab(id, url, nextMode),
+    );
+    navigateQueue.current.set(id, request);
     try {
-      const next = normalizeServerTab(await navigateBrowserTab(id, url, nextMode));
+      const next = normalizeServerTab(await request);
       if (!isCurrent()) return null;
       commitTabs((current) => replaceTab(current, next));
       const committedMode = next.mode || nextMode;
@@ -416,6 +441,8 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       if (!isCurrent()) return null;
       if (!await resyncLostWorker(nextError, isCurrent) && isCurrent()) setError(nextError);
       return null;
+    } finally {
+      if (navigateQueue.current.get(id) === request) navigateQueue.current.delete(id);
     }
   }, [browserProxy, commitTabs, defaultMode, resyncLostWorker]);
 
@@ -425,6 +452,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     const url = normalizeBrowserInput(patch?.url) || current.originalUrl;
     const title = typeof patch?.title === 'string' ? patch.title : current.title;
     if (url === current.originalUrl && title === current.title) return;
+    mutationGeneration.current += 1;
     commitTabs((all) => replaceTab(all, { ...current, originalUrl: url, title }));
     if (url && title?.trim()) {
       upsertBrowserHistory({ url, title, visitedAt: Date.now(), lastMode: current.mode });

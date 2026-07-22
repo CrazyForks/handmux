@@ -448,11 +448,18 @@ describe('useBrowser', () => {
     });
   });
 
-  it('ignores an older navigation result that resolves after the latest mode change', async () => {
+  it('serializes same-tab navigation so the server and client both finish in the latest mode', async () => {
     api.getBrowserTabs.mockResolvedValue({ tabs: [tab('a', { mode: 'direct' })] });
+    let serverMode = 'direct';
     const requests = [];
     api.navigateBrowserTab.mockImplementation((_id, _url, mode) => new Promise((resolve) => {
-      requests.push({ mode, resolve });
+      requests.push({
+        mode,
+        settle: () => {
+          serverMode = mode;
+          resolve(tab('a', { mode }));
+        },
+      });
     }));
     const { result } = renderHook(() => useBrowser({ browserProxy: true }));
     await flush();
@@ -463,11 +470,56 @@ describe('useBrowser', () => {
       older = result.current.navigateTab('a', 'https://example.com/a', 'proxy');
       latest = result.current.navigateTab('a', 'https://example.com/a', 'direct');
     });
-    requests[1].resolve(tab('a', { mode: 'direct' }));
-    await act(async () => { await latest; });
-    requests[0].resolve(tab('a', { mode: 'proxy' }));
-    await act(async () => { await older; });
+    await flush();
+    expect(requests).toHaveLength(1);
 
+    requests[0].settle();
+    await flush();
+    expect(requests).toHaveLength(2);
+    expect(result.current.tabs[0].mode).toBe('direct');
+
+    requests[1].settle();
+    await act(async () => { await Promise.all([older, latest]); });
+
+    expect(serverMode).toBe('direct');
+    expect(result.current.tabs[0].mode).toBe('direct');
+  });
+
+  it('does not let invalid URL rejection cancel an in-flight valid navigation', async () => {
+    api.getBrowserTabs.mockResolvedValue({ tabs: [tab('a', { mode: 'direct' })] });
+    let settle;
+    api.navigateBrowserTab.mockReturnValue(new Promise((resolve) => { settle = resolve; }));
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+
+    let valid;
+    act(() => { valid = result.current.navigateTab('a', 'https://example.com/a', 'proxy'); });
+    await act(async () => {
+      await result.current.navigateTab('a', 'javascript:alert(1)', 'direct');
+    });
+    settle(tab('a', { mode: 'proxy' }));
+    await act(async () => { await valid; });
+
+    expect(api.navigateBrowserTab).toHaveBeenCalledOnce();
+    expect(result.current.tabs[0].mode).toBe('proxy');
+  });
+
+  it('does not let unavailable proxy rejection cancel an in-flight valid navigation', async () => {
+    api.getBrowserTabs.mockResolvedValue({ tabs: [tab('a', { mode: 'proxy' })] });
+    let settle;
+    api.navigateBrowserTab.mockReturnValue(new Promise((resolve) => { settle = resolve; }));
+    const { result } = renderHook(() => useBrowser({ browserProxy: false }));
+    await flush();
+
+    let valid;
+    act(() => { valid = result.current.navigateTab('a', 'https://example.com/a', 'direct'); });
+    await act(async () => {
+      await result.current.navigateTab('a', 'https://example.com/a', 'proxy');
+    });
+    settle(tab('a', { mode: 'direct' }));
+    await act(async () => { await valid; });
+
+    expect(api.navigateBrowserTab).toHaveBeenCalledOnce();
     expect(result.current.tabs[0].mode).toBe('direct');
   });
 
@@ -485,12 +537,14 @@ describe('useBrowser', () => {
 
     let older;
     act(() => { older = result.current.navigateTab('a', 'https://example.com/a', 'proxy'); });
+    await flush();
     requests[0].reject(Object.assign(new Error('missing'), { status: 404 }));
     await flush();
     expect(api.getBrowserTabs).toHaveBeenCalledTimes(2);
 
     let latest;
     act(() => { latest = result.current.navigateTab('a', 'https://example.com/a', 'direct'); });
+    await flush();
     requests[1].resolve(tab('a', { mode: 'direct' }));
     await act(async () => { await latest; });
     releaseResync({ tabs: [tab('a', { mode: 'proxy' })] });
@@ -499,6 +553,32 @@ describe('useBrowser', () => {
     expect(api.getBrowserTabs).toHaveBeenCalledTimes(2);
     expect(result.current.tabs[0].mode).toBe('direct');
     expect(result.current.error).toBeNull();
+  });
+
+  it('does not let tab A resync overwrite a later successful tab B visibility mutation', async () => {
+    const a = tab('a', { mode: 'direct' });
+    const b = tab('b', { mode: 'direct', visible: false, expiresAt: Date.now() + 600_000 });
+    let releaseResync;
+    api.getBrowserTabs
+      .mockResolvedValueOnce({ tabs: [a, b] })
+      .mockReturnValueOnce(new Promise((resolve) => { releaseResync = resolve; }));
+    api.navigateBrowserTab.mockRejectedValue(Object.assign(new Error('missing'), { status: 404 }));
+    api.setBrowserTabVisible.mockResolvedValue(tab('b', { mode: 'direct' }));
+    const { result } = renderHook(() => useBrowser());
+    await flush();
+
+    let navigating;
+    act(() => { navigating = result.current.navigateTab('a', 'https://example.com/a', 'direct'); });
+    await flush();
+    expect(api.getBrowserTabs).toHaveBeenCalledTimes(2);
+
+    await act(async () => { await result.current.switchTab('b'); });
+    expect(result.current.activeId).toBe('b');
+    releaseResync({ tabs: [a, b] });
+    await act(async () => { await navigating; });
+
+    expect(result.current.activeId).toBe('b');
+    expect(result.current.tabs.find(({ id }) => id === 'b').visible).toBe(true);
   });
 
   it('moves each independently expired background tab into device history', async () => {
