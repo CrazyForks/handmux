@@ -68,6 +68,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const navigateEpoch = useRef(new Map());
   const navigateQueue = useRef(new Map());
   const mutationGeneration = useRef(0);
+  const lastSuccessfulResync = useRef(null);
   const browserProxyRef = useRef(browserProxy);
   const switchQueue = useRef(Promise.resolve());
   const tabsRef = useRef(tabs);
@@ -143,7 +144,12 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     const generation = mutationGeneration.current;
     try {
       const { tabs: loaded = [] } = await getBrowserTabs();
-      if (!isCurrent() || mutationGeneration.current !== generation) return false;
+      if (!isCurrent()) return false;
+      if (mutationGeneration.current !== generation) {
+        const peer = lastSuccessfulResync.current;
+        return peer?.fromGeneration === generation
+          && peer.toGeneration === mutationGeneration.current;
+      }
       const normalized = normalizeServerTabs(loaded);
       mutationGeneration.current += 1;
       commitTabs(normalized);
@@ -152,6 +158,10 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       commitActiveId(selected?.id || null);
       commitHistoryActive(!selected);
       if (!visible) commitOpen(false);
+      lastSuccessfulResync.current = {
+        fromGeneration: generation,
+        toGeneration: mutationGeneration.current,
+      };
       return true;
     } catch { return false; }
   }, [commitActiveId, commitHistoryActive, commitOpen, commitTabs]);

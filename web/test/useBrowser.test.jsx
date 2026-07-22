@@ -581,6 +581,41 @@ describe('useBrowser', () => {
     expect(result.current.tabs.find(({ id }) => id === 'b').visible).toBe(true);
   });
 
+  it('treats a concurrent same-generation resync as recovered after its peer commits', async () => {
+    const a = tab('a', { mode: 'direct' });
+    const b = tab('b', { mode: 'direct', visible: false, expiresAt: Date.now() + 600_000 });
+    const requests = [];
+    const resyncs = [];
+    api.getBrowserTabs
+      .mockResolvedValueOnce({ tabs: [a, b] })
+      .mockImplementation(() => new Promise((resolve) => { resyncs.push(resolve); }));
+    api.navigateBrowserTab.mockImplementation((_id, _url, _mode) => new Promise((_resolve, reject) => {
+      requests.push({ reject });
+    }));
+    const { result } = renderHook(() => useBrowser());
+    await flush();
+
+    let navigatingA;
+    let navigatingB;
+    act(() => {
+      navigatingA = result.current.navigateTab('a', 'https://example.com/a', 'direct');
+      navigatingB = result.current.navigateTab('b', 'https://example.com/b', 'direct');
+    });
+    await flush();
+    requests[0].reject(Object.assign(new Error('missing a'), { status: 404 }));
+    requests[1].reject(Object.assign(new Error('missing b'), { status: 404 }));
+    await flush();
+    expect(resyncs).toHaveLength(2);
+
+    resyncs[0]({ tabs: [a, b] });
+    await flush();
+    resyncs[1]({ tabs: [a, b] });
+    await act(async () => { await Promise.all([navigatingA, navigatingB]); });
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.tabs.map(({ id }) => id)).toEqual(['a', 'b']);
+  });
+
   it('invalidates a newer resync when an earlier-started visibility mutation commits later', async () => {
     const a = tab('a', { mode: 'direct' });
     const b = tab('b', { mode: 'direct', visible: false, expiresAt: Date.now() + 600_000 });
