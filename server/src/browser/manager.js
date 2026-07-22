@@ -7,7 +7,14 @@ const defaultHammerhead = importedHammerhead.default || importedHammerhead;
 
 function publicTab(tab) {
   if (!tab) return null;
-  const { session: _session, ownerDevice: _ownerDevice, pool: _pool, publicOrigin: _publicOrigin, ...out } = tab;
+  const {
+    session: _session,
+    ownerDevice: _ownerDevice,
+    pool: _pool,
+    publicOrigin: _publicOrigin,
+    contextKey: _contextKey,
+    ...out
+  } = tab;
   return out;
 }
 
@@ -27,7 +34,7 @@ function bridgeScript(channel) {
   const encoded = JSON.stringify(channel);
   return `(() => {
     const channel = ${encoded};
-    const send = (type) => parent.postMessage({ source: 'handmux-browser', channel, type, url: location.href, title: document.title }, '*');
+    const send = (type, url = location.href) => parent.postMessage({ source: 'handmux-browser', channel, type, url, title: document.title }, '*');
     let pending = false;
     const activity = () => {
       if (pending) return;
@@ -38,6 +45,10 @@ function bridgeScript(channel) {
     addEventListener('load', () => send('load'));
     addEventListener('popstate', () => send('navigate'));
     addEventListener('hashchange', () => send('navigate'));
+    const hammerhead = window['%hammerhead%'];
+    if (hammerhead?.EVENTS?.pageNavigationTriggered) {
+      hammerhead.on(hammerhead.EVENTS.pageNavigationTriggered, (url) => send('navigate', url));
+    }
     new MutationObserver(() => send('title')).observe(document.querySelector('title') || document.documentElement, { subtree: true, childList: true, characterData: true });
     addEventListener('message', (event) => {
       if (event.source !== parent || event.data?.source !== 'handmux-browser-parent' || event.data?.channel !== channel) return;
@@ -62,7 +73,7 @@ function browserSessionClass(hammerhead) {
       this.channel = channel;
     }
 
-    async getPayloadScript() { return bridgeScript(this.channel); }
+    async getPayloadScript(windowId) { return bridgeScript(windowId || this.channel); }
     async getIframePayloadScript() { return ''; }
     getAuthCredentials() { return null; }
     handleAttachment() {}
@@ -114,6 +125,8 @@ export async function createBrowserPreviewManager({
   const SessionClass = browserSessionClass(hammerhead);
   const pools = new Map();
   const pendingPools = new Map();
+  const contexts = new Map();
+  const pendingContexts = new Map();
   let poolCount = 0;
   let closing = false;
   let closePromise = null;
@@ -172,10 +185,77 @@ export async function createBrowserPreviewManager({
     return pendingPools.get(origin).promise;
   };
 
-  const closeHammerheadSession = (tab) => {
-    if (tab?.session) tab.pool.proxy.closeSession(tab.session);
+  const contextKeyFor = (deviceId, targetOrigin) => `${deviceId}\u0000${targetOrigin}`;
+  const contextFor = async ({ deviceId, target, origin, sessionId }) => {
+    const targetOrigin = new URL(target).origin;
+    const key = contextKeyFor(deviceId, targetOrigin);
+    const existing = contexts.get(key);
+    if (existing) {
+      if (existing.publicOrigin !== origin) throw new Error('browser target origin already uses a different public origin');
+      return existing;
+    }
+    if (pendingContexts.has(key)) {
+      const pending = await pendingContexts.get(key);
+      if (pending.publicOrigin !== origin) throw new Error('browser target origin already uses a different public origin');
+      return pending;
+    }
+    const promise = (async () => {
+      const pool = await poolFor(origin);
+      if (closing) throw new Error('browser manager closing');
+      const session = new SessionClass('');
+      session.id = `_browser-${sessionId()}`;
+      const policy = targetPolicyFactory({ topLevelUrl: target, handmuxOrigin: origin });
+      policies.set(session, policy);
+      const requestHooks = session.requestHookEventProvider || session;
+      requestHooks.addRequestEventListeners(hammerhead.RequestFilterRule.ANY, {
+        onRequest: async (event) => {
+          const result = await policy.check(event._requestInfo.url);
+          if (result.allowed) {
+            if (result.address && event.requestOptions) {
+              event.requestOptions.lookup = (_hostname, options, callback) => {
+                const approved = { address: result.address, family: result.family };
+                if (options?.all) callback(null, [approved]);
+                else callback(null, approved.address, approved.family);
+              };
+            }
+            return;
+          }
+          await event.setMock(new hammerhead.ResponseMock(
+            JSON.stringify({ error: 'browser target blocked', reason: result.reason }),
+            403,
+            { 'content-type': 'application/json; charset=utf-8' },
+          ));
+        },
+      }, () => {});
+      const context = {
+        key, targetOrigin, publicOrigin: origin, pool, session, policy, tabIds: new Set(),
+      };
+      contexts.set(key, context);
+      return context;
+    })().finally(() => pendingContexts.delete(key));
+    pendingContexts.set(key, promise);
+    return promise;
   };
-  const store = createBrowserSessionStore({ now, setTimer, clearTimer, onExpire: closeHammerheadSession });
+  const releaseTabContext = (tab) => {
+    const context = tab && contexts.get(tab.contextKey);
+    if (!context) return;
+    context.tabIds.delete(tab.id);
+    if (context.tabIds.size) return;
+    contexts.delete(context.key);
+    context.pool.proxy.closeSession(context.session);
+  };
+  const releaseEmptyContext = (context) => {
+    if (!context || context.tabIds.size || contexts.get(context.key) !== context) return;
+    contexts.delete(context.key);
+    context.pool.proxy.closeSession(context.session);
+  };
+  const openTabSession = (context, target, channel) => {
+    const previousWindowId = context.session.options.windowId;
+    context.session.options.windowId = channel;
+    try { return context.pool.proxy.openSession(target, context.session); }
+    finally { context.session.options.windowId = previousWindowId; }
+  };
+  const store = createBrowserSessionStore({ now, setTimer, clearTimer, onExpire: releaseTabContext });
   const hideOtherTabs = (deviceId, exceptId, closeAfterMinutes) => {
     for (const tab of store.list()) {
       if (tab.ownerDevice === deviceId && tab.id !== exceptId && tab.visible) {
@@ -220,42 +300,20 @@ export async function createBrowserPreviewManager({
       if (!deviceId) throw new Error('browser device id required');
       const target = normalizedTarget(url);
       const requestedOrigin = normalizedOrigin(origin);
-      const pool = await poolFor(requestedOrigin);
-      if (closing) throw new Error('browser manager closing');
       const id = randomId();
       const channel = randomChannel();
-      const session = new SessionClass(channel);
-      session.id = `_browser-${id}`;
-      const policy = targetPolicyFactory({ topLevelUrl: target, handmuxOrigin: requestedOrigin });
-      policies.set(session, policy);
-      // 31.7.8's declarations expose addRequestEventListeners on Session, while the compiled runtime
-      // delegates through requestHookEventProvider. Keep the version-specific seam in this one adapter.
-      const requestHooks = session.requestHookEventProvider || session;
-      requestHooks.addRequestEventListeners(hammerhead.RequestFilterRule.ANY, {
-        onRequest: async (event) => {
-          const result = await policy.check(event._requestInfo.url);
-          if (result.allowed) {
-            if (result.address && event.requestOptions) {
-              event.requestOptions.lookup = (_hostname, options, callback) => {
-                const approved = { address: result.address, family: result.family };
-                if (options?.all) callback(null, [approved]);
-                else callback(null, approved.address, approved.family);
-              };
-            }
-            return;
-          }
-          await event.setMock(new hammerhead.ResponseMock(
-            JSON.stringify({ error: 'browser target blocked', reason: result.reason }),
-            403,
-            { 'content-type': 'application/json; charset=utf-8' },
-          ));
-        },
-      }, () => {});
-      const publicUrl = pool.proxy.openSession(target, session);
+      const context = await contextFor({ deviceId, target, origin: requestedOrigin, sessionId: () => id });
+      if (closing) {
+        releaseEmptyContext(context);
+        throw new Error('browser manager closing');
+      }
+      context.policy.authorizeTopLevel?.(target);
+      const publicUrl = openTabSession(context, target, channel);
       hideOtherTabs(deviceId, id, closeAfterMinutes);
+      context.tabIds.add(id);
       return publicTab(store.add({
-        id, session, channel, url: publicUrl, originalUrl: target, title: '', closeAfterMinutes,
-        ownerDevice: deviceId, publicOrigin: requestedOrigin, pool,
+        id, session: context.session, channel, url: publicUrl, originalUrl: target, title: '', closeAfterMinutes,
+        ownerDevice: deviceId, publicOrigin: requestedOrigin, pool: context.pool, contextKey: context.key,
       }));
     },
 
@@ -271,19 +329,37 @@ export async function createBrowserPreviewManager({
       return publicTab(store.setVisible(id, visible, closeAfterMinutes));
     },
 
-    navigate(id, url, deviceId) {
-      const tab = store.get(id);
-      if (!tab || tab.ownerDevice !== deviceId) return null;
+    async navigate(id, url, deviceId, origin) {
+      const initialTab = store.get(id);
+      if (!initialTab || initialTab.ownerDevice !== deviceId) return null;
       const target = normalizedTarget(url);
-      policies.get(tab.session)?.authorizeTopLevel?.(target);
-      const publicUrl = tab.pool.proxy.openSession(target, tab.session);
-      return publicTab(store.update(id, { url: publicUrl, originalUrl: target }));
+      const requestedOrigin = normalizedOrigin(origin || initialTab.publicOrigin);
+      const context = await contextFor({ deviceId, target, origin: requestedOrigin, sessionId: randomId });
+      const tab = store.get(id);
+      if (!tab || tab.ownerDevice !== deviceId) {
+        releaseEmptyContext(context);
+        return null;
+      }
+      context.policy.authorizeTopLevel?.(target);
+      const publicUrl = openTabSession(context, target, tab.channel);
+      if (context.key !== tab.contextKey) {
+        context.tabIds.add(id);
+        releaseTabContext(tab);
+      }
+      return publicTab(store.update(id, {
+        url: publicUrl,
+        originalUrl: target,
+        session: context.session,
+        publicOrigin: context.publicOrigin,
+        pool: context.pool,
+        contextKey: context.key,
+      }));
     },
 
     closeTab(id, deviceId) {
       if (!manager.get(id, deviceId)) return null;
       const tab = store.remove(id);
-      closeHammerheadSession(tab);
+      releaseTabContext(tab);
       return publicTab(tab);
     },
 
@@ -291,7 +367,8 @@ export async function createBrowserPreviewManager({
       if (!closePromise) {
         closing = true;
         closePromise = (async () => {
-          for (const tab of store.close()) closeHammerheadSession(tab);
+          for (const tab of store.close()) releaseTabContext(tab);
+          contexts.clear();
           const pending = [...pendingPools.values()];
           for (const entry of pending) closeProxy(entry.proxy);
           await Promise.allSettled(pending.map((entry) => entry.promise));

@@ -122,6 +122,52 @@ describe('BrowserSheet', () => {
     expect(model.updateTabMeta).toHaveBeenCalledWith('a', { url: 'https://a.example/next', title: 'Next' });
   });
 
+  it('matches bridge messages by iframe when same-origin tabs share one session channel', async () => {
+    const sharedTabs = tabs.map((tab) => ({ ...tab, channel: 'shared' }));
+    const model = browser({ tabs: sharedTabs });
+    await render(model);
+    const frame = document.querySelector('iframe[data-tab-id="b"]');
+
+    act(() => window.dispatchEvent(new MessageEvent('message', {
+      source: frame.contentWindow,
+      data: { source: 'handmux-browser', channel: 'shared', type: 'title', url: 'https://b.example/next', title: 'Beta Next' },
+    })));
+
+    expect(model.updateTabMeta).toHaveBeenCalledWith('b', { url: 'https://b.example/next', title: 'Beta Next' });
+  });
+
+  it('moves page-driven cross-origin navigation through the server mapping', async () => {
+    const model = browser();
+    await render(model);
+    const frame = document.querySelector('iframe[data-tab-id="a"]');
+
+    act(() => window.dispatchEvent(new MessageEvent('message', {
+      source: frame.contentWindow,
+      data: { source: 'handmux-browser', channel: 'ca', type: 'navigate', url: 'https://other.example/path', title: '' },
+    })));
+
+    expect(model.navigateTab).toHaveBeenCalledWith('a', 'https://other.example/path');
+    expect(model.updateTabMeta).not.toHaveBeenCalled();
+  });
+
+  it('retries the same page-driven origin switch after a temporary API failure', async () => {
+    const model = browser({ navigateTab: vi.fn().mockResolvedValue(null) });
+    await render(model);
+    const frame = document.querySelector('iframe[data-tab-id="a"]');
+    const message = new MessageEvent('message', {
+      source: frame.contentWindow,
+      data: { source: 'handmux-browser', channel: 'ca', type: 'navigate', url: 'https://other.example/path', title: '' },
+    });
+
+    await act(async () => {
+      window.dispatchEvent(message);
+      await Promise.resolve();
+    });
+    act(() => window.dispatchEvent(message));
+
+    expect(model.navigateTab).toHaveBeenCalledTimes(2);
+  });
+
   it('offers exactly 10, 30, 60, 120 minutes and never', async () => {
     await render(browser());
     click(document.querySelector('button[aria-label="后台标签自动关闭"]'));

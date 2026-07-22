@@ -12,7 +12,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 - 手机会在首次打开时等待恢复状态核对；恢复后显示实际恢复的 session / window / pane 数量，不自动进入或绑定恢复会话，并提供手动重新绑定入口。
 
 ### Changed
-- 内置浏览器替代原动态端口预览，静态目录预览继续保留；已有 `previewDomain` 可作为浏览器会话的独立公开入口，主入口已能转发浏览器保留路径时可不配置。
+- 内置浏览器替代原动态端口预览，静态目录预览继续保留；已有 `previewDomain` 作为通配公开入口，每个目标 Origin（协议、host、端口）固定映射一个 `browser-*.<previewDomain>` 子域，同设备同 Origin 的页签共享登录态，不同设备保持隔离。
 - 窗口管理与分屏管理弹窗现在使用明确标题，并在标题下以小字显示当前终端的列×行尺寸。
 - 手动新增命令 / 聊天快捷项成功后会显示明确提示，并直接返回快捷项列表。
 - `handmux shortcuts` 保存后会立即更新正在运行的 server，无需重启；手机端在 App 启动及每次回到前台时读取配置，不再每 15 秒轮询。

@@ -36,6 +36,7 @@ export function createBrowserTargetPolicy({
   lookup = dns.lookup,
 } = {}) {
   let topOrigin = new URL(topLevelUrl).origin;
+  let topAddressClass = null;
   const appOrigin = new URL(handmuxOrigin).origin;
 
   return {
@@ -43,6 +44,7 @@ export function createBrowserTargetPolicy({
       const url = new URL(raw);
       if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('browser URL must use http or https');
       topOrigin = url.origin;
+      topAddressClass = null;
     },
 
     async check(raw) {
@@ -62,12 +64,23 @@ export function createBrowserTargetPolicy({
       }
       if (!addresses?.length) return { allowed: false, reason: 'dns-failed' };
 
-      for (const item of addresses) {
-        const reason = classifyIp(item.address);
-        if (reason === 'loopback' && url.origin === topOrigin) continue;
+      const classifications = addresses.map((item) => classifyIp(item.address));
+      if (url.origin === topOrigin && topAddressClass == null) {
+        if (classifications.every((reason) => reason === 'loopback')) topAddressClass = 'loopback';
+        else if (classifications.every((reason) => reason == null)) topAddressClass = 'ordinary';
+      }
+      const loopbackNavigationAllowed = topAddressClass === 'loopback'
+        && classifications.every((reason) => reason === 'loopback');
+      for (const reason of classifications) {
+        if (reason === 'loopback' && loopbackNavigationAllowed) continue;
         if (reason) return { allowed: false, reason: reason === 'loopback' ? 'loopback-not-authorized' : reason };
       }
-      return { allowed: true };
+      const approved = addresses[0];
+      return {
+        allowed: true,
+        address: approved.address,
+        family: approved.family || net.isIP(approved.address),
+      };
     },
   };
 }

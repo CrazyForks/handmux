@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import express from 'express';
 import { browserRequestOrigin } from './publicProxy.js';
 
@@ -5,11 +6,21 @@ const CLOSE_AFTER_MINUTES = new Set([10, 30, 60, 120, null]);
 const DEVICE_ID = /^[A-Za-z0-9_-]{32,128}$/;
 const DEVICE_COOKIE = 'tw_browser_device';
 
-function previewOrigin(raw) {
+function previewBase(raw) {
   if (!raw) return null;
   const value = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
   const url = new URL(value);
   if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('previewDomain must use http or https');
+  return url;
+}
+
+function defaultBrowserHostForTarget(targetOrigin) {
+  return createHash('sha256').update(targetOrigin).digest('hex').slice(0, 24);
+}
+
+function wildcardOrigin(base, targetOrigin, browserHostForTarget) {
+  const url = new URL(base.origin);
+  url.hostname = `browser-${browserHostForTarget(targetOrigin)}.${base.hostname}`;
   return url.origin;
 }
 
@@ -27,20 +38,26 @@ function validTarget(value) {
   }
 }
 
-export function browserRoutes({ browser, previewDomain = null, browserBootstrap = null }) {
+export function browserRoutes({
+  browser,
+  previewDomain = null,
+  browserBootstrap = null,
+  browserHostForTarget = defaultBrowserHostForTarget,
+}) {
   const r = express.Router();
-  const publicOrigin = previewOrigin(previewDomain);
-  if (publicOrigin && !browserBootstrap) throw new Error('browser bootstrap required with previewDomain');
+  const publicBase = previewBase(previewDomain);
+  if (publicBase && !browserBootstrap) throw new Error('browser bootstrap required with previewDomain');
   const publicTab = (tab, deviceId) => {
-    if (!publicOrigin || !tab?.url) return tab;
-    return { ...tab, url: browserBootstrap.issue({ url: tab.url, origin: publicOrigin, deviceId }) };
+    if (!publicBase || !tab?.url) return tab;
+    const origin = new URL(tab.url).origin;
+    return { ...tab, url: browserBootstrap.issue({ url: tab.url, origin, deviceId }) };
   };
 
   r.use('/browser-tabs', (req, res, next) => {
     const deviceId = req.get('x-handmux-browser-device');
     if (!DEVICE_ID.test(deviceId || '')) return res.status(400).json({ error: 'browser device id required' });
     req.browserDeviceId = deviceId;
-    const origin = publicOrigin || browserRequestOrigin(req);
+    const origin = browserRequestOrigin(req);
     const secure = origin.startsWith('https://') ? '; Secure' : '';
     res.append('Set-Cookie', `${DEVICE_COOKIE}=${deviceId}; Path=/; HttpOnly; SameSite=Strict${secure}`);
     next();
@@ -52,7 +69,9 @@ export function browserRoutes({ browser, previewDomain = null, browserBootstrap 
     if (!validTarget(url)) return res.status(400).json({ error: 'browser URL must use http or https' });
     if (!validCloseAfter(closeAfterMinutes)) return res.status(400).json({ error: 'unsupported background close time' });
     try {
-      const origin = publicOrigin || browserRequestOrigin(req);
+      const origin = publicBase
+        ? wildcardOrigin(publicBase, new URL(url).origin, browserHostForTarget)
+        : browserRequestOrigin(req);
       const tab = await browser.create({ url, origin, closeAfterMinutes, deviceId: req.browserDeviceId });
       res.status(201).json(publicTab(tab, req.browserDeviceId));
     } catch (error) { next(error); }
@@ -74,12 +93,15 @@ export function browserRoutes({ browser, previewDomain = null, browserBootstrap 
     res.json(publicTab(tab, req.browserDeviceId));
   });
 
-  r.post('/browser-tabs/:id/navigate', (req, res, next) => {
+  r.post('/browser-tabs/:id/navigate', async (req, res, next) => {
     if (!browser) return res.status(503).json({ error: 'browser unavailable' });
     const { url } = req.body || {};
     if (!validTarget(url)) return res.status(400).json({ error: 'browser URL must use http or https' });
     try {
-      const tab = browser.navigate(req.params.id, url, req.browserDeviceId);
+      const origin = publicBase
+        ? wildcardOrigin(publicBase, new URL(url).origin, browserHostForTarget)
+        : browserRequestOrigin(req);
+      const tab = await browser.navigate(req.params.id, url, req.browserDeviceId, origin);
       if (!tab) return res.status(404).json({ error: 'browser tab not found' });
       res.json(publicTab(tab, req.browserDeviceId));
     } catch (error) { next(error); }

@@ -33,6 +33,7 @@ export default function BrowserSheet({ browser }) {
   const [device, setDevice] = useState('mobile');
   const [bodySize, setBodySize] = useState({ width: 0, height: 0 });
   const frames = useRef(new Map());
+  const switchingOrigins = useRef(new Map());
   const addressRef = useRef(null);
   const bodyRef = useRef(null);
 
@@ -43,13 +44,47 @@ export default function BrowserSheet({ browser }) {
   useEffect(() => {
     const onMessage = (event) => {
       if (event.data?.source !== 'handmux-browser') return;
-      const tab = tabs.find((item) => item.channel === event.data.channel);
-      if (!tab || frames.current.get(tab.id)?.contentWindow !== event.source) return;
+      const frameEntry = [...frames.current.entries()]
+        .find(([, frame]) => frame.contentWindow === event.source);
+      const tab = frameEntry && tabs.find((item) => item.id === frameEntry[0]);
+      if (!tab || tab.channel !== event.data.channel) return;
+      const originOf = (raw) => { try { return new URL(raw).origin; } catch { return null; } };
+      const currentOrigin = originOf(tab.originalUrl);
+      const nextOrigin = originOf(event.data.url);
+      if ((event.data.type === 'navigate' || event.data.type === 'load')
+        && currentOrigin && nextOrigin && currentOrigin !== nextOrigin) {
+        if (switchingOrigins.current.get(tab.id) !== nextOrigin) {
+          switchingOrigins.current.set(tab.id, nextOrigin);
+          let switching;
+          try { switching = navigateTab(tab.id, event.data.url); }
+          catch {
+            switchingOrigins.current.delete(tab.id);
+            return;
+          }
+          Promise.resolve(switching).then((result) => {
+            if (!result && switchingOrigins.current.get(tab.id) === nextOrigin) {
+              switchingOrigins.current.delete(tab.id);
+            }
+          }, () => {
+            if (switchingOrigins.current.get(tab.id) === nextOrigin) switchingOrigins.current.delete(tab.id);
+          });
+        }
+        return;
+      }
       updateTabMeta(tab.id, { url: event.data.url, title: event.data.title });
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [tabs, updateTabMeta]);
+  }, [navigateTab, tabs, updateTabMeta]);
+
+  useEffect(() => {
+    for (const [id, origin] of switchingOrigins.current) {
+      const tab = tabs.find((item) => item.id === id);
+      let currentOrigin = null;
+      try { currentOrigin = new URL(tab?.originalUrl).origin; } catch { /* removed tab */ }
+      if (!tab || currentOrigin === origin) switchingOrigins.current.delete(id);
+    }
+  }, [tabs]);
 
   useEffect(() => {
     if (!open || !bodyRef.current) return undefined;

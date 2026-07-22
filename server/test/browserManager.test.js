@@ -23,7 +23,11 @@ function fakeHammerhead() {
         this.server1Info = { hostname: options.hostname, port: options.port1, crossDomainPort: options.port2, protocol: 'http:', domain: `http://${options.hostname}:${options.port1}` };
         this.server2Info = { hostname: options.hostname, port: options.port2, crossDomainPort: options.port1, protocol: 'http:', domain: `http://${options.hostname}:${options.port2}` };
       });
-      this.openSession = vi.fn((url, session) => `${this.server1Info.domain}/${session.id}/${url}`);
+      this.windowIds = [];
+      this.openSession = vi.fn((url, session) => {
+        this.windowIds.push(session.options.windowId);
+        return `${this.server1Info.domain}/${session.id}/${url}`;
+      });
       this.closeSession = vi.fn();
       this.close = vi.fn();
       proxies.push(this);
@@ -71,6 +75,35 @@ describe('browser preview manager', () => {
     expect(manager.get('tab-a', 'device-b')).toBeNull();
     expect(manager.ownsPublicPath(new URL(a.url).pathname, 'device-b')).toBe(false);
     expect(manager.ownsPublicPath(new URL(a.url).pathname, 'device-a')).toBe(true);
+  });
+
+  it('shares one Hammerhead session for the same device and target origin until its final tab closes', async () => {
+    const fake = fakeHammerhead();
+    const ids = ['tab-a', 'tab-b'];
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      internalPorts: [4311, 4312],
+      randomId: () => ids.shift(),
+    });
+
+    const first = await manager.create({
+      url: 'https://target.example/a', origin: 'https://browser-target.preview.example', closeAfterMinutes: 10, deviceId: DEVICE,
+    });
+    const second = await manager.create({
+      url: 'https://target.example/b', origin: 'https://browser-target.preview.example', closeAfterMinutes: 10, deviceId: DEVICE,
+    });
+
+    expect(fake.proxies).toHaveLength(1);
+    expect(fake.proxies[0].openSession.mock.calls[0][1]).toBe(fake.proxies[0].openSession.mock.calls[1][1]);
+    expect(fake.proxies[0].windowIds).toHaveLength(2);
+    expect(fake.proxies[0].windowIds[0]).not.toBe(fake.proxies[0].windowIds[1]);
+    expect(first.channel).not.toBe(second.channel);
+    expect(new URL(first.url).origin).toBe(new URL(second.url).origin);
+
+    manager.closeTab(first.id, DEVICE);
+    expect(fake.proxies[0].closeSession).not.toHaveBeenCalled();
+    manager.closeTab(second.id, DEVICE);
+    expect(fake.proxies[0].closeSession).toHaveBeenCalledOnce();
   });
 
   it('adapts generated URLs to the current public Handmux origin', async () => {
@@ -142,6 +175,28 @@ describe('browser preview manager', () => {
     await expect(manager.create({ url: 'https://b.example/', origin: 'https://two.example', closeAfterMinutes: 10, deviceId: DEVICE })).rejects.toThrow(/closing/);
   });
 
+  it('rejects a create that was reusing an existing context when shutdown wins the race', async () => {
+    const fake = fakeHammerhead();
+    const ids = ['tab-a', 'tab-b'];
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      internalPorts: [4311, 4312],
+      randomId: () => ids.shift(),
+    });
+    await manager.create({
+      url: 'https://target.example/a', origin: 'https://browser-target.preview.example', closeAfterMinutes: 10, deviceId: DEVICE,
+    });
+
+    const creating = manager.create({
+      url: 'https://target.example/b', origin: 'https://browser-target.preview.example', closeAfterMinutes: 10, deviceId: DEVICE,
+    });
+    await manager.close();
+
+    await expect(creating).rejects.toThrow(/closing/);
+    expect(manager.list(DEVICE)).toEqual([]);
+    expect(fake.proxies[0].closeSession).toHaveBeenCalledOnce();
+  });
+
   it('closes only the expired tab session and closes all remaining sessions at shutdown', async () => {
     const fake = fakeHammerhead();
     const timers = [];
@@ -195,8 +250,8 @@ describe('browser preview manager', () => {
     const first = await manager.create({ url: 'https://a.example/', origin: 'https://handmux.example', closeAfterMinutes: 10, deviceId: DEVICE });
     const session = fake.proxies[0].openSession.mock.calls[0][1];
 
-    const next = manager.navigate('tab-a', 'https://a.example/next', DEVICE);
-    const payload = await session.getPayloadScript();
+    const next = await manager.navigate('tab-a', 'https://a.example/next', DEVICE, 'https://handmux.example');
+    const payload = await session.getPayloadScript(first.channel);
 
     expect(next).toMatchObject({ id: first.id, originalUrl: 'https://a.example/next' });
     expect(fake.proxies[0].openSession.mock.calls[1][1]).toBe(session);
@@ -205,6 +260,7 @@ describe('browser preview manager', () => {
     expect(payload).toContain('history.back');
     expect(payload).toContain('history.forward');
     expect(payload).toContain('location.reload');
+    expect(payload).toContain('pageNavigationTriggered');
     expect(await session.getIframePayloadScript()).toBe('');
   });
 
@@ -220,9 +276,56 @@ describe('browser preview manager', () => {
     });
     await manager.create({ url: 'http://127.0.0.1:5173/', origin: 'https://handmux.example', closeAfterMinutes: 10, deviceId: DEVICE });
 
-    manager.navigate('tab-a', 'http://127.0.0.1:3000/', DEVICE);
+    await manager.navigate('tab-a', 'http://127.0.0.1:3000/', DEVICE, 'https://browser-port-3000.example');
 
     expect(authorizeTopLevel).toHaveBeenCalledWith('http://127.0.0.1:3000/');
+  });
+
+  it('moves a tab to another device-origin session when its target origin changes', async () => {
+    const fake = fakeHammerhead();
+    const ids = ['tab-a', 'session-b'];
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      internalPorts: [4311, 4312],
+      randomId: () => ids.shift(),
+    });
+    const first = await manager.create({
+      url: 'https://a.example/', origin: 'https://browser-a.preview.example', closeAfterMinutes: 10, deviceId: DEVICE,
+    });
+
+    const next = await manager.navigate(
+      first.id,
+      'https://b.example/',
+      DEVICE,
+      'https://browser-b.preview.example',
+    );
+
+    expect(next.url).toMatch(/^https:\/\/browser-b\.preview\.example\//);
+    expect(fake.proxies).toHaveLength(2);
+    expect(fake.proxies[0].closeSession).toHaveBeenCalledOnce();
+    expect(fake.proxies[1].openSession).toHaveBeenCalledOnce();
+  });
+
+  it('releases an intermediate context when two cross-origin navigations race', async () => {
+    const fake = fakeHammerhead();
+    const ids = ['tab-a', 'session-b', 'session-c'];
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      internalPorts: [4311, 4312],
+      randomId: () => ids.shift(),
+    });
+    const tab = await manager.create({
+      url: 'https://a.example/', origin: 'https://browser-a.preview.example', closeAfterMinutes: 10, deviceId: DEVICE,
+    });
+
+    await Promise.all([
+      manager.navigate(tab.id, 'https://b.example/', DEVICE, 'https://browser-b.preview.example'),
+      manager.navigate(tab.id, 'https://c.example/', DEVICE, 'https://browser-c.preview.example'),
+    ]);
+    manager.closeTab(tab.id, DEVICE);
+
+    expect(fake.proxies).toHaveLength(3);
+    expect(fake.proxies.every((proxy) => proxy.closeSession.mock.calls.length === 1)).toBe(true);
   });
 
   it('checks every destination request and replaces blocked targets with a specific 403', async () => {
