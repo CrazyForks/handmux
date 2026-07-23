@@ -4,6 +4,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Fixed
+- Agent 用量现在展示所有设备共享的本机最新状态；新会话尚未产生额度数据时，不再让 Codex / Claude 的已有用量短暂消失。
+
 ## [0.18.0] - 2026-07-22
 
 ### Added

@@ -24,6 +24,13 @@ const tokenCount = (ts, usedPercent, totals, secondary = null) => ({
     },
   },
 });
+const tokenCountWithoutQuota = (ts, totals) => ({
+  timestamp: ts, type: 'event_msg',
+  payload: {
+    type: 'token_count',
+    info: { total_token_usage: totals, model_context_window: 258400 },
+  },
+});
 
 describe('readClaudeUsage', () => {
   it('reads the statusLine snapshot; null when missing or garbage', () => {
@@ -93,12 +100,39 @@ describe('readCodexUsage', () => {
     expect(readCodexUsage(home).rateLimits.secondary).toEqual({ usedPercent: 55, windowMinutes: 300, resetsAt: 1785600000 });
   });
 
-  it('null when the newest rollout has no token_count', () => {
+  it('keeps the latest machine-wide quota while a newer rollout has no token_count yet', () => {
     const home = tmpHome('usg-');
+    writeRollout(home, '2026', '07', '03', 'rollout-2026-07-03T01-00-00-o.jsonl', [
+      tokenCount('2026-07-03T01:00:00.000Z', 23, { total_tokens: 8 }),
+    ]);
     writeRollout(home, '2026', '07', '03', 'rollout-2026-07-03T02-00-00-n.jsonl', [
       { timestamp: '2026-07-03T02:00:00.000Z', type: 'session_meta', payload: {} },
     ]);
-    expect(readCodexUsage(home)).toBeNull();
+    expect(readCodexUsage(home).rateLimits.primary.usedPercent).toBe(23);
+  });
+
+  it('uses the newest token_count across all sessions, not the newest-created rollout', () => {
+    const home = tmpHome('usg-');
+    writeRollout(home, '2026', '07', '03', 'rollout-2026-07-03T01-00-00-o.jsonl', [
+      { timestamp: '2026-07-03T01:00:00.000Z', type: 'session_meta', payload: {} },
+    ]);
+    writeRollout(home, '2026', '07', '03', 'rollout-2026-07-03T02-00-00-n.jsonl', [
+      tokenCount('2026-07-03T02:00:00.000Z', 24, { total_tokens: 9 }),
+    ]);
+    const olderSession = path.join(home, '.codex', 'sessions', '2026', '07', '03', 'rollout-2026-07-03T01-00-00-o.jsonl');
+    fs.appendFileSync(olderSession, `\n${JSON.stringify(tokenCount('2026-07-03T03:00:00.000Z', 31, { total_tokens: 12 }))}`);
+    expect(readCodexUsage(home).rateLimits.primary.usedPercent).toBe(31);
+  });
+
+  it('reports a stable no-quota state when the latest token_count has no rate_limits', () => {
+    const home = tmpHome('usg-');
+    writeRollout(home, '2026', '07', '03', 'rollout-2026-07-03T01-00-00-o.jsonl', [
+      tokenCount('2026-07-03T01:00:00.000Z', 23, { total_tokens: 8 }),
+    ]);
+    writeRollout(home, '2026', '07', '03', 'rollout-2026-07-03T02-00-00-n.jsonl', [
+      tokenCountWithoutQuota('2026-07-03T02:00:00.000Z', { total_tokens: 10 }),
+    ]);
+    expect(readCodexUsage(home).rateLimits).toEqual({ primary: null, secondary: null });
   });
 });
 
