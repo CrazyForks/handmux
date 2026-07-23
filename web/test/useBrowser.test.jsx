@@ -227,6 +227,29 @@ describe('useBrowser', () => {
     expect(result.current.tabs.find((item) => item.id === 'a').visible).toBe(false);
   });
 
+  it('keeps the mounted proxy URL stable when visibility returns a fresh bootstrap URL', async () => {
+    const a = tab('a', { url: '/_browser-a-ticket-1/https://example.com/a' });
+    const b = tab('b', {
+      url: '/_browser-b-ticket-1/https://example.com/b',
+      visible: false,
+      expiresAt: Date.now() + 600_000,
+    });
+    api.getBrowserTabs.mockResolvedValue({ tabs: [a, b] });
+    api.setBrowserTabVisible.mockResolvedValue(tab('b', {
+      url: '/_browser-b-ticket-2/https://example.com/b',
+      visible: true,
+      expiresAt: null,
+    }));
+    const { result } = renderHook(() => useBrowser());
+    await flush();
+
+    await act(async () => { await result.current.switchTab('b'); });
+
+    expect(result.current.tabs.find((item) => item.id === 'b').url).toBe(
+      '/_browser-b-ticket-1/https://example.com/b',
+    );
+  });
+
   it('keeps the current tab visible when showing the selected tab fails', async () => {
     const a = tab('a');
     const b = tab('b', { visible: false, expiresAt: Date.now() + 600_000 });

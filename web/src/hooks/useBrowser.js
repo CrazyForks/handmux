@@ -283,9 +283,13 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const updateVisibility = useCallback(async (id, visible, duration = closeAfter) => {
     mutationGeneration.current += 1;
     const next = normalizeServerTab(await setBrowserTabVisible(id, visible, duration));
+    const current = tabsRef.current.find((tab) => tab.id === next.id);
+    const stableNext = current?.mode === 'proxy' && next.mode === 'proxy'
+      ? { ...next, url: current.url }
+      : next;
     mutationGeneration.current += 1;
-    commitTabs((current) => mirrorVisibleTab(current, next, duration));
-    return next;
+    commitTabs((currentTabs) => mirrorVisibleTab(currentTabs, stableNext, duration));
+    return stableNext;
   }, [closeAfter, commitTabs]);
 
   const switchTab = useCallback((id) => {
