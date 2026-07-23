@@ -1,6 +1,9 @@
 import { randomBytes } from 'node:crypto';
+import os from 'node:os';
+import path from 'node:path';
 import * as importedHammerhead from 'testcafe-hammerhead';
 import { createDeviceCookieProfiles } from './cookieProfiles.js';
+import { createBrowserProfilePersistence } from './profilePersistence.js';
 import { claimPublicOrigin } from './originLabel.js';
 import { createBrowserSessionStore } from './sessionStore.js';
 import { createBrowserTargetPolicy } from './targetPolicy.js';
@@ -150,14 +153,22 @@ export async function createBrowserPreviewManager({
   randomChannel = () => randomBytes(18).toString('base64url'),
   targetPolicyFactory = createBrowserTargetPolicy,
   cookieProfiles: suppliedCookieProfiles,
+  profilePersistence: suppliedProfilePersistence,
+  profileDir = path.join(os.homedir(), '.handmux', 'browser-profiles'),
   now = Date.now,
   setTimer = setTimeout,
   clearTimer = clearTimeout,
 } = {}) {
   const ProxyClass = hammerhead.Proxy;
   const SessionClass = browserSessionClass(hammerhead);
+  const profilePersistence = suppliedProfilePersistence || createBrowserProfilePersistence({
+    dir: profileDir,
+    keyFile: path.join(profileDir, 'profile.key'),
+  });
   const cookieProfiles = suppliedCookieProfiles || createDeviceCookieProfiles({
     createCookies: () => new SessionClass('').cookies,
+    persistence: profilePersistence,
+    now, setTimer, clearTimer,
   });
   const pools = new Map();
   const pendingPools = new Map();
@@ -298,7 +309,15 @@ export async function createBrowserPreviewManager({
     try { return context.pool.proxy.openSession(target, context.session); }
     finally { context.session.options.windowId = previousWindowId; }
   };
-  const store = createBrowserSessionStore({ now, setTimer, clearTimer, onExpire: releaseTabContext });
+  let store;
+  const updateDeviceActivity = (deviceId) => cookieProfiles.setActive?.(
+    deviceId,
+    store.list().some((tab) => tab.ownerDevice === deviceId && tab.mode === 'proxy'),
+  );
+  store = createBrowserSessionStore({
+    now, setTimer, clearTimer,
+    onExpire: (tab) => { releaseTabContext(tab); updateDeviceActivity(tab.ownerDevice); },
+  });
   const hideOtherTabs = (deviceId, exceptId, closeAfterMinutes) => {
     const displaced = [];
     for (const tab of store.list()) {
@@ -337,6 +356,10 @@ export async function createBrowserPreviewManager({
 
     clearDeviceProfile(deviceId, options) {
       return cookieProfiles.clear(deviceId, options);
+    },
+
+    configureDeviceProfile(deviceId, prefs) {
+      return cookieProfiles.configure(deviceId, prefs);
     },
 
     resolvePublicRequest(pathname, deviceId, rawOrigin) {
@@ -381,6 +404,7 @@ export async function createBrowserPreviewManager({
         ownerDevice: deviceId, publicOrigin: requestedOrigin, pool: context?.pool || null, contextKey: context?.key || null,
       }));
       Object.defineProperty(created, '_displacedTabs', { value: displacedTabs });
+      if (mode === 'proxy') cookieProfiles.setActive?.(deviceId, true);
       return created;
     },
 
@@ -415,6 +439,7 @@ export async function createBrowserPreviewManager({
           contextKey: null,
         });
         releaseTabContext(tab);
+        updateDeviceActivity(deviceId);
         return publicTab(updated);
       }
       const context = await contextFor({ deviceId, target, origin: requestedOrigin, sessionId: randomId });
@@ -443,6 +468,7 @@ export async function createBrowserPreviewManager({
         contextKey: context.key,
       });
       if (context.key !== tab.contextKey) releaseTabContext(tab);
+      cookieProfiles.setActive?.(deviceId, true);
       return publicTab(updated);
     },
 
@@ -450,6 +476,7 @@ export async function createBrowserPreviewManager({
       if (!manager.get(id, deviceId)) return null;
       const tab = store.remove(id);
       releaseTabContext(tab);
+      updateDeviceActivity(deviceId);
       return publicTab(tab);
     },
 
@@ -457,7 +484,10 @@ export async function createBrowserPreviewManager({
       if (!closePromise) {
         closing = true;
         closePromise = (async () => {
-          for (const tab of store.close()) releaseTabContext(tab);
+          const closingTabs = store.close();
+          const devices = new Set(closingTabs.map((tab) => tab.ownerDevice));
+          for (const tab of closingTabs) releaseTabContext(tab);
+          for (const deviceId of devices) updateDeviceActivity(deviceId);
           for (const context of [...contexts.values()]) releaseContext(context);
           contexts.clear();
           const pending = [...pendingPools.values()];
@@ -465,6 +495,7 @@ export async function createBrowserPreviewManager({
           await Promise.allSettled(pending.map((entry) => entry.promise));
           for (const pool of pools.values()) closeProxy(pool.proxy);
           pools.clear();
+          await cookieProfiles.close?.();
         })();
       }
       return closePromise;

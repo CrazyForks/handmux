@@ -595,3 +595,129 @@ describe('browser preview manager', () => {
     })).resolves.toEqual([{ address: '10.20.30.40', family: 4 }]);
   });
 });
+
+describe('browser manager profile persistence lifecycle', () => {
+  it('marks only proxy-tab activity and awaits profile close', async () => {
+    const fake = fakeHammerhead();
+    let finishClose;
+    const closePending = new Promise((resolve) => { finishClose = resolve; });
+    const cookieProfiles = {
+      attach: vi.fn(() => vi.fn()),
+      serialize: vi.fn(),
+      clear: vi.fn(),
+      configure: vi.fn(),
+      setActive: vi.fn(),
+      close: vi.fn(() => closePending),
+    };
+    const ids = ['proxy-a', 'direct-b'];
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      cookieProfiles,
+      randomId: () => ids.shift(),
+    });
+
+    const proxy = await manager.create({
+      url: 'https://proxy.example/', origin: 'https://handmux.example',
+      closeAfterMinutes: 10, deviceId: DEVICE,
+    });
+    await manager.create({
+      url: 'https://direct.example/', origin: 'https://handmux.example',
+      closeAfterMinutes: 10, deviceId: DEVICE, mode: 'direct',
+    });
+    expect(cookieProfiles.setActive.mock.calls).toEqual([[DEVICE, true]]);
+
+    await manager.navigate(proxy.id, 'https://direct.example/next', DEVICE, 'https://handmux.example', 'direct');
+    expect(cookieProfiles.setActive).toHaveBeenLastCalledWith(DEVICE, false);
+    const closing = manager.close();
+    let closed = false;
+    closing.then(() => { closed = true; });
+    await Promise.resolve();
+    expect(closed).toBe(false);
+    finishClose();
+    await closing;
+    expect(cookieProfiles.close).toHaveBeenCalledOnce();
+  });
+
+  it('marks a device inactive after its final proxy tab expires', async () => {
+    const fake = fakeHammerhead();
+    const timers = [];
+    const cookieProfiles = {
+      attach: vi.fn(() => vi.fn()),
+      serialize: vi.fn(),
+      clear: vi.fn(),
+      configure: vi.fn(),
+      setActive: vi.fn(),
+      close: vi.fn(),
+    };
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      cookieProfiles,
+      randomId: () => 'proxy-a',
+      setTimer: (fn) => { timers.push(fn); return timers.length; },
+      clearTimer: vi.fn(),
+    });
+    await manager.create({
+      url: 'https://proxy.example/', origin: 'https://handmux.example',
+      closeAfterMinutes: 10, deviceId: DEVICE,
+    });
+    manager.setVisible('proxy-a', false, 10, DEVICE);
+    timers[0]();
+
+    expect(cookieProfiles.setActive).toHaveBeenLastCalledWith(DEVICE, false);
+    await manager.close();
+  });
+
+  it('keeps default persistence off and restores encrypted cookies across managers when enabled', async () => {
+    const fs = await import('node:fs/promises');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'handmux-manager-profile-'));
+    const profileDir = path.join(root, 'profiles');
+    try {
+      const disabledFake = fakeHammerhead();
+      const disabled = await createBrowserPreviewManager({
+        hammerhead: disabledFake.api, profileDir, randomId: () => 'disabled',
+      });
+      await disabled.create({
+        url: 'https://app.example/', origin: 'https://handmux.example',
+        closeAfterMinutes: 10, deviceId: DEVICE,
+      });
+      disabledFake.proxies[0].openSession.mock.calls[0][1].cookies
+        .setByServer('https://app.example/', ['disabled=value; Path=/']);
+      await disabled.close();
+      await expect(fs.stat(profileDir)).rejects.toMatchObject({ code: 'ENOENT' });
+
+      const firstFake = fakeHammerhead();
+      const first = await createBrowserPreviewManager({
+        hammerhead: firstFake.api, profileDir, randomId: () => 'first',
+      });
+      await first.configureDeviceProfile(DEVICE, { persist: true, retentionDays: 7 });
+      await first.create({
+        url: 'https://app.example/', origin: 'https://handmux.example',
+        closeAfterMinutes: 10, deviceId: DEVICE,
+      });
+      firstFake.proxies[0].openSession.mock.calls[0][1].cookies
+        .setByServer('https://app.example/', ['session=restored; Path=/']);
+      await first.close();
+
+      const secondFake = fakeHammerhead();
+      const second = await createBrowserPreviewManager({
+        hammerhead: secondFake.api, profileDir, randomId: () => 'second',
+      });
+      await second.configureDeviceProfile(DEVICE, { persist: true, retentionDays: 7 });
+      await second.create({
+        url: 'https://app.example/', origin: 'https://handmux.example',
+        closeAfterMinutes: 10, deviceId: DEVICE,
+      });
+      const restored = secondFake.proxies[0].openSession.mock.calls[0][1].cookies;
+      expect(headerFor(restored, 'https://app.example/')).toContain('session=restored');
+      await second.close();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+function headerFor(cookies, url) {
+  return cookies.getHeader({ url, hostname: new URL(url).hostname });
+}

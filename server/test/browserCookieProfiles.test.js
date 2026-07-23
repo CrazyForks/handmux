@@ -140,3 +140,199 @@ describe('device cookie profiles', () => {
     expect(profiles.clear(DEVICE_B, {})).toEqual({ cleared: false });
   });
 });
+
+describe('device cookie profile persistence and retention', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const adapter = (overrides = {}) => ({
+    read: vi.fn(async () => null),
+    write: vi.fn(),
+    remove: vi.fn(),
+    close: vi.fn(),
+    ...overrides,
+  });
+
+  it('never persists by default, then restores fresh profiles but saves used memory', async () => {
+    vi.useFakeTimers();
+    try {
+      const disk = createCookies();
+      disk.setByServer('https://app.example/', ['session=stale; Path=/']);
+      const persistence = adapter({
+        read: vi.fn(async (id) => id === DEVICE_A ? disk.serializeJar() : null),
+      });
+      const profiles = createDeviceCookieProfiles({ createCookies, persistence });
+      const used = createCookies();
+      profiles.attach(DEVICE_B, used);
+      used.setByServer('https://app.example/', ['session=current; Path=/']);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(persistence.write).not.toHaveBeenCalled();
+
+      expect(await profiles.configure(DEVICE_A, { persist: true, retentionDays: 7 })).toEqual({
+        persist: true, retentionDays: 7, warning: null,
+      });
+      await profiles.configure(DEVICE_A, { persist: true, retentionDays: 7 });
+      await profiles.configure(DEVICE_B, { persist: true, retentionDays: 30 });
+      const restored = createCookies();
+      profiles.attach(DEVICE_A, restored);
+
+      expect(headerFor(restored, 'https://app.example/')).toContain('session=stale');
+      expect(headerFor(used, 'https://app.example/')).toContain('session=current');
+      expect(persistence.read.mock.calls.filter(([id]) => id === DEVICE_A)).toHaveLength(1);
+      expect(persistence.read.mock.calls.filter(([id]) => id === DEVICE_B)).toHaveLength(0);
+      expect(persistence.write.mock.calls[0][1]).toContain('"value":"current"');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('disables persistence by deleting disk without clearing memory', async () => {
+    const persistence = adapter();
+    const profiles = createDeviceCookieProfiles({ createCookies, persistence });
+    await profiles.configure(DEVICE_A, { persist: true, retentionDays: 30 });
+    const cookies = createCookies();
+    profiles.attach(DEVICE_A, cookies);
+    cookies.setByServer('https://app.example/', ['session=current; Path=/']);
+
+    expect(await profiles.configure(DEVICE_A, { persist: false, retentionDays: 7 })).toEqual({
+      persist: false, retentionDays: 7, warning: null,
+    });
+    expect(persistence.remove).toHaveBeenCalledWith(DEVICE_A);
+    expect(headerFor(cookies, 'https://app.example/')).toContain('session=current');
+  });
+
+  it('recovers unreadable and unrestorable profiles with an empty jar and warning', async () => {
+    const persistence = adapter({
+      read: vi.fn()
+        .mockRejectedValueOnce(new Error('browser profile authentication failed'))
+        .mockResolvedValueOnce('{broken'),
+    });
+    const profiles = createDeviceCookieProfiles({ createCookies, persistence });
+
+    for (const deviceId of [DEVICE_A, DEVICE_B]) {
+      await expect(profiles.configure(deviceId, { persist: true, retentionDays: 30 })).resolves.toEqual({
+        persist: true, retentionDays: 30, warning: 'profile-recovery-failed',
+      });
+      const cookies = createCookies();
+      profiles.attach(deviceId, cookies);
+      expect(headerFor(cookies, 'https://app.example/')).toBeNull();
+    }
+    expect(persistence.remove).toHaveBeenCalledWith(DEVICE_A);
+    expect(persistence.remove).toHaveBeenCalledWith(DEVICE_B);
+  });
+
+  it('debounces the existing mutation callback for 500ms and flushes on close', async () => {
+    vi.useFakeTimers();
+    try {
+      const onMutation = vi.fn();
+      const persistence = adapter();
+      const profiles = createDeviceCookieProfiles({ createCookies, persistence, onMutation });
+      await profiles.configure(DEVICE_A, { persist: true, retentionDays: 30 });
+      const cookies = createCookies();
+      profiles.attach(DEVICE_A, cookies);
+      cookies.setByServer('https://app.example/', ['one=1; Path=/']);
+      cookies.setByServer('https://app.example/', ['two=2; Path=/']);
+
+      expect(onMutation).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(499);
+      expect(persistence.write).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(persistence.write).toHaveBeenCalledOnce();
+      cookies.setByServer('https://app.example/', ['three=3; Path=/']);
+      await profiles.close();
+      expect(persistence.write).toHaveBeenCalledTimes(2);
+      expect(persistence.write.mock.calls[1][1]).toContain('"key":"three"');
+      expect(persistence.close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('clears inactive memory and disk after retention but suppresses cleanup while active', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    try {
+      const persistence = adapter();
+      const profiles = createDeviceCookieProfiles({ createCookies, persistence });
+      await profiles.configure(DEVICE_A, { persist: true, retentionDays: 1 });
+      const cookies = createCookies();
+      profiles.attach(DEVICE_A, cookies);
+      cookies.setByServer('https://app.example/', ['session=value; Path=/']);
+      profiles.setActive(DEVICE_A, true);
+      profiles.setActive(DEVICE_A, false);
+      await vi.advanceTimersByTimeAsync(DAY - 1);
+      profiles.setActive(DEVICE_A, true);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(headerFor(cookies, 'https://app.example/')).toContain('session=value');
+      profiles.setActive(DEVICE_A, false);
+      await vi.advanceTimersByTimeAsync(DAY);
+
+      expect(headerFor(cookies, 'https://app.example/')).toBeNull();
+      expect(persistence.remove).toHaveBeenCalledWith(DEVICE_A);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('clears immediately when shorter retention is overdue and supports never', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    try {
+      const persistence = adapter();
+      const profiles = createDeviceCookieProfiles({ createCookies, persistence });
+      await profiles.configure(DEVICE_A, { persist: true, retentionDays: 30 });
+      await profiles.configure(DEVICE_B, { persist: true, retentionDays: null });
+      const a = createCookies();
+      const b = createCookies();
+      profiles.attach(DEVICE_A, a);
+      profiles.attach(DEVICE_B, b);
+      a.setByServer('https://app.example/', ['session=a; Path=/']);
+      b.setByServer('https://app.example/', ['session=b; Path=/']);
+      for (const id of [DEVICE_A, DEVICE_B]) {
+        profiles.setActive(id, true);
+        profiles.setActive(id, false);
+      }
+      await vi.advanceTimersByTimeAsync(2 * DAY);
+
+      await profiles.configure(DEVICE_A, { persist: true, retentionDays: 1 });
+      await vi.advanceTimersByTimeAsync(363 * DAY);
+
+      expect(headerFor(a, 'https://app.example/')).toBeNull();
+      expect(headerFor(b, 'https://app.example/')).toContain('session=b');
+      expect(persistence.remove).toHaveBeenCalledWith(DEVICE_A);
+      expect(persistence.remove).not.toHaveBeenCalledWith(DEVICE_B);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+it('orders a full clear after an in-flight encrypted write', async () => {
+  vi.useFakeTimers();
+  try {
+    const events = [];
+    let finishWrite;
+    const writePending = new Promise((resolve) => { finishWrite = resolve; });
+    const persistence = {
+      read: vi.fn(async () => null),
+      write: vi.fn(async () => { events.push('write'); await writePending; }),
+      remove: vi.fn(async () => { events.push('remove'); }),
+      close: vi.fn(),
+    };
+    const profiles = createDeviceCookieProfiles({ createCookies, persistence });
+    await profiles.configure(DEVICE_A, { persist: true, retentionDays: 30 });
+    const cookies = createCookies();
+    profiles.attach(DEVICE_A, cookies);
+    cookies.setByServer('https://app.example/', ['session=value; Path=/']);
+    vi.advanceTimersByTime(500);
+    await Promise.resolve();
+
+    profiles.clear(DEVICE_A, {});
+    expect(events).toEqual(['write']);
+    finishWrite();
+    await profiles.close();
+
+    expect(events).toEqual(['write', 'remove']);
+    expect(headerFor(cookies, 'https://app.example/')).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
