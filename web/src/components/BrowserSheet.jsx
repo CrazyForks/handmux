@@ -39,7 +39,6 @@ export default function BrowserSheet({ browser }) {
   const [bodySize, setBodySize] = useState({ width: 0, height: 0 });
   const [loadedTabs, setLoadedTabs] = useState(() => new Set());
   const [refreshingTabs, setRefreshingTabs] = useState(() => new Set());
-  const [reloadIntent, setReloadIntent] = useState(null);
   const [reloadKeys, setReloadKeys] = useState({});
   const [modeOpen, setModeOpen] = useState(false);
   const [historyModeOpen, setHistoryModeOpen] = useState(null);
@@ -50,7 +49,6 @@ export default function BrowserSheet({ browser }) {
   const frameUrls = useRef(new Map());
   const addressRef = useRef(null);
   const bodyRef = useRef(null);
-  const selectionEpoch = useRef(0);
   const clearTriggerRef = useRef(null);
   const clearCancelRef = useRef(null);
   const clearDialogRef = useRef(null);
@@ -123,43 +121,17 @@ export default function BrowserSheet({ browser }) {
     }, '*');
   }, []);
 
-  useEffect(() => {
-    if (!reloadIntent) return;
-    if (reloadIntent.epoch !== selectionEpoch.current) {
-      setReloadIntent(null);
-      return;
-    }
-    if (historyActive || activeId !== reloadIntent.id) return;
-    const tab = tabs.find((item) => item.id === reloadIntent.id);
-    if (!tab) {
-      setReloadIntent(null);
-      return;
-    }
-    if (tab.mode === 'proxy') {
-      setRefreshingTabs((current) => new Set(current).add(tab.id));
-      postTabCommand(tab, 'reload');
-    } else {
-      setReloadKeys((current) => ({ ...current, [tab.id]: (current[tab.id] || 0) + 1 }));
-    }
-    setReloadIntent(null);
-  }, [activeId, historyActive, postTabCommand, reloadIntent, tabs]);
-
   const postCommand = (command) => postTabCommand(active, command);
 
-  const selectTab = async (tab) => {
+  const selectTab = (tab) => {
     setModeOpen(false);
     setHistoryError(null);
-    const epoch = ++selectionEpoch.current;
-    const switched = await switchTab(tab.id);
-    if (!switched || epoch !== selectionEpoch.current) return;
-    setReloadIntent({ id: tab.id, epoch });
+    switchTab(tab.id);
   };
 
   const selectHistory = () => {
     setModeOpen(false);
     setHistoryError(null);
-    selectionEpoch.current += 1;
-    setReloadIntent(null);
     return switchTab('history');
   };
 

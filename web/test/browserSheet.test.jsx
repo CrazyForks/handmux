@@ -393,7 +393,7 @@ describe('BrowserSheet', () => {
     }
   });
 
-  it('keeps iframe state mounted and reloads a tab after its selection is committed', async () => {
+  it('keeps iframe state mounted without reloading when tabs are switched', async () => {
     const model = browser({ switchTab: vi.fn().mockResolvedValue(true) });
     await render(model);
     const first = document.querySelector('iframe[data-tab-id="a"]');
@@ -412,14 +412,11 @@ describe('BrowserSheet', () => {
 
     expect(document.querySelector('iframe[data-tab-id="a"]')).toBe(first);
     expect(document.querySelector('iframe[data-tab-id="b"]')).toBe(second);
-    expect(postSecond.mock.calls.map(([message]) => message)).toEqual([
-      { source: 'handmux-browser-parent', channel: 'cb', command: 'reload' },
-      { source: 'handmux-browser-parent', channel: 'cb', command: 'reload' },
-    ]);
-    expect(postFirst).toHaveBeenCalledWith({ source: 'handmux-browser-parent', channel: 'ca', command: 'reload' }, '*');
+    expect(postSecond).not.toHaveBeenCalled();
+    expect(postFirst).not.toHaveBeenCalled();
   });
 
-  it('reloads only the last tab clicked when switch promises finish out of order', async () => {
+  it('does not reload either tab when switch promises finish out of order', async () => {
     let resolveA;
     let resolveB;
     const switchTab = vi.fn((id) => new Promise((resolve) => {
@@ -441,7 +438,7 @@ describe('BrowserSheet', () => {
     await act(async () => { resolveB(true); await Promise.resolve(); });
     await render({ ...model, activeId: 'b' });
 
-    expect(postFirst).toHaveBeenCalledWith({ source: 'handmux-browser-parent', channel: 'ca', command: 'reload' }, '*');
+    expect(postFirst).not.toHaveBeenCalled();
     expect(postSecond).not.toHaveBeenCalled();
   });
 
