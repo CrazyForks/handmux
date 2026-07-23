@@ -380,6 +380,29 @@ describe('browser routes', () => {
     expect(res.body.url).toBe('https://browser-existing.handmux.example.com:30443/_browser-bootstrap/navigate');
   });
 
+  it('prepares a form navigation as a method-preserving target-origin bootstrap', async () => {
+    const browser = browserFake();
+    browser.prepareFormNavigation = vi.fn(() => ({
+        id: 'tab-a', mode: 'proxy', originalUrl: 'https://b.example/login',
+        url: 'https://browser-b.example/_browser-b/https://b.example/login',
+      }));
+    const issue = vi.fn(() => 'https://browser-b.example/_browser-bootstrap/post-ticket');
+    const app = appFor(browser, 'preview.example', { issue });
+
+    const res = await asDevice(request(app)
+      .post('/browser-tabs/tab-a/prepare-form-navigation'))
+      .send({ url: 'https://b.example/login' })
+      .expect(200);
+
+    expect(browser.prepareFormNavigation).toHaveBeenCalledWith(
+      'tab-a', 'https://b.example/login', DEVICE, expect.stringContaining('.preview.example'),
+    );
+    expect(issue).toHaveBeenCalledWith(expect.objectContaining({
+      preserveMethod: true, redirectStatus: 307,
+    }));
+    expect(res.body.url).toContain('/_browser-bootstrap/post-ticket');
+  });
+
   it('returns 404 when updating a missing tab', async () => {
     const browser = browserFake();
     browser.setVisible.mockReturnValue(null);

@@ -18,6 +18,7 @@ function proxyBackend() {
   let failVisibility = false;
   const visibilityStatuses = [];
   const visibilityDelays = [];
+  const prepareDelays = [];
   const clearDelays = [];
   const byDevice = new Map();
   const calls = [];
@@ -55,6 +56,21 @@ function proxyBackend() {
       };
       save(device, [...tabs(device), tab]);
       return json(201, tab);
+    }
+    const prepareMatch = path.match(/^\/api\/browser-tabs\/([^/]+)\/prepare-form-navigation$/);
+    if (method === 'POST' && prepareMatch) {
+      const delay = prepareDelays.shift();
+      if (delay) await delay;
+      const id = decodeURIComponent(prepareMatch[1]);
+      const current = tabs(device).find((tab) => tab.id === id);
+      if (!current) return json(404, { error: 'browser tab not found' });
+      const updated = {
+        ...current,
+        originalUrl: body.url,
+        url: 'https://target.preview.example/_browser-bootstrap/post-ticket',
+      };
+      save(device, tabs(device).map((tab) => tab.id === id ? updated : tab));
+      return json(200, { url: updated.url, tab: updated });
     }
     const match = path.match(/^\/api\/browser-tabs\/([^/]+)(?:\/(navigate|visibility))?$/);
     if (!match) return json(404, { error: 'browser tab not found' });
@@ -97,6 +113,11 @@ function proxyBackend() {
     deferNextVisibility() {
       let release;
       visibilityDelays.push(new Promise((resolve) => { release = resolve; }));
+      return release;
+    },
+    deferNextPrepare() {
+      let release;
+      prepareDelays.push(new Promise((resolve) => { release = resolve; }));
       return release;
     },
     deferNextClear() {
@@ -620,6 +641,40 @@ describe('browser main-process coordinator', () => {
     expect(listed.body.tabs).toContainEqual(expect.objectContaining({
       originalUrl: 'https://app.example/new', mode: 'proxy',
     }));
+  });
+
+  it('forwards prepared form navigation with logical ids and serializes later device mutations', async () => {
+    const backend = proxyBackend();
+    const app = appFor(backend);
+    const proxy = await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://a.example/', closeAfterMinutes: 30, mode: 'proxy',
+    }).expect(201);
+    const releasePrepare = backend.deferNextPrepare();
+
+    const pendingPrepare = asDevice(request(app)
+      .post(`/api/browser-tabs/${proxy.body.id}/prepare-form-navigation`))
+      .send({ url: 'https://b.example/login' });
+    const prepareOutcome = pendingPrepare.then((response) => response);
+    await vi.waitFor(() => expect(backend.calls).toContainEqual(expect.objectContaining({
+      method: 'POST',
+      path: expect.stringMatching(/\/prepare-form-navigation$/),
+    })));
+
+    const pendingVisibility = asDevice(request(app)
+      .patch(`/api/browser-tabs/${proxy.body.id}/visibility`))
+      .send({ visible: false, closeAfterMinutes: 30 });
+    const visibilityOutcome = pendingVisibility.then((response) => response);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(backend.calls.filter((call) => call.method === 'PATCH')).toHaveLength(0);
+
+    releasePrepare();
+    const prepared = await prepareOutcome;
+    expect(prepared.status).toBe(200);
+    expect(prepared.body.tab).toMatchObject({
+      id: proxy.body.id,
+      originalUrl: 'https://b.example/login',
+    });
+    expect((await visibilityOutcome).status).toBe(200);
   });
 
   it('clears direct expiry timers when the coordinator closes', async () => {

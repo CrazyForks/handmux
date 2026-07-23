@@ -155,6 +155,33 @@ export function browserRoutes({
     res.json(publicTab(tab, req.browserDeviceId));
   });
 
+  r.post('/browser-tabs/:id/prepare-form-navigation', async (req, res, next) => {
+    if (!browser) return res.status(503).json({ error: 'browser unavailable' });
+    const { url } = req.body || {};
+    if (!validTarget(url)) return res.status(400).json({ error: 'browser URL must use http or https' });
+    if (!publicBase) return res.status(503).json({ error: 'browser proxy unavailable' });
+    try {
+      const origin = wildcardOrigin(publicBase, new URL(url).origin);
+      const tab = await browser.prepareFormNavigation(
+        req.params.id,
+        url,
+        req.browserDeviceId,
+        origin,
+      );
+      if (!tab) return res.status(404).json({ error: 'browser tab not found' });
+      const bootstrapUrl = browserBootstrap.issue({
+        url: tab.url,
+        origin: new URL(tab.url).origin,
+        deviceId: req.browserDeviceId,
+        preserveMethod: true,
+        redirectStatus: 307,
+      });
+      return res.json({ url: bootstrapUrl, tab: { ...tab, url: bootstrapUrl } });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
   r.post('/browser-tabs/:id/navigate', async (req, res, next) => {
     if (!browser) return res.status(503).json({ error: 'browser unavailable' });
     const { url, mode = 'proxy' } = req.body || {};

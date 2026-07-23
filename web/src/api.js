@@ -180,6 +180,11 @@ export const navigateBrowserTab = (id, url, mode) =>
     method: 'POST',
     body: JSON.stringify({ url, mode }),
   });
+export const prepareBrowserFormNavigation = (id, url) =>
+  browserReq(`/api/browser-tabs/${encodeURIComponent(id)}/prepare-form-navigation`, {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  });
 export const deleteBrowserTab = (id) =>
   browserReq(`/api/browser-tabs/${encodeURIComponent(id)}`, { method: 'DELETE' });
 

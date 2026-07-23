@@ -8,6 +8,7 @@ const api = vi.hoisted(() => ({
   deleteBrowserTab: vi.fn(),
   getBrowserTabs: vi.fn(),
   navigateBrowserTab: vi.fn(),
+  prepareBrowserFormNavigation: vi.fn(),
   setBrowserProfilePrefs: vi.fn(),
   setBrowserTabVisible: vi.fn(),
 }));

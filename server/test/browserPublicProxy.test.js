@@ -177,6 +177,29 @@ describe('browser public proxy', () => {
     expect(browserBootstrap.consume).toHaveBeenCalledWith('/_browser-bootstrap/ticket', 'https://handmux.example.com:30443');
   });
 
+  it('preserves POST method and body with a 307 bootstrap handoff', async () => {
+    const browserBootstrap = {
+      consume: vi.fn(() => ({
+        deviceId: DEVICE,
+        url: 'https://b.example/_browser-tab-b/https://target.example/',
+        preserveMethod: true,
+        redirectStatus: 307,
+      })),
+    };
+    const proxy = createBrowserPublicProxy({ browser: {}, browserBootstrap });
+    const app = express();
+    app.use(proxy.handler);
+
+    const res = await request(app).post('/_browser-bootstrap/post-ticket')
+      .set('Host', 'b.example')
+      .set('X-Forwarded-Proto', 'https')
+      .send('secret-body');
+
+    expect(res.status).toBe(307);
+    expect(res.headers.location).toContain('/_browser-tab-b/');
+    expect(res.headers['set-cookie'][0]).toContain(`tw_browser_device=${DEVICE}`);
+  });
+
   it('returns a specific 502 when the internal proxy is unavailable', async () => {
     const browser = { internalPorts: [9, 10], ownsPublicPath: () => true, hasDevice: () => true };
     const proxy = createBrowserPublicProxy({ browser });

@@ -104,7 +104,7 @@ describe('device cookie profiles', () => {
     expect(headerFor(otherDevice, 'https://app.corp.example/app/home')).toContain('other_device=five');
   });
 
-  it('replaces the complete jar without merging session pending queues', () => {
+  it('replaces the complete jar without merging session pending queues', async () => {
     const profiles = createDeviceCookieProfiles({ createCookies });
     const a = createCookies();
     const b = createCookies();
@@ -112,7 +112,7 @@ describe('device cookie profiles', () => {
     profiles.attach(DEVICE_A, b);
     a.setCookies([{ name: 'client', value: 'a', domain: 'app.example', path: '/' }]);
 
-    expect(profiles.clear(DEVICE_A, {})).toEqual({ cleared: true });
+    await expect(profiles.clear(DEVICE_A, {})).resolves.toEqual({ cleared: true });
 
     expect(headerFor(a, 'https://app.example/')).toBeNull();
     expect(headerFor(b, 'https://app.example/')).toBeNull();
@@ -147,7 +147,7 @@ describe('device cookie profiles', () => {
     expect(onMutation).toHaveBeenCalledTimes(4);
   });
 
-  it('serializes, removes, and reports profiles by device', () => {
+  it('serializes, removes, and reports profiles by device', async () => {
     const profiles = createDeviceCookieProfiles({ createCookies });
     const cookies = createCookies();
     profiles.attach(DEVICE_A, cookies);
@@ -160,7 +160,7 @@ describe('device cookie profiles', () => {
     expect(profiles.remove(DEVICE_A)).toBe(true);
     expect(profiles.remove(DEVICE_A)).toBe(false);
     expect(profiles.has(DEVICE_A)).toBe(false);
-    expect(profiles.clear(DEVICE_B, {})).toEqual({ cleared: false });
+    await expect(profiles.clear(DEVICE_B, {})).resolves.toEqual({ cleared: true });
   });
 });
 
@@ -557,6 +557,63 @@ describe('device cookie profile concurrency', () => {
     expect(removeAttempts).toBe(2);
     expect(headerFor(restored, 'https://app.example/')).toBeNull();
     await restarted.close();
+  });
+
+  it('removes a legacy disk profile on full clear from a fresh default-off worker', async () => {
+    const stale = createCookies();
+    stale.setByServer('https://app.example/', ['session=stale; Path=/']);
+    let disk = stale.serializeJar();
+    const persistence = {
+      read: vi.fn(async () => disk),
+      write: vi.fn(),
+      remove: vi.fn(async () => { disk = null; }),
+      close: vi.fn(),
+    };
+    const profiles = createDeviceCookieProfiles({ createCookies, persistence });
+
+    await profiles.clear(DEVICE_A, {});
+    expect(persistence.write).not.toHaveBeenCalled();
+    await profiles.configure(DEVICE_A, { persist: true, retentionDays: 30 });
+    const restored = createCookies();
+    profiles.attach(DEVICE_A, restored);
+
+    expect(persistence.remove).toHaveBeenCalledWith(DEVICE_A);
+    expect(headerFor(restored, 'https://app.example/')).toBeNull();
+    await profiles.close();
+  });
+
+  it('reschedules retention after a failed disable invalidates the old timer epoch', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    try {
+      let removes = 0;
+      const persistence = {
+        read: vi.fn(async () => null),
+        write: vi.fn(),
+        remove: vi.fn(async () => {
+          removes += 1;
+          if (removes === 1) throw new Error('remove failed');
+        }),
+        close: vi.fn(),
+      };
+      const profiles = createDeviceCookieProfiles({ createCookies, persistence });
+      await profiles.configure(DEVICE_A, { persist: true, retentionDays: 1 });
+      const cookies = createCookies();
+      profiles.attach(DEVICE_A, cookies);
+      cookies.setByServer('https://app.example/', ['session=current; Path=/']);
+      profiles.setActive(DEVICE_A, true);
+      profiles.setActive(DEVICE_A, false);
+
+      await expect(profiles.configure(DEVICE_A, { persist: false, retentionDays: 1 }))
+        .rejects.toThrow('remove failed');
+      await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
+
+      expect(headerFor(cookies, 'https://app.example/')).toBeNull();
+      expect(removes).toBe(2);
+      await profiles.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('persists a site clear before restart without touching sibling cookies', async () => {

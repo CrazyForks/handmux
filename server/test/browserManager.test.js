@@ -515,14 +515,22 @@ describe('browser preview manager', () => {
     expect(payload).toContain("send('urlchange')");
     expect(payload).toContain("send('navigate', url)");
     expect(payload).toContain('beforeFormSubmit');
-    expect(payload).toContain("type: 'native-navigation', url");
+    expect(payload).toContain('addInternalEventAfterListener');
+    expect(payload).toContain('defaultPrevented');
+    expect(payload).toContain("type: 'prepare-form-navigation'");
+    expect(payload).toContain('requestId');
+    expect(payload).toContain('args.preventSubmit = true');
+    expect(payload).toContain('nativeMethods.formActionSetter');
+    expect(payload).toContain('nativeMethods.inputFormActionSetter');
+    expect(payload).toContain('nativeMethods.buttonFormActionSetter');
+    expect(payload).toContain('form.requestSubmit(submitter)');
+    expect(payload).toContain('nativeMethods.formSubmit.call(form)');
     expect(payload).toContain("method === 'get'");
-    expect(payload).toContain('HTMLFormElement.prototype.submit');
-    expect(payload).toContain("addEventListener('submit'");
-    expect(payload).not.toContain('preventDefault');
+    expect(payload).toContain('preventDefault');
     expect(payload).not.toContain('FormData');
     expect(payload).not.toContain('.elements');
     expect(payload).not.toContain('password');
+    expect(payload).not.toContain("type: 'native-navigation'");
     expect(payload).toContain("addEventListener('DOMContentLoaded', observeTitle");
     expect(payload).toContain('observer.observe(document.head');
     expect(payload).toContain('if (title === lastTitle && url === lastTitleUrl) return');
@@ -569,6 +577,34 @@ describe('browser preview manager', () => {
     expect(fake.proxies).toHaveLength(2);
     expect(fake.proxies[0].closeSession).toHaveBeenCalledOnce();
     expect(fake.proxies[1].openSession).toHaveBeenCalledOnce();
+  });
+
+  it('prepares a cross-origin form target without issuing GET and moves tab metadata to the stable context', async () => {
+    const fake = fakeHammerhead();
+    const ids = ['tab-a', 'context-b'];
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      randomId: () => ids.shift(),
+    });
+    await manager.create({
+      url: 'https://a.example/', origin: 'https://browser-a.preview.example',
+      closeAfterMinutes: 10, deviceId: DEVICE,
+    });
+
+    const prepared = await manager.prepareFormNavigation(
+      'tab-a', 'https://b.example/login', DEVICE, 'https://browser-b.preview.example',
+    );
+
+    expect(prepared).toMatchObject({
+      id: 'tab-a',
+      originalUrl: 'https://b.example/login',
+    });
+    expect(prepared).not.toHaveProperty('publicOrigin');
+    expect(prepared.url).toContain('/_browser-context-b/');
+    expect(fake.proxies[1].openSession).toHaveBeenCalledOnce();
+    expect(manager.get('tab-a', DEVICE).originalUrl).toBe('https://b.example/login');
+    expect(fake.proxies[0].closeSession).toHaveBeenCalledOnce();
+    await manager.close();
   });
 
   it('releases an intermediate context when two cross-origin navigations race', async () => {

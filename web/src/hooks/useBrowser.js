@@ -5,6 +5,7 @@ import {
   deleteBrowserTab,
   getBrowserTabs,
   navigateBrowserTab,
+  prepareBrowserFormNavigation,
   setBrowserProfilePrefs,
   setBrowserTabVisible,
 } from '../api.js';
@@ -578,6 +579,17 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     }
   }, [commitTabs]);
 
+  const prepareFormNavigation = useCallback(async (id, url) => {
+    try {
+      const prepared = await prepareBrowserFormNavigation(id, url);
+      setError(null);
+      return prepared;
+    } catch (nextError) {
+      setError(nextError);
+      return null;
+    }
+  }, []);
+
   const setCloseAfter = useCallback((value) => {
     setBrowserCloseAfter(value);
     const saved = readBrowserPrefs().closeAfter;
@@ -720,6 +732,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     clearProxyLogin,
     setHistoryMode,
     navigateTab,
+    prepareFormNavigation,
     updateTabMeta,
     deleteHistory,
     clearHistory,

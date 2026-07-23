@@ -188,6 +188,7 @@ export function createBrowserCoordinator({
 
   const handleBrowserRequest = async (req, res, deviceId) => {
     const path = req.path || '/';
+    const prepareFormMatch = path.match(/^\/([^/]+)\/prepare-form-navigation$/);
     const navigateMatch = path.match(/^\/([^/]+)\/navigate$/);
     const visibilityMatch = path.match(/^\/([^/]+)\/visibility$/);
     const tabMatch = path.match(/^\/([^/]+)$/);
@@ -351,6 +352,27 @@ export function createBrowserCoordinator({
       if (response?.status === 200 && updated) {
         const logical = rememberProxy(updated, logicalId, deviceId);
         return res.json(publicTab(logical));
+      }
+      return sendProxy(res, response);
+    }
+
+    if (req.method === 'POST' && prepareFormMatch) {
+      const logicalId = decodeURIComponent(prepareFormMatch[1]);
+      const url = targetUrl(req.body?.url);
+      if (!url) return res.status(400).json({ error: 'browser URL must use http or https' });
+      if (directFor(logicalId, deviceId)) {
+        return res.status(409).json({ error: 'browser form navigation requires proxy mode' });
+      }
+      const response = await proxyCall(
+        req,
+        'POST',
+        `/api/browser-tabs/${encodeURIComponent(workerId(logicalId))}/prepare-form-navigation`,
+        { url },
+      );
+      const payload = jsonBody(response);
+      if (response?.status === 200 && payload?.tab) {
+        const logical = rememberProxy(payload.tab, logicalId, deviceId);
+        return res.json({ ...payload, tab: publicTab(logical) });
       }
       return sendProxy(res, response);
     }

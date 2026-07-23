@@ -209,6 +209,8 @@ export function createDeviceCookieProfiles({
         await queueOperation(profile, () => persistence.remove(deviceId));
       } catch (error) {
         profile.dirty ||= wasDirty;
+        const retention = scheduleRetention(deviceId, profile);
+        if (retention) await retention;
         throw error;
       }
       if (profile.flushTimer !== null) {
@@ -292,7 +294,8 @@ export function createDeviceCookieProfiles({
   };
 
   const clear = (deviceId, { url, hostname } = {}) => {
-    const profile = profiles.get(deviceId);
+    const fullClear = !hostname && !url;
+    const profile = profiles.get(deviceId) || (fullClear ? profileFor(deviceId) : null);
     if (!profile) return { cleared: false };
     profile.used = true;
     profile.useVersion += 1;
@@ -308,11 +311,8 @@ export function createDeviceCookieProfiles({
         clearTimer(profile.flushTimer);
         profile.flushTimer = null;
       }
-      if (profile.persist) {
-        return queueOperation(profile, () => persistence.remove(deviceId))
-          .then(() => ({ cleared: true }));
-      }
-      return { cleared: true };
+      return queueOperation(profile, () => persistence.remove(deviceId))
+        .then(() => ({ cleared: true }));
     }
 
     const normalizedHostname = targetHostname.toLowerCase();

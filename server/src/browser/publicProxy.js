@@ -92,7 +92,10 @@ export function createBrowserPublicProxy({
       const secure = origin?.startsWith('https://') ? '; Secure' : '';
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('Set-Cookie', `${DEVICE_COOKIE}=${bootstrap.deviceId}; Path=/; HttpOnly; SameSite=Strict${secure}`);
-      return res.redirect(302, bootstrap.url);
+      return res.redirect(
+        bootstrap.preserveMethod ? (bootstrap.redirectStatus || 307) : 302,
+        bootstrap.url,
+      );
     }
     const deviceId = cookieValue(req.headers.cookie, DEVICE_COOKIE);
     const target = browserTarget(browser, req, deviceId);

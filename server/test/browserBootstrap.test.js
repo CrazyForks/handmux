@@ -31,4 +31,18 @@ describe('browser preview-origin bootstrap', () => {
     const store = createBrowserBootstrapStore();
     expect(store.consume('/_browser-bootstrap/%', 'https://preview.example')).toBeNull();
   });
+
+  it('carries one-shot method-preserving redirect metadata', () => {
+    const store = createBrowserBootstrapStore({ randomToken: () => 'post-ticket' });
+    store.issue({
+      url: 'https://b.preview.example/_browser-b/https://target.example/',
+      origin: 'https://b.preview.example',
+      deviceId: 'device_abcdefghijklmnopqrstuvwxyz123456',
+      preserveMethod: true,
+      redirectStatus: 307,
+    });
+
+    expect(store.consume('/_browser-bootstrap/post-ticket', 'https://b.preview.example'))
+      .toMatchObject({ preserveMethod: true, redirectStatus: 307 });
+  });
 });
