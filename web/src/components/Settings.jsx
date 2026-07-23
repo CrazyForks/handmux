@@ -6,6 +6,7 @@ import { fetchPaneCwd, getPanes } from '../api.js';
 import { fmtRemainMin, useRemaining } from '../previewCountdown.js';
 import { getDocHighlight, setDocHighlight } from '../storage.js';
 import { t, getLangCode, setLang, AVAILABLE } from '../i18n';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap.js';
 
 // Settings modal: the screen-column controls (⊟/⊞/↺, previously in the topbar) plus an explicit
 // font-size control. Font reads/writes the live terminal through termRef — the same persisted
@@ -51,22 +52,16 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   const [profileConfirm, setProfileConfirm] = useState(null);
   const profileConfirmTriggerRef = useRef(null);
   const profileConfirmCancelRef = useRef(null);
+  const profileConfirmDialogRef = useRef(null);
   const remainMs = useRemaining(activePreview?.expiresAt, !!activePreview && open); // live TTL countdown
   useEffect(() => { setConfirmStop(false); }, [activePreview?.name, open]); // reset guards per preview/open
-  useEffect(() => {
-    if (!profileConfirm) return undefined;
-    const trigger = profileConfirmTriggerRef.current;
-    const frame = requestAnimationFrame(() => profileConfirmCancelRef.current?.focus());
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') setProfileConfirm(null);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener('keydown', onKeyDown);
-      trigger?.focus();
-    };
-  }, [profileConfirm]);
+  useModalFocusTrap({
+    active: !!profileConfirm,
+    dialogRef: profileConfirmDialogRef,
+    initialFocusRef: profileConfirmCancelRef,
+    returnFocusRef: profileConfirmTriggerRef,
+    onClose: () => setProfileConfirm(null),
+  });
   // Open the dir picker seeded at the LAST preview dir for this window (so re-previewing the same
   // build is one tap), else the pane's current cwd (re-fetched, honoring a mid-session `cd`), else
   // $HOME. The picker also has a "jump to cwd" shortcut for switching dirs on the spot.
@@ -460,7 +455,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
       </div>
       {profileConfirm && (
         <div className="browser-profile-confirm-backdrop">
-          <div className="browser-profile-confirm" role="alertdialog" aria-modal="true"
+          <div ref={profileConfirmDialogRef} className="browser-profile-confirm" role="alertdialog" aria-modal="true"
             aria-label={profileConfirm === 'clear' ? t('browser.clearAllLogin') : t('settings.browserPersistLogin')}>
             <p>{t(profileConfirm === 'clear'
               ? 'browser.clearAllLoginConfirm'

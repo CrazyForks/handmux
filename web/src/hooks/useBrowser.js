@@ -159,13 +159,14 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const synchronizeProfile = useCallback(() => {
     if (profileSyncPromise.current) return profileSyncPromise.current;
     const prefs = readBrowserPrefs();
+    const generation = profilePrefsGeneration.current;
     let task;
     task = setBrowserProfilePrefs({
       persist: prefs.persistProxyLogin,
       retentionDays: prefs.proxyLoginRetentionDays,
     }).then((response) => {
       noteRecoveryWarning(response);
-      return response;
+      return { response, generation };
     }).catch(() => {
       throw new Error(t('browser.profileSyncFailed'));
     }).finally(() => {
@@ -177,8 +178,18 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   }, [noteRecoveryWarning]);
 
   const awaitProfileSyncForOpen = useCallback(async () => {
-    await switchQueue.current;
-    await synchronizeProfile();
+    while (true) {
+      const queue = switchQueue.current;
+      await queue;
+      if (queue !== switchQueue.current) continue;
+      const generation = profilePrefsGeneration.current;
+      const synced = await synchronizeProfile();
+      if (
+        queue === switchQueue.current
+        && generation === profilePrefsGeneration.current
+        && synced.generation === generation
+      ) return;
+    }
   }, [synchronizeProfile]);
 
   useEffect(() => {
@@ -653,16 +664,19 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       return true;
     } catch {
       try {
-        const generation = mutationGeneration.current;
-        const { tabs: loaded = [] } = await getBrowserTabs();
-        if (mutationGeneration.current !== generation) throw new Error('stale clear resync');
-        const normalized = normalizeServerTabs(loaded);
-        mutationGeneration.current += 1;
-        commitTabs(normalized);
-        const selected = normalized.find((tab) => tab.visible) || null;
-        commitActiveId(selected?.id || null);
-        commitHistoryActive(!selected);
-        if (!selected) commitOpen(false);
+        while (true) {
+          const generation = mutationGeneration.current;
+          const { tabs: loaded = [] } = await getBrowserTabs();
+          if (mutationGeneration.current !== generation) continue;
+          const normalized = normalizeServerTabs(loaded);
+          mutationGeneration.current += 1;
+          commitTabs(normalized);
+          const selected = normalized.find((tab) => tab.visible) || null;
+          commitActiveId(selected?.id || null);
+          commitHistoryActive(!selected);
+          if (!selected) commitOpen(false);
+          break;
+        }
       } catch { /* keep the last confirmed local state if resync also fails */ }
       setError(new Error(t('browser.profileClearFailed')));
       return false;

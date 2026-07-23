@@ -85,6 +85,8 @@ describe('Settings preview section', () => {
   });
 
   it('makes profile confirmation keyboard-modal and restores trigger focus', async () => {
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
     const browser = {
       proxyAvailable: true, defaultMode: 'direct', persistProxyLogin: false,
       proxyLoginRetentionDays: 30, setDefaultMode: vi.fn(), setPersistProxyLogin: vi.fn(),
@@ -98,11 +100,26 @@ describe('Settings preview section', () => {
     await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
 
     const dialog = document.querySelector('.browser-profile-confirm');
-    expect(document.activeElement).toBe(dialog.querySelector('button'));
+    const [cancel, confirm] = dialog.querySelectorAll('button');
+    expect(document.activeElement).toBe(cancel);
     expect(container.querySelector('.settings-card').hasAttribute('inert')).toBe(true);
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Tab', shiftKey: true, bubbles: true, cancelable: true,
+    })));
+    expect(document.activeElement).toBe(confirm);
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Tab', bubbles: true, cancelable: true,
+    })));
+    expect(document.activeElement).toBe(cancel);
+    outside.focus();
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Tab', bubbles: true, cancelable: true,
+    })));
+    expect(document.activeElement).toBe(cancel);
     act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
     expect(document.querySelector('.browser-profile-confirm')).toBeNull();
     expect(document.activeElement).toBe(trigger);
+    outside.remove();
   });
 
   it('defaults to 不开启; picking 静态 reveals 选择目录启动 and opens the dir picker', async () => {

@@ -13,7 +13,7 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('../src/api.js', () => api);
 
-import { readBrowserHistory, upsertBrowserHistory } from '../src/browserState.js';
+import { readBrowserHistory, readBrowserPrefs, upsertBrowserHistory } from '../src/browserState.js';
 import { t } from '../src/i18n';
 import { useBrowser } from '../src/hooks/useBrowser.js';
 
@@ -849,6 +849,55 @@ describe('useBrowser', () => {
     expect(localStorage.getItem('hm_browser_profile_retention1')).toBe('7');
   });
 
+  it('waits for a stable preference queue and re-syncs changes made at the sync-create boundary', async () => {
+    const requests = [];
+    api.setBrowserProfilePrefs.mockImplementation((prefs) => new Promise((resolve) => {
+      requests.push({ prefs, resolve });
+    }));
+    api.createBrowserTab.mockResolvedValue(tab('proxy', { mode: 'proxy' }));
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+    requests[0].resolve({ ...requests[0].prefs, warning: null });
+    await flush();
+
+    let persist;
+    act(() => { persist = result.current.setPersistProxyLogin(true); });
+    await flush();
+    let opening;
+    act(() => {
+      opening = result.current.openUrl('https://example.com/stable', { mode: 'proxy' });
+    });
+    let retention;
+    act(() => { retention = result.current.setProxyLoginRetentionDays(7); });
+    requests[1].resolve({ ...requests[1].prefs, warning: null });
+    await flush();
+    expect(api.createBrowserTab).not.toHaveBeenCalled();
+    expect(requests[2].prefs).toEqual({ persist: true, retentionDays: 7 });
+
+    requests[2].resolve({ ...requests[2].prefs, warning: null });
+    await flush();
+    expect(requests[3].prefs).toEqual({ persist: true, retentionDays: 7 });
+    let disable;
+    act(() => { disable = result.current.setPersistProxyLogin(false); });
+    await flush();
+    expect(requests[4].prefs).toEqual({ persist: false, retentionDays: 7 });
+    requests[3].resolve({ ...requests[3].prefs, warning: null });
+    await flush();
+    expect(api.createBrowserTab).not.toHaveBeenCalled();
+
+    requests[4].resolve({ ...requests[4].prefs, warning: null });
+    await flush();
+    expect(requests[5].prefs).toEqual({ persist: false, retentionDays: 7 });
+    requests[5].resolve({ ...requests[5].prefs, warning: null });
+    await act(async () => { await Promise.all([persist, retention, disable, opening]); });
+
+    expect(api.createBrowserTab).toHaveBeenCalledOnce();
+    expect(readBrowserPrefs()).toMatchObject({
+      persistProxyLogin: false,
+      proxyLoginRetentionDays: 7,
+    });
+  });
+
   it('shows profile recovery warning once without clearing it during the matching save', async () => {
     api.setBrowserProfilePrefs.mockResolvedValue({
       persist: false, retentionDays: 30, warning: 'profile-recovery-failed',
@@ -922,6 +971,36 @@ describe('useBrowser', () => {
     await flush();
 
     expect(result.current.tabs.map((item) => item.id)).toEqual(['direct']);
+  });
+
+  it('retries failed-clear resync across concurrent metadata and open mutations', async () => {
+    let releaseResync;
+    const direct = tab('direct', { mode: 'direct' });
+    const ghost = tab('ghost', { mode: 'proxy' });
+    const opened = tab('opened', { mode: 'direct' });
+    api.getBrowserTabs
+      .mockResolvedValueOnce({ tabs: [ghost, direct] })
+      .mockReturnValueOnce(new Promise((resolve) => { releaseResync = resolve; }))
+      .mockResolvedValueOnce({ tabs: [direct, opened] });
+    api.clearBrowserProfile.mockRejectedValue(new Error('profile disk unavailable'));
+    api.createBrowserTab.mockResolvedValue(opened);
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+
+    let clearing;
+    act(() => { clearing = result.current.clearProxyLogin(null); });
+    await flush();
+    let opening;
+    act(() => {
+      result.current.updateTabMeta('ghost', { title: 'stale local title' });
+      opening = result.current.openUrl('https://example.com/opened', { mode: 'direct' });
+    });
+    await act(async () => { await opening; });
+    releaseResync({ tabs: [direct] });
+    await act(async () => { await clearing; });
+
+    expect(api.getBrowserTabs).toHaveBeenCalledTimes(3);
+    expect(result.current.tabs.map((item) => item.id)).toEqual(['direct', 'opened']);
   });
 
   it('deletes one history row locally without clearing its Cookie profile', async () => {

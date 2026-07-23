@@ -13,6 +13,7 @@ import {
 } from './icons.jsx';
 import { BROWSER_CLOSE_AFTER_OPTIONS } from '../browserState.js';
 import { t } from '../i18n';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap.js';
 
 // Temporary compatibility validation only: unsafe while proxied pages share the Handmux origin.
 const FRAME_SANDBOX = 'allow-scripts allow-forms allow-downloads allow-modals allow-popups allow-same-origin';
@@ -53,6 +54,7 @@ export default function BrowserSheet({ browser }) {
   const selectionEpoch = useRef(0);
   const clearTriggerRef = useRef(null);
   const clearCancelRef = useRef(null);
+  const clearDialogRef = useRef(null);
 
   useEffect(() => {
     setAddress(historyActive ? '' : (active?.originalUrl || ''));
@@ -63,20 +65,13 @@ export default function BrowserSheet({ browser }) {
     if (!historyActive) setHistoryModeOpen(null);
   }, [activeId, historyActive, open]);
 
-  useEffect(() => {
-    if (!clearConfirmation) return undefined;
-    const trigger = clearTriggerRef.current;
-    const frame = requestAnimationFrame(() => clearCancelRef.current?.focus());
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') setClearConfirmation(null);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener('keydown', onKeyDown);
-      trigger?.focus();
-    };
-  }, [clearConfirmation]);
+  useModalFocusTrap({
+    active: !!clearConfirmation,
+    dialogRef: clearDialogRef,
+    initialFocusRef: clearCancelRef,
+    returnFocusRef: clearTriggerRef,
+    onClose: () => setClearConfirmation(null),
+  });
 
   useEffect(() => {
     const onMessage = (event) => {
@@ -489,7 +484,7 @@ export default function BrowserSheet({ browser }) {
       </div>
       {clearConfirmation && (
         <div className="browser-profile-confirm-backdrop">
-          <div className="browser-profile-confirm" role="alertdialog" aria-modal="true"
+          <div ref={clearDialogRef} className="browser-profile-confirm" role="alertdialog" aria-modal="true"
             aria-label={t('browser.clearSiteLogin')}>
             <p>{t('browser.clearSiteLoginConfirm')}</p>
             <div>

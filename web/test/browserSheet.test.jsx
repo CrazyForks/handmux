@@ -184,6 +184,8 @@ describe('BrowserSheet', () => {
   });
 
   it('makes site-clear confirmation keyboard-modal and restores trigger focus', async () => {
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
     const model = browser({ historyActive: true, activeId: null });
     await render(model);
     const menuTrigger = document.querySelector('.browser-history-more');
@@ -195,11 +197,26 @@ describe('BrowserSheet', () => {
     await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
 
     const dialog = document.querySelector('.browser-profile-confirm');
-    expect(document.activeElement).toBe(dialog.querySelector('button'));
+    const [cancel, confirm] = dialog.querySelectorAll('button');
+    expect(document.activeElement).toBe(cancel);
     expect(document.querySelector('.browser-tabs').hasAttribute('inert')).toBe(true);
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Tab', shiftKey: true, bubbles: true, cancelable: true,
+    })));
+    expect(document.activeElement).toBe(confirm);
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Tab', bubbles: true, cancelable: true,
+    })));
+    expect(document.activeElement).toBe(cancel);
+    outside.focus();
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Tab', bubbles: true, cancelable: true,
+    })));
+    expect(document.activeElement).toBe(cancel);
     act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
     expect(document.querySelector('.browser-profile-confirm')).toBeNull();
     expect(document.activeElement).toBe(menuTrigger);
+    outside.remove();
   });
 
   it('deletes history locally without invoking profile cleanup', async () => {
