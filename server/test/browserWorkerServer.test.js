@@ -79,7 +79,7 @@ describe('browser worker server', () => {
 
     expect(response.status).toBe(201);
     expect(browser.create).toHaveBeenCalledWith(expect.objectContaining({
-      origin: expect.stringMatching(/^https:\/\/browser-[a-f0-9]{24}\.preview\.example$/),
+      origin: expect.stringMatching(/^https:\/\/b-[0-9a-z]{13}\.preview\.example$/),
       deviceId: DEVICE,
     }));
   });
