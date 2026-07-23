@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import * as importedHammerhead from 'testcafe-hammerhead';
+import { claimPublicOrigin } from './originLabel.js';
 import { createBrowserSessionStore } from './sessionStore.js';
 import { createBrowserTargetPolicy } from './targetPolicy.js';
 
@@ -157,6 +158,7 @@ export async function createBrowserPreviewManager({
   const pendingPools = new Map();
   const contexts = new Map();
   const pendingContexts = new Map();
+  const publicOriginClaims = new Map();
   let poolCount = 0;
   let closing = false;
   let closePromise = null;
@@ -218,6 +220,7 @@ export async function createBrowserPreviewManager({
   const contextKeyFor = (deviceId, targetOrigin) => `${deviceId}\u0000${targetOrigin}`;
   const contextFor = async ({ deviceId, target, origin, sessionId }) => {
     const targetOrigin = new URL(target).origin;
+    claimPublicOrigin(publicOriginClaims, origin, targetOrigin);
     const key = contextKeyFor(deviceId, targetOrigin);
     const existing = contexts.get(key);
     if (existing) {

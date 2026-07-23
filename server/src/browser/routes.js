@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
 import express from 'express';
+import { browserLabelForOrigin } from './originLabel.js';
 import { browserRequestOrigin } from './publicProxy.js';
 
 const CLOSE_AFTER_MINUTES = new Set([10, 30, 60, 120, null]);
@@ -14,13 +14,9 @@ function previewBase(raw) {
   return url;
 }
 
-function defaultBrowserHostForTarget(targetOrigin) {
-  return createHash('sha256').update(targetOrigin).digest('hex').slice(0, 24);
-}
-
-function wildcardOrigin(base, targetOrigin, browserHostForTarget) {
+function wildcardOrigin(base, targetOrigin) {
   const url = new URL(base.origin);
-  url.hostname = `browser-${browserHostForTarget(targetOrigin)}.${base.hostname}`;
+  url.hostname = `${browserLabelForOrigin(targetOrigin)}.${base.hostname}`;
   return url.origin;
 }
 
@@ -42,7 +38,6 @@ export function browserRoutes({
   browser,
   previewDomain = null,
   browserBootstrap = null,
-  browserHostForTarget = defaultBrowserHostForTarget,
 }) {
   const r = express.Router();
   const publicBase = previewBase(previewDomain);
@@ -90,7 +85,7 @@ export function browserRoutes({
     res.once('close', () => { responseClosed = true; cleanupUnsentTab(); });
     try {
       const origin = publicBase
-        ? wildcardOrigin(publicBase, new URL(url).origin, browserHostForTarget)
+        ? wildcardOrigin(publicBase, new URL(url).origin)
         : browserRequestOrigin(req);
       created = await browser.create({ url, origin, closeAfterMinutes, deviceId: req.browserDeviceId, mode });
       if (responseClosed && !responseFinished) return cleanupUnsentTab();
@@ -125,7 +120,7 @@ export function browserRoutes({
     if (mode === 'proxy' && !publicBase) return res.status(503).json({ error: 'browser proxy unavailable' });
     try {
       const origin = publicBase
-        ? wildcardOrigin(publicBase, new URL(url).origin, browserHostForTarget)
+        ? wildcardOrigin(publicBase, new URL(url).origin)
         : browserRequestOrigin(req);
       const tab = await browser.navigate(req.params.id, url, req.browserDeviceId, origin, mode);
       if (!tab) return res.status(404).json({ error: 'browser tab not found' });

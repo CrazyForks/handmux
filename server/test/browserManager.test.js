@@ -159,18 +159,18 @@ describe('browser preview manager', () => {
       randomChannel: () => 'private-channel',
     });
 
-    const a = await manager.create({ url: 'https://a.example/', origin: 'https://handmux.example:30443', closeAfterMinutes: 10, deviceId: 'device-a' });
-    const b = await manager.create({ url: 'https://b.example/', origin: 'https://handmux.example:30443', closeAfterMinutes: 30, deviceId: 'device-b' });
+    const a = await manager.create({ url: 'https://target.example/a', origin: 'https://handmux.example:30443', closeAfterMinutes: 10, deviceId: 'device-a' });
+    const b = await manager.create({ url: 'https://target.example/b', origin: 'https://handmux.example:30443', closeAfterMinutes: 30, deviceId: 'device-b' });
 
     expect(fake.proxies).toHaveLength(1);
     expect(fake.proxies[0].start).toHaveBeenCalledWith(expect.objectContaining({
       hostname: '127.0.0.1', port1: 4311, port2: 4312, disableCrossDomain: true, disableHttp2: true,
     }));
-    expect(a).toMatchObject({ id: 'tab-a', originalUrl: 'https://a.example/', visible: true, expiresAt: null });
+    expect(a).toMatchObject({ id: 'tab-a', originalUrl: 'https://target.example/a', visible: true, expiresAt: null });
     expect(a.channel).toBe('private-channel');
-    expect(b).toMatchObject({ id: 'tab-b', originalUrl: 'https://b.example/', visible: true, expiresAt: null });
-    expect(a.url).toContain('/_browser-tab-a/https://a.example/');
-    expect(b.url).toContain('/_browser-tab-b/https://b.example/');
+    expect(b).toMatchObject({ id: 'tab-b', originalUrl: 'https://target.example/b', visible: true, expiresAt: null });
+    expect(a.url).toContain('/_browser-tab-a/https://target.example/a');
+    expect(b.url).toContain('/_browser-tab-b/https://target.example/b');
     expect(fake.proxies[0].openSession.mock.calls[0][1]).not.toBe(fake.proxies[0].openSession.mock.calls[1][1]);
     expect(manager.list('device-a').map((tab) => tab.id)).toEqual(['tab-a']);
     expect(manager.list('device-b').map((tab) => tab.id)).toEqual(['tab-b']);
@@ -238,6 +238,29 @@ describe('browser preview manager', () => {
     expect(fake.proxies[1].start).toHaveBeenCalledWith(expect.objectContaining({ port1: 0, port2: 0 }));
     expect(fake.proxies[0].closeSession).not.toHaveBeenCalled();
     expect(fake.proxies[1].closeSession).not.toHaveBeenCalled();
+  });
+
+  it('keeps public origin collision claims after the final context closes', async () => {
+    const fake = fakeHammerhead();
+    const ids = ['tab-a', 'tab-b'];
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      randomId: () => ids.shift(),
+    });
+    const first = await manager.create({
+      url: 'https://a.example/',
+      origin: 'https://b-fixed.preview.example',
+      closeAfterMinutes: 10,
+      deviceId: DEVICE,
+    });
+    manager.closeTab(first.id, DEVICE);
+
+    await expect(manager.create({
+      url: 'https://b.example/',
+      origin: 'https://b-fixed.preview.example',
+      closeAfterMinutes: 10,
+      deviceId: DEVICE,
+    })).rejects.toThrow('browser public origin collision');
   });
 
   it('routes the same device only within the matching public origin', async () => {
@@ -312,15 +335,15 @@ describe('browser preview manager', () => {
       setTimer: (fn) => { timers.push(fn); return timers.length; },
       clearTimer: vi.fn(),
     });
-    await manager.create({ url: 'https://a.example/', origin: 'https://handmux.example', closeAfterMinutes: 10, deviceId: DEVICE });
-    await manager.create({ url: 'https://b.example/', origin: 'https://handmux.example', closeAfterMinutes: 30, deviceId: DEVICE });
-    manager.setVisible('tab-a', false, 10, DEVICE);
-    manager.setVisible('tab-b', false, 30, DEVICE);
+    await manager.create({ url: 'https://target.example/a', origin: 'https://handmux.example', closeAfterMinutes: 10, deviceId: 'device-a' });
+    await manager.create({ url: 'https://target.example/b', origin: 'https://handmux.example', closeAfterMinutes: 30, deviceId: 'device-b' });
+    manager.setVisible('tab-a', false, 10, 'device-a');
+    manager.setVisible('tab-b', false, 30, 'device-b');
 
     timers[0]();
 
-    expect(manager.get('tab-a', DEVICE)).toBeNull();
-    expect(manager.get('tab-b', DEVICE)).not.toBeNull();
+    expect(manager.get('tab-a', 'device-a')).toBeNull();
+    expect(manager.get('tab-b', 'device-b')).not.toBeNull();
     expect(fake.proxies[0].closeSession).toHaveBeenCalledTimes(1);
     expect(fake.proxies[0].closeSession.mock.calls[0][0].id).toBe('_browser-tab-a');
 
@@ -338,7 +361,7 @@ describe('browser preview manager', () => {
       randomId: () => ids.shift(),
     });
     await manager.create({ url: 'https://a.example/', origin: 'https://handmux.example', closeAfterMinutes: 10, deviceId: DEVICE });
-    await manager.create({ url: 'https://b.example/', origin: 'https://handmux.example', closeAfterMinutes: 10, deviceId: DEVICE });
+    await manager.create({ url: 'https://b.example/', origin: 'https://b.handmux.example', closeAfterMinutes: 10, deviceId: DEVICE });
 
     expect(manager.list(DEVICE).filter((tab) => tab.visible).map((tab) => tab.id)).toEqual(['tab-b']);
 

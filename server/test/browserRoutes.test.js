@@ -4,10 +4,10 @@ import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 import { browserRoutes } from '../src/browser/routes.js';
 
-function appFor(browser, previewDomain = null, browserBootstrap = null, browserHostForTarget = undefined) {
+function appFor(browser, previewDomain = null, browserBootstrap = null) {
   const app = express();
   app.use(express.json());
-  app.use(browserRoutes({ browser, previewDomain, browserBootstrap, browserHostForTarget }));
+  app.use(browserRoutes({ browser, previewDomain, browserBootstrap }));
   return app;
 }
 const DEVICE = 'device_abcdefghijklmnopqrstuvwxyz123456';
@@ -130,26 +130,25 @@ describe('browser routes', () => {
     browser.create.mockImplementation(({ url, origin }) => ({
       id: 'tab-a', originalUrl: url, url: `${origin}/_browser-tab-a/https://target/`,
     }));
-    const browserBootstrap = { issue: vi.fn(() => 'https://browser-idata.handmux.example.com:30443/_browser-bootstrap/ticket') };
+    const browserBootstrap = { issue: vi.fn(({ url }) => url) };
     const res = await asDevice(request(appFor(
       browser,
       'handmux.example.com:30443',
       browserBootstrap,
-      () => 'idata',
     )).post('/browser-tabs'))
       .set('Host', 'example.com')
       .set('X-Forwarded-Proto', 'https')
       .send({ url: 'https://target.example/', closeAfterMinutes: 10 })
       .expect(201);
 
-    expect(browser.create).toHaveBeenCalledWith(expect.objectContaining({
-      origin: 'https://browser-idata.handmux.example.com:30443',
-    }));
+    const origin = new URL(browser.create.mock.calls[0][0].origin);
+    expect(origin.hostname).toMatch(/^b-[0-9a-z]{13}\.handmux\.example\.com$/);
+    expect(origin.port).toBe('30443');
     expect(browserBootstrap.issue).toHaveBeenCalledWith(expect.objectContaining({
       deviceId: DEVICE,
-      origin: 'https://browser-idata.handmux.example.com:30443',
+      origin: origin.origin,
     }));
-    expect(res.body.url).toBe('https://browser-idata.handmux.example.com:30443/_browser-bootstrap/ticket');
+    expect(res.body.url).toBe(`${origin.origin}/_browser-tab-a/https://target/`);
     expect(res.headers['set-cookie'][0]).not.toContain('Domain=');
     expect(res.headers['set-cookie'][0]).toContain('Secure');
   });
@@ -202,9 +201,11 @@ describe('browser routes', () => {
     await asDevice(request(app).post('/browser-tabs')).send({ url: 'https://target.example/b', closeAfterMinutes: 10 }).expect(201);
     await asDevice(request(app).post('/browser-tabs')).send({ url: 'https://target.example:8443/a', closeAfterMinutes: 10 }).expect(201);
 
-    const origins = browser.create.mock.calls.map(([options]) => options.origin);
-    expect(origins[0]).toBe(origins[1]);
-    expect(origins[2]).not.toBe(origins[0]);
+    const [firstOrigin, secondOrigin, otherPortOrigin] = browser.create.mock.calls
+      .map(([options]) => new URL(options.origin));
+    expect(firstOrigin.hostname).toMatch(/^b-[0-9a-z]{13}\.handmux\.example\.com$/);
+    expect(secondOrigin.hostname).toBe(firstOrigin.hostname);
+    expect(otherPortOrigin.hostname).not.toBe(firstOrigin.hostname);
   });
 
   it.each([10, 30, 60, 120, null])('accepts closeAfterMinutes=%s', async (closeAfterMinutes) => {
