@@ -8,6 +8,7 @@ import { createApiRouter } from './httpApi.js';
 import { loadUploadExts } from './uploadTypes.js';
 import { createClaudeEvents } from './claudeEvents.js';
 import { syncHooks } from './cli/claudeHooks.js';
+import { syncCodexHooks } from './cli/codexHooks.js';
 import { claudeStatePath } from './cli/state.js';
 import * as commands from './tmux/commands.js';
 import * as push from './push.js';
@@ -76,6 +77,12 @@ workspace.start().catch(() => {});
 // already installed; best-effort and must never block or crash startup (pure fs, no subprocess).
 try {
   syncHooks(home, {
+    srcDir: path.resolve(here, '../hooks'),
+    stateFile,
+  });
+} catch { /* best effort — hook sync never fails startup */ }
+try {
+  syncCodexHooks(home, {
     srcDir: path.resolve(here, '../hooks'),
     stateFile,
   });

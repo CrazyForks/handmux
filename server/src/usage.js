@@ -8,7 +8,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { homedir } from 'node:os';
+import { createRequire } from 'node:module';
 import { pocketHome } from './cli/state.js';
+
+const require = createRequire(import.meta.url);
+const {
+  readLatestUsage, readSnapshot, writeSnapshot,
+} = require('../hooks/handmux-codex-usage.cjs');
 
 export function claudeUsagePath(home = homedir()) { return path.join(pocketHome(home), 'claude-usage.json'); }
 export function claudeContextDir(home = homedir()) { return path.join(pocketHome(home), 'context'); }
@@ -25,6 +31,7 @@ export function readClaudeContext(sessionId, home = homedir()) {
   } catch { return null; }
 }
 export function codexSessionsDir(home = homedir()) { return path.join(home, '.codex', 'sessions'); }
+export function codexUsagePath(home = homedir()) { return path.join(pocketHome(home), 'codex-usage.json'); }
 
 // Claude: read the statusLine snapshot. null if the capturer isn't wired / never populated it.
 export function readClaudeUsage(home = homedir()) {
@@ -56,61 +63,44 @@ function rolloutFilesByMtime(dir) {
   return files.sort((a, b) => b.mtimeMs - a.mtimeMs);
 }
 
-// One Codex rate-limit window → our shape, or null if absent (secondary is often null on plans without it).
-function codexWindow(w) {
-  if (!w || typeof w.used_percent !== 'number') return null;
-  return {
-    usedPercent: w.used_percent,
-    windowMinutes: typeof w.window_minutes === 'number' ? w.window_minutes : null,
-    resetsAt: typeof w.resets_at === 'number' ? w.resets_at : null,
-  };
-}
-
-// Codex: return the newest token_count event across every local session. A newly-created empty rollout
-// does not erase the last machine-wide value; the first event it eventually writes refreshes that value.
-export function readCodexUsage(home = homedir()) {
+// Full reconciliation fallback. It remains zero-config, but now runs at most once per calibration interval;
+// the normal path reads the persistent snapshot written by Codex hooks.
+function scanCodexUsage(home) {
   let latest = null;
   for (const { file, mtimeMs } of rolloutFilesByMtime(codexSessionsDir(home))) {
     if (latest?.updatedAt && mtimeMs < latest.updatedAt) break;
-    let lines;
-    try { lines = fs.readFileSync(file, 'utf8').split('\n'); } catch { continue; }
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const ln = lines[i];
-      if (!ln || ln.indexOf('token_count') === -1) continue;
-      let rec; try { rec = JSON.parse(ln); } catch { continue; }
-      const p = rec.payload;
-      if (!p || p.type !== 'token_count') continue;
-      const updatedAt = Date.parse(rec.timestamp) || null;
-      if (latest && (!updatedAt || updatedAt <= latest.updatedAt)) break;
-      const info = p.info || {};
-      const tu = info.total_token_usage || {};
-      const rl = p.rate_limits || {};
-      latest = {
-        updatedAt,
-        rateLimits: { primary: codexWindow(rl.primary), secondary: codexWindow(rl.secondary) },
-        tokens: {
-          total: tu.total_tokens ?? null,
-          input: tu.input_tokens ?? null,
-          cachedInput: tu.cached_input_tokens ?? null,
-          output: tu.output_tokens ?? null,
-          reasoning: tu.reasoning_output_tokens ?? null,
-        },
-        contextWindow: typeof info.model_context_window === 'number' ? info.model_context_window : null,
-      };
-      break;
-    }
+    const usage = readLatestUsage(file);
+    if (usage && (!latest || usage.updatedAt > latest.updatedAt)) latest = usage;
   }
   return latest;
 }
 
-export function getUsage(home = homedir()) {
-  return { claude: readClaudeUsage(home), codex: readCodexUsage(home) };
+// Prefer the machine-wide snapshot. A full rollout scan seeds it and calibrates it once per minute for
+// users without hooks; hook updates between calibrations are never rolled back by an older scan result.
+export function readCodexUsage(
+  home = homedir(),
+  { now = Date.now(), calibrationMs = 60_000 } = {},
+) {
+  const file = codexUsagePath(home);
+  const snapshot = readSnapshot(file);
+  if (snapshot && (now - snapshot.checkedAt) < calibrationMs) return snapshot.usage;
+
+  const scanned = scanCodexUsage(home);
+  writeSnapshot(file, scanned, { checkedAt: now });
+  return readSnapshot(file)?.usage || null;
+}
+
+export function getUsage(home = homedir(), options = {}) {
+  return { claude: readClaudeUsage(home), codex: readCodexUsage(home, options) };
 }
 
 // Small TTL cache so a phone that re-polls doesn't rescan the rollout every few seconds.
 let _cache = { at: 0, home: null, data: null };
-export function getUsageCached(home = homedir(), { ttlMs = 15000, now = Date.now() } = {}) {
+export function getUsageCached(
+  home = homedir(),
+  { ttlMs = 15000, now = Date.now(), calibrationMs = 60_000 } = {},
+) {
   if (_cache.data && _cache.home === home && (now - _cache.at) < ttlMs) return _cache.data;
-  _cache = { at: now, home, data: getUsage(home) };
+  _cache = { at: now, home, data: getUsage(home, { now, calibrationMs }) };
   return _cache.data;
 }

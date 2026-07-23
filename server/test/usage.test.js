@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { tmpHome } from './tmphome.js';
+
+const require = createRequire(import.meta.url);
+const { writeSnapshot } = require('../hooks/handmux-codex-usage.cjs');
 import {
   readClaudeUsage, readCodexUsage, getUsage, getUsageCached, claudeUsagePath,
   readClaudeContext, claudeContextDir,
@@ -11,7 +15,9 @@ import {
 function writeRollout(home, y, m, d, name, lines) {
   const dir = path.join(home, '.codex', 'sessions', y, m, d);
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, name), lines.map((l) => JSON.stringify(l)).join('\n'));
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n'));
+  return file;
 }
 const tokenCount = (ts, usedPercent, totals, secondary = null) => ({
   timestamp: ts, type: 'event_msg',
@@ -136,6 +142,59 @@ describe('readCodexUsage', () => {
   });
 });
 
+describe('Codex persistent calibration snapshot', () => {
+  it('returns the snapshot for 60 seconds without rereading a changed rollout', () => {
+    const home = tmpHome('usg-snap-');
+    const file = writeRollout(home, '2026', '07', '23', 'rollout-2026-07-23T01-00-00-a.jsonl', [
+      tokenCount('2026-07-23T01:00:00.000Z', 18, { total_tokens: 10 }),
+    ]);
+    const first = readCodexUsage(home, { now: 1_000, calibrationMs: 60_000 });
+    fs.writeFileSync(file, 'broken');
+
+    expect(readCodexUsage(home, { now: 30_000, calibrationMs: 60_000 })).toEqual(first);
+  });
+
+  it('performs a full calibration after 60 seconds and sees no-hook updates', () => {
+    const home = tmpHome('usg-snap-');
+    const file = writeRollout(home, '2026', '07', '23', 'rollout-2026-07-23T02-00-00-a.jsonl', [
+      tokenCount('2026-07-23T02:00:00.000Z', 20, { total_tokens: 10 }),
+    ]);
+    expect(readCodexUsage(home, { now: 1_000, calibrationMs: 60_000 }).rateLimits.primary.usedPercent).toBe(20);
+    fs.appendFileSync(file, `\n${JSON.stringify(tokenCount('2026-07-23T02:01:00.000Z', 37, { total_tokens: 20 }))}`);
+
+    expect(readCodexUsage(home, { now: 30_000, calibrationMs: 60_000 }).rateLimits.primary.usedPercent).toBe(20);
+    expect(readCodexUsage(home, { now: 61_001, calibrationMs: 60_000 }).rateLimits.primary.usedPercent).toBe(37);
+  });
+
+  it('never lets a full scan roll a newer hook snapshot back', () => {
+    const home = tmpHome('usg-snap-');
+    writeRollout(home, '2026', '07', '23', 'rollout-2026-07-23T03-00-00-a.jsonl', [
+      tokenCount('2026-07-23T03:00:00.000Z', 30, { total_tokens: 10 }),
+    ]);
+    const snapshotPath = path.join(home, '.handmux', 'codex-usage.json');
+    const hookUsage = {
+      updatedAt: Date.parse('2026-07-23T04:00:00.000Z'),
+      rateLimits: { primary: { usedPercent: 45, windowMinutes: 300, resetsAt: 1785600000 }, secondary: null },
+      tokens: { total: 20, input: null, cachedInput: null, output: null, reasoning: null },
+      contextWindow: 258400,
+    };
+    writeSnapshot(snapshotPath, hookUsage);
+
+    expect(readCodexUsage(home, { now: 61_001, calibrationMs: 60_000 })).toEqual(hookUsage);
+  });
+
+  it('records an empty calibration so a newly-created rollout waits for the next interval', () => {
+    const home = tmpHome('usg-snap-');
+    expect(readCodexUsage(home, { now: 1_000, calibrationMs: 60_000 })).toBeNull();
+    writeRollout(home, '2026', '07', '23', 'rollout-2026-07-23T05-00-00-a.jsonl', [
+      tokenCount('2026-07-23T05:00:00.000Z', 50, { total_tokens: 10 }),
+    ]);
+
+    expect(readCodexUsage(home, { now: 30_000, calibrationMs: 60_000 })).toBeNull();
+    expect(readCodexUsage(home, { now: 61_001, calibrationMs: 60_000 })).not.toBeNull();
+  });
+});
+
 describe('getUsage / getUsageCached', () => {
   it('bundles both agents (either may be null)', () => {
     const home = tmpHome('usg-');
@@ -151,6 +210,6 @@ describe('getUsage / getUsageCached', () => {
       tokenCount('2026-07-03T03:00:00.000Z', 7, { total_tokens: 9 }),
     ]);
     expect(getUsageCached(home, { ttlMs: 1000, now: 1500 })).toBe(a); // still cached → codex null
-    expect(getUsageCached(home, { ttlMs: 1000, now: 2500 }).codex).not.toBeNull(); // ttl passed → rescanned
+    expect(getUsageCached(home, { ttlMs: 1000, now: 62_000 }).codex).not.toBeNull(); // calibration passed → rescanned
   });
 });
