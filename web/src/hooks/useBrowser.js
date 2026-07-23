@@ -1,21 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  clearBrowserProfile,
   createBrowserTab,
   deleteBrowserTab,
   getBrowserTabs,
   navigateBrowserTab,
+  setBrowserProfilePrefs,
   setBrowserTabVisible,
 } from '../api.js';
 import {
   clearBrowserHistory,
+  deleteBrowserHistoryEntry,
   normalizeBrowserInput,
   readBrowserHistory,
   readBrowserPrefs,
   setBrowserCloseAfter,
   setBrowserDefaultMode,
+  setPersistProxyLogin as persistProxyLoginLocally,
+  setProxyLoginRetentionDays as persistProxyLoginRetentionLocally,
   upsertBrowserHistory,
 } from '../browserState.js';
 import { isBrowserAccessEnabled, setBrowserAccessEnabled } from '../storage.js';
+import { t } from '../i18n';
 
 function replaceTab(tabs, next) {
   return tabs.map((tab) => (tab.id === next.id ? { ...tab, ...next } : tab));
@@ -60,6 +66,10 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const [historyActive, setHistoryActive] = useState(true);
   const [closeAfter, setCloseAfterState] = useState(() => readBrowserPrefs().closeAfter);
   const [defaultMode, setDefaultModeState] = useState(() => readBrowserPrefs().defaultMode);
+  const [persistProxyLogin, setPersistProxyLoginState] = useState(
+    () => readBrowserPrefs().persistProxyLogin,
+  );
+  const [proxyLoginRetentionDays, setProxyLoginRetentionDaysState] = useState(() => readBrowserPrefs().proxyLoginRetentionDays);
   const [history, setHistory] = useState(() => readBrowserHistory());
   const [error, setError] = useState(null);
   const enablePromise = useRef(null);
@@ -71,6 +81,10 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const lastSuccessfulResync = useRef(null);
   const browserProxyRef = useRef(browserProxy);
   const switchQueue = useRef(Promise.resolve());
+  const profileSyncPromise = useRef(null);
+  const recoveryWarningShown = useRef(false);
+  const persistProxyLoginRef = useRef(persistProxyLogin);
+  const proxyLoginRetentionDaysRef = useRef(proxyLoginRetentionDays);
   const tabsRef = useRef(tabs);
   const activeIdRef = useRef(activeId);
   const historyActiveRef = useRef(historyActive);
@@ -80,6 +94,8 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   historyActiveRef.current = historyActive;
   openRef.current = open;
   browserProxyRef.current = browserProxy;
+  persistProxyLoginRef.current = persistProxyLogin;
+  proxyLoginRetentionDaysRef.current = proxyLoginRetentionDays;
 
   const commitTabs = useCallback((update) => {
     const next = typeof update === 'function' ? update(tabsRef.current) : update;
@@ -128,6 +144,47 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     if (openRequest.current === request) openRequest.current = null;
   }, []);
 
+
+  const noteRecoveryWarning = useCallback((response) => {
+    if (response?.warning !== 'profile-recovery-failed' || recoveryWarningShown.current) return;
+    recoveryWarningShown.current = true;
+    setError(new Error(t('browser.profileRecoveryWarning')));
+  }, []);
+
+  const synchronizeProfile = useCallback(() => {
+    const prefs = readBrowserPrefs();
+    let task;
+    task = setBrowserProfilePrefs({
+      persist: prefs.persistProxyLogin,
+      retentionDays: prefs.proxyLoginRetentionDays,
+    }).then((response) => {
+      noteRecoveryWarning(response);
+      return response;
+    }).catch(() => {
+      if (profileSyncPromise.current === task) profileSyncPromise.current = null;
+      throw new Error(t('browser.profileSyncFailed'));
+    });
+    profileSyncPromise.current = task;
+    task.catch(() => {});
+    return task;
+  }, [noteRecoveryWarning]);
+
+  const awaitProfileSyncForOpen = useCallback(async () => {
+    const task = profileSyncPromise.current || synchronizeProfile();
+    try {
+      await task;
+    } finally {
+      if (profileSyncPromise.current === task) profileSyncPromise.current = null;
+    }
+  }, [synchronizeProfile]);
+
+  useEffect(() => {
+    if (!enabled || !accessEnabled || !browserProxy) {
+      profileSyncPromise.current = null;
+      return;
+    }
+    synchronizeProfile().catch((nextError) => setError(nextError));
+  }, [accessEnabled, browserProxy, enabled, synchronizeProfile]);
   const recordHistory = useCallback((tab) => {
     if (!tab?.originalUrl) return;
     upsertBrowserHistory({
@@ -290,6 +347,9 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       setError(null);
       try {
         if (request.controller.signal.aborted) return null;
+        if (mode === 'proxy') {
+          await awaitProfileSyncForOpen();
+        }
         const created = normalizeServerTab(await createBrowserTab(
           url, closeAfter, mode, { signal: request.controller.signal },
         ));
@@ -327,7 +387,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       finishOpenRequest(request);
     });
     return task;
-  }, [accessEnabled, beginOpenRequest, browserProxy, closeAfter, commitActiveId, commitHistoryActive, commitOpen, commitTabs, defaultMode, finishOpenRequest]);
+  }, [accessEnabled, awaitProfileSyncForOpen, beginOpenRequest, browserProxy, closeAfter, commitActiveId, commitHistoryActive, commitOpen, commitTabs, defaultMode, finishOpenRequest]);
 
   const enableAccess = useCallback(() => {
     if (enablePromise.current) return enablePromise.current;
@@ -354,6 +414,9 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
           }
           if (pending.mode === 'proxy' && !browserProxyRef.current) {
             throw new Error('browser proxy unavailable');
+          }
+          if (pending.mode === 'proxy') {
+            await awaitProfileSyncForOpen();
           }
           const created = normalizeServerTab(await createBrowserTab(
             pending.url, closeAfter, pending.mode, { signal: request.controller.signal },
@@ -404,7 +467,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     });
     enablePromise.current = task;
     return task;
-  }, [closeAfter, commitActiveId, commitHistoryActive, commitOpen, commitTabs, finishOpenRequest, pendingUrl]);
+  }, [awaitProfileSyncForOpen, closeAfter, commitActiveId, commitHistoryActive, commitOpen, commitTabs, finishOpenRequest, pendingUrl]);
 
   const cancelAccess = useCallback(() => {
     pendingUrl?.request?.controller.abort();
@@ -519,6 +582,79 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     return next.find((item) => item.url === entry?.url) || null;
   }, []);
 
+  const saveProfilePrefs = useCallback((prefs, commit) => {
+    const operation = enqueueTransition(async () => {
+      const response = await setBrowserProfilePrefs(prefs);
+      commit(response);
+      if (response?.warning === 'profile-recovery-failed') noteRecoveryWarning(response);
+      else setError(null);
+      return response;
+    });
+    profileSyncPromise.current = operation;
+    operation.catch(() => {});
+    return operation.then(
+      () => {
+        return true;
+      },
+      () => {
+        if (profileSyncPromise.current === operation) profileSyncPromise.current = null;
+        setError(new Error(t('browser.profileSaveFailed')));
+        return false;
+      },
+    );
+  }, [enqueueTransition, noteRecoveryWarning]);
+
+  const setPersistProxyLogin = useCallback((value) => saveProfilePrefs({
+    persist: !!value,
+    retentionDays: proxyLoginRetentionDaysRef.current,
+  }, (response) => {
+    persistProxyLoginLocally(response.persist);
+    persistProxyLoginRef.current = response.persist;
+    setPersistProxyLoginState(response.persist);
+  }), [saveProfilePrefs]);
+
+  const setProxyLoginRetentionDays = useCallback((value) => saveProfilePrefs({
+    persist: persistProxyLoginRef.current,
+    retentionDays: value,
+  }, (response) => {
+    persistProxyLoginRetentionLocally(response.retentionDays);
+    proxyLoginRetentionDaysRef.current = response.retentionDays;
+    setProxyLoginRetentionDaysState(response.retentionDays);
+  }), [saveProfilePrefs]);
+
+  const clearProxyLogin = useCallback((origin = null) => enqueueTransition(async () => {
+    setError(null);
+    try {
+      const response = await clearBrowserProfile(origin);
+      const closed = new Set(response.closedTabIds || []);
+      const remaining = commitTabs((current) => current.filter((tab) => !closed.has(tab.id)));
+      if (closed.has(activeIdRef.current)) {
+        const selected = remaining.find((tab) => tab.visible) || null;
+        commitActiveId(selected?.id || null);
+        commitHistoryActive(!selected);
+        if (!selected) commitOpen(false);
+      }
+      return true;
+    } catch {
+      try {
+        const { tabs: loaded = [] } = await getBrowserTabs();
+        const normalized = normalizeServerTabs(loaded);
+        commitTabs(normalized);
+        const selected = normalized.find((tab) => tab.visible) || null;
+        commitActiveId(selected?.id || null);
+        commitHistoryActive(!selected);
+        if (!selected) commitOpen(false);
+      } catch { /* keep the last confirmed local state if resync also fails */ }
+      setError(new Error(t('browser.profileClearFailed')));
+      return false;
+    }
+  }), [commitActiveId, commitHistoryActive, commitOpen, commitTabs, enqueueTransition]);
+
+  const deleteHistory = useCallback((entry) => {
+    deleteBrowserHistoryEntry(entry);
+    setHistory(readBrowserHistory());
+  }, []);
+
   const clearHistory = useCallback(() => {
     clearBrowserHistory();
     setHistory([]);
@@ -533,6 +669,8 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     historyActive,
     closeAfter,
     defaultMode,
+    persistProxyLogin,
+    proxyLoginRetentionDays,
     proxyAvailable: browserProxy,
     history,
     error,
@@ -544,9 +682,13 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     setOpen,
     setCloseAfter,
     setDefaultMode,
+    setPersistProxyLogin,
+    setProxyLoginRetentionDays,
+    clearProxyLogin,
     setHistoryMode,
     navigateTab,
     updateTabMeta,
+    deleteHistory,
     clearHistory,
   };
 }

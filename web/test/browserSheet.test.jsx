@@ -34,6 +34,8 @@ const browser = (overrides = {}) => ({
   setOpen: vi.fn(),
   setCloseAfter: vi.fn(),
   setHistoryMode: vi.fn(),
+  clearProxyLogin: vi.fn(),
+  deleteHistory: vi.fn(),
   navigateTab: vi.fn(),
   updateTabMeta: vi.fn(),
   clearHistory: vi.fn(),
@@ -159,6 +161,37 @@ describe('BrowserSheet', () => {
     click([...document.querySelectorAll('.browser-history-mode-option')].find((node) => node.textContent === '经电脑代理'));
     expect(model.openUrl).toHaveBeenLastCalledWith('https://old.example/', { mode: 'proxy' });
     expect(model.setHistoryMode).toHaveBeenCalledWith(model.history[0], 'proxy');
+  });
+
+  it('shows each history mode inline and offers separate cleanup and deletion actions', async () => {
+    const model = browser({ historyActive: true, activeId: null });
+    await render(model);
+
+    expect(document.querySelector('.browser-history-mode.direct').textContent).toBe('直连');
+    click(document.querySelector('.browser-history-more'));
+    const menu = document.querySelector('.browser-history-mode-menu');
+    expect(menu.textContent).toContain('手机直连');
+    expect(menu.textContent).toContain('经电脑代理');
+    expect(menu.textContent).toContain('清理本站登录状态');
+    expect(menu.textContent).toContain('删除此记录');
+
+    click([...menu.querySelectorAll('button')].find((node) => node.textContent === '清理本站登录状态'));
+    const confirmation = document.querySelector('.browser-profile-confirm');
+    expect(confirmation.textContent).toContain('当前设备');
+    expect(confirmation.textContent).toContain('父域 Cookie');
+    click([...confirmation.querySelectorAll('button')].find((node) => node.textContent === '确认'));
+    expect(model.clearProxyLogin).toHaveBeenCalledWith('https://old.example');
+  });
+
+  it('deletes history locally without invoking profile cleanup', async () => {
+    const model = browser({ historyActive: true, activeId: null });
+    await render(model);
+    click(document.querySelector('.browser-history-more'));
+    click([...document.querySelectorAll('.browser-history-mode-menu button')]
+      .find((node) => node.textContent === '删除此记录'));
+
+    expect(model.deleteHistory).toHaveBeenCalledWith(model.history[0]);
+    expect(model.clearProxyLogin).not.toHaveBeenCalled();
   });
 
   it('uses an overridden history mode again in the same mount even when the first open fails', async () => {

@@ -2,11 +2,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   addBrowserHistory,
   clearBrowserHistory,
+  deleteBrowserHistoryEntry,
   normalizeBrowserInput,
   readBrowserHistory,
   readBrowserPrefs,
   setBrowserCloseAfter,
   setBrowserDefaultMode,
+  setPersistProxyLogin,
+  setProxyLoginRetentionDays,
   upsertBrowserHistory,
 } from '../src/browserState.js';
 
@@ -29,22 +32,35 @@ describe('browser address normalization', () => {
 
 describe('browser preferences', () => {
   it('defaults to 10 and accepts only the five product choices', () => {
-    expect(readBrowserPrefs()).toEqual({ closeAfter: 10, defaultMode: 'direct' });
+    expect(readBrowserPrefs()).toEqual({
+      closeAfter: 10, defaultMode: 'direct',
+      persistProxyLogin: false, proxyLoginRetentionDays: 30,
+    });
     for (const value of [10, 30, 60, 120, null]) {
       setBrowserCloseAfter(value);
-      expect(readBrowserPrefs()).toEqual({ closeAfter: value, defaultMode: 'direct' });
+      expect(readBrowserPrefs()).toMatchObject({ closeAfter: value, defaultMode: 'direct' });
     }
     setBrowserCloseAfter(240);
-    expect(readBrowserPrefs()).toEqual({ closeAfter: 10, defaultMode: 'direct' });
+    expect(readBrowserPrefs()).toMatchObject({ closeAfter: 10, defaultMode: 'direct' });
   });
 
   it('persists only valid default modes without changing the close timer', () => {
     setBrowserCloseAfter(30);
     setBrowserDefaultMode('proxy');
-    expect(readBrowserPrefs()).toEqual({ closeAfter: 30, defaultMode: 'proxy' });
+    expect(readBrowserPrefs()).toMatchObject({ closeAfter: 30, defaultMode: 'proxy' });
 
     setBrowserDefaultMode('invalid');
-    expect(readBrowserPrefs()).toEqual({ closeAfter: 30, defaultMode: 'direct' });
+    expect(readBrowserPrefs()).toMatchObject({ closeAfter: 30, defaultMode: 'direct' });
+  });
+
+  it('stores proxy login preferences only in device local storage', () => {
+    setPersistProxyLogin(true);
+    setProxyLoginRetentionDays(null);
+    expect(readBrowserPrefs()).toMatchObject({
+      persistProxyLogin: true, proxyLoginRetentionDays: null,
+    });
+    localStorage.setItem('hm_browser_profile_retention1', '14');
+    expect(readBrowserPrefs().proxyLoginRetentionDays).toBe(30);
   });
 });
 
@@ -108,6 +124,16 @@ describe('device-local browser history', () => {
 
     clearBrowserHistory();
     expect(readBrowserHistory()).toEqual([]);
+  });
+
+  it('deletes exactly one history identity without collapsing the same Origin', () => {
+    addBrowserHistory({ url: 'https://portal.example/a', title: 'A', visitedAt: 123 });
+    addBrowserHistory({ url: 'https://portal.example/b', title: 'B', visitedAt: 124 });
+    const [newer, older] = readBrowserHistory();
+
+    deleteBrowserHistoryEntry(older);
+
+    expect(readBrowserHistory()).toEqual([newer]);
   });
 
   it('fails closed for malformed persisted history', () => {

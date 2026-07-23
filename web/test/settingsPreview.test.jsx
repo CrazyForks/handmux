@@ -39,6 +39,51 @@ describe('Settings preview section', () => {
     expect(setDefaultMode).toHaveBeenCalledWith('direct');
   });
 
+  it('shows current-device profile controls only when proxy is available', async () => {
+    const browser = {
+      proxyAvailable: true,
+      defaultMode: 'direct',
+      persistProxyLogin: false,
+      proxyLoginRetentionDays: 30,
+      setDefaultMode: vi.fn(),
+      setPersistProxyLogin: vi.fn(),
+      setProxyLoginRetentionDays: vi.fn(),
+      clearProxyLogin: vi.fn(),
+    };
+    await render({ browser });
+    expect(container.textContent).toContain('持久保留代理登录状态');
+    expect(container.textContent).toContain('清理全部代理登录状态');
+    const retention = [...container.querySelectorAll('.browser-retention button')];
+    expect(retention.map((node) => node.textContent)).toEqual(['1 天', '7 天', '30 天', '永不']);
+    expect(retention[2].getAttribute('aria-pressed')).toBe('true');
+
+    click(retention[1]);
+    expect(browser.setProxyLoginRetentionDays).toHaveBeenCalledWith(7);
+    click([...container.querySelectorAll('button')]
+      .find((node) => node.textContent === '清理全部代理登录状态'));
+    expect(document.querySelector('.browser-profile-confirm').textContent).toContain('当前设备');
+    click([...document.querySelectorAll('.browser-profile-confirm button')]
+      .find((node) => node.textContent === '确认'));
+    expect(browser.clearProxyLogin).toHaveBeenCalledWith(null);
+
+    await render({ browser: { ...browser, proxyAvailable: false } });
+    expect(container.textContent).not.toContain('持久保留代理登录状态');
+    expect(container.textContent).not.toContain('清理全部代理登录状态');
+  });
+
+  it('confirms before disabling persistent proxy login without clearing current tabs', async () => {
+    const setPersistProxyLogin = vi.fn();
+    const browser = {
+      proxyAvailable: true, defaultMode: 'direct', persistProxyLogin: true,
+      proxyLoginRetentionDays: 30, setDefaultMode: vi.fn(), setPersistProxyLogin,
+      setProxyLoginRetentionDays: vi.fn(), clearProxyLogin: vi.fn(),
+    };
+    await render({ browser });
+    click(container.querySelector('.browser-profile-persist input'));
+    expect(document.querySelector('.browser-profile-confirm')).not.toBeNull();
+    expect(setPersistProxyLogin).not.toHaveBeenCalled();
+  });
+
   it('defaults to 不开启; picking 静态 reveals 选择目录启动 and opens the dir picker', async () => {
     await render({ activePreview: null, onStartPreview: vi.fn() }); // no pane → picker opens synchronously, seeds $HOME
     expect(container.textContent).toContain('不开启');

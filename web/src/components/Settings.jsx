@@ -48,6 +48,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   const [seedCwd, setSeedCwd] = useState(null); // dir the picker lands on (the pane's live cwd)
   const [previewKind, setPreviewKind] = useState('off');    // start mode: off (default) / static
   const [confirmStop, setConfirmStop] = useState(false);    // two-tap guard on 停止 (no nested modal)
+  const [profileConfirm, setProfileConfirm] = useState(null);
   const remainMs = useRemaining(activePreview?.expiresAt, !!activePreview && open); // live TTL countdown
   useEffect(() => { setConfirmStop(false); }, [activePreview?.name, open]); // reset guards per preview/open
   // Open the dir picker seeded at the LAST preview dir for this window (so re-previewing the same
@@ -176,6 +177,42 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
           {!browserProxyAvailable && <div id="browser-proxy-unavailable" className="settings-hint">{t('browser.proxyUnavailable')}</div>}
           <div className="settings-hint">{t('settings.browserDefaultModeHint')}</div>
         </div>
+
+        {browserProxyAvailable && browser && (
+          <div className="settings-section browser-profile-settings">
+            <label className="settings-toggle browser-profile-persist">
+              <span className="settings-label">{t('settings.browserPersistLogin')}</span>
+              <span className="cmd-switch">
+                <input type="checkbox" checked={!!browser.persistProxyLogin}
+                  aria-describedby="browser-profile-persist-hint"
+                  onChange={(event) => {
+                    if (event.target.checked) browser.setPersistProxyLogin(true);
+                    else setProfileConfirm('disable');
+                  }} />
+                <span className="cmd-switch-track" aria-hidden="true" />
+                <span className="cmd-switch-knob" aria-hidden="true" />
+              </span>
+            </label>
+            <div id="browser-profile-persist-hint" className="settings-hint">
+              {t('settings.browserPersistLoginHint')}
+            </div>
+            <div className="settings-label browser-retention-label">{t('settings.browserRetention')}</div>
+            <div className="preview-seg browser-retention" role="group" aria-label={t('settings.browserRetention')}>
+              {[1, 7, 30, null].map((value) => (
+                <button type="button" key={value ?? 'never'}
+                  aria-pressed={browser.proxyLoginRetentionDays === value}
+                  className={browser.proxyLoginRetentionDays === value ? 'on' : ''}
+                  onClick={() => browser.setProxyLoginRetentionDays(value)}>
+                  {t(value === null ? 'browser.retentionNever' : `browser.retention${value}`)}
+                </button>
+              ))}
+            </div>
+            <button type="button" className="fontbtn browser-clear-all danger"
+              onClick={() => setProfileConfirm('clear')}>
+              {t('browser.clearAllLogin')}
+            </button>
+          </div>
+        )}
 
         <div className="settings-section">
           <div className="settings-label">{t('settings.font_size')}</div>
@@ -398,6 +435,24 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
         </div>
         </div>
       </div>
+      {profileConfirm && (
+        <div className="browser-profile-confirm-backdrop">
+          <div className="browser-profile-confirm" role="alertdialog" aria-modal="true"
+            aria-label={profileConfirm === 'clear' ? t('browser.clearAllLogin') : t('settings.browserPersistLogin')}>
+            <p>{t(profileConfirm === 'clear'
+              ? 'browser.clearAllLoginConfirm'
+              : 'settings.browserDisablePersistConfirm')}</p>
+            <div>
+              <button onClick={() => setProfileConfirm(null)}>{t('common.cancel')}</button>
+              <button className="danger" onClick={() => {
+                if (profileConfirm === 'clear') browser.clearProxyLogin(null);
+                else browser.setPersistProxyLogin(false);
+                setProfileConfirm(null);
+              }}>{t('common.confirm')}</button>
+            </div>
+          </div>
+        </div>
+      )}
       <DirPicker
         open={dirOpen}
         seedCwd={seedCwd}

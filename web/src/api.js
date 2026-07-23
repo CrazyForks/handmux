@@ -160,6 +160,16 @@ export const createBrowserTab = (url, closeAfterMinutes, mode, options = {}) =>
     body: JSON.stringify({ url, closeAfterMinutes, mode }),
   });
 export const getBrowserTabs = () => browserReq('/api/browser-tabs');
+export const setBrowserProfilePrefs = (prefs) =>
+  browserReq('/api/browser-tabs/profile', {
+    method: 'PUT',
+    body: JSON.stringify(prefs),
+  });
+export const clearBrowserProfile = (origin = null) =>
+  browserReq('/api/browser-tabs/profile/clear', {
+    method: 'POST',
+    body: JSON.stringify({ origin }),
+  });
 export const setBrowserTabVisible = (id, visible, closeAfterMinutes) =>
   browserReq(`/api/browser-tabs/${encodeURIComponent(id)}/visibility`, {
     method: 'PATCH',

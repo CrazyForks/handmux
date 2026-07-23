@@ -28,6 +28,7 @@ export default function BrowserSheet({ browser }) {
     defaultMode, proxyAvailable,
     openUrl, switchTab, closeTab, setOpen, setCloseAfter,
     navigateTab, updateTabMeta, clearHistory, setHistoryMode, enableAccess, cancelAccess,
+    clearProxyLogin, deleteHistory,
   } = browser;
   const active = tabs.find((tab) => tab.id === activeId) || null;
   const proxied = active?.mode === 'proxy';
@@ -41,6 +42,7 @@ export default function BrowserSheet({ browser }) {
   const [reloadKeys, setReloadKeys] = useState({});
   const [modeOpen, setModeOpen] = useState(false);
   const [historyModeOpen, setHistoryModeOpen] = useState(null);
+  const [clearConfirmation, setClearConfirmation] = useState(null);
   const [historyError, setHistoryError] = useState(null);
   const [slowDirectId, setSlowDirectId] = useState(null);
   const frames = useRef(new Map());
@@ -239,6 +241,24 @@ export default function BrowserSheet({ browser }) {
     openUrl(entry.url, { mode });
   };
 
+  const requestSiteClear = (entry) => {
+    let origin;
+    try { origin = new URL(entry.url).origin; } catch { return; }
+    setHistoryModeOpen(null);
+    setClearConfirmation({ entry, origin });
+  };
+
+  const confirmSiteClear = () => {
+    const pending = clearConfirmation;
+    setClearConfirmation(null);
+    if (pending) clearProxyLogin(pending.origin);
+  };
+
+  const removeHistory = (entry) => {
+    setHistoryModeOpen(null);
+    deleteHistory(entry);
+  };
+
   const newTab = () => {
     selectHistory();
     setAddress('');
@@ -376,7 +396,12 @@ export default function BrowserSheet({ browser }) {
                   <div className="browser-history-row" key={key}>
                     <button className="browser-history-main" onClick={() => openHistory(entry)}>
                       <strong>{entry.title || entry.url}</strong>
-                      <span>{entry.url}</span>
+                      <span className="browser-history-meta">
+                        <span className={`browser-history-mode ${entry.lastMode || defaultMode}`}>
+                          {t((entry.lastMode || defaultMode) === 'proxy' ? 'browser.proxyBadge' : 'browser.directBadge')}
+                        </span>
+                        <span className="browser-history-url">{entry.url}</span>
+                      </span>
                     </button>
                     <button className="browser-history-more" aria-label={t('browser.historyMore')}
                       aria-expanded={historyModeOpen === key}
@@ -386,6 +411,10 @@ export default function BrowserSheet({ browser }) {
                         <button className="browser-history-mode-option" onClick={() => openHistory(entry, 'direct', true)}>{t('browser.directMode')}</button>
                         <button className="browser-history-mode-option proxy" disabled={!proxyAvailable}
                           onClick={() => openHistory(entry, 'proxy', true)}>{t('browser.proxyMode')}</button>
+                        <button className="browser-history-mode-option danger" disabled={!proxyAvailable}
+                          onClick={() => requestSiteClear(entry)}>{t('browser.clearSiteLogin')}</button>
+                        <button className="browser-history-mode-option danger"
+                          onClick={() => removeHistory(entry)}>{t('browser.deleteHistoryEntry')}</button>
                         {!proxyAvailable && <p>{t('browser.proxyUnavailable')}</p>}
                       </div>
                     )}
@@ -433,6 +462,18 @@ export default function BrowserSheet({ browser }) {
           </div>
         )}
       </div>
+      {clearConfirmation && (
+        <div className="browser-profile-confirm-backdrop">
+          <div className="browser-profile-confirm" role="alertdialog" aria-modal="true"
+            aria-label={t('browser.clearSiteLogin')}>
+            <p>{t('browser.clearSiteLoginConfirm')}</p>
+            <div>
+              <button onClick={() => setClearConfirmation(null)}>{t('common.cancel')}</button>
+              <button className="danger" onClick={confirmSiteClear}>{t('common.confirm')}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body,
   );

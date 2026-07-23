@@ -1,7 +1,10 @@
 export const BROWSER_CLOSE_AFTER_OPTIONS = [10, 30, 60, 120, null];
+export const BROWSER_PROFILE_RETENTION_OPTIONS = [1, 7, 30, null];
 
 const PREF_KEY = 'hm_browser_close_after1';
 const DEFAULT_MODE_KEY = 'hm_browser_default_mode1';
+const PROFILE_PERSIST_KEY = 'hm_browser_profile_persist1';
+const PROFILE_RETENTION_KEY = 'hm_browser_profile_retention1';
 const HISTORY_KEY = 'hm_browser_history1';
 const HISTORY_LIMIT = 200;
 const SENSITIVE_URL_FIELD = /^(?:access_token|id_token|refresh_token|token|code|authorization|api_?key)$/i;
@@ -35,9 +38,17 @@ export function normalizeBrowserInput(value) {
 export function readBrowserPrefs() {
   const raw = localStorage.getItem(PREF_KEY);
   const defaultMode = localStorage.getItem(DEFAULT_MODE_KEY) === 'proxy' ? 'proxy' : 'direct';
-  if (raw === 'never') return { closeAfter: null, defaultMode };
+  const persistProxyLogin = localStorage.getItem(PROFILE_PERSIST_KEY) === '1';
+  const retentionRaw = localStorage.getItem(PROFILE_RETENTION_KEY);
+  const parsedRetention = retentionRaw === 'never' ? null : Number(retentionRaw);
+  const proxyLoginRetentionDays = BROWSER_PROFILE_RETENTION_OPTIONS.includes(parsedRetention)
+    ? parsedRetention : 30;
+  const profile = { persistProxyLogin, proxyLoginRetentionDays };
+  if (raw === 'never') return { closeAfter: null, defaultMode, ...profile };
   const value = Number(raw);
-  return { closeAfter: isCloseAfter(value) && value != null ? value : 10, defaultMode };
+  return {
+    closeAfter: isCloseAfter(value) && value != null ? value : 10, defaultMode, ...profile,
+  };
 }
 
 export function setBrowserCloseAfter(value) {
@@ -54,6 +65,19 @@ export function setBrowserDefaultMode(mode) {
     return;
   }
   localStorage.setItem(DEFAULT_MODE_KEY, mode);
+}
+
+export function setPersistProxyLogin(value) {
+  if (value === true) localStorage.setItem(PROFILE_PERSIST_KEY, '1');
+  else localStorage.removeItem(PROFILE_PERSIST_KEY);
+}
+
+export function setProxyLoginRetentionDays(value) {
+  if (!BROWSER_PROFILE_RETENTION_OPTIONS.includes(value)) {
+    localStorage.removeItem(PROFILE_RETENTION_KEY);
+    return;
+  }
+  localStorage.setItem(PROFILE_RETENTION_KEY, value === null ? 'never' : String(value));
 }
 
 function sanitizedHistoryEntry(entry) {
@@ -103,6 +127,15 @@ export function upsertBrowserHistory(entry) {
   if (!clean) return;
   const remaining = readBrowserHistory().filter((item) => item.url !== clean.url);
   localStorage.setItem(HISTORY_KEY, JSON.stringify([clean, ...remaining].slice(0, HISTORY_LIMIT)));
+}
+
+export function deleteBrowserHistoryEntry(entry) {
+  const target = sanitizedHistoryEntry(entry);
+  if (!target) return;
+  const remaining = readBrowserHistory().filter((item) => (
+    item.url !== target.url || item.visitedAt !== target.visitedAt
+  ));
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(remaining));
 }
 
 export function clearBrowserHistory() {

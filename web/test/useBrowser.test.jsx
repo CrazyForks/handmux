@@ -3,15 +3,18 @@ import { act } from 'react';
 import { cleanup, renderHook } from '@testing-library/react';
 
 const api = vi.hoisted(() => ({
+  clearBrowserProfile: vi.fn(),
   createBrowserTab: vi.fn(),
   deleteBrowserTab: vi.fn(),
   getBrowserTabs: vi.fn(),
   navigateBrowserTab: vi.fn(),
+  setBrowserProfilePrefs: vi.fn(),
   setBrowserTabVisible: vi.fn(),
 }));
 vi.mock('../src/api.js', () => api);
 
 import { readBrowserHistory, upsertBrowserHistory } from '../src/browserState.js';
+import { t } from '../src/i18n';
 import { useBrowser } from '../src/hooks/useBrowser.js';
 
 const tab = (id, extra = {}) => ({
@@ -34,6 +37,8 @@ beforeEach(() => {
   localStorage.setItem('hm_browser_access1', '1');
   vi.clearAllMocks();
   api.getBrowserTabs.mockResolvedValue({ tabs: [] });
+  api.setBrowserProfilePrefs.mockResolvedValue({ persist: false, retentionDays: 30, warning: null });
+  api.clearBrowserProfile.mockResolvedValue({ closedTabIds: [] });
 });
 
 afterEach(() => {
@@ -697,6 +702,142 @@ describe('useBrowser', () => {
     expect(result.current.activeId).toBe('b');
     expect(result.current.tabs.map(({ id }) => id)).toEqual(['a', 'b']);
     expect(result.current.error?.message).toBe('missing');
+  });
+
+  it('awaits a fresh device profile synchronization before every proxy open', async () => {
+    let releaseSync;
+    let releaseRestartSync;
+    api.setBrowserProfilePrefs.mockReturnValue(new Promise((resolve) => { releaseSync = resolve; }));
+    api.createBrowserTab.mockResolvedValue(tab('proxy', { mode: 'proxy' }));
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+
+    let opening;
+    act(() => { opening = result.current.openUrl('https://example.com/', { mode: 'proxy' }); });
+    await flush();
+    expect(api.setBrowserProfilePrefs).toHaveBeenCalledWith({ persist: false, retentionDays: 30 });
+    expect(api.createBrowserTab).not.toHaveBeenCalled();
+
+    releaseSync({ persist: false, retentionDays: 30, warning: null });
+    await act(async () => { await opening; });
+    expect(api.createBrowserTab).toHaveBeenCalledOnce();
+
+    api.setBrowserProfilePrefs.mockReturnValue(
+      new Promise((resolve) => { releaseRestartSync = resolve; }),
+    );
+    let afterRestart;
+    act(() => {
+      afterRestart = result.current.openUrl('https://example.com/after-restart', { mode: 'proxy' });
+    });
+    await flush();
+    expect(api.setBrowserProfilePrefs).toHaveBeenCalledTimes(2);
+    expect(api.createBrowserTab).toHaveBeenCalledOnce();
+    releaseRestartSync({ persist: false, retentionDays: 30, warning: null });
+    await act(async () => { await afterRestart; });
+    expect(api.createBrowserTab).toHaveBeenCalledTimes(2);
+  });
+
+  it('blocks only proxy when initial profile sync fails and keeps direct usable', async () => {
+    api.setBrowserProfilePrefs.mockRejectedValue(new Error('worker unavailable'));
+    api.createBrowserTab.mockResolvedValue(tab('direct', { mode: 'direct' }));
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+
+    let proxied;
+    await act(async () => {
+      proxied = await result.current.openUrl('https://proxy.example/', { mode: 'proxy' });
+    });
+    expect(proxied).toBeNull();
+    expect(result.current.error?.message).toBe(t('browser.profileSyncFailed'));
+
+    let direct;
+    await act(async () => {
+      direct = await result.current.openUrl('https://direct.example/', { mode: 'direct' });
+    });
+    expect(direct?.mode).toBe('direct');
+
+    api.setBrowserProfilePrefs.mockResolvedValueOnce({
+      persist: false, retentionDays: 30, warning: null,
+    });
+    api.createBrowserTab.mockResolvedValue(tab('proxy-retry', { mode: 'proxy' }));
+    let retried;
+    await act(async () => {
+      retried = await result.current.openUrl('https://proxy.example/retry', { mode: 'proxy' });
+    });
+    expect(retried?.mode).toBe('proxy');
+  });
+
+  it('stores profile preferences only after the matching server update succeeds', async () => {
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+    api.setBrowserProfilePrefs.mockRejectedValueOnce(new Error('save failed'));
+
+    await act(async () => { await result.current.setPersistProxyLogin(true); });
+    expect(localStorage.getItem('hm_browser_profile_persist1')).toBeNull();
+    expect(result.current.persistProxyLogin).toBe(false);
+    expect(result.current.error?.message).toBe(t('browser.profileSaveFailed'));
+
+    api.setBrowserProfilePrefs.mockResolvedValueOnce({ persist: false, retentionDays: 7, warning: null });
+    await act(async () => { await result.current.setProxyLoginRetentionDays(7); });
+    expect(result.current.proxyLoginRetentionDays).toBe(7);
+    expect(localStorage.getItem('hm_browser_profile_retention1')).toBe('7');
+  });
+
+  it('shows profile recovery warning once without clearing it during the matching save', async () => {
+    api.setBrowserProfilePrefs.mockResolvedValue({
+      persist: false, retentionDays: 30, warning: 'profile-recovery-failed',
+    });
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+    expect(result.current.error?.message).toBe(t('browser.profileRecoveryWarning'));
+
+    api.setBrowserProfilePrefs.mockResolvedValueOnce({
+      persist: false, retentionDays: 7, warning: 'profile-recovery-failed',
+    });
+    await act(async () => { await result.current.setProxyLoginRetentionDays(7); });
+    expect(result.current.error?.message).toBe(t('browser.profileRecoveryWarning'));
+  });
+
+  it('removes only server-confirmed proxy tabs and falls back to a remaining tab', async () => {
+    api.getBrowserTabs.mockResolvedValue({
+      tabs: [tab('proxy', { mode: 'proxy' }), tab('direct', { mode: 'direct', visible: false })],
+    });
+    api.clearBrowserProfile.mockResolvedValue({ closedTabIds: ['proxy'] });
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+
+    await act(async () => { await result.current.clearProxyLogin('https://example.com'); });
+
+    expect(result.current.tabs.map((item) => item.id)).toEqual(['direct']);
+    expect(result.current.activeId).toBeNull();
+    expect(result.current.historyActive).toBe(true);
+  });
+
+  it('resyncs server truth after a partially failed clear instead of keeping ghost tabs', async () => {
+    api.getBrowserTabs
+      .mockResolvedValueOnce({ tabs: [tab('proxy', { mode: 'proxy' }), tab('direct', { mode: 'direct' })] })
+      .mockResolvedValueOnce({ tabs: [tab('direct', { mode: 'direct' })] });
+    api.clearBrowserProfile.mockRejectedValue(new Error('profile disk unavailable'));
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+
+    await act(async () => { await result.current.clearProxyLogin(null); });
+
+    expect(api.getBrowserTabs).toHaveBeenCalledTimes(2);
+    expect(result.current.tabs.map((item) => item.id)).toEqual(['direct']);
+    expect(result.current.error?.message).toBe(t('browser.profileClearFailed'));
+  });
+
+  it('deletes one history row locally without clearing its Cookie profile', async () => {
+    const entry = { url: 'https://old.example/', title: 'Old', visitedAt: 1000, lastMode: 'proxy' };
+    upsertBrowserHistory(entry);
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+
+    act(() => { result.current.deleteHistory(entry); });
+
+    expect(result.current.history).toEqual([]);
+    expect(api.clearBrowserProfile).not.toHaveBeenCalled();
   });
 
   it('moves each independently expired background tab into device history', async () => {

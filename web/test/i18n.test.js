@@ -66,4 +66,25 @@ describe('browser dual-mode copy', () => {
     expect(consent).toContain(proxyWord);
     expect(dict['browser.consentIdle']).not.toContain(destroyedWord);
   });
+
+  it.each([
+    ['en', en], ['zh', zh], ['zh-TW', zhTW], ['ja', ja], ['ko', ko],
+  ])('%s includes the complete device profile copy', (_code, dict) => {
+    for (const key of [
+      'settings.browserPersistLogin',
+      'settings.browserPersistLoginHint',
+      'settings.browserRetention',
+      'browser.clearSiteLogin',
+      'browser.clearAllLogin',
+      'browser.clearSiteLoginConfirm',
+      'browser.clearAllLoginConfirm',
+      'browser.deleteHistoryEntry',
+      'browser.profileSaveFailed',
+      'browser.profileClearFailed',
+      'browser.profileSyncFailed',
+      'browser.profileRecoveryWarning',
+    ]) {
+      expect(dict[key], key).toBeTruthy();
+    }
+  });
 });
