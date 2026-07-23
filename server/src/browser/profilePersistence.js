@@ -34,6 +34,7 @@ export function createBrowserProfilePersistence({
   const loadKey = async () => {
     await ensureDir();
     try {
+      await fs.chmod(keyFile, 0o600);
       const key = await fs.readFile(keyFile);
       if (key.length !== 32) throw authenticationError();
       return key;
@@ -53,6 +54,7 @@ export function createBrowserProfilePersistence({
     } catch (error) {
       await handle?.close().catch(() => {});
       if (error?.code === 'EEXIST') {
+        await fs.chmod(keyFile, 0o600);
         const existing = await fs.readFile(keyFile);
         if (existing.length !== 32) throw authenticationError();
         return existing;
@@ -79,8 +81,11 @@ export function createBrowserProfilePersistence({
 
   const read = async (deviceId) => {
     let raw;
+    const target = profilePath(deviceId);
+    await ensureDir();
     try {
-      raw = await fs.readFile(profilePath(deviceId), 'utf8');
+      await fs.chmod(target, 0o600);
+      raw = await fs.readFile(target, 'utf8');
     } catch (error) {
       if (error?.code === 'ENOENT') return null;
       throw error;

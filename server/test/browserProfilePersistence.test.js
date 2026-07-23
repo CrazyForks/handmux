@@ -117,3 +117,27 @@ describe('browser profile persistence', () => {
     expect((await fs.readdir(dir)).filter((name) => name.endsWith('.profile'))).toEqual([]);
   });
 });
+
+describe('existing browser profile permissions', () => {
+  it('tightens existing 0644 key and profile files before restoring', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'handmux-browser-mode-'));
+    const dir = path.join(root, 'profiles');
+    const keyFile = path.join(dir, 'profile.key');
+    try {
+      const first = createBrowserProfilePersistence({ dir, keyFile });
+      await first.write(DEVICE_A, '{"cookies":"secret"}');
+      const profileFile = (await fs.readdir(dir)).find((name) => name.endsWith('.profile'));
+      const profilePath = path.join(dir, profileFile);
+      await fs.chmod(keyFile, 0o644);
+      await fs.chmod(profilePath, 0o644);
+      const restarted = createBrowserProfilePersistence({ dir, keyFile });
+
+      expect(await restarted.read(DEVICE_A)).toBe('{"cookies":"secret"}');
+      expect((await fs.stat(keyFile)).mode & 0o777).toBe(0o600);
+      expect((await fs.stat(profilePath)).mode & 0o777).toBe(0o600);
+      expect((await fs.stat(dir)).mode & 0o777).toBe(0o700);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+});

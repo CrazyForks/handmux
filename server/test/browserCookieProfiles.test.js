@@ -336,3 +336,138 @@ it('orders a full clear after an in-flight encrypted write', async () => {
     vi.useRealTimers();
   }
 });
+
+describe('device cookie profile concurrency', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const deferred = () => {
+    let resolve;
+    const promise = new Promise((done) => { resolve = done; });
+    return { promise, resolve };
+  };
+
+  it('does not let a deferred restore overwrite memory used while reading', async () => {
+    const stale = createCookies();
+    stale.setByServer('https://app.example/', ['session=stale; Path=/']);
+    const reading = deferred();
+    const persistence = {
+      read: vi.fn(() => reading.promise),
+      write: vi.fn(),
+      remove: vi.fn(),
+      close: vi.fn(),
+    };
+    const profiles = createDeviceCookieProfiles({ createCookies, persistence });
+    const configuring = profiles.configure(DEVICE_A, { persist: true, retentionDays: 30 });
+    const cookies = createCookies();
+    profiles.attach(DEVICE_A, cookies);
+    cookies.setByServer('https://app.example/', ['session=current; Path=/']);
+
+    reading.resolve(stale.serializeJar());
+    await configuring;
+
+    expect(headerFor(cookies, 'https://app.example/')).toContain('session=current');
+    expect(headerFor(cookies, 'https://app.example/')).not.toContain('session=stale');
+    expect(persistence.write).toHaveBeenCalledOnce();
+    expect(persistence.write.mock.calls[0][1]).toContain('"value":"current"');
+  });
+
+  it('rechecks the active epoch after waiting for an in-flight write', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    try {
+      const writing = deferred();
+      const persistence = {
+        read: vi.fn(async () => null),
+        write: vi.fn(() => writing.promise),
+        remove: vi.fn(),
+        close: vi.fn(),
+      };
+      const profiles = createDeviceCookieProfiles({ createCookies, persistence });
+      await profiles.configure(DEVICE_A, { persist: true, retentionDays: 1 });
+      const cookies = createCookies();
+      profiles.attach(DEVICE_A, cookies);
+      cookies.setByServer('https://app.example/', ['session=value; Path=/']);
+      vi.advanceTimersByTime(500);
+      await Promise.resolve();
+      profiles.setActive(DEVICE_A, true);
+      profiles.setActive(DEVICE_A, false);
+      vi.advanceTimersByTime(DAY);
+      await Promise.resolve();
+
+      profiles.setActive(DEVICE_A, true);
+      writing.resolve();
+      await profiles.close();
+
+      expect(headerFor(cookies, 'https://app.example/')).toContain('session=value');
+      expect(persistence.remove).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('serializes full clear removal before a subsequent dirty flush', async () => {
+    vi.useFakeTimers();
+    try {
+      const removing = deferred();
+      const events = [];
+      const persistence = {
+        read: vi.fn(async () => null),
+        write: vi.fn(async (_id, jar) => {
+          events.push(jar.includes('"value":"new"') ? 'write-new' : 'write-old');
+        }),
+        remove: vi.fn(async () => {
+          events.push('remove-start');
+          await removing.promise;
+          events.push('remove-end');
+        }),
+        close: vi.fn(),
+      };
+      const profiles = createDeviceCookieProfiles({ createCookies, persistence });
+      await profiles.configure(DEVICE_A, { persist: true, retentionDays: 30 });
+      const cookies = createCookies();
+      profiles.attach(DEVICE_A, cookies);
+      cookies.setByServer('https://app.example/', ['session=old; Path=/']);
+      await vi.advanceTimersByTimeAsync(500);
+      profiles.clear(DEVICE_A, {});
+      cookies.setByServer('https://app.example/', ['session=new; Path=/']);
+      vi.advanceTimersByTime(500);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(events).toEqual(['write-old', 'remove-start']);
+      removing.resolve();
+      await profiles.close();
+
+      expect(events).toEqual(['write-old', 'remove-start', 'remove-end', 'write-new']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('waits for an in-flight configure restore before close resolves', async () => {
+    const source = createCookies();
+    source.setByServer('https://app.example/', ['session=restored; Path=/']);
+    const reading = deferred();
+    const persistence = {
+      read: vi.fn(() => reading.promise),
+      write: vi.fn(),
+      remove: vi.fn(),
+      close: vi.fn(),
+    };
+    const profiles = createDeviceCookieProfiles({ createCookies, persistence });
+    const configuring = profiles.configure(DEVICE_A, { persist: true, retentionDays: 30 });
+    const closing = profiles.close();
+    let closed = false;
+    closing.then(() => { closed = true; });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(closed).toBe(false);
+
+    reading.resolve(source.serializeJar());
+    await configuring;
+    await closing;
+    const cookies = createCookies();
+    profiles.attach(DEVICE_A, cookies);
+
+    expect(headerFor(cookies, 'https://app.example/')).toContain('session=restored');
+    expect(persistence.close).toHaveBeenCalledOnce();
+  });
+});

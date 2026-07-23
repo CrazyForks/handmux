@@ -19,6 +19,7 @@ export function createDeviceCookieProfiles({
 }) {
   const profiles = new Map();
   const pending = new Set();
+  let closing = false;
 
   const track = (operation) => {
     pending.add(operation);
@@ -41,7 +42,9 @@ export function createDeviceCookieProfiles({
         retentionTimer: null,
         flushTimer: null,
         dirty: false,
-        writePromise: Promise.resolve(),
+        operationPromise: Promise.resolve(),
+        useVersion: 0,
+        retentionEpoch: 0,
       };
       profiles.set(deviceId, profile);
     }
@@ -64,11 +67,15 @@ export function createDeviceCookieProfiles({
     }
   };
 
-  const queueWrite = (deviceId, profile, serialized = profile.cookies.serializeJar()) => {
-    const operation = profile.writePromise.then(() => persistence.write(deviceId, serialized));
-    profile.writePromise = operation.catch(() => {});
-    return track(operation);
+  const queueOperation = (profile, operation) => {
+    const result = profile.operationPromise.then(operation);
+    profile.operationPromise = result.catch(() => {});
+    return track(result);
   };
+
+  const queueWrite = (deviceId, profile, serialized = profile.cookies.serializeJar()) => (
+    queueOperation(profile, () => persistence.write(deviceId, serialized))
+  );
 
   const flush = async (deviceId) => {
     const profile = profiles.get(deviceId);
@@ -89,10 +96,11 @@ export function createDeviceCookieProfiles({
   const markDirty = (deviceId) => {
     const profile = profileFor(deviceId);
     profile.used = true;
+    profile.useVersion += 1;
     onMutation(deviceId);
     if (!profile.persist) return;
     profile.dirty = true;
-    if (profile.flushTimer !== null) return;
+    if (closing || profile.flushTimer !== null) return;
     profile.flushTimer = setTimer(() => {
       profile.flushTimer = null;
       void flush(deviceId).catch(() => {});
@@ -105,25 +113,33 @@ export function createDeviceCookieProfiles({
     profile.retentionTimer = null;
   };
 
-  const clearExpired = async (deviceId, profile) => {
+  const clearExpired = async (deviceId, profile, expectedEpoch, expectedIdleSince) => {
     clearRetentionTimer(profile);
-    if (profile.flushTimer !== null) {
-      clearTimer(profile.flushTimer);
-      profile.flushTimer = null;
-    }
-    profile.dirty = false;
-    await profile.writePromise;
+    if (profile.dirty) await flush(deviceId);
+    else await profile.operationPromise;
+    if (profile.active
+      || profile.retentionEpoch !== expectedEpoch
+      || profile.idleSince !== expectedIdleSince) return;
     installCookies(profile, createCookies());
     profile.used = false;
+    profile.useVersion += 1;
     profile.idleSince = null;
-    await persistence.remove(deviceId);
+    profile.dirty = false;
+    await queueOperation(profile, () => persistence.remove(deviceId));
   };
 
   const scheduleRetention = (deviceId, profile) => {
     clearRetentionTimer(profile);
-    if (profile.active || profile.idleSince === null || profile.retentionDays === null) return null;
+    if (closing || profile.active || profile.idleSince === null || profile.retentionDays === null) return null;
     const remaining = profile.idleSince + profile.retentionDays * DAY - now();
-    if (remaining <= 0) return track(clearExpired(deviceId, profile));
+    if (remaining <= 0) {
+      return track(clearExpired(
+        deviceId,
+        profile,
+        profile.retentionEpoch,
+        profile.idleSince,
+      ));
+    }
     profile.retentionTimer = setTimer(() => {
       profile.retentionTimer = null;
       const operation = scheduleRetention(deviceId, profile);
@@ -132,7 +148,16 @@ export function createDeviceCookieProfiles({
     return null;
   };
 
-  const configure = async (deviceId, prefs) => {
+  const saveCurrent = async (deviceId, profile) => {
+    if (profile.flushTimer !== null) {
+      clearTimer(profile.flushTimer);
+      profile.flushTimer = null;
+    }
+    profile.dirty = false;
+    await queueWrite(deviceId, profile);
+  };
+
+  const configureImpl = async (deviceId, prefs) => {
     if (typeof prefs?.persist !== 'boolean' || ![1, 7, 30, null].includes(prefs?.retentionDays)) {
       throw new Error('invalid browser profile preferences');
     }
@@ -140,23 +165,34 @@ export function createDeviceCookieProfiles({
     const wasPersisting = profile.persist;
     profile.persist = prefs.persist;
     profile.retentionDays = prefs.retentionDays;
+    profile.retentionEpoch += 1;
     let warning = null;
 
     if (prefs.persist && !wasPersisting) {
       if (!profile.loaded && !profile.used) {
         profile.loaded = true;
+        const useVersion = profile.useVersion;
         try {
           const serialized = await persistence.read(deviceId);
-          if (serialized !== null) replaceJar(profile, serialized);
+          if (profile.used || profile.useVersion !== useVersion) {
+            await saveCurrent(deviceId, profile);
+          } else if (serialized !== null) {
+            replaceJar(profile, serialized);
+          }
         } catch {
-          installCookies(profile, createCookies());
-          profile.used = false;
-          await persistence.remove(deviceId);
           warning = 'profile-recovery-failed';
+          await queueOperation(profile, () => persistence.remove(deviceId));
+          if (profile.used || profile.useVersion !== useVersion) {
+            await saveCurrent(deviceId, profile);
+          } else {
+            installCookies(profile, createCookies());
+            profile.used = false;
+            profile.useVersion += 1;
+          }
         }
       } else {
         profile.loaded = true;
-        await queueWrite(deviceId, profile);
+        await saveCurrent(deviceId, profile);
       }
     } else if (!prefs.persist && wasPersisting) {
       if (profile.flushTimer !== null) {
@@ -164,8 +200,7 @@ export function createDeviceCookieProfiles({
         profile.flushTimer = null;
       }
       profile.dirty = false;
-      await profile.writePromise;
-      await persistence.remove(deviceId);
+      await queueOperation(profile, () => persistence.remove(deviceId));
     }
 
     const retention = scheduleRetention(deviceId, profile);
@@ -173,9 +208,12 @@ export function createDeviceCookieProfiles({
     return { persist: profile.persist, retentionDays: profile.retentionDays, warning };
   };
 
+  const configure = (deviceId, prefs) => track(configureImpl(deviceId, prefs));
+
   const setActive = (deviceId, active) => {
     const profile = profiles.get(deviceId);
     if (!profile) return;
+    profile.retentionEpoch += 1;
     if (active) {
       profile.active = true;
       profile.idleSince = null;
@@ -194,6 +232,7 @@ export function createDeviceCookieProfiles({
       throw new Error('browser cookie profile unsupported');
     }
     profile.used = true;
+    profile.useVersion += 1;
     sessionCookies._cookieJar = profile.cookies._cookieJar;
     sessionCookies._pendingSyncCookies = [];
     profile.attached.add(sessionCookies);
@@ -228,6 +267,7 @@ export function createDeviceCookieProfiles({
     const profile = profiles.get(deviceId);
     if (!profile) return null;
     profile.used = true;
+    profile.useVersion += 1;
     return profile.cookies.serializeJar();
   };
 
@@ -235,6 +275,7 @@ export function createDeviceCookieProfiles({
     const profile = profiles.get(deviceId);
     if (!profile) return { cleared: false };
     profile.used = true;
+    profile.useVersion += 1;
     if (!url) {
       replaceJar(profile, null);
       onMutation(deviceId);
@@ -244,7 +285,7 @@ export function createDeviceCookieProfiles({
         profile.flushTimer = null;
       }
       if (profile.persist) {
-        track(profile.writePromise.then(() => persistence.remove(deviceId)));
+        queueOperation(profile, () => persistence.remove(deviceId));
       }
       return { cleared: true };
     }
@@ -269,24 +310,30 @@ export function createDeviceCookieProfiles({
     if (profile.flushTimer !== null) clearTimer(profile.flushTimer);
     profiles.delete(deviceId);
     if (profile.persist) {
-      track(profile.writePromise.then(() => persistence.remove(deviceId)));
+      queueOperation(profile, () => persistence.remove(deviceId));
     }
     return true;
   };
   const has = (deviceId) => profiles.has(deviceId);
 
   const close = async () => {
-    const flushes = [];
-    for (const [deviceId, profile] of profiles) {
-      clearRetentionTimer(profile);
-      if (profile.dirty) flushes.push(flush(deviceId));
-      else if (profile.flushTimer !== null) {
-        clearTimer(profile.flushTimer);
-        profile.flushTimer = null;
+    closing = true;
+    for (const profile of profiles.values()) clearRetentionTimer(profile);
+    while (true) {
+      const flushes = [];
+      for (const [deviceId, profile] of profiles) {
+        if (profile.dirty) flushes.push(flush(deviceId));
+        else if (profile.flushTimer !== null) {
+          clearTimer(profile.flushTimer);
+          profile.flushTimer = null;
+        }
       }
+      await Promise.all(flushes);
+      const operations = [...pending];
+      if (!operations.length) break;
+      await Promise.all(operations);
     }
-    await Promise.all(flushes);
-    await Promise.all([...pending]);
+    for (const profile of profiles.values()) clearRetentionTimer(profile);
     await persistence.close();
   };
 
