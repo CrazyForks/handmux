@@ -73,6 +73,7 @@ import { useAsrAvailable } from './voice/useAsrAvailable.js';
 import { usePageScrollLock } from './hooks/usePageScrollLock.js';
 import { useLongPress } from './hooks/useLongPress.js';
 import { useBackButton } from './hooks/useBackButton.js';
+import { useBrowserBackStack } from './hooks/useBrowserBackStack.js';
 import { useExitConfirm } from './hooks/useExitConfirm.js';
 import { readRoute, writeSessionHash } from './hashRoute.js';
 import { hasShareFlag, takeSharedFile, clearShareFlag } from './shareIntake.js';
@@ -312,11 +313,15 @@ export default function App() {
   const inset = useKeyboardInset();
 
   // Hardware Back closes the open overlay (→ one level up) instead of exiting the app.
-  // FileManager and GitPanel own their OWN multi-level Back handling (each Back pops one level —
-  // preview→dir→close for files, drill→home→close for git — so Back never blows the whole sheet away
-  // mid-navigation).
+  // Multi-level tools pop one level at a time instead of closing mid-navigation. FileManager and GitPanel
+  // own their stacks; Browser mirrors History→page through the dedicated hook below.
   useBackButton(previewSheetOpen, () => setPreviewSheetOpen(false));
-  useBackButton(browser.open, () => browser.setOpen(false));
+  useBrowserBackStack({
+    open: browser.open,
+    historyActive: browser.historyActive,
+    switchTab: browser.switchTab,
+    setOpen: browser.setOpen,
+  });
   useBackButton(drawerOpen || recoveryDialogOpen, () => {
     if (recoveryDialogOpen) closeRecovery(); else setDrawerOpen(false);
   });
@@ -1472,8 +1477,6 @@ export default function App() {
       <header className="topbar">
         <button ref={drawerMenuRef} className="hamburger" onClick={() => setDrawerOpen(true)}>☰</button>
         <span className="session-name" {...sessionNameLongPress}>{current?.session?.name ?? '—'}</span>
-        <button className="topbar-icon browser-entry" onClick={() => browser.setOpen(true)}
-          aria-label={t('app.browser')} title={t('app.browser')}><GlobeIcon /></button>
         {/* Always render so it doesn't pop in late once `current` loads — just disable until ready. */}
         <button className="topbar-icon" onClick={() => setIdeaOpen(true)} aria-label={t('app.ideas')} title={t('app.ideas')}
           disabled={!current}>
@@ -1492,6 +1495,8 @@ export default function App() {
           onEnableHooks={enableHooks}
         />
         <button className="topbar-icon" onClick={() => setUsageOpen(true)} aria-label={t('usage.title')} title={t('usage.title')}><GaugeIcon /></button>
+        <button className="topbar-icon browser-entry" onClick={() => browser.setOpen(true)}
+          aria-label={t('app.browser')} title={t('app.browser')}><GlobeIcon /></button>
         <button className="topbar-icon" onClick={reopenFiles} aria-label={t('app.files')} title={t('app.files')}><FolderIcon /></button>
         <button className="topbar-icon" onClick={() => setGitOpen(true)} aria-label="Git" title="Git"><GitIcon /></button>
         <button className="topbar-icon" onClick={openSettings} aria-label={t('app.settings')} title={t('app.settings')}>

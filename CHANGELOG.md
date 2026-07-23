@@ -11,6 +11,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ### Changed
 - 内置浏览器替代原动态端口预览，静态目录预览继续保留。手机直连使用跨域 iframe，目标站的 `X-Frame-Options` / CSP、第三方 Cookie 或手机网络可能阻止加载，且 Handmux 无法可靠读取标题和页面内跳转；代理模式改用固定短域名 `b-<13 位小写 base36>.<previewDomain>`，只有收到 `previewDomain` 配置后才可选。Cookie Profile 仅共享 Cookie，不会跨系统共享 localStorage、IndexedDB 或 Service Worker；按网站清理父域 Cookie 时可能同时影响同一父域下的相关系统。
 - 内置浏览器暂不展示无法可靠判断状态的前进 / 后退按钮，可从设备本地历史重新打开之前的网址。
+- 顶栏浏览器入口移到“文件”左侧；从浏览器历史进入网页时会增加一层返回栈，返回先回到历史页，再次返回才收起浏览器，与其他多层工具一致。
 
 ### Fixed
 - 代理页签中的链接、表单、SSO / OAuth 回调与服务端重定向现在由当前 Hammerhead 会话原生完成，不再被 Handmux 二次 GET 或切换并关闭上下文；修复跨域 GET 参数丢失、POST 事件重复、一次性登录回调被重复消费及跨域返回 403。

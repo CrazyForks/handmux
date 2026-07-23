@@ -16,6 +16,12 @@ describe('built-in browser App composition', () => {
   it('renders the browser toolbar entry unconditionally', () => {
     expect(source).toMatch(/className="topbar-icon browser-entry"[^>]+onClick=\{\(\) => browser\.setOpen\(true\)\}/);
     expect(source).not.toMatch(/\{shownPreview && \(\s*<button className="topbar-icon preview-live"/);
+    expect(source.indexOf('className="topbar-icon browser-entry"'))
+      .toBeLessThan(source.indexOf('aria-label={t(\'app.files\')}'));
+    expect(source.slice(
+      source.indexOf('className="topbar-icon browser-entry"'),
+      source.indexOf('aria-label={t(\'app.files\')}'),
+    )).not.toContain('aria-label={t(\'usage.title\')}');
   });
 
   it('routes confirmed terminal web links into the built-in browser', () => {
