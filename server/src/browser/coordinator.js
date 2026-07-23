@@ -192,6 +192,33 @@ export function createBrowserCoordinator({
     const visibilityMatch = path.match(/^\/([^/]+)\/visibility$/);
     const tabMatch = path.match(/^\/([^/]+)$/);
 
+    if (req.method === 'PUT' && path === '/profile') {
+      const response = await proxyCall(req, 'PUT', '/api/browser-tabs/profile', req.body);
+      return sendProxy(res, response);
+    }
+
+    if (req.method === 'POST' && path === '/profile/clear') {
+      const response = await proxyCall(req, 'POST', '/api/browser-tabs/profile/clear', req.body);
+      const payload = jsonBody(response);
+      if (response?.status === 200 && Array.isArray(payload?.closedTabIds)) {
+        const logicalForWorker = new Map();
+        for (const [logicalId, internalId] of proxyIds) {
+          if (proxyTabs.get(logicalId)?.ownerDevice === deviceId) {
+            logicalForWorker.set(internalId, logicalId);
+          }
+        }
+        const closedTabIds = payload.closedTabIds.map((internalId) => (
+          logicalForWorker.get(internalId) || internalId
+        ));
+        for (const logicalId of closedTabIds) forgetProxy(logicalId);
+        return sendProxy(res, {
+          ...response,
+          body: Buffer.from(JSON.stringify({ ...payload, closedTabIds })),
+        });
+      }
+      return sendProxy(res, response);
+    }
+
     if (req.method === 'POST' && path === '/') {
       const { url: rawUrl, closeAfterMinutes, mode = 'proxy' } = req.body || {};
       const url = targetUrl(rawUrl);

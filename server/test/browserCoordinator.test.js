@@ -18,6 +18,7 @@ function proxyBackend() {
   let failVisibility = false;
   const visibilityStatuses = [];
   const visibilityDelays = [];
+  const clearDelays = [];
   const byDevice = new Map();
   const calls = [];
   const tabs = (device) => byDevice.get(device) || [];
@@ -26,6 +27,19 @@ function proxyBackend() {
     calls.push({ method, path, body });
     if (!available) return null;
     const device = req.get('x-handmux-browser-device');
+    if (method === 'PUT' && path === '/api/browser-tabs/profile') {
+      return json(200, { ...body, warning: null });
+    }
+    if (method === 'POST' && path === '/api/browser-tabs/profile/clear') {
+      const delay = clearDelays.shift();
+      if (delay) await delay;
+      const closed = tabs(device).filter((tab) => (
+        body.origin === null || new URL(tab.originalUrl).origin === body.origin
+      ));
+      const closedIds = new Set(closed.map((tab) => tab.id));
+      save(device, tabs(device).filter((tab) => !closedIds.has(tab.id)));
+      return json(200, { closedTabIds: [...closedIds] });
+    }
     if (method === 'GET' && path === '/api/browser-tabs') return json(200, { tabs: tabs(device) });
     if (method === 'POST' && path === '/api/browser-tabs') {
       if (failCreate) return json(503, { error: 'browser unavailable' });
@@ -83,6 +97,11 @@ function proxyBackend() {
     deferNextVisibility() {
       let release;
       visibilityDelays.push(new Promise((resolve) => { release = resolve; }));
+      return release;
+    },
+    deferNextClear() {
+      let release;
+      clearDelays.push(new Promise((resolve) => { release = resolve; }));
       return release;
     },
     drop(device, id) { save(device, tabs(device).filter((tab) => tab.id !== id)); },
@@ -556,6 +575,51 @@ describe('browser main-process coordinator', () => {
     ]);
     expect(listedA.body.tabs.filter((tab) => tab.visible)).toHaveLength(1);
     expect(listedB.body.tabs.filter((tab) => tab.visible)).toHaveLength(1);
+  });
+
+  it('serializes profile clear with later same-device opens while another device remains parallel', async () => {
+    const backend = proxyBackend();
+    const app = appFor(backend);
+    const direct = await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://direct.example/', closeAfterMinutes: 30, mode: 'direct',
+    }).expect(201);
+    const oldProxy = await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://app.example/old', closeAfterMinutes: 30, mode: 'proxy',
+    }).expect(201);
+    const releaseClear = backend.deferNextClear();
+
+    const pendingClear = asDevice(request(app).post('/api/browser-tabs/profile/clear'))
+      .send({ origin: 'https://app.example' });
+    const clearOutcome = pendingClear.then((response) => response);
+    await vi.waitFor(() => expect(backend.calls).toContainEqual(expect.objectContaining({
+      method: 'POST', path: '/api/browser-tabs/profile/clear',
+    })));
+
+    const createsBefore = backend.calls.filter((call) => (
+      call.method === 'POST' && call.path === '/api/browser-tabs'
+    )).length;
+    const pendingOpen = asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://app.example/new', closeAfterMinutes: 30, mode: 'proxy',
+    });
+    const openOutcome = pendingOpen.then((response) => response);
+
+    await asDevice(request(app).put('/api/browser-tabs/profile'), DEVICE_B)
+      .send({ persist: true, retentionDays: 7 })
+      .expect(200, { persist: true, retentionDays: 7, warning: null });
+    expect(backend.calls.filter((call) => (
+      call.method === 'POST' && call.path === '/api/browser-tabs'
+    ))).toHaveLength(createsBefore);
+
+    releaseClear();
+    expect((await clearOutcome).body.closedTabIds).toEqual([oldProxy.body.id]);
+    expect((await openOutcome).status).toBe(201);
+
+    const listed = await asDevice(request(app).get('/api/browser-tabs')).expect(200);
+    expect(listed.body.tabs).toContainEqual(expect.objectContaining({ id: direct.body.id, mode: 'direct' }));
+    expect(listed.body.tabs).not.toContainEqual(expect.objectContaining({ id: oldProxy.body.id }));
+    expect(listed.body.tabs).toContainEqual(expect.objectContaining({
+      originalUrl: 'https://app.example/new', mode: 'proxy',
+    }));
   });
 
   it('clears direct expiry timers when the coordinator closes', async () => {

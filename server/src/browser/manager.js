@@ -354,8 +354,27 @@ export async function createBrowserPreviewManager({
       return cookieProfiles.serialize(deviceId);
     },
 
-    clearDeviceProfile(deviceId, options) {
-      return cookieProfiles.clear(deviceId, options);
+    async clearDeviceProfile(deviceId, { origin } = {}) {
+      const matching = store.list().filter((tab) => {
+        if (tab.ownerDevice !== deviceId || tab.mode !== 'proxy') return false;
+        if (origin === null) return true;
+        try {
+          return new URL(tab.originalUrl).origin === origin;
+        } catch {
+          return false;
+        }
+      });
+      const closedTabIds = [];
+      for (const tab of matching) {
+        const removed = store.remove(tab.id);
+        if (!removed) continue;
+        closedTabIds.push(tab.id);
+        releaseTabContext(removed);
+      }
+      updateDeviceActivity(deviceId);
+      await cookieProfiles.clear(deviceId, { url: origin === null ? undefined : `${origin}/` });
+      await cookieProfiles.flush?.(deviceId);
+      return { closedTabIds };
     },
 
     configureDeviceProfile(deviceId, prefs) {

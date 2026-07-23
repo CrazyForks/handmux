@@ -3,6 +3,7 @@ import { browserLabelForOrigin } from './originLabel.js';
 import { browserRequestOrigin } from './publicProxy.js';
 
 const CLOSE_AFTER_MINUTES = new Set([10, 30, 60, 120, null]);
+const RETENTION_DAYS = new Set([1, 7, 30, null]);
 const DEVICE_ID = /^[A-Za-z0-9_-]{32,128}$/;
 const DEVICE_COOKIE = 'tw_browser_device';
 
@@ -31,6 +32,16 @@ function validTarget(value) {
     return url.protocol === 'http:' || url.protocol === 'https:';
   } catch {
     return false;
+  }
+}
+
+function normalizedHttpOrigin(value) {
+  if (typeof value !== 'string' || !value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : null;
+  } catch {
+    return null;
   }
 }
 
@@ -99,6 +110,38 @@ export function browserRoutes({
   r.get('/browser-tabs', (req, res) => {
     if (!browser) return res.status(503).json({ error: 'browser unavailable' });
     res.json({ tabs: browser.list(req.browserDeviceId).map((tab) => publicTab(tab, req.browserDeviceId)) });
+  });
+
+  r.put('/browser-tabs/profile', async (req, res, next) => {
+    if (!browser) return res.status(503).json({ error: 'browser unavailable' });
+    const { persist, retentionDays } = req.body || {};
+    if (typeof persist !== 'boolean' || !RETENTION_DAYS.has(retentionDays)) {
+      return res.status(400).json({ error: 'bad browser profile preferences' });
+    }
+    try {
+      const configured = await browser.configureDeviceProfile(
+        req.browserDeviceId,
+        { persist, retentionDays },
+      );
+      return res.json(configured);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  r.post('/browser-tabs/profile/clear', async (req, res, next) => {
+    if (!browser) return res.status(503).json({ error: 'browser unavailable' });
+    const rawOrigin = req.body?.origin;
+    const origin = rawOrigin === null ? null : normalizedHttpOrigin(rawOrigin);
+    if (origin === null && rawOrigin !== null) {
+      return res.status(400).json({ error: 'bad browser profile clear request' });
+    }
+    try {
+      const cleared = await browser.clearDeviceProfile(req.browserDeviceId, { origin });
+      return res.json(cleared);
+    } catch (error) {
+      return next(error);
+    }
   });
 
   r.patch('/browser-tabs/:id/visibility', (req, res) => {

@@ -21,10 +21,69 @@ function browserFake() {
     setVisible: vi.fn(() => ({ id: 'tab-a', visible: false, expiresAt: 600_000 })),
     navigate: vi.fn((_id, url) => ({ id: 'tab-a', originalUrl: new URL(url).toString() })),
     closeTab: vi.fn(() => ({ id: 'tab-a' })),
+    configureDeviceProfile: vi.fn(async (_deviceId, prefs) => prefs),
+    clearDeviceProfile: vi.fn(async () => ({ closedTabIds: ['tab-a'] })),
   };
 }
 
 describe('browser routes', () => {
+  it('configures only the requesting device profile', async () => {
+    const browser = browserFake();
+
+    await asDevice(request(appFor(browser)).put('/browser-tabs/profile'))
+      .send({ persist: true, retentionDays: 7 })
+      .expect(200, { persist: true, retentionDays: 7 });
+
+    expect(browser.configureDeviceProfile).toHaveBeenCalledWith(
+      DEVICE,
+      { persist: true, retentionDays: 7 },
+    );
+  });
+
+  it.each([
+    [{ persist: 'yes', retentionDays: 7 }],
+    [{ persist: true, retentionDays: 14 }],
+    [{ persist: true }],
+  ])('rejects invalid profile preferences %#', async (body) => {
+    const browser = browserFake();
+
+    await asDevice(request(appFor(browser)).put('/browser-tabs/profile'))
+      .send(body)
+      .expect(400, { error: 'bad browser profile preferences' });
+
+    expect(browser.configureDeviceProfile).not.toHaveBeenCalled();
+  });
+
+  it('clears one normalized HTTP(S) Origin and returns tabs actually closed', async () => {
+    const browser = browserFake();
+
+    await asDevice(request(appFor(browser)).post('/browser-tabs/profile/clear'))
+      .send({ origin: 'https://app.internal.example/path' })
+      .expect(200, { closedTabIds: ['tab-a'] });
+
+    expect(browser.clearDeviceProfile).toHaveBeenCalledWith(
+      DEVICE,
+      { origin: 'https://app.internal.example' },
+    );
+  });
+
+  it('uses null exclusively for all-profile cleanup', async () => {
+    const browser = browserFake();
+
+    await asDevice(request(appFor(browser)).post('/browser-tabs/profile/clear'))
+      .send({ origin: null })
+      .expect(200);
+    await asDevice(request(appFor(browser)).post('/browser-tabs/profile/clear'))
+      .send({})
+      .expect(400, { error: 'bad browser profile clear request' });
+    await asDevice(request(appFor(browser)).post('/browser-tabs/profile/clear'))
+      .send({ origin: 'ftp://app.internal.example' })
+      .expect(400, { error: 'bad browser profile clear request' });
+
+    expect(browser.clearDeviceProfile).toHaveBeenCalledTimes(1);
+    expect(browser.clearDeviceProfile).toHaveBeenCalledWith(DEVICE, { origin: null });
+  });
+
   it('creates a direct tab without using a fallback proxy origin', async () => {
     const browser = browserFake();
     const res = await asDevice(request(appFor(browser)).post('/browser-tabs'))

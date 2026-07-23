@@ -71,10 +71,61 @@ describe('browser preview manager', () => {
     manager.closeTab(first.id, DEVICE);
     expect(detach).toHaveBeenCalledTimes(1);
     expect(manager.serializeDeviceProfile(DEVICE)).toBe('serialized');
-    expect(manager.clearDeviceProfile(DEVICE, { url: 'https://a.example/' })).toEqual({ cleared: true });
+    await expect(manager.clearDeviceProfile(DEVICE, { origin: 'https://a.example' })).resolves.toEqual({ closedTabIds: [] });
 
     await manager.close();
     expect(detach).toHaveBeenCalledTimes(2);
+  });
+
+  it('closes only matching same-device proxy tabs before clearing their real Origin cookies', async () => {
+    const fake = fakeHammerhead();
+    let rejectClear = false;
+    const cookieProfiles = {
+      attach: vi.fn(() => vi.fn()),
+      serialize: vi.fn(),
+      clear: vi.fn(async () => {
+        if (rejectClear) throw new Error('profile disk unavailable');
+        return { cleared: true };
+      }),
+      setActive: vi.fn(),
+      close: vi.fn(),
+    };
+    const ids = ['proxy-a', 'proxy-other', 'direct-a', 'proxy-b'];
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      cookieProfiles,
+      randomId: () => ids.shift(),
+    });
+    await manager.create({
+      url: 'https://app.example/path', origin: 'https://browser-a.preview.example',
+      closeAfterMinutes: 10, deviceId: DEVICE, mode: 'proxy',
+    });
+    await manager.create({
+      url: 'https://other.example/', origin: 'https://browser-other.preview.example',
+      closeAfterMinutes: 10, deviceId: DEVICE, mode: 'proxy',
+    });
+    await manager.create({
+      url: 'https://app.example/direct', origin: 'https://browser-a.preview.example',
+      closeAfterMinutes: 10, deviceId: DEVICE, mode: 'direct',
+    });
+    await manager.create({
+      url: 'https://app.example/device-b', origin: 'https://browser-b.preview.example',
+      closeAfterMinutes: 10, deviceId: 'device-b', mode: 'proxy',
+    });
+
+    await expect(manager.clearDeviceProfile(DEVICE, { origin: 'https://app.example' }))
+      .resolves.toEqual({ closedTabIds: ['proxy-a'] });
+    expect(cookieProfiles.clear).toHaveBeenCalledWith(DEVICE, { url: 'https://app.example/' });
+    expect(manager.list(DEVICE).map((tab) => tab.id)).toEqual(['proxy-other', 'direct-a']);
+    expect(manager.list('device-b').map((tab) => tab.id)).toEqual(['proxy-b']);
+
+    rejectClear = true;
+    await expect(manager.clearDeviceProfile(DEVICE, { origin: null }))
+      .rejects.toThrow('profile disk unavailable');
+    expect(manager.list(DEVICE).map((tab) => tab.id)).toEqual(['direct-a']);
+    expect(manager.list('device-b').map((tab) => tab.id)).toEqual(['proxy-b']);
+
+    await manager.close();
   });
 
   it('detaches an empty context exactly once when shutdown interrupts openSession', async () => {

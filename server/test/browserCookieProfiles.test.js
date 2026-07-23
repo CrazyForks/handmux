@@ -337,6 +337,33 @@ it('orders a full clear after an in-flight encrypted write', async () => {
   }
 });
 
+it('lets callers await a full clear without writing the empty jar back after removal', async () => {
+  vi.useFakeTimers();
+  try {
+    const events = [];
+    const persistence = {
+      read: vi.fn(async () => null),
+      write: vi.fn(async () => { events.push('write'); }),
+      remove: vi.fn(async () => { events.push('remove'); }),
+      close: vi.fn(),
+    };
+    const profiles = createDeviceCookieProfiles({ createCookies, persistence });
+    await profiles.configure(DEVICE_A, { persist: true, retentionDays: 30 });
+    const cookies = createCookies();
+    profiles.attach(DEVICE_A, cookies);
+    cookies.setByServer('https://app.example/', ['session=value; Path=/']);
+    await profiles.flush(DEVICE_A);
+
+    profiles.clear(DEVICE_A, {});
+    await profiles.flush(DEVICE_A);
+
+    expect(events).toEqual(['write', 'remove']);
+    await profiles.close();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 describe('device cookie profile concurrency', () => {
   const DAY = 24 * 60 * 60 * 1000;
   const deferred = () => {

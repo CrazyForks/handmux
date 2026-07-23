@@ -80,6 +80,10 @@ export function createDeviceCookieProfiles({
   const flush = async (deviceId) => {
     const profile = profiles.get(deviceId);
     if (!profile || !profile.persist) return;
+    if (!profile.dirty) {
+      await profile.operationPromise;
+      return;
+    }
     if (profile.flushTimer !== null) {
       clearTimer(profile.flushTimer);
       profile.flushTimer = null;
