@@ -51,6 +51,8 @@ export default function BrowserSheet({ browser }) {
   const addressRef = useRef(null);
   const bodyRef = useRef(null);
   const selectionEpoch = useRef(0);
+  const clearTriggerRef = useRef(null);
+  const clearCancelRef = useRef(null);
 
   useEffect(() => {
     setAddress(historyActive ? '' : (active?.originalUrl || ''));
@@ -60,6 +62,21 @@ export default function BrowserSheet({ browser }) {
     setModeOpen(false);
     if (!historyActive) setHistoryModeOpen(null);
   }, [activeId, historyActive, open]);
+
+  useEffect(() => {
+    if (!clearConfirmation) return undefined;
+    const trigger = clearTriggerRef.current;
+    const frame = requestAnimationFrame(() => clearCancelRef.current?.focus());
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setClearConfirmation(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('keydown', onKeyDown);
+      trigger?.focus();
+    };
+  }, [clearConfirmation]);
 
   useEffect(() => {
     const onMessage = (event) => {
@@ -244,6 +261,9 @@ export default function BrowserSheet({ browser }) {
   const requestSiteClear = (entry) => {
     let origin;
     try { origin = new URL(entry.url).origin; } catch { return; }
+    clearTriggerRef.current = document.activeElement
+      ?.closest('.browser-history-row')
+      ?.querySelector('.browser-history-more') || document.activeElement;
     setHistoryModeOpen(null);
     setClearConfirmation({ entry, origin });
   };
@@ -310,7 +330,8 @@ export default function BrowserSheet({ browser }) {
 
   return createPortal(
     <div className={`file-sheet browser-sheet ${open ? 'open' : ''}`} aria-hidden={!open}>
-      <div className="browser-tabs" role="tablist" aria-label={t('browser.openTabs')}>
+      <div className="browser-tabs" role="tablist" aria-label={t('browser.openTabs')}
+        inert={clearConfirmation ? '' : undefined}>
         <button className={`browser-tab browser-history-tab ${historyActive ? 'active' : ''}`} role="tab"
           aria-selected={historyActive} onClick={selectHistory}>
           <ClockIcon />{t('browser.history')}
@@ -337,7 +358,7 @@ export default function BrowserSheet({ browser }) {
           onClick={() => { setModeOpen(false); setOpen(false); }}><ChevronDownIcon /></button>
       </div>
 
-      <div className="browser-nav">
+      <div className="browser-nav" inert={clearConfirmation ? '' : undefined}>
         {proxied && <button className="browser-nav-button" aria-label={t('browser.back')} disabled={!active || historyActive} onClick={() => postCommand('back')}>‹</button>}
         {proxied && <button className="browser-nav-button" aria-label={t('browser.forward')} disabled={!active || historyActive} onClick={() => postCommand('forward')}>›</button>}
         <form className="browser-address-form" onSubmit={submitAddress}>
@@ -359,8 +380,9 @@ export default function BrowserSheet({ browser }) {
           <div className="browser-mode-menu" role="dialog" aria-label={t('browser.switchMode')}>
             <button className="browser-mode-option" aria-pressed={active.mode === 'direct'} onClick={() => chooseMode('direct')}>{t('browser.directMode')}</button>
             <button className="browser-mode-option proxy" aria-pressed={active.mode === 'proxy'} disabled={!proxyAvailable}
+              aria-describedby={!proxyAvailable ? 'browser-mode-proxy-unavailable' : undefined}
               onClick={() => chooseMode('proxy')}>{t('browser.proxyMode')}</button>
-            {!proxyAvailable && <p>{t('browser.proxyUnavailable')}</p>}
+            {!proxyAvailable && <p id="browser-mode-proxy-unavailable">{t('browser.proxyUnavailable')}</p>}
           </div>
         )}
         <button className="browser-nav-button" aria-label={t('browser.viewMode')}
@@ -382,7 +404,8 @@ export default function BrowserSheet({ browser }) {
         )}
       </div>
 
-      <div ref={bodyRef} className={`browser-content ${device === 'desktop' ? 'desktop' : ''}`}>
+      <div ref={bodyRef} className={`browser-content ${device === 'desktop' ? 'desktop' : ''}`}
+        inert={clearConfirmation ? '' : undefined}>
         <section className="browser-history" hidden={!historyActive}>
           <div className="browser-history-head">
             <h2>{t('browser.history')}</h2>
@@ -410,12 +433,14 @@ export default function BrowserSheet({ browser }) {
                       <div className="browser-history-mode-menu" role="dialog" aria-label={t('browser.openMode')}>
                         <button className="browser-history-mode-option" onClick={() => openHistory(entry, 'direct', true)}>{t('browser.directMode')}</button>
                         <button className="browser-history-mode-option proxy" disabled={!proxyAvailable}
+                          aria-describedby={!proxyAvailable ? `browser-history-proxy-unavailable-${index}` : undefined}
                           onClick={() => openHistory(entry, 'proxy', true)}>{t('browser.proxyMode')}</button>
                         <button className="browser-history-mode-option danger" disabled={!proxyAvailable}
+                          aria-describedby={!proxyAvailable ? `browser-history-proxy-unavailable-${index}` : undefined}
                           onClick={() => requestSiteClear(entry)}>{t('browser.clearSiteLogin')}</button>
                         <button className="browser-history-mode-option danger"
                           onClick={() => removeHistory(entry)}>{t('browser.deleteHistoryEntry')}</button>
-                        {!proxyAvailable && <p>{t('browser.proxyUnavailable')}</p>}
+                        {!proxyAvailable && <p id={`browser-history-proxy-unavailable-${index}`}>{t('browser.proxyUnavailable')}</p>}
                       </div>
                     )}
                   </div>
@@ -468,7 +493,7 @@ export default function BrowserSheet({ browser }) {
             aria-label={t('browser.clearSiteLogin')}>
             <p>{t('browser.clearSiteLoginConfirm')}</p>
             <div>
-              <button onClick={() => setClearConfirmation(null)}>{t('common.cancel')}</button>
+              <button ref={clearCancelRef} onClick={() => setClearConfirmation(null)}>{t('common.cancel')}</button>
               <button className="danger" onClick={confirmSiteClear}>{t('common.confirm')}</button>
             </div>
           </div>

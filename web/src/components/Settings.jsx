@@ -49,8 +49,24 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   const [previewKind, setPreviewKind] = useState('off');    // start mode: off (default) / static
   const [confirmStop, setConfirmStop] = useState(false);    // two-tap guard on 停止 (no nested modal)
   const [profileConfirm, setProfileConfirm] = useState(null);
+  const profileConfirmTriggerRef = useRef(null);
+  const profileConfirmCancelRef = useRef(null);
   const remainMs = useRemaining(activePreview?.expiresAt, !!activePreview && open); // live TTL countdown
   useEffect(() => { setConfirmStop(false); }, [activePreview?.name, open]); // reset guards per preview/open
+  useEffect(() => {
+    if (!profileConfirm) return undefined;
+    const trigger = profileConfirmTriggerRef.current;
+    const frame = requestAnimationFrame(() => profileConfirmCancelRef.current?.focus());
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setProfileConfirm(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('keydown', onKeyDown);
+      trigger?.focus();
+    };
+  }, [profileConfirm]);
   // Open the dir picker seeded at the LAST preview dir for this window (so re-previewing the same
   // build is one tap), else the pane's current cwd (re-fetched, honoring a mid-session `cd`), else
   // $HOME. The picker also has a "jump to cwd" shortcut for switching dirs on the spot.
@@ -124,8 +140,9 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
 
   return (
     <>
-      <div className="settings-backdrop" onClick={onClose} />
-      <div className="settings-card" role="dialog" aria-label={t('settings.title')} aria-modal="true">
+      <div className="settings-backdrop" onClick={onClose} inert={profileConfirm ? '' : undefined} />
+      <div className="settings-card" role="dialog" aria-label={t('settings.title')} aria-modal="true"
+        inert={profileConfirm ? '' : undefined}>
         <div className="settings-head">
           <span className="settings-title">{t('settings.title')}</span>
           <button className="settings-close" onClick={onClose} aria-label={t('common.close')}>✕</button>
@@ -187,7 +204,10 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
                   aria-describedby="browser-profile-persist-hint"
                   onChange={(event) => {
                     if (event.target.checked) browser.setPersistProxyLogin(true);
-                    else setProfileConfirm('disable');
+                    else {
+                      profileConfirmTriggerRef.current = document.activeElement;
+                      setProfileConfirm('disable');
+                    }
                   }} />
                 <span className="cmd-switch-track" aria-hidden="true" />
                 <span className="cmd-switch-knob" aria-hidden="true" />
@@ -208,7 +228,10 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
               ))}
             </div>
             <button type="button" className="fontbtn browser-clear-all danger"
-              onClick={() => setProfileConfirm('clear')}>
+              onClick={() => {
+                profileConfirmTriggerRef.current = document.activeElement;
+                setProfileConfirm('clear');
+              }}>
               {t('browser.clearAllLogin')}
             </button>
           </div>
@@ -443,7 +466,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
               ? 'browser.clearAllLoginConfirm'
               : 'settings.browserDisablePersistConfirm')}</p>
             <div>
-              <button onClick={() => setProfileConfirm(null)}>{t('common.cancel')}</button>
+              <button ref={profileConfirmCancelRef} onClick={() => setProfileConfirm(null)}>{t('common.cancel')}</button>
               <button className="danger" onClick={() => {
                 if (profileConfirm === 'clear') browser.clearProxyLogin(null);
                 else browser.setPersistProxyLogin(false);

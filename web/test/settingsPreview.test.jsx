@@ -84,6 +84,27 @@ describe('Settings preview section', () => {
     expect(setPersistProxyLogin).not.toHaveBeenCalled();
   });
 
+  it('makes profile confirmation keyboard-modal and restores trigger focus', async () => {
+    const browser = {
+      proxyAvailable: true, defaultMode: 'direct', persistProxyLogin: false,
+      proxyLoginRetentionDays: 30, setDefaultMode: vi.fn(), setPersistProxyLogin: vi.fn(),
+      setProxyLoginRetentionDays: vi.fn(), clearProxyLogin: vi.fn(),
+    };
+    await render({ browser });
+    const trigger = [...container.querySelectorAll('button')]
+      .find((node) => node.textContent === '清理全部代理登录状态');
+    trigger.focus();
+    click(trigger);
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+
+    const dialog = document.querySelector('.browser-profile-confirm');
+    expect(document.activeElement).toBe(dialog.querySelector('button'));
+    expect(container.querySelector('.settings-card').hasAttribute('inert')).toBe(true);
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
+    expect(document.querySelector('.browser-profile-confirm')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it('defaults to 不开启; picking 静态 reveals 选择目录启动 and opens the dir picker', async () => {
     await render({ activePreview: null, onStartPreview: vi.fn() }); // no pane → picker opens synchronously, seeds $HOME
     expect(container.textContent).toContain('不开启');

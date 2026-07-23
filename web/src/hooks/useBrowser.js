@@ -82,9 +82,14 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const browserProxyRef = useRef(browserProxy);
   const switchQueue = useRef(Promise.resolve());
   const profileSyncPromise = useRef(null);
+  const profilePrefsGeneration = useRef(0);
   const recoveryWarningShown = useRef(false);
   const persistProxyLoginRef = useRef(persistProxyLogin);
   const proxyLoginRetentionDaysRef = useRef(proxyLoginRetentionDays);
+  const pendingProfilePrefsRef = useRef({
+    persist: persistProxyLogin,
+    retentionDays: proxyLoginRetentionDays,
+  });
   const tabsRef = useRef(tabs);
   const activeIdRef = useRef(activeId);
   const historyActiveRef = useRef(historyActive);
@@ -152,6 +157,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   }, []);
 
   const synchronizeProfile = useCallback(() => {
+    if (profileSyncPromise.current) return profileSyncPromise.current;
     const prefs = readBrowserPrefs();
     let task;
     task = setBrowserProfilePrefs({
@@ -161,8 +167,9 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       noteRecoveryWarning(response);
       return response;
     }).catch(() => {
-      if (profileSyncPromise.current === task) profileSyncPromise.current = null;
       throw new Error(t('browser.profileSyncFailed'));
+    }).finally(() => {
+      if (profileSyncPromise.current === task) profileSyncPromise.current = null;
     });
     profileSyncPromise.current = task;
     task.catch(() => {});
@@ -170,12 +177,8 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   }, [noteRecoveryWarning]);
 
   const awaitProfileSyncForOpen = useCallback(async () => {
-    const task = profileSyncPromise.current || synchronizeProfile();
-    try {
-      await task;
-    } finally {
-      if (profileSyncPromise.current === task) profileSyncPromise.current = null;
-    }
+    await switchQueue.current;
+    await synchronizeProfile();
   }, [synchronizeProfile]);
 
   useEffect(() => {
@@ -516,9 +519,13 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     mutationGeneration.current += 1;
     const isCurrent = () => navigateEpoch.current.get(id) === epoch;
     const previous = navigateQueue.current.get(id) || Promise.resolve();
-    const request = previous.catch(() => undefined).then(
-      () => navigateBrowserTab(id, url, nextMode),
-    );
+    const request = previous.catch(() => undefined).then(async () => {
+      const latest = tabsRef.current.find((tab) => tab.id === id);
+      if (nextMode === 'proxy' && latest?.mode !== 'proxy') {
+        await awaitProfileSyncForOpen();
+      }
+      return navigateBrowserTab(id, url, nextMode);
+    });
     navigateQueue.current.set(id, request);
     try {
       const next = normalizeServerTab(await request);
@@ -544,7 +551,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     } finally {
       if (navigateQueue.current.get(id) === request) navigateQueue.current.delete(id);
     }
-  }, [browserProxy, commitTabs, defaultMode, resyncLostWorker]);
+  }, [awaitProfileSyncForOpen, browserProxy, commitTabs, defaultMode, resyncLostWorker]);
 
   const updateTabMeta = useCallback((id, patch) => {
     const current = tabsRef.current.find((tab) => tab.id === id);
@@ -582,22 +589,39 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     return next.find((item) => item.url === entry?.url) || null;
   }, []);
 
-  const saveProfilePrefs = useCallback((prefs, commit) => {
+  const saveProfilePrefs = useCallback((change) => {
+    pendingProfilePrefsRef.current = { ...pendingProfilePrefsRef.current, ...change };
+    const generation = ++profilePrefsGeneration.current;
     const operation = enqueueTransition(async () => {
+      const prefs = { ...pendingProfilePrefsRef.current };
       const response = await setBrowserProfilePrefs(prefs);
-      commit(response);
+      persistProxyLoginLocally(response.persist);
+      persistProxyLoginRetentionLocally(response.retentionDays);
+      persistProxyLoginRef.current = response.persist;
+      proxyLoginRetentionDaysRef.current = response.retentionDays;
+      setPersistProxyLoginState(response.persist);
+      setProxyLoginRetentionDaysState(response.retentionDays);
+      if (profilePrefsGeneration.current === generation) {
+        pendingProfilePrefsRef.current = {
+          persist: response.persist,
+          retentionDays: response.retentionDays,
+        };
+      }
       if (response?.warning === 'profile-recovery-failed') noteRecoveryWarning(response);
       else setError(null);
       return response;
     });
-    profileSyncPromise.current = operation;
-    operation.catch(() => {});
     return operation.then(
       () => {
         return true;
       },
       () => {
-        if (profileSyncPromise.current === operation) profileSyncPromise.current = null;
+        if (profilePrefsGeneration.current === generation) {
+          pendingProfilePrefsRef.current = {
+            persist: persistProxyLoginRef.current,
+            retentionDays: proxyLoginRetentionDaysRef.current,
+          };
+        }
         setError(new Error(t('browser.profileSaveFailed')));
         return false;
       },
@@ -606,26 +630,18 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
 
   const setPersistProxyLogin = useCallback((value) => saveProfilePrefs({
     persist: !!value,
-    retentionDays: proxyLoginRetentionDaysRef.current,
-  }, (response) => {
-    persistProxyLoginLocally(response.persist);
-    persistProxyLoginRef.current = response.persist;
-    setPersistProxyLoginState(response.persist);
   }), [saveProfilePrefs]);
 
   const setProxyLoginRetentionDays = useCallback((value) => saveProfilePrefs({
-    persist: persistProxyLoginRef.current,
     retentionDays: value,
-  }, (response) => {
-    persistProxyLoginRetentionLocally(response.retentionDays);
-    proxyLoginRetentionDaysRef.current = response.retentionDays;
-    setProxyLoginRetentionDaysState(response.retentionDays);
   }), [saveProfilePrefs]);
 
   const clearProxyLogin = useCallback((origin = null) => enqueueTransition(async () => {
     setError(null);
+    mutationGeneration.current += 1;
     try {
       const response = await clearBrowserProfile(origin);
+      mutationGeneration.current += 1;
       const closed = new Set(response.closedTabIds || []);
       const remaining = commitTabs((current) => current.filter((tab) => !closed.has(tab.id)));
       if (closed.has(activeIdRef.current)) {
@@ -637,8 +653,11 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       return true;
     } catch {
       try {
+        const generation = mutationGeneration.current;
         const { tabs: loaded = [] } = await getBrowserTabs();
+        if (mutationGeneration.current !== generation) throw new Error('stale clear resync');
         const normalized = normalizeServerTabs(loaded);
+        mutationGeneration.current += 1;
         commitTabs(normalized);
         const selected = normalized.find((tab) => tab.visible) || null;
         commitActiveId(selected?.id || null);

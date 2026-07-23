@@ -183,6 +183,25 @@ describe('BrowserSheet', () => {
     expect(model.clearProxyLogin).toHaveBeenCalledWith('https://old.example');
   });
 
+  it('makes site-clear confirmation keyboard-modal and restores trigger focus', async () => {
+    const model = browser({ historyActive: true, activeId: null });
+    await render(model);
+    const menuTrigger = document.querySelector('.browser-history-more');
+    click(menuTrigger);
+    const trigger = [...document.querySelectorAll('.browser-history-mode-menu button')]
+      .find((node) => node.textContent === '清理本站登录状态');
+    trigger.focus();
+    click(trigger);
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+
+    const dialog = document.querySelector('.browser-profile-confirm');
+    expect(document.activeElement).toBe(dialog.querySelector('button'));
+    expect(document.querySelector('.browser-tabs').hasAttribute('inert')).toBe(true);
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
+    expect(document.querySelector('.browser-profile-confirm')).toBeNull();
+    expect(document.activeElement).toBe(menuTrigger);
+  });
+
   it('deletes history locally without invoking profile cleanup', async () => {
     const model = browser({ historyActive: true, activeId: null });
     await render(model);
@@ -223,7 +242,9 @@ describe('BrowserSheet', () => {
     click(document.querySelector('.browser-history-more'));
     const proxy = [...document.querySelectorAll('.browser-history-mode-option')].find((node) => node.textContent === '经电脑代理');
     expect(proxy.disabled).toBe(true);
-    expect(document.querySelector('.browser-history-mode-menu').textContent).toContain('当前服务器未开启浏览器代理');
+    const reason = document.querySelector('.browser-history-mode-menu p');
+    expect(reason.textContent).toContain('当前服务器未开启浏览器代理');
+    expect(proxy.getAttribute('aria-describedby')).toBe(reason.id);
   });
 
   it('shows localized proxyUnavailable instead of opening stale proxy history', async () => {
