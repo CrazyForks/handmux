@@ -58,9 +58,12 @@ describe('device cookie profiles', () => {
 
   it('clears only cookies matching the requested real URL', () => {
     const onMutation = vi.fn();
-    const profiles = createDeviceCookieProfiles({ createCookies, onMutation });
+    const profileCookies = createCookies();
+    const deleteCookies = vi.spyOn(profileCookies, 'deleteCookies');
+    const profiles = createDeviceCookieProfiles({ createCookies: () => profileCookies, onMutation });
     const cookies = createCookies();
     profiles.attach(DEVICE_A, cookies);
+    // No Max-Age, Expires, or SameSite produces Hammerhead's lossy Infinity/null/undefined combination.
     cookies.setByServer('https://app-a.example/login', ['session=a; Path=/']);
     cookies.setByServer('https://app-b.example/login', ['session=b; Path=/']);
     onMutation.mockClear();
@@ -69,6 +72,11 @@ describe('device cookie profiles', () => {
 
     expect(headerFor(cookies, 'https://app-a.example/')).toBeNull();
     expect(headerFor(cookies, 'https://app-b.example/')).toContain('session=b');
+    expect(deleteCookies).toHaveBeenCalledWith([
+      expect.objectContaining({
+        name: 'session', domain: 'app-a.example', expires: 'Infinity', maxAge: null, sameSite: undefined,
+      }),
+    ], ['https://app-a.example/']);
     expect(onMutation).toHaveBeenCalledOnce();
     expect(onMutation).toHaveBeenCalledWith(DEVICE_A);
   });

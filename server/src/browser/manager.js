@@ -275,20 +275,22 @@ export async function createBrowserPreviewManager({
     pendingContexts.set(key, promise);
     return promise;
   };
+  const releaseContext = (context) => {
+    if (!context || contexts.get(context.key) !== context) return;
+    contexts.delete(context.key);
+    context.detachCookies();
+    context.pool.proxy.closeSession(context.session);
+  };
   const releaseTabContext = (tab) => {
     const context = tab && contexts.get(tab.contextKey);
     if (!context) return;
     context.tabIds.delete(tab.id);
     if (context.tabIds.size) return;
-    contexts.delete(context.key);
-    context.detachCookies();
-    context.pool.proxy.closeSession(context.session);
+    releaseContext(context);
   };
   const releaseEmptyContext = (context) => {
     if (!context || context.tabIds.size || contexts.get(context.key) !== context) return;
-    contexts.delete(context.key);
-    context.detachCookies();
-    context.pool.proxy.closeSession(context.session);
+    releaseContext(context);
   };
   const openTabSession = (context, target, channel) => {
     const previousWindowId = context.session.options.windowId;
@@ -456,6 +458,7 @@ export async function createBrowserPreviewManager({
         closing = true;
         closePromise = (async () => {
           for (const tab of store.close()) releaseTabContext(tab);
+          for (const context of [...contexts.values()]) releaseContext(context);
           contexts.clear();
           const pending = [...pendingPools.values()];
           for (const entry of pending) closeProxy(entry.proxy);

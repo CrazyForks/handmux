@@ -77,6 +77,40 @@ describe('browser preview manager', () => {
     expect(detach).toHaveBeenCalledTimes(2);
   });
 
+  it('detaches an empty context exactly once when shutdown interrupts openSession', async () => {
+    const fake = fakeHammerhead();
+    const detach = vi.fn(() => {
+      expect(fake.proxies[0].close).not.toHaveBeenCalled();
+    });
+    const cookieProfiles = {
+      attach: vi.fn(() => detach),
+      serialize: vi.fn(),
+      clear: vi.fn(),
+    };
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      cookieProfiles,
+      randomId: () => 'tab-a',
+    });
+    const creating = manager.create({
+      url: 'https://a.example/',
+      origin: 'https://browser-a.preview.example',
+      closeAfterMinutes: 10,
+      deviceId: DEVICE,
+    });
+    fake.proxies[0].openSession.mockImplementation(() => {
+      void manager.close();
+      throw new Error('open interrupted');
+    });
+
+    await expect(creating).rejects.toThrow('open interrupted');
+    await manager.close();
+
+    expect(cookieProfiles.attach).toHaveBeenCalledOnce();
+    expect(detach).toHaveBeenCalledOnce();
+    expect(fake.proxies[0].closeSession).toHaveBeenCalledOnce();
+  });
+
   it('creates a direct tab without allocating a Hammerhead context', async () => {
     const fake = fakeHammerhead();
     const target = 'https://direct.example/path';
