@@ -45,9 +45,6 @@ function bridgeScript(channel) {
       catch { return url; }
     };
     const send = (type, url) => parent.postMessage({ source: 'handmux-browser', channel, type, url: url === undefined ? destinationUrl(location.href) : url, title: document.title }, '*');
-    const sendFormNavigation = (url, requestId) => parent.postMessage({
-      source: 'handmux-browser', channel, type: 'prepare-form-navigation', url, requestId,
-    }, '*');
     let pending = false;
     const activity = () => {
       if (pending) return;
@@ -66,58 +63,7 @@ function bridgeScript(channel) {
         return result;
       };
     }
-    let formRequestSequence = 0;
-    let preparedNavigation = false;
-    const pendingForms = new Map();
-    const pendingFormIds = new WeakMap();
-    const bypassForms = new WeakSet();
-    const formTarget = (form, submitter) => destinationUrl(
-      submitter?.hasAttribute?.('formaction') ? submitter.formAction : (form?.action || location.href),
-    );
-    const shouldPrepareForm = (form, submitter) => {
-      const method = String(form?.method || 'get').toLowerCase();
-      if (method === 'get') return false;
-      try {
-        return new URL(formTarget(form, submitter)).origin
-          !== new URL(destinationUrl(location.href)).origin;
-      } catch { return false; }
-    };
-    const prepareForm = (form, submitter, programmatic) => {
-      if (!shouldPrepareForm(form, submitter)) return false;
-      if (pendingFormIds.has(form)) return true;
-      const requestId = String(++formRequestSequence);
-      pendingForms.set(requestId, { form, submitter, programmatic });
-      pendingFormIds.set(form, requestId);
-      sendFormNavigation(formTarget(form, submitter), requestId);
-      return true;
-    };
-    hammerhead?.eventSandbox?.listeners?.addInternalEventAfterListener(
-      window,
-      ['submit'],
-      (event) => {
-        const form = event.target;
-        if (bypassForms.has(form)) return;
-        if (event.defaultPrevented || !shouldPrepareForm(form, event.submitter)) return;
-        event.preventDefault();
-        prepareForm(form, event.submitter, false);
-      },
-    );
-    if (hammerhead?.EVENTS?.beforeFormSubmit) {
-      hammerhead.on(hammerhead.EVENTS.beforeFormSubmit, (args = {}) => {
-        const { form, submitter } = args;
-        if (bypassForms.has(form)) {
-          bypassForms.delete(form);
-          return;
-        }
-        if (prepareForm(form, submitter, true)) args.preventSubmit = true;
-      });
-    }
-    if (hammerhead?.EVENTS?.pageNavigationTriggered) {
-      hammerhead.on(hammerhead.EVENTS.pageNavigationTriggered, (url) => {
-        if (preparedNavigation) preparedNavigation = false;
-        else send('navigate', url);
-      });
-    }
+    addEventListener('pagehide', () => send('navigate'));
     let lastTitle;
     let lastTitleUrl;
     const sendTitle = () => {
@@ -142,37 +88,6 @@ function bridgeScript(channel) {
       else if (event.data.command === 'forward') history.forward();
       else if (event.data.command === 'reload') location.reload();
       else if (event.data.command === 'stop') window.stop();
-      else if (event.data.command === 'form-navigation-failed') {
-        const failed = pendingForms.get(String(event.data.requestId));
-        if (failed) pendingFormIds.delete(failed.form);
-        pendingForms.delete(String(event.data.requestId));
-      } else if (event.data.command === 'prepared-form-navigation') {
-        const pendingForm = pendingForms.get(String(event.data.requestId));
-        if (!pendingForm || typeof event.data.url !== 'string') return;
-        pendingForms.delete(String(event.data.requestId));
-        const { form, submitter, programmatic } = pendingForm;
-        pendingFormIds.delete(form);
-        const nativeMethods = hammerhead.nativeMethods;
-        const usesSubmitterAction = submitter?.hasAttribute?.('formaction');
-        const setter = usesSubmitterAction
-          ? (submitter instanceof HTMLInputElement
-            ? nativeMethods.inputFormActionSetter
-            : nativeMethods.buttonFormActionSetter)
-          : nativeMethods.formActionSetter;
-        const target = usesSubmitterAction ? submitter : form;
-        const previousAction = usesSubmitterAction ? submitter.formAction : form.action;
-        setter.call(target, event.data.url);
-        bypassForms.add(form);
-        preparedNavigation = true;
-        try {
-          if (programmatic) nativeMethods.formSubmit.call(form);
-          else if (typeof form.requestSubmit === 'function') form.requestSubmit(submitter);
-          else nativeMethods.formSubmit.call(form);
-        } finally {
-          setter.call(target, previousAction);
-          setTimeout(() => bypassForms.delete(form), 0);
-        }
-      }
     });
     send('ready');
   })();`;
@@ -576,36 +491,27 @@ export async function createBrowserPreviewManager({
       return publicTab(updated);
     },
 
-    async prepareFormNavigation(id, url, deviceId, origin) {
-      const initialTab = store.get(id);
-      if (!initialTab || initialTab.ownerDevice !== deviceId || initialTab.mode !== 'proxy') return null;
-      const target = normalizedTarget(url);
-      const requestedOrigin = normalizedOrigin(origin);
-      const context = await contextFor({ deviceId, target, origin: requestedOrigin, sessionId: randomId });
+    async prepareFormNavigation(id, url, deviceId, _origin) {
       const tab = store.get(id);
-      if (!tab || tab.ownerDevice !== deviceId || tab.mode !== 'proxy') {
-        releaseEmptyContext(context);
-        return null;
-      }
+      if (!tab || tab.ownerDevice !== deviceId || tab.mode !== 'proxy') return null;
+      const target = normalizedTarget(url);
+      const context = contexts.get(tab.contextKey);
+      if (!context) return null;
       context.policy.authorizeTopLevel?.(target);
-      let publicUrl;
-      try { publicUrl = openTabSession(context, target, tab.channel); }
-      catch (error) {
-        releaseEmptyContext(context);
-        throw error;
-      }
-      if (context.key !== tab.contextKey) context.tabIds.add(id);
-      const updated = store.update(id, {
+      const publicUrl = openTabSession(context, target, tab.channel);
+      return publicTab(store.update(id, {
         url: publicUrl,
         originalUrl: target,
-        session: context.session,
-        publicOrigin: context.publicOrigin,
-        pool: context.pool,
-        contextKey: context.key,
-      });
-      if (context.key !== tab.contextKey) releaseTabContext(tab);
-      cookieProfiles.setActive?.(deviceId, true);
-      return publicTab(updated);
+      }));
+    },
+
+    updateMetadata(id, { url, title }, deviceId) {
+      const tab = store.get(id);
+      if (!tab || tab.ownerDevice !== deviceId || tab.mode !== 'proxy') return null;
+      return publicTab(store.update(id, {
+        originalUrl: normalizedTarget(url),
+        title,
+      }));
     },
 
     closeTab(id, deviceId) {

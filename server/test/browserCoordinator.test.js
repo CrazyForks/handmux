@@ -72,7 +72,7 @@ function proxyBackend() {
       save(device, tabs(device).map((tab) => tab.id === id ? updated : tab));
       return json(200, { url: updated.url, tab: updated });
     }
-    const match = path.match(/^\/api\/browser-tabs\/([^/]+)(?:\/(navigate|visibility))?$/);
+    const match = path.match(/^\/api\/browser-tabs\/([^/]+)(?:\/(navigate|visibility|metadata))?$/);
     if (!match) return json(404, { error: 'browser tab not found' });
     const id = decodeURIComponent(match[1]);
     const current = tabs(device).find((tab) => tab.id === id);
@@ -93,6 +93,11 @@ function proxyBackend() {
         ...current, visible: body.visible, closeAfterMinutes: body.closeAfterMinutes, hiddenAt,
         expiresAt: body.visible || body.closeAfterMinutes == null ? null : hiddenAt + body.closeAfterMinutes * 60_000,
       };
+      save(device, tabs(device).map((tab) => tab.id === id ? updated : tab));
+      return json(200, updated);
+    }
+    if (method === 'PATCH' && match[2] === 'metadata') {
+      const updated = { ...current, originalUrl: body.url, title: body.title };
       save(device, tabs(device).map((tab) => tab.id === id ? updated : tab));
       return json(200, updated);
     }
@@ -675,6 +680,30 @@ describe('browser main-process coordinator', () => {
       originalUrl: 'https://b.example/login',
     });
     expect((await visibilityOutcome).status).toBe(200);
+  });
+
+  it('forwards page-driven metadata and keeps the logical tab current', async () => {
+    const backend = proxyBackend();
+    const app = appFor(backend);
+    const proxy = await asDevice(request(app).post('/api/browser-tabs')).send({
+      url: 'https://a.example/', closeAfterMinutes: 30, mode: 'proxy',
+    }).expect(201);
+
+    const updated = await asDevice(request(app)
+      .patch(`/api/browser-tabs/${proxy.body.id}/metadata`))
+      .send({ url: 'https://b.example/account', title: 'Account' })
+      .expect(200);
+
+    expect(updated.body).toMatchObject({
+      id: proxy.body.id,
+      originalUrl: 'https://b.example/account',
+      title: 'Account',
+    });
+    expect(backend.calls).toContainEqual(expect.objectContaining({
+      method: 'PATCH',
+      path: expect.stringMatching(/\/metadata$/),
+      body: { url: 'https://b.example/account', title: 'Account' },
+    }));
   });
 
   it('clears direct expiry timers when the coordinator closes', async () => {

@@ -128,6 +128,38 @@ describe('browser preview manager', () => {
     await manager.close();
   });
 
+  it('clears a proxy tab by its latest page-driven Origin', async () => {
+    const fake = fakeHammerhead();
+    const cookieProfiles = {
+      attach: vi.fn(() => vi.fn()),
+      serialize: vi.fn(),
+      clear: vi.fn(async () => ({ cleared: true })),
+      setActive: vi.fn(),
+      close: vi.fn(),
+    };
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      cookieProfiles,
+      randomId: () => 'tab-a',
+    });
+    await manager.create({
+      url: 'https://a.example/', origin: 'https://browser-a.preview.example',
+      closeAfterMinutes: 10, deviceId: DEVICE, mode: 'proxy',
+    });
+
+    expect(manager.updateMetadata(
+      'tab-a',
+      { url: 'https://b.example/account', title: 'Account' },
+      DEVICE,
+    )).toMatchObject({ originalUrl: 'https://b.example/account', title: 'Account' });
+    await expect(manager.clearDeviceProfile(DEVICE, { origin: 'https://a.example' }))
+      .resolves.toEqual({ closedTabIds: [] });
+    await expect(manager.clearDeviceProfile(DEVICE, { origin: 'https://b.example' }))
+      .resolves.toEqual({ closedTabIds: ['tab-a'] });
+
+    await manager.close();
+  });
+
   it('detaches an empty context exactly once when shutdown interrupts openSession', async () => {
     const fake = fakeHammerhead();
     const detach = vi.fn(() => {
@@ -507,26 +539,22 @@ describe('browser preview manager', () => {
     expect(payload).toContain('history.forward');
     expect(payload).toContain('location.reload');
     expect(payload).toContain('window.stop()');
-    expect(payload).toContain('pageNavigationTriggered');
+    expect(payload).toContain("addEventListener('pagehide'");
+    expect(payload).not.toContain('pageNavigationTriggered');
     expect(payload).toContain('parseProxyUrl');
     expect(payload).toContain("addEventListener('popstate', () => send('urlchange'))");
     expect(payload).toContain("addEventListener('hashchange', () => send('urlchange'))");
     expect(payload).toContain("for (const name of ['pushState', 'replaceState'])");
     expect(payload).toContain("send('urlchange')");
-    expect(payload).toContain("send('navigate', url)");
-    expect(payload).toContain('beforeFormSubmit');
-    expect(payload).toContain('addInternalEventAfterListener');
-    expect(payload).toContain('defaultPrevented');
-    expect(payload).toContain("type: 'prepare-form-navigation'");
-    expect(payload).toContain('requestId');
-    expect(payload).toContain('args.preventSubmit = true');
-    expect(payload).toContain('nativeMethods.formActionSetter');
-    expect(payload).toContain('nativeMethods.inputFormActionSetter');
-    expect(payload).toContain('nativeMethods.buttonFormActionSetter');
-    expect(payload).toContain('form.requestSubmit(submitter)');
-    expect(payload).toContain('nativeMethods.formSubmit.call(form)');
-    expect(payload).toContain("method === 'get'");
-    expect(payload).toContain('preventDefault');
+    expect(payload).toContain("send('navigate')");
+    expect(payload).not.toContain('beforeFormSubmit');
+    expect(payload).not.toContain('addInternalEventAfterListener');
+    expect(payload).not.toContain("type: 'prepare-form-navigation'");
+    expect(payload).not.toContain('args.preventSubmit = true');
+    expect(payload).not.toContain('nativeMethods.formActionSetter');
+    expect(payload).not.toContain('form.requestSubmit(submitter)');
+    expect(payload).not.toContain('nativeMethods.formSubmit.call(form)');
+    expect(payload).not.toContain('preparedNavigation');
     expect(payload).not.toContain('FormData');
     expect(payload).not.toContain('.elements');
     expect(payload).not.toContain('password');
@@ -579,12 +607,11 @@ describe('browser preview manager', () => {
     expect(fake.proxies[1].openSession).toHaveBeenCalledOnce();
   });
 
-  it('prepares a cross-origin form target without issuing GET and moves tab metadata to the stable context', async () => {
+  it('keeps legacy prepared forms in the current Hammerhead session without switching context', async () => {
     const fake = fakeHammerhead();
-    const ids = ['tab-a', 'context-b'];
     const manager = await createBrowserPreviewManager({
       hammerhead: fake.api,
-      randomId: () => ids.shift(),
+      randomId: () => 'tab-a',
     });
     await manager.create({
       url: 'https://a.example/', origin: 'https://browser-a.preview.example',
@@ -600,10 +627,11 @@ describe('browser preview manager', () => {
       originalUrl: 'https://b.example/login',
     });
     expect(prepared).not.toHaveProperty('publicOrigin');
-    expect(prepared.url).toContain('/_browser-context-b/');
-    expect(fake.proxies[1].openSession).toHaveBeenCalledOnce();
+    expect(prepared.url).toMatch(/^https:\/\/browser-a\.preview\.example\/_browser-tab-a\//);
+    expect(fake.proxies).toHaveLength(1);
+    expect(fake.proxies[0].openSession).toHaveBeenCalledTimes(2);
     expect(manager.get('tab-a', DEVICE).originalUrl).toBe('https://b.example/login');
-    expect(fake.proxies[0].closeSession).toHaveBeenCalledOnce();
+    expect(fake.proxies[0].closeSession).not.toHaveBeenCalled();
     await manager.close();
   });
 

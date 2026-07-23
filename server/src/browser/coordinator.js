@@ -191,6 +191,7 @@ export function createBrowserCoordinator({
     const prepareFormMatch = path.match(/^\/([^/]+)\/prepare-form-navigation$/);
     const navigateMatch = path.match(/^\/([^/]+)\/navigate$/);
     const visibilityMatch = path.match(/^\/([^/]+)\/visibility$/);
+    const metadataMatch = path.match(/^\/([^/]+)\/metadata$/);
     const tabMatch = path.match(/^\/([^/]+)$/);
 
     if (req.method === 'PUT' && path === '/profile') {
@@ -401,6 +402,21 @@ export function createBrowserCoordinator({
       const updated = jsonBody(response);
       if (response?.status === 200 && updated) {
         if (visible) hideOtherDirect(deviceId, null);
+        return res.json(publicTab(rememberProxy(updated, logicalId, deviceId)));
+      }
+      return sendProxy(res, response);
+    }
+
+    if (req.method === 'PATCH' && metadataMatch) {
+      const logicalId = decodeURIComponent(metadataMatch[1]);
+      if (directFor(logicalId, deviceId)) {
+        return res.status(409).json({ error: 'browser metadata requires proxy mode' });
+      }
+      const response = await proxyCall(
+        req, 'PATCH', `/api/browser-tabs/${encodeURIComponent(workerId(logicalId))}/metadata`, req.body,
+      );
+      const updated = jsonBody(response);
+      if (response?.status === 200 && updated) {
         return res.json(publicTab(rememberProxy(updated, logicalId, deviceId)));
       }
       return sendProxy(res, response);

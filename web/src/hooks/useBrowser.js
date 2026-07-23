@@ -8,6 +8,7 @@ import {
   prepareBrowserFormNavigation,
   setBrowserProfilePrefs,
   setBrowserTabVisible,
+  updateBrowserTabMeta,
 } from '../api.js';
 import {
   clearBrowserHistory,
@@ -78,6 +79,8 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const openEpoch = useRef(0);
   const navigateEpoch = useRef(new Map());
   const navigateQueue = useRef(new Map());
+  const metadataQueues = useRef(new Map());
+  const metadataEpoch = useRef(0);
   const mutationGeneration = useRef(0);
   const lastSuccessfulResync = useRef(null);
   const browserProxyRef = useRef(browserProxy);
@@ -565,19 +568,52 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     }
   }, [awaitProfileSyncForOpen, browserProxy, commitTabs, defaultMode, resyncLostWorker]);
 
+  const enqueueMetadataSync = useCallback((tab) => {
+    const previous = metadataQueues.current.get(tab.id) || Promise.resolve();
+    const pending = previous
+      .catch(() => {})
+      .then(() => updateBrowserTabMeta(
+        tab.id,
+        tab.originalUrl,
+        String(tab.title || '').slice(0, 1024),
+      ));
+    metadataQueues.current.set(tab.id, pending);
+    pending.finally(() => {
+      if (metadataQueues.current.get(tab.id) === pending) metadataQueues.current.delete(tab.id);
+    }).catch(() => {});
+    return pending;
+  }, []);
+
   const updateTabMeta = useCallback((id, patch) => {
     const current = tabsRef.current.find((tab) => tab.id === id);
     if (!current) return;
     const url = normalizeBrowserInput(patch?.url) || current.originalUrl;
     const title = typeof patch?.title === 'string' ? patch.title : current.title;
     if (url === current.originalUrl && title === current.title) return;
+    const urlChanged = url !== current.originalUrl;
+    const updated = { ...current, originalUrl: url, title };
     mutationGeneration.current += 1;
-    commitTabs((all) => replaceTab(all, { ...current, originalUrl: url, title }));
+    commitTabs((all) => replaceTab(all, updated));
+    if (current.mode === 'proxy' && urlChanged) {
+      metadataEpoch.current += 1;
+      enqueueMetadataSync(updated).catch(() => {});
+    }
     if (url && title?.trim()) {
       upsertBrowserHistory({ url, title, visitedAt: Date.now(), lastMode: current.mode });
       setHistory(readBrowserHistory());
     }
-  }, [commitTabs]);
+  }, [commitTabs, enqueueMetadataSync]);
+
+  const flushMetadata = useCallback(async () => {
+    while (true) {
+      const epoch = metadataEpoch.current;
+      tabsRef.current
+        .filter((tab) => tab.mode === 'proxy')
+        .forEach(enqueueMetadataSync);
+      await Promise.all([...metadataQueues.current.values()]);
+      if (epoch === metadataEpoch.current && metadataQueues.current.size === 0) return;
+    }
+  }, [enqueueMetadataSync]);
 
   const prepareFormNavigation = useCallback(async (id, url) => {
     try {
@@ -663,6 +699,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     setError(null);
     mutationGeneration.current += 1;
     try {
+      await flushMetadata();
       const response = await clearBrowserProfile(origin);
       mutationGeneration.current += 1;
       const closed = new Set(response.closedTabIds || []);
@@ -693,7 +730,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       setError(new Error(t('browser.profileClearFailed')));
       return false;
     }
-  }), [commitActiveId, commitHistoryActive, commitOpen, commitTabs, enqueueTransition]);
+  }), [commitActiveId, commitHistoryActive, commitOpen, commitTabs, enqueueTransition, flushMetadata]);
 
   const deleteHistory = useCallback((entry) => {
     deleteBrowserHistoryEntry(entry);

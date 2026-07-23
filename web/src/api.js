@@ -180,6 +180,11 @@ export const navigateBrowserTab = (id, url, mode) =>
     method: 'POST',
     body: JSON.stringify({ url, mode }),
   });
+export const updateBrowserTabMeta = (id, url, title) =>
+  browserReq(`/api/browser-tabs/${encodeURIComponent(id)}/metadata`, {
+    method: 'PATCH',
+    body: JSON.stringify({ url, title }),
+  });
 export const prepareBrowserFormNavigation = (id, url) =>
   browserReq(`/api/browser-tabs/${encodeURIComponent(id)}/prepare-form-navigation`, {
     method: 'POST',

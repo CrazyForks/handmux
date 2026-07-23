@@ -5,6 +5,7 @@ import {
   getBrowserTabs,
   navigateBrowserTab,
   setBrowserTabVisible,
+  updateBrowserTabMeta,
 } from '../src/api.js';
 
 beforeEach(() => localStorage.clear());
@@ -34,6 +35,7 @@ describe('browser API client', () => {
       .mockResolvedValueOnce(response(200, { tabs: [{ id: 'a' }] }))
       .mockResolvedValueOnce(response(200, { id: 'a', visible: false }))
       .mockResolvedValueOnce(response(200, { id: 'a', originalUrl: 'https://b.example/' }))
+      .mockResolvedValueOnce(response(200, { id: 'a', originalUrl: 'https://b.example/page' }))
       .mockResolvedValueOnce(response(204));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -41,6 +43,7 @@ describe('browser API client', () => {
     await getBrowserTabs();
     await setBrowserTabVisible('a', false, 30);
     await navigateBrowserTab('a', 'https://b.example/', 'direct');
+    await updateBrowserTabMeta('a', 'https://b.example/page', 'Page');
     await deleteBrowserTab('a');
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
@@ -48,6 +51,7 @@ describe('browser API client', () => {
       '/api/browser-tabs',
       '/api/browser-tabs/a/visibility',
       '/api/browser-tabs/a/navigate',
+      '/api/browser-tabs/a/metadata',
       '/api/browser-tabs/a',
     ]);
     expect(fetchMock.mock.calls[0][1]).toMatchObject({
@@ -59,7 +63,10 @@ describe('browser API client', () => {
     expect(fetchMock.mock.calls[3][1]).toMatchObject({
       method: 'POST', body: JSON.stringify({ url: 'https://b.example/', mode: 'direct' }),
     });
-    expect(fetchMock.mock.calls[4][1]).toMatchObject({ method: 'DELETE' });
+    expect(fetchMock.mock.calls[4][1]).toMatchObject({
+      method: 'PATCH', body: JSON.stringify({ url: 'https://b.example/page', title: 'Page' }),
+    });
+    expect(fetchMock.mock.calls[5][1]).toMatchObject({ method: 'DELETE' });
     const deviceIds = fetchMock.mock.calls.map(([, options]) => options.headers['X-Handmux-Browser-Device']);
     expect(deviceIds.every((id) => /^[A-Za-z0-9_-]{32,128}$/.test(id))).toBe(true);
     expect(new Set(deviceIds).size).toBe(1);

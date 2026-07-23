@@ -28,7 +28,7 @@ export default function BrowserSheet({ browser }) {
     open, consentOpen, tabs, activeId, historyActive, closeAfter, history, error,
     defaultMode, proxyAvailable,
     openUrl, switchTab, closeTab, setOpen, setCloseAfter,
-    navigateTab, prepareFormNavigation, updateTabMeta, clearHistory, setHistoryMode, enableAccess, cancelAccess,
+    navigateTab, updateTabMeta, clearHistory, setHistoryMode, enableAccess, cancelAccess,
     clearProxyLogin, deleteHistory,
   } = browser;
   const active = tabs.find((tab) => tab.id === activeId) || null;
@@ -48,7 +48,6 @@ export default function BrowserSheet({ browser }) {
   const [slowDirectId, setSlowDirectId] = useState(null);
   const frames = useRef(new Map());
   const frameUrls = useRef(new Map());
-  const switchingOrigins = useRef(new Map());
   const addressRef = useRef(null);
   const bodyRef = useRef(null);
   const selectionEpoch = useRef(0);
@@ -80,52 +79,8 @@ export default function BrowserSheet({ browser }) {
         .find(([, frame]) => frame.contentWindow === event.source);
       const tab = frameEntry && tabs.find((item) => item.id === frameEntry[0]);
       if (!tab || tab.mode !== 'proxy' || tab.channel !== event.data.channel) return;
-      if (event.data.type === 'prepare-form-navigation') {
-        const requestId = event.data.requestId;
-        Promise.resolve(prepareFormNavigation(tab.id, event.data.url)).then((prepared) => {
-          if (prepared) updateTabMeta(tab.id, { url: event.data.url, title: tab.title });
-          frameEntry[1].contentWindow.postMessage({
-            source: 'handmux-browser-parent',
-            channel: tab.channel,
-            command: prepared ? 'prepared-form-navigation' : 'form-navigation-failed',
-            requestId,
-            ...(prepared ? { url: prepared.url } : {}),
-          }, '*');
-        }, () => {
-          frameEntry[1].contentWindow.postMessage({
-            source: 'handmux-browser-parent',
-            channel: tab.channel,
-            command: 'form-navigation-failed',
-            requestId,
-          }, '*');
-        });
-        return;
-      }
       if (event.data.type === 'navigate') {
         setRefreshingTabs((current) => new Set(current).add(tab.id));
-      }
-      const originOf = (raw) => { try { return new URL(raw).origin; } catch { return null; } };
-      const currentOrigin = originOf(tab.originalUrl);
-      const nextOrigin = originOf(event.data.url);
-      if ((event.data.type === 'navigate' || event.data.type === 'load')
-        && currentOrigin && nextOrigin && currentOrigin !== nextOrigin) {
-        if (switchingOrigins.current.get(tab.id) !== nextOrigin) {
-          switchingOrigins.current.set(tab.id, nextOrigin);
-          let switching;
-          try { switching = navigateTab(tab.id, event.data.url); }
-          catch {
-            switchingOrigins.current.delete(tab.id);
-            return;
-          }
-          Promise.resolve(switching).then((result) => {
-            if (!result && switchingOrigins.current.get(tab.id) === nextOrigin) {
-              switchingOrigins.current.delete(tab.id);
-            }
-          }, () => {
-            if (switchingOrigins.current.get(tab.id) === nextOrigin) switchingOrigins.current.delete(tab.id);
-          });
-        }
-        return;
       }
       if (['ready', 'load', 'urlchange', 'title'].includes(event.data.type)) {
         updateTabMeta(tab.id, { url: event.data.url, title: event.data.title });
@@ -133,7 +88,7 @@ export default function BrowserSheet({ browser }) {
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [navigateTab, prepareFormNavigation, tabs, updateTabMeta]);
+  }, [tabs, updateTabMeta]);
 
   useEffect(() => {
     setLoadedTabs((current) => {
@@ -144,15 +99,6 @@ export default function BrowserSheet({ browser }) {
       frameUrls.current = new Map(tabs.map((tab) => [tab.id, tab.url]));
       return next;
     });
-  }, [tabs]);
-
-  useEffect(() => {
-    for (const [id, origin] of switchingOrigins.current) {
-      const tab = tabs.find((item) => item.id === id);
-      let currentOrigin = null;
-      try { currentOrigin = new URL(tab?.originalUrl).origin; } catch { /* removed tab */ }
-      if (!tab || currentOrigin === origin) switchingOrigins.current.delete(id);
-    }
   }, [tabs]);
 
   useEffect(() => {

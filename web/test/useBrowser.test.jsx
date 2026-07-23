@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   navigateBrowserTab: vi.fn(),
   prepareBrowserFormNavigation: vi.fn(),
   setBrowserProfilePrefs: vi.fn(),
+  updateBrowserTabMeta: vi.fn(),
   setBrowserTabVisible: vi.fn(),
 }));
 vi.mock('../src/api.js', () => api);
@@ -40,6 +41,7 @@ beforeEach(() => {
   api.getBrowserTabs.mockResolvedValue({ tabs: [] });
   api.setBrowserProfilePrefs.mockResolvedValue({ persist: false, retentionDays: 30, warning: null });
   api.clearBrowserProfile.mockResolvedValue({ closedTabIds: [] });
+  api.updateBrowserTabMeta.mockResolvedValue({ id: 'a' });
 });
 
 afterEach(() => {
@@ -929,6 +931,122 @@ describe('useBrowser', () => {
     expect(result.current.historyActive).toBe(true);
   });
 
+  it('waits for current page metadata before clearing that Origin', async () => {
+    let releaseMetadata;
+    api.getBrowserTabs.mockResolvedValue({
+      tabs: [tab('proxy', { mode: 'proxy', title: '' })],
+    });
+    api.updateBrowserTabMeta.mockReturnValue(new Promise((resolve) => {
+      releaseMetadata = resolve;
+    }));
+    api.clearBrowserProfile.mockResolvedValue({ closedTabIds: ['proxy'] });
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+
+    act(() => result.current.updateTabMeta('proxy', {
+      url: 'https://b.example/account', title: 'Account',
+    }));
+    await flush();
+    let clearing;
+    act(() => { clearing = result.current.clearProxyLogin('https://b.example'); });
+    await flush();
+    expect(api.clearBrowserProfile).not.toHaveBeenCalled();
+
+    releaseMetadata({ id: 'proxy' });
+    await act(async () => { await clearing; });
+    expect(api.clearBrowserProfile).toHaveBeenCalledWith('https://b.example');
+  });
+
+  it('waits for metadata appended while an Origin clear is already waiting', async () => {
+    const releases = [];
+    api.getBrowserTabs.mockResolvedValue({
+      tabs: [tab('proxy', { mode: 'proxy', title: '' })],
+    });
+    api.updateBrowserTabMeta.mockImplementation(() => new Promise((resolve) => {
+      releases.push(resolve);
+    }));
+    api.clearBrowserProfile.mockResolvedValue({ closedTabIds: ['proxy'] });
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+
+    act(() => result.current.updateTabMeta('proxy', {
+      url: 'https://b.example/first', title: 'First',
+    }));
+    await flush();
+    let clearing;
+    act(() => { clearing = result.current.clearProxyLogin('https://b.example'); });
+    act(() => result.current.updateTabMeta('proxy', {
+      url: 'https://b.example/latest', title: 'Latest',
+    }));
+
+    releases.shift()({ id: 'proxy' });
+    await flush();
+    expect(api.clearBrowserProfile).not.toHaveBeenCalled();
+
+    while (releases.length) {
+      releases.shift()({ id: 'proxy' });
+      await flush();
+    }
+    await act(async () => { await clearing; });
+    expect(api.clearBrowserProfile).toHaveBeenCalledWith('https://b.example');
+  });
+
+  it('retries a failed metadata sync before clearing an Origin', async () => {
+    api.getBrowserTabs.mockResolvedValue({
+      tabs: [tab('proxy', { mode: 'proxy', title: '' })],
+    });
+    api.updateBrowserTabMeta
+      .mockRejectedValueOnce(new Error('worker unavailable'))
+      .mockResolvedValue({ id: 'proxy' });
+    api.clearBrowserProfile.mockResolvedValue({ closedTabIds: ['proxy'] });
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+
+    act(() => result.current.updateTabMeta('proxy', {
+      url: 'https://b.example/account', title: 'Account',
+    }));
+    await flush();
+    await act(async () => {
+      await result.current.clearProxyLogin('https://b.example');
+    });
+
+    expect(api.updateBrowserTabMeta).toHaveBeenCalledTimes(2);
+    expect(api.clearBrowserProfile).toHaveBeenCalledWith('https://b.example');
+  });
+
+  it('drains queued metadata from a tab closed before profile clearing', async () => {
+    const releases = [];
+    api.getBrowserTabs.mockResolvedValue({
+      tabs: [tab('proxy', { mode: 'proxy', title: '' })],
+    });
+    api.updateBrowserTabMeta.mockImplementation(() => new Promise((resolve) => {
+      releases.push(resolve);
+    }));
+    api.deleteBrowserTab.mockResolvedValue({ ok: true });
+    api.clearBrowserProfile.mockResolvedValue({ closedTabIds: [] });
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await flush();
+
+    act(() => result.current.updateTabMeta('proxy', {
+      url: 'https://b.example/first', title: 'First',
+    }));
+    act(() => result.current.updateTabMeta('proxy', {
+      url: 'https://b.example/latest', title: 'Latest',
+    }));
+    await flush();
+    await act(async () => { await result.current.closeTab('proxy'); });
+    let clearing;
+    act(() => { clearing = result.current.clearProxyLogin(null); });
+
+    releases.shift()({ id: 'proxy' });
+    await flush();
+    expect(api.clearBrowserProfile).not.toHaveBeenCalled();
+    releases.shift()({ id: 'proxy' });
+    await act(async () => { await clearing; });
+
+    expect(api.clearBrowserProfile).toHaveBeenCalledWith(null);
+  });
+
   it('resyncs server truth after a partially failed clear instead of keeping ghost tabs', async () => {
     api.getBrowserTabs
       .mockResolvedValueOnce({ tabs: [tab('proxy', { mode: 'proxy' }), tab('direct', { mode: 'direct' })] })
@@ -1089,6 +1207,36 @@ describe('useBrowser', () => {
 
     expect(readBrowserHistory()[0]).toMatchObject({ url: 'https://example.com/a', title: 'Actual page title' });
     expect(readBrowserHistory()).toHaveLength(1);
+  });
+
+  it('serializes page metadata updates so the worker keeps the latest Origin', async () => {
+    let releaseFirst;
+    api.updateBrowserTabMeta
+      .mockImplementationOnce(() => new Promise((resolve) => { releaseFirst = resolve; }))
+      .mockResolvedValueOnce({ id: 'a' });
+    api.getBrowserTabs.mockResolvedValue({ tabs: [tab('a', { title: '' })] });
+    const { result } = renderHook(() => useBrowser());
+    await flush();
+
+    act(() => result.current.updateTabMeta('a', {
+      url: 'https://b.example/first', title: 'First',
+    }));
+    act(() => result.current.updateTabMeta('a', {
+      url: 'https://c.example/latest', title: 'Latest',
+    }));
+    await flush();
+
+    expect(api.updateBrowserTabMeta).toHaveBeenCalledTimes(1);
+    expect(api.updateBrowserTabMeta).toHaveBeenNthCalledWith(
+      1, 'a', 'https://b.example/first', 'First',
+    );
+    releaseFirst({ id: 'a' });
+    await flush();
+
+    expect(api.updateBrowserTabMeta).toHaveBeenCalledTimes(2);
+    expect(api.updateBrowserTabMeta).toHaveBeenNthCalledWith(
+      2, 'a', 'https://c.example/latest', 'Latest',
+    );
   });
 
   it('does not rewrite or restore history when page metadata has not changed', async () => {

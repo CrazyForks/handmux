@@ -155,6 +155,25 @@ export function browserRoutes({
     res.json(publicTab(tab, req.browserDeviceId));
   });
 
+  r.patch('/browser-tabs/:id/metadata', (req, res, next) => {
+    if (!browser) return res.status(503).json({ error: 'browser unavailable' });
+    const { url, title } = req.body || {};
+    if (!validTarget(url) || typeof title !== 'string' || title.length > 1024) {
+      return res.status(400).json({ error: 'bad browser tab metadata' });
+    }
+    try {
+      const tab = browser.updateMetadata(
+        req.params.id,
+        { url: new URL(url).toString(), title },
+        req.browserDeviceId,
+      );
+      if (!tab) return res.status(404).json({ error: 'browser tab not found' });
+      return res.json(publicTab(tab, req.browserDeviceId));
+    } catch (error) {
+      return next(error);
+    }
+  });
+
   r.post('/browser-tabs/:id/prepare-form-navigation', async (req, res, next) => {
     if (!browser) return res.status(503).json({ error: 'browser unavailable' });
     const { url } = req.body || {};

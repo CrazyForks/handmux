@@ -20,6 +20,7 @@ function browserFake() {
     get: vi.fn(() => ({ id: 'tab-a' })),
     setVisible: vi.fn(() => ({ id: 'tab-a', visible: false, expiresAt: 600_000 })),
     navigate: vi.fn((_id, url) => ({ id: 'tab-a', originalUrl: new URL(url).toString() })),
+    updateMetadata: vi.fn((_id, patch) => ({ id: 'tab-a', ...patch, originalUrl: patch.url })),
     closeTab: vi.fn(() => ({ id: 'tab-a' })),
     configureDeviceProfile: vi.fn(async (_deviceId, prefs) => prefs),
     clearDeviceProfile: vi.fn(async () => ({ closedTabIds: ['tab-a'] })),
@@ -408,6 +409,35 @@ describe('browser routes', () => {
     browser.setVisible.mockReturnValue(null);
     const res = await asDevice(request(appFor(browser)).patch('/browser-tabs/missing/visibility')).send({ visible: false, closeAfterMinutes: 10 });
     expect(res.status).toBe(404);
+  });
+
+  it('updates page-driven metadata for the requesting device', async () => {
+    const browser = browserFake();
+
+    const res = await asDevice(request(appFor(browser))
+      .patch('/browser-tabs/tab-a/metadata'))
+      .send({ url: 'https://b.example/account', title: 'Account' })
+      .expect(200);
+
+    expect(browser.updateMetadata).toHaveBeenCalledWith(
+      'tab-a',
+      { url: 'https://b.example/account', title: 'Account' },
+      DEVICE,
+    );
+    expect(res.body).toMatchObject({
+      id: 'tab-a', originalUrl: 'https://b.example/account', title: 'Account',
+    });
+  });
+
+  it('rejects invalid page-driven metadata', async () => {
+    const browser = browserFake();
+
+    await asDevice(request(appFor(browser))
+      .patch('/browser-tabs/tab-a/metadata'))
+      .send({ url: 'javascript:alert(1)', title: 'Bad' })
+      .expect(400, { error: 'bad browser tab metadata' });
+
+    expect(browser.updateMetadata).not.toHaveBeenCalled();
   });
 
   it('closes one tab', async () => {

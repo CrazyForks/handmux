@@ -473,7 +473,7 @@ describe('BrowserSheet', () => {
     expect(model.updateTabMeta).toHaveBeenCalledWith('b', { url: 'https://b.example/next', title: 'Beta Next' });
   });
 
-  it('moves page-driven cross-origin navigation through the server mapping', async () => {
+  it('lets page-driven cross-origin navigation finish natively without replaying it', async () => {
     const model = browser();
     await render(model);
     const frame = document.querySelector('iframe[data-tab-id="a"]');
@@ -483,21 +483,28 @@ describe('BrowserSheet', () => {
       data: { source: 'handmux-browser', channel: 'ca', type: 'navigate', url: 'https://other.example/path', title: '' },
     })));
 
-    expect(model.navigateTab).toHaveBeenCalledWith('a', 'https://other.example/path');
+    expect(model.navigateTab).not.toHaveBeenCalled();
     expect(model.updateTabMeta).not.toHaveBeenCalled();
+
+    act(() => window.dispatchEvent(new MessageEvent('message', {
+      source: frame.contentWindow,
+      data: { source: 'handmux-browser', channel: 'ca', type: 'load', url: 'https://other.example/path', title: 'Other' },
+    })));
+
+    expect(model.navigateTab).not.toHaveBeenCalled();
+    expect(model.updateTabMeta).toHaveBeenCalledWith('a', {
+      url: 'https://other.example/path',
+      title: 'Other',
+    });
   });
 
-  it('handshakes cross-origin POST navigation without sending form fields or replaying it as GET', async () => {
-    const model = browser({
-      prepareFormNavigation: vi.fn(async () => ({
-        url: 'https://sso.preview.example/_browser-bootstrap/post-ticket',
-      })),
-    });
+  it('does not intercept page-driven form navigation through the parent API', async () => {
+    const model = browser();
     await render(model);
     const frame = document.querySelector('iframe[data-tab-id="a"]');
     const postMessage = vi.spyOn(frame.contentWindow, 'postMessage');
 
-    await act(async () => window.dispatchEvent(new MessageEvent('message', {
+    act(() => window.dispatchEvent(new MessageEvent('message', {
       source: frame.contentWindow,
       data: {
         source: 'handmux-browser', channel: 'ca', type: 'prepare-form-navigation',
@@ -505,55 +512,9 @@ describe('BrowserSheet', () => {
       },
     })));
 
-    expect(model.prepareFormNavigation).toHaveBeenCalledWith('a', 'https://sso.example/login');
+    expect(model.prepareFormNavigation).not.toHaveBeenCalled();
     expect(model.navigateTab).not.toHaveBeenCalled();
-    expect(postMessage).toHaveBeenCalledWith({
-      source: 'handmux-browser-parent',
-      channel: 'ca',
-      command: 'prepared-form-navigation',
-      requestId: 'request-1',
-      url: 'https://sso.preview.example/_browser-bootstrap/post-ticket',
-    }, '*');
-    expect(JSON.stringify(postMessage.mock.calls)).not.toContain('password');
-  });
-
-  it('keeps the original page when preparing a form navigation fails', async () => {
-    const model = browser({ prepareFormNavigation: vi.fn(async () => null) });
-    await render(model);
-    const frame = document.querySelector('iframe[data-tab-id="a"]');
-    const postMessage = vi.spyOn(frame.contentWindow, 'postMessage');
-
-    await act(async () => window.dispatchEvent(new MessageEvent('message', {
-      source: frame.contentWindow,
-      data: {
-        source: 'handmux-browser', channel: 'ca', type: 'prepare-form-navigation',
-        url: 'https://sso.example/login', requestId: 'request-2',
-      },
-    })));
-
-    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
-      command: 'form-navigation-failed',
-      requestId: 'request-2',
-    }), '*');
-    expect(model.navigateTab).not.toHaveBeenCalled();
-  });
-
-  it('retries the same page-driven origin switch after a temporary API failure', async () => {
-    const model = browser({ navigateTab: vi.fn().mockResolvedValue(null) });
-    await render(model);
-    const frame = document.querySelector('iframe[data-tab-id="a"]');
-    const message = new MessageEvent('message', {
-      source: frame.contentWindow,
-      data: { source: 'handmux-browser', channel: 'ca', type: 'navigate', url: 'https://other.example/path', title: '' },
-    });
-
-    await act(async () => {
-      window.dispatchEvent(message);
-      await Promise.resolve();
-    });
-    act(() => window.dispatchEvent(message));
-
-    expect(model.navigateTab).toHaveBeenCalledTimes(2);
+    expect(postMessage).not.toHaveBeenCalled();
   });
 
   it('offers exactly 10, 30, 60, 120 minutes and never', async () => {
