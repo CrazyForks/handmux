@@ -196,20 +196,70 @@ describe('Codex persistent calibration snapshot', () => {
 });
 
 describe('getUsage / getUsageCached', () => {
-  it('bundles both agents (either may be null)', () => {
+  it('prefers the official Codex account limit over a Spark rollout limit', async () => {
+    const home = tmpHome('usg-official-');
+    writeRollout(home, '2026', '07', '23', 'rollout-2026-07-23T09-00-00-spark.jsonl', [
+      tokenCount('2026-07-23T09:00:00.000Z', 8, { total_tokens: 9 }),
+    ]);
+    const fakeAppServer = path.join(home, 'fake-codex-app-server.cjs');
+    fs.writeFileSync(fakeAppServer, `
+      let pending = '';
+      process.stdin.setEncoding('utf8');
+      process.stdin.on('data', (chunk) => {
+        pending += chunk;
+        let newline;
+        while ((newline = pending.indexOf('\\n')) >= 0) {
+          const line = pending.slice(0, newline);
+          pending = pending.slice(newline + 1);
+          if (!line) continue;
+          const message = JSON.parse(line);
+          if (message.method === 'initialize') {
+            process.stdout.write(JSON.stringify({ id: message.id, result: {} }) + '\\n');
+          }
+          if (message.method === 'account/rateLimits/read') {
+            process.stdout.write(JSON.stringify({
+              id: message.id,
+              result: {
+                rateLimits: {
+                  primary: { usedPercent: 51, windowDurationMins: 10080, resetsAt: 1785258130 },
+                  secondary: null,
+                },
+              },
+            }) + '\\n');
+          }
+        }
+      });
+    `);
+
+    const usage = await getUsage(home, {
+      now: 1234,
+      codexCommand: process.execPath,
+      codexArgs: [fakeAppServer],
+      codexTimeoutMs: 1000,
+    });
+
+    expect(usage.codex.rateLimits.primary).toEqual({
+      usedPercent: 51,
+      windowMinutes: 10080,
+      resetsAt: 1785258130,
+    });
+  });
+
+  it('bundles both agents (either may be null)', async () => {
     const home = tmpHome('usg-');
-    const u = getUsage(home);
+    const u = await getUsage(home, { codexCommand: '/missing-codex-for-test' });
     expect(u).toEqual({ claude: null, codex: null });
   });
 
-  it('caches within the ttl and refreshes after it', () => {
+  it('caches within the ttl and refreshes after it', async () => {
     const home = tmpHome('usg-');
-    const a = getUsageCached(home, { ttlMs: 1000, now: 1000 });
+    const options = { ttlMs: 1000, now: 1000, codexCommand: '/missing-codex-for-test' };
+    const a = await getUsageCached(home, options);
     // add a codex rollout AFTER the first (cached) read
     writeRollout(home, '2026', '07', '03', 'rollout-2026-07-03T03-00-00-c.jsonl', [
       tokenCount('2026-07-03T03:00:00.000Z', 7, { total_tokens: 9 }),
     ]);
-    expect(getUsageCached(home, { ttlMs: 1000, now: 1500 })).toBe(a); // still cached → codex null
-    expect(getUsageCached(home, { ttlMs: 1000, now: 62_000 }).codex).not.toBeNull(); // calibration passed → rescanned
+    expect(await getUsageCached(home, { ...options, now: 1500 })).toBe(a); // still cached → codex null
+    expect((await getUsageCached(home, { ...options, now: 62_000 })).codex).not.toBeNull(); // calibration passed → rescanned
   });
 });
