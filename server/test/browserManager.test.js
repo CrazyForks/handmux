@@ -12,6 +12,7 @@ function fakeHammerhead() {
       this.id = 'generated';
       this.options = options;
       this.addRequestEventListeners = vi.fn(async (_rule, listeners) => { this.requestListeners = listeners; });
+      this.cookies = new hammerhead.Session([]).cookies;
     }
   }
   class ResponseMock {
@@ -43,6 +44,39 @@ function fakeHammerhead() {
 }
 
 describe('browser preview manager', () => {
+  it('attaches cookie wrappers and exposes profile operations', async () => {
+    const fake = fakeHammerhead();
+    const detach = vi.fn();
+    const cookieProfiles = {
+      attach: vi.fn(() => detach),
+      serialize: vi.fn(() => 'serialized'),
+      clear: vi.fn(() => ({ cleared: true })),
+    };
+    const ids = ['tab-a', 'tab-b'];
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      cookieProfiles,
+      randomId: () => ids.shift(),
+    });
+
+    const first = await manager.create({
+      url: 'https://a.example/', origin: 'https://browser-a.preview.example', closeAfterMinutes: 10, deviceId: DEVICE,
+    });
+    await manager.create({
+      url: 'https://b.example/', origin: 'https://browser-b.preview.example', closeAfterMinutes: 10, deviceId: DEVICE,
+    });
+
+    expect(cookieProfiles.attach).toHaveBeenCalledTimes(2);
+    expect(cookieProfiles.attach.mock.calls[0][0]).toBe(DEVICE);
+    manager.closeTab(first.id, DEVICE);
+    expect(detach).toHaveBeenCalledTimes(1);
+    expect(manager.serializeDeviceProfile(DEVICE)).toBe('serialized');
+    expect(manager.clearDeviceProfile(DEVICE, { url: 'https://a.example/' })).toEqual({ cleared: true });
+
+    await manager.close();
+    expect(detach).toHaveBeenCalledTimes(2);
+  });
+
   it('creates a direct tab without allocating a Hammerhead context', async () => {
     const fake = fakeHammerhead();
     const target = 'https://direct.example/path';

@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import * as importedHammerhead from 'testcafe-hammerhead';
+import { createDeviceCookieProfiles } from './cookieProfiles.js';
 import { claimPublicOrigin } from './originLabel.js';
 import { createBrowserSessionStore } from './sessionStore.js';
 import { createBrowserTargetPolicy } from './targetPolicy.js';
@@ -148,12 +149,16 @@ export async function createBrowserPreviewManager({
   randomId = () => randomBytes(18).toString('base64url'),
   randomChannel = () => randomBytes(18).toString('base64url'),
   targetPolicyFactory = createBrowserTargetPolicy,
+  cookieProfiles: suppliedCookieProfiles,
   now = Date.now,
   setTimer = setTimeout,
   clearTimer = clearTimeout,
 } = {}) {
   const ProxyClass = hammerhead.Proxy;
   const SessionClass = browserSessionClass(hammerhead);
+  const cookieProfiles = suppliedCookieProfiles || createDeviceCookieProfiles({
+    createCookies: () => new SessionClass('').cookies,
+  });
   const pools = new Map();
   const pendingPools = new Map();
   const contexts = new Map();
@@ -260,8 +265,9 @@ export async function createBrowserPreviewManager({
           ));
         },
       }, () => {});
+      const detachCookies = cookieProfiles.attach(deviceId, session.cookies);
       const context = {
-        key, targetOrigin, publicOrigin: origin, pool, session, policy, tabIds: new Set(),
+        key, targetOrigin, publicOrigin: origin, pool, session, policy, detachCookies, tabIds: new Set(),
       };
       contexts.set(key, context);
       return context;
@@ -275,11 +281,13 @@ export async function createBrowserPreviewManager({
     context.tabIds.delete(tab.id);
     if (context.tabIds.size) return;
     contexts.delete(context.key);
+    context.detachCookies();
     context.pool.proxy.closeSession(context.session);
   };
   const releaseEmptyContext = (context) => {
     if (!context || context.tabIds.size || contexts.get(context.key) !== context) return;
     contexts.delete(context.key);
+    context.detachCookies();
     context.pool.proxy.closeSession(context.session);
   };
   const openTabSession = (context, target, channel) => {
@@ -319,6 +327,14 @@ export async function createBrowserPreviewManager({
 
     hasDevice(deviceId) {
       return !!deviceId && store.list().some((tab) => tab.ownerDevice === deviceId);
+    },
+
+    serializeDeviceProfile(deviceId) {
+      return cookieProfiles.serialize(deviceId);
+    },
+
+    clearDeviceProfile(deviceId, options) {
+      return cookieProfiles.clear(deviceId, options);
     },
 
     resolvePublicRequest(pathname, deviceId, rawOrigin) {
