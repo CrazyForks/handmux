@@ -321,8 +321,6 @@ export default function BrowserSheet({ browser }) {
       </div>
 
       <div className="browser-nav" inert={clearConfirmation ? '' : undefined}>
-        {proxied && <button className="browser-nav-button" aria-label={t('browser.back')} disabled={!active || historyActive} onClick={() => postCommand('back')}>‹</button>}
-        {proxied && <button className="browser-nav-button" aria-label={t('browser.forward')} disabled={!active || historyActive} onClick={() => postCommand('forward')}>›</button>}
         <form className="browser-address-form" onSubmit={submitAddress}>
           <GlobeIcon />
           {active && <span className={`browser-address-mode ${active.mode}`}>{t(active.mode === 'proxy' ? 'browser.proxyBadge' : 'browser.directBadge')}</span>}

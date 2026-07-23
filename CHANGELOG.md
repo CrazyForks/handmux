@@ -10,9 +10,10 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ### Changed
 - 内置浏览器替代原动态端口预览，静态目录预览继续保留。手机直连使用跨域 iframe，目标站的 `X-Frame-Options` / CSP、第三方 Cookie 或手机网络可能阻止加载，且 Handmux 无法可靠读取标题和页面内跳转；代理模式改用固定短域名 `b-<13 位小写 base36>.<previewDomain>`，只有收到 `previewDomain` 配置后才可选。Cookie Profile 仅共享 Cookie，不会跨系统共享 localStorage、IndexedDB 或 Service Worker；按网站清理父域 Cookie 时可能同时影响同一父域下的相关系统。
+- 内置浏览器暂不展示无法可靠判断状态的前进 / 后退按钮，可从设备本地历史重新打开之前的网址。
 
 ### Fixed
-- 代理页签中的链接、表单、SSO / OAuth 回调、服务端重定向与前进后退现在由当前 Hammerhead 会话原生完成，不再被 Handmux 二次 GET 或切换并关闭上下文；修复跨域 GET 参数丢失、POST 事件重复、一次性登录回调被重复消费及跨域返回 403。
+- 代理页签中的链接、表单、SSO / OAuth 回调与服务端重定向现在由当前 Hammerhead 会话原生完成，不再被 Handmux 二次 GET 或切换并关闭上下文；修复跨域 GET 参数丢失、POST 事件重复、一次性登录回调被重复消费及跨域返回 403。
 - 内置浏览器地址栏不再显示代理包装地址；连续打开链接时只保留最后一次请求，刷新与加载过程使用顶部进度条并可随时停止，同时阻止误触；切换页签会保留页面并重新刷新，网页标题会同步到页签与历史；浏览代理改由独立工作进程承载，异常退出不会带停终端主应用。
 - 未配置 `previewDomain` 时，服务端现在会拒绝所有代理页签请求且不启动代理 worker；手机直连页签由主进程独立维护，不再因代理 worker 未就绪或重启而无法打开或被清除，跨模式切换失败也会保留原页签。
 - Agent 用量现在展示所有设备共享的本机最新状态；新会话尚未产生额度数据时，不再让 Codex / Claude 的已有用量短暂消失。

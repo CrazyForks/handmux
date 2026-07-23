@@ -298,7 +298,7 @@ describe('BrowserSheet', () => {
     expect(document.querySelector('.browser-error')).toBeNull();
   });
 
-  it('submits the editable address and sends browser navigation commands', async () => {
+  it('submits the editable address, hides unreliable history controls, and can reload', async () => {
     const model = browser();
     await render(model);
     const input = document.querySelector('.browser-address');
@@ -309,10 +309,10 @@ describe('BrowserSheet', () => {
     const frame = document.querySelector('iframe[data-tab-id="a"]');
     act(() => frame.dispatchEvent(new Event('load')));
     const post = vi.spyOn(frame.contentWindow, 'postMessage');
-    click(document.querySelector('button[aria-label="后退"]'));
-    click(document.querySelector('button[aria-label="前进"]'));
+    expect(document.querySelector('button[aria-label="后退"]')).toBeNull();
+    expect(document.querySelector('button[aria-label="前进"]')).toBeNull();
     click(document.querySelector('button[aria-label="刷新"]'));
-    expect(post.mock.calls.map(([message]) => message.command)).toEqual(['back', 'forward', 'reload']);
+    expect(post.mock.calls.map(([message]) => message.command)).toEqual(['reload']);
     expect(post.mock.calls.every(([message]) => message.channel === 'ca')).toBe(true);
   });
 
