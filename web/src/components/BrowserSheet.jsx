@@ -49,6 +49,7 @@ export default function BrowserSheet({ browser }) {
   const frames = useRef(new Map());
   const frameUrls = useRef(new Map());
   const switchingOrigins = useRef(new Map());
+  const nativeNavigations = useRef(new Set());
   const addressRef = useRef(null);
   const bodyRef = useRef(null);
   const selectionEpoch = useRef(0);
@@ -80,6 +81,18 @@ export default function BrowserSheet({ browser }) {
         .find(([, frame]) => frame.contentWindow === event.source);
       const tab = frameEntry && tabs.find((item) => item.id === frameEntry[0]);
       if (!tab || tab.mode !== 'proxy' || tab.channel !== event.data.channel) return;
+      if (event.data.type === 'native-navigation') {
+        nativeNavigations.current.add(tab.id);
+        return;
+      }
+      if (nativeNavigations.current.has(tab.id)
+        && (event.data.type === 'navigate' || event.data.type === 'load')) {
+        if (event.data.type === 'load') {
+          nativeNavigations.current.delete(tab.id);
+          updateTabMeta(tab.id, { url: event.data.url, title: event.data.title });
+        }
+        return;
+      }
       if (event.data.type === 'navigate') {
         setRefreshingTabs((current) => new Set(current).add(tab.id));
       }
@@ -131,6 +144,9 @@ export default function BrowserSheet({ browser }) {
       let currentOrigin = null;
       try { currentOrigin = new URL(tab?.originalUrl).origin; } catch { /* removed tab */ }
       if (!tab || currentOrigin === origin) switchingOrigins.current.delete(id);
+    }
+    for (const id of nativeNavigations.current) {
+      if (!tabs.some((tab) => tab.id === id)) nativeNavigations.current.delete(id);
     }
   }, [tabs]);
 

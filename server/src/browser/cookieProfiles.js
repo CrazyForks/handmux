@@ -167,12 +167,12 @@ export function createDeviceCookieProfiles({
     }
     const profile = profileFor(deviceId);
     const wasPersisting = profile.persist;
-    profile.persist = prefs.persist;
-    profile.retentionDays = prefs.retentionDays;
     profile.retentionEpoch += 1;
     let warning = null;
 
     if (prefs.persist && !wasPersisting) {
+      profile.persist = true;
+      profile.retentionDays = prefs.retentionDays;
       if (!profile.loaded && !profile.used) {
         profile.loaded = true;
         const useVersion = profile.useVersion;
@@ -199,12 +199,28 @@ export function createDeviceCookieProfiles({
         await saveCurrent(deviceId, profile);
       }
     } else if (!prefs.persist && wasPersisting) {
+      const wasDirty = profile.dirty;
       if (profile.flushTimer !== null) {
         clearTimer(profile.flushTimer);
         profile.flushTimer = null;
       }
       profile.dirty = false;
-      await queueOperation(profile, () => persistence.remove(deviceId));
+      try {
+        await queueOperation(profile, () => persistence.remove(deviceId));
+      } catch (error) {
+        profile.dirty ||= wasDirty;
+        throw error;
+      }
+      if (profile.flushTimer !== null) {
+        clearTimer(profile.flushTimer);
+        profile.flushTimer = null;
+      }
+      profile.dirty = false;
+      profile.persist = false;
+      profile.retentionDays = prefs.retentionDays;
+    } else {
+      profile.persist = prefs.persist;
+      profile.retentionDays = prefs.retentionDays;
     }
 
     const retention = scheduleRetention(deviceId, profile);
@@ -275,12 +291,16 @@ export function createDeviceCookieProfiles({
     return profile.cookies.serializeJar();
   };
 
-  const clear = (deviceId, { url } = {}) => {
+  const clear = (deviceId, { url, hostname } = {}) => {
     const profile = profiles.get(deviceId);
     if (!profile) return { cleared: false };
     profile.used = true;
     profile.useVersion += 1;
-    if (!url) {
+    let targetHostname = hostname;
+    if (!targetHostname && url) {
+      try { targetHostname = new URL(url).hostname; } catch { return { cleared: false }; }
+    }
+    if (!targetHostname) {
       replaceJar(profile, null);
       onMutation(deviceId);
       profile.dirty = false;
@@ -289,12 +309,19 @@ export function createDeviceCookieProfiles({
         profile.flushTimer = null;
       }
       if (profile.persist) {
-        queueOperation(profile, () => persistence.remove(deviceId));
+        return queueOperation(profile, () => persistence.remove(deviceId))
+          .then(() => ({ cleared: true }));
       }
       return { cleared: true };
     }
 
-    const internalCookies = profile.cookies._cookieJar.getCookiesSync(url);
+    const normalizedHostname = targetHostname.toLowerCase();
+    const internalCookies = profile.cookies._getAllCookiesSync().filter((cookie) => {
+      const domain = cookie.domain?.replace(/^\./, '').toLowerCase();
+      if (!domain) return false;
+      if (cookie.hostOnly) return domain === normalizedHostname;
+      return normalizedHostname === domain || normalizedHostname.endsWith(`.${domain}`);
+    });
     if (!internalCookies.length) return { cleared: false };
     const matches = profile.cookies._convertToExternalCookies(internalCookies);
     for (let index = 0; index < matches.length; index++) {
@@ -302,7 +329,7 @@ export function createDeviceCookieProfiles({
       matches[index].maxAge = internalCookies[index].maxAge;
       matches[index].sameSite = internalCookies[index].sameSite;
     }
-    profile.cookies.deleteCookies(matches, [url]);
+    profile.cookies.deleteCookies(matches);
     markDirty(deviceId);
     return { cleared: true };
   };

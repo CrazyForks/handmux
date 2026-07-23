@@ -115,7 +115,7 @@ describe('browser preview manager', () => {
 
     await expect(manager.clearDeviceProfile(DEVICE, { origin: 'https://app.example' }))
       .resolves.toEqual({ closedTabIds: ['proxy-a'] });
-    expect(cookieProfiles.clear).toHaveBeenCalledWith(DEVICE, { url: 'https://app.example/' });
+    expect(cookieProfiles.clear).toHaveBeenCalledWith(DEVICE, { hostname: 'app.example' });
     expect(manager.list(DEVICE).map((tab) => tab.id)).toEqual(['proxy-other', 'direct-a']);
     expect(manager.list('device-b').map((tab) => tab.id)).toEqual(['proxy-b']);
 
@@ -514,6 +514,15 @@ describe('browser preview manager', () => {
     expect(payload).toContain("for (const name of ['pushState', 'replaceState'])");
     expect(payload).toContain("send('urlchange')");
     expect(payload).toContain("send('navigate', url)");
+    expect(payload).toContain('beforeFormSubmit');
+    expect(payload).toContain("type: 'native-navigation', url");
+    expect(payload).toContain("method === 'get'");
+    expect(payload).toContain('HTMLFormElement.prototype.submit');
+    expect(payload).toContain("addEventListener('submit'");
+    expect(payload).not.toContain('preventDefault');
+    expect(payload).not.toContain('FormData');
+    expect(payload).not.toContain('.elements');
+    expect(payload).not.toContain('password');
     expect(payload).toContain("addEventListener('DOMContentLoaded', observeTitle");
     expect(payload).toContain('observer.observe(document.head');
     expect(payload).toContain('if (title === lastTitle && url === lastTitleUrl) return');

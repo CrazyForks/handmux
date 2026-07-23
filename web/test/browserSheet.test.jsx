@@ -486,6 +486,40 @@ describe('BrowserSheet', () => {
     expect(model.updateTabMeta).not.toHaveBeenCalled();
   });
 
+  it('keeps cross-origin POST navigation in its Hammerhead session without replaying it as GET', async () => {
+    const model = browser();
+    await render(model);
+    const frame = document.querySelector('iframe[data-tab-id="a"]');
+
+    act(() => window.dispatchEvent(new MessageEvent('message', {
+      source: frame.contentWindow,
+      data: {
+        source: 'handmux-browser', channel: 'ca', type: 'native-navigation',
+        url: 'https://sso.example/login',
+      },
+    })));
+    act(() => window.dispatchEvent(new MessageEvent('message', {
+      source: frame.contentWindow,
+      data: {
+        source: 'handmux-browser', channel: 'ca', type: 'navigate',
+        url: 'https://sso.example/login', title: '',
+      },
+    })));
+    act(() => window.dispatchEvent(new MessageEvent('message', {
+      source: frame.contentWindow,
+      data: {
+        source: 'handmux-browser', channel: 'ca', type: 'load',
+        url: 'https://sso.example/complete', title: 'Signed in',
+      },
+    })));
+
+    expect(model.navigateTab).not.toHaveBeenCalled();
+    expect(model.updateTabMeta).toHaveBeenLastCalledWith('a', {
+      url: 'https://sso.example/complete',
+      title: 'Signed in',
+    });
+  });
+
   it('retries the same page-driven origin switch after a temporary API failure', async () => {
     const model = browser({ navigateTab: vi.fn().mockResolvedValue(null) });
     await render(model);

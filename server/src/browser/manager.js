@@ -45,6 +45,7 @@ function bridgeScript(channel) {
       catch { return url; }
     };
     const send = (type, url) => parent.postMessage({ source: 'handmux-browser', channel, type, url: url === undefined ? destinationUrl(location.href) : url, title: document.title }, '*');
+    const sendNativeNavigation = (url) => parent.postMessage({ source: 'handmux-browser', channel, type: 'native-navigation', url }, '*');
     let pending = false;
     const activity = () => {
       if (pending) return;
@@ -63,8 +64,26 @@ function bridgeScript(channel) {
         return result;
       };
     }
+    let nativeNavigationPending = false;
+    const markNativeFormNavigation = (form) => {
+      const method = String(form?.method || 'get').toLowerCase();
+      if (method === 'get' || nativeNavigationPending) return;
+      nativeNavigationPending = true;
+      sendNativeNavigation(destinationUrl(form?.action || location.href));
+    };
+    const originalFormSubmit = HTMLFormElement.prototype.submit;
+    HTMLFormElement.prototype.submit = function (...args) {
+      markNativeFormNavigation(this);
+      return originalFormSubmit.apply(this, args);
+    };
+    addEventListener('submit', (event) => markNativeFormNavigation(event.target), { capture: true });
+    if (hammerhead?.EVENTS?.beforeFormSubmit) {
+      hammerhead.on(hammerhead.EVENTS.beforeFormSubmit, ({ form } = {}) => markNativeFormNavigation(form));
+    }
     if (hammerhead?.EVENTS?.pageNavigationTriggered) {
-      hammerhead.on(hammerhead.EVENTS.pageNavigationTriggered, (url) => send('navigate', url));
+      hammerhead.on(hammerhead.EVENTS.pageNavigationTriggered, (url) => {
+        if (!nativeNavigationPending) send('navigate', url);
+      });
     }
     let lastTitle;
     let lastTitleUrl;
@@ -372,7 +391,9 @@ export async function createBrowserPreviewManager({
         releaseTabContext(removed);
       }
       updateDeviceActivity(deviceId);
-      await cookieProfiles.clear(deviceId, { url: origin === null ? undefined : `${origin}/` });
+      await cookieProfiles.clear(deviceId, {
+        hostname: origin === null ? undefined : new URL(origin).hostname,
+      });
       await cookieProfiles.flush?.(deviceId);
       return { closedTabIds };
     },

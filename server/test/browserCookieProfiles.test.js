@@ -76,9 +76,32 @@ describe('device cookie profiles', () => {
       expect.objectContaining({
         name: 'session', domain: 'app-a.example', expires: 'Infinity', maxAge: null, sameSite: undefined,
       }),
-    ], ['https://app-a.example/']);
+    ]);
     expect(onMutation).toHaveBeenCalledOnce();
     expect(onMutation).toHaveBeenCalledWith(DEVICE_A);
+  });
+
+  it('clears every path for one hostname plus matching parent-domain cookies only', () => {
+    const profiles = createDeviceCookieProfiles({ createCookies });
+    const cookies = createCookies();
+    const otherDevice = createCookies();
+    profiles.attach(DEVICE_A, cookies);
+    profiles.attach(DEVICE_B, otherDevice);
+    cookies.setByServer('https://app.corp.example/app/login', [
+      'host_app=one; Path=/app',
+      'parent_deep=two; Domain=corp.example; Path=/deep',
+    ]);
+    cookies.setByServer('https://sibling.corp.example/', ['sibling=three; Path=/']);
+    cookies.setByServer('https://unrelated.example/', ['unrelated=four; Path=/']);
+    otherDevice.setByServer('https://app.corp.example/app/login', ['other_device=five; Path=/app']);
+
+    expect(profiles.clear(DEVICE_A, { hostname: 'app.corp.example' })).toEqual({ cleared: true });
+
+    expect(headerFor(cookies, 'https://app.corp.example/app/home')).toBeNull();
+    expect(headerFor(cookies, 'https://app.corp.example/deep/home')).toBeNull();
+    expect(headerFor(cookies, 'https://sibling.corp.example/')).toContain('sibling=three');
+    expect(headerFor(cookies, 'https://unrelated.example/')).toContain('unrelated=four');
+    expect(headerFor(otherDevice, 'https://app.corp.example/app/home')).toContain('other_device=five');
   });
 
   it('replaces the complete jar without merging session pending queues', () => {
@@ -496,5 +519,72 @@ describe('device cookie profile concurrency', () => {
 
     expect(headerFor(cookies, 'https://app.example/')).toContain('session=restored');
     expect(persistence.close).toHaveBeenCalledOnce();
+  });
+
+  it('keeps persistence retryable after disable removal fails and full clear prevents restart recovery', async () => {
+    const stale = createCookies();
+    stale.setByServer('https://app.example/', ['session=stale; Path=/']);
+    let disk = stale.serializeJar();
+    let removeAttempts = 0;
+    const persistence = {
+      read: vi.fn(async () => disk),
+      write: vi.fn(async (_deviceId, serialized) => { disk = serialized; }),
+      remove: vi.fn(async () => {
+        removeAttempts += 1;
+        if (removeAttempts === 1) throw new Error('remove failed');
+        disk = null;
+      }),
+      close: vi.fn(),
+    };
+    const profiles = createDeviceCookieProfiles({ createCookies, persistence });
+    await profiles.configure(DEVICE_A, { persist: true, retentionDays: 30 });
+    const cookies = createCookies();
+    profiles.attach(DEVICE_A, cookies);
+
+    await expect(profiles.configure(DEVICE_A, { persist: false, retentionDays: 30 }))
+      .rejects.toThrow('remove failed');
+    cookies.setByServer('https://app.example/', ['session=current; Path=/']);
+    await profiles.flush(DEVICE_A);
+    expect(persistence.write).toHaveBeenCalled();
+
+    await profiles.clear(DEVICE_A, {});
+    await profiles.close();
+    const restarted = createDeviceCookieProfiles({ createCookies, persistence });
+    await restarted.configure(DEVICE_A, { persist: true, retentionDays: 30 });
+    const restored = createCookies();
+    restarted.attach(DEVICE_A, restored);
+
+    expect(removeAttempts).toBe(2);
+    expect(headerFor(restored, 'https://app.example/')).toBeNull();
+    await restarted.close();
+  });
+
+  it('persists a site clear before restart without touching sibling cookies', async () => {
+    let disk = null;
+    const persistence = {
+      read: vi.fn(async () => disk),
+      write: vi.fn(async (_deviceId, serialized) => { disk = serialized; }),
+      remove: vi.fn(async () => { disk = null; }),
+      close: vi.fn(),
+    };
+    const profiles = createDeviceCookieProfiles({ createCookies, persistence });
+    await profiles.configure(DEVICE_A, { persist: true, retentionDays: 30 });
+    const cookies = createCookies();
+    profiles.attach(DEVICE_A, cookies);
+    cookies.setByServer('https://app.corp.example/app/login', ['target=one; Path=/app']);
+    cookies.setByServer('https://sibling.corp.example/', ['sibling=two; Path=/']);
+    await profiles.flush(DEVICE_A);
+
+    await profiles.clear(DEVICE_A, { hostname: 'app.corp.example' });
+    await profiles.flush(DEVICE_A);
+    await profiles.close();
+    const restarted = createDeviceCookieProfiles({ createCookies, persistence });
+    await restarted.configure(DEVICE_A, { persist: true, retentionDays: 30 });
+    const restored = createCookies();
+    restarted.attach(DEVICE_A, restored);
+
+    expect(headerFor(restored, 'https://app.corp.example/app/home')).toBeNull();
+    expect(headerFor(restored, 'https://sibling.corp.example/')).toContain('sibling=two');
+    await restarted.close();
   });
 });
