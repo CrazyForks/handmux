@@ -10,6 +10,12 @@ describe('browser proxy origin labels', () => {
     expect(browserLabelForOrigin('http://idata.longfor.com/')).not.toBe(first);
   });
 
+  it('matches fixed SHA-256/base36 vectors including zero padding', () => {
+    // Fixed offline vectors: normalized Origin → SHA-256 first 8 bytes (big-endian) → lowercase base36 → padStart(13, '0').
+    expect(browserLabelForOrigin('https://IDATA.longfor.com/path')).toBe('b-1vvys4gk1c4s3');
+    expect(browserLabelForOrigin('https://example.com/path')).toBe('b-08ru5d27ceqp1');
+  });
+
   it('fails closed when two target Origins claim one public Origin', () => {
     const claims = new Map();
     claimPublicOrigin(claims, 'https://b-fixed.preview.example', 'https://a.example');
