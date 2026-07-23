@@ -89,3 +89,12 @@ for (let i = 0; i < 60 && !held; i++) {                       // ~0.9s budget, t
 }
 try { update(); } catch { /* best effort */ }
 if (held) { try { fs.unlinkSync(lock); } catch { /* ignore */ } }
+
+// Codex hook payloads include the exact rollout transcript_path. Capture its latest token_count into a
+// machine-wide snapshot after the inbox update; failures are isolated so usage can never break the hook.
+if (agent === 'codex' && typeof payload.transcript_path === 'string') {
+  try {
+    const { captureTranscript } = require('./handmux-codex-usage.cjs');
+    captureTranscript(payload.transcript_path, path.join(path.dirname(file), 'codex-usage.json'));
+  } catch { /* best effort */ }
+}

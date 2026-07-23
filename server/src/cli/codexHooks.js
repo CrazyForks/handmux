@@ -105,6 +105,16 @@ export function installCodexHooks(home = homedir(), { srcDir, stateFile } = {}) 
   return { status: 'installed' };
 }
 
+// Refresh scripts for an already opted-in install on server restart. Never enables hooks or rewrites
+// config.toml; it only replaces our deployed script bytes with this handmux version.
+export function syncCodexHooks(home = homedir(), { srcDir, stateFile } = {}) {
+  // The marked config is the durable opt-in signal. Refresh it even when a service manager's PATH cannot
+  // resolve the user's Codex binary; never turn a hook off merely because Node installations switched.
+  if (!readConf(home).includes(BEGIN)) return { status: codexHooksStatus(home), changed: false };
+  deployHookScripts(hooksDir(home), srcDir, stateFile);
+  return { status: 'installed', changed: false };
+}
+
 // Uninstall: strip our config.toml region and remove the copied scripts/env. Best-effort.
 export function uninstallCodexHooks(home = homedir()) {
   if (fs.existsSync(configPath(home))) writeFileAtomic(configPath(home), stripCodexHooks(readConf(home)));

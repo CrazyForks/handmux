@@ -1,14 +1,20 @@
-// Usage/quota reader for the phone's Usage page. Purely reads what each agent already puts on disk — no
-// API calls, no credentials:
+// Usage/quota reader for the phone's Usage page:
 //   • Claude — the snapshot the statusLine capturer writes to ~/.handmux/claude-usage.json. Claude Code's
 //     statusLine stdin is the ONLY documented local source of the 5h/weekly rate-limit % (see
 //     server/hooks/handmux-statusline.cjs). Absent until the user opts the capturer in → returns null.
-//   • Codex — the newest rollout's most recent `token_count` event, which carries `rate_limits` (used %,
-//     reset, window) and cumulative token usage. Always available once Codex has run, no wiring needed.
+//   • Codex — account limits come from Codex's local app-server (which owns auth); rollout snapshots provide
+//     cumulative tokens/context and remain the fallback when that stable local method is unavailable.
 import fs from 'node:fs';
 import path from 'node:path';
 import { homedir } from 'node:os';
+import { createRequire } from 'node:module';
+import { spawn } from 'node:child_process';
 import { pocketHome } from './cli/state.js';
+
+const require = createRequire(import.meta.url);
+const {
+  readLatestUsage, readSnapshot, writeSnapshot,
+} = require('../hooks/handmux-codex-usage.cjs');
 
 export function claudeUsagePath(home = homedir()) { return path.join(pocketHome(home), 'claude-usage.json'); }
 export function claudeContextDir(home = homedir()) { return path.join(pocketHome(home), 'context'); }
@@ -25,6 +31,7 @@ export function readClaudeContext(sessionId, home = homedir()) {
   } catch { return null; }
 }
 export function codexSessionsDir(home = homedir()) { return path.join(home, '.codex', 'sessions'); }
+export function codexUsagePath(home = homedir()) { return path.join(pocketHome(home), 'codex-usage.json'); }
 
 // Claude: read the statusLine snapshot. null if the capturer isn't wired / never populated it.
 export function readClaudeUsage(home = homedir()) {
@@ -34,74 +41,221 @@ export function readClaudeUsage(home = homedir()) {
   } catch { return null; }
 }
 
-// The rollout tree is date-nested (sessions/YYYY/MM/DD/rollout-<ISO>-<uuid>.jsonl) and every path segment
-// sorts lexically = chronologically, so the newest rollout is the lexically-largest entry at each level —
-// found without walking the whole tree.
-function newestRollout(dir) {
-  const maxEntry = (d, pred) => {
-    let names;
-    try { names = fs.readdirSync(d); } catch { return null; }
-    names = names.filter((n) => !n.startsWith('.') && (!pred || pred(n))).sort();
-    return names.length ? names[names.length - 1] : null;
+// Usage is machine-wide, not owned by whichever session happened to be created last. Enumerate rollout
+// files by modification time: an active older session can be newer than a freshly-created rollout, while
+// a new rollout may have no token_count until its first response. Once a file's mtime is older than the
+// newest event already found, no remaining file can contain a newer event, so the scan stays bounded.
+function rolloutFilesByMtime(dir) {
+  const files = [];
+  const visit = (current) => {
+    let entries;
+    try { entries = fs.readdirSync(current, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      const file = path.join(current, entry.name);
+      if (entry.isDirectory()) visit(file);
+      else if (entry.name.startsWith('rollout-') && entry.name.endsWith('.jsonl')) {
+        try { files.push({ file, mtimeMs: fs.statSync(file).mtimeMs }); } catch { /* file raced away */ }
+      }
+    }
   };
-  const y = maxEntry(dir); if (!y) return null;
-  const m = maxEntry(path.join(dir, y)); if (!m) return null;
-  const d = maxEntry(path.join(dir, y, m)); if (!d) return null;
-  const dayDir = path.join(dir, y, m, d);
-  const f = maxEntry(dayDir, (n) => n.startsWith('rollout-') && n.endsWith('.jsonl'));
-  return f ? path.join(dayDir, f) : null;
+  visit(dir);
+  return files.sort((a, b) => b.mtimeMs - a.mtimeMs);
 }
 
-// One Codex rate-limit window → our shape, or null if absent (secondary is often null on plans without it).
-function codexWindow(w) {
-  if (!w || typeof w.used_percent !== 'number') return null;
-  return {
-    usedPercent: w.used_percent,
-    windowMinutes: typeof w.window_minutes === 'number' ? w.window_minutes : null,
-    resetsAt: typeof w.resets_at === 'number' ? w.resets_at : null,
-  };
-}
-
-// Codex: scan the newest rollout from the end for the last `token_count` event (carries the account-wide
-// rate_limits + the session's cumulative tokens). null if Codex hasn't run or the rollout has none yet.
-export function readCodexUsage(home = homedir()) {
-  const f = newestRollout(codexSessionsDir(home));
-  if (!f) return null;
-  let lines;
-  try { lines = fs.readFileSync(f, 'utf8').split('\n'); } catch { return null; }
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const ln = lines[i];
-    if (!ln || ln.indexOf('token_count') === -1) continue;
-    let rec; try { rec = JSON.parse(ln); } catch { continue; }
-    const p = rec.payload;
-    if (!p || p.type !== 'token_count') continue;
-    const info = p.info || {};
-    const tu = info.total_token_usage || {};
-    const rl = p.rate_limits || {};
-    return {
-      updatedAt: Date.parse(rec.timestamp) || null,
-      rateLimits: { primary: codexWindow(rl.primary), secondary: codexWindow(rl.secondary) },
-      tokens: {
-        total: tu.total_tokens ?? null,
-        input: tu.input_tokens ?? null,
-        cachedInput: tu.cached_input_tokens ?? null,
-        output: tu.output_tokens ?? null,
-        reasoning: tu.reasoning_output_tokens ?? null,
-      },
-      contextWindow: typeof info.model_context_window === 'number' ? info.model_context_window : null,
-    };
+// Full reconciliation fallback. It remains zero-config, but now runs at most once per calibration interval;
+// the normal path reads the persistent snapshot written by Codex hooks.
+function scanCodexUsage(home) {
+  let latest = null;
+  for (const { file, mtimeMs } of rolloutFilesByMtime(codexSessionsDir(home))) {
+    if (latest?.updatedAt && mtimeMs < latest.updatedAt) break;
+    const usage = readLatestUsage(file);
+    if (usage && (!latest || usage.updatedAt > latest.updatedAt)) latest = usage;
   }
-  return null;
+  return latest;
 }
 
-export function getUsage(home = homedir()) {
-  return { claude: readClaudeUsage(home), codex: readCodexUsage(home) };
+// Prefer the machine-wide snapshot. A full rollout scan seeds it and calibrates it once per minute for
+// users without hooks; hook updates between calibrations are never rolled back by an older scan result.
+export function readCodexUsage(
+  home = homedir(),
+  { now = Date.now(), calibrationMs = 60_000 } = {},
+) {
+  const file = codexUsagePath(home);
+  const snapshot = readSnapshot(file);
+  if (snapshot && (now - snapshot.checkedAt) < calibrationMs) return snapshot.usage;
+
+  const scanned = scanCodexUsage(home);
+  writeSnapshot(file, scanned, { checkedAt: now });
+  return readSnapshot(file)?.usage || null;
 }
 
-// Small TTL cache so a phone that re-polls doesn't rescan the rollout every few seconds.
-let _cache = { at: 0, home: null, data: null };
-export function getUsageCached(home = homedir(), { ttlMs = 15000, now = Date.now() } = {}) {
+function normalizeRateLimitWindow(value) {
+  if (!value || typeof value.usedPercent !== 'number') return null;
+  return {
+    usedPercent: value.usedPercent,
+    windowMinutes: typeof value.windowDurationMins === 'number' ? value.windowDurationMins : null,
+    resetsAt: typeof value.resetsAt === 'number' ? value.resetsAt : null,
+  };
+}
+
+// Query the same stable local account method used by Codex's own rich clients. The child process reuses
+// Codex's auth internally; handmux neither reads nor receives credentials. Every failure is a null fallback.
+export function fetchCodexRateLimits(
+  home = homedir(),
+  {
+    codexCommand = 'codex',
+    codexArgs = ['app-server', '--stdio'],
+    codexTimeoutMs = 5000,
+  } = {},
+) {
+  return new Promise((resolve) => {
+    let child;
+    let settled = false;
+    let stdout = '';
+
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { child?.kill(); } catch { /* best effort */ }
+      resolve(value);
+    };
+
+    const timer = setTimeout(() => finish(null), codexTimeoutMs);
+    try {
+      child = spawn(codexCommand, codexArgs, {
+        env: { ...process.env, CODEX_HOME: path.join(home, '.codex') },
+        stdio: ['pipe', 'pipe', 'ignore'],
+      });
+    } catch {
+      finish(null);
+      return;
+    }
+
+    child.on('error', () => finish(null));
+    child.on('exit', () => finish(null));
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+      if (stdout.length > 1024 * 1024) {
+        finish(null);
+        return;
+      }
+      let newline;
+      while ((newline = stdout.indexOf('\n')) >= 0) {
+        const line = stdout.slice(0, newline);
+        stdout = stdout.slice(newline + 1);
+        if (!line) continue;
+        let message;
+        try { message = JSON.parse(line); } catch { continue; }
+
+        if (message.id === 1 && message.result) {
+          child.stdin.write(`${JSON.stringify({ method: 'initialized', params: {} })}\n`);
+          child.stdin.write(`${JSON.stringify({ method: 'account/rateLimits/read', id: 2 })}\n`);
+        } else if (message.id === 2) {
+          const source = message.result?.rateLimits;
+          if (!source || typeof source !== 'object') {
+            finish(null);
+            return;
+          }
+          finish({
+            primary: normalizeRateLimitWindow(source.primary),
+            secondary: normalizeRateLimitWindow(source.secondary),
+          });
+          return;
+        }
+      }
+    });
+
+    child.stdin.on('error', () => finish(null));
+    child.stdin.write(`${JSON.stringify({
+      method: 'initialize',
+      id: 1,
+      params: { clientInfo: { name: 'handmux', title: 'handmux', version: '0.0.0' } },
+    })}\n`);
+  });
+}
+
+let _codexLimitsCache = {
+  at: 0, home: null, data: null, ready: false, promise: null,
+};
+
+async function getCodexRateLimitsCached(
+  home,
+  {
+    now = Date.now(),
+    codexRateLimitsTtlMs = 60_000,
+    ...fetchOptions
+  } = {},
+) {
+  if (_codexLimitsCache.home === home
+    && _codexLimitsCache.ready
+    && (now - _codexLimitsCache.at) < codexRateLimitsTtlMs) {
+    return _codexLimitsCache.data;
+  }
+  if (_codexLimitsCache.home === home && _codexLimitsCache.promise) {
+    return _codexLimitsCache.promise;
+  }
+
+  const promise = fetchCodexRateLimits(home, fetchOptions).then((data) => {
+    _codexLimitsCache = {
+      at: now, home, data, ready: true, promise: null,
+    };
+    return data;
+  });
+  _codexLimitsCache = {
+    at: _codexLimitsCache.at,
+    home,
+    data: _codexLimitsCache.home === home ? _codexLimitsCache.data : null,
+    ready: false,
+    promise,
+  };
+  return promise;
+}
+
+function mergeCodexRateLimits(usage, rateLimits, now) {
+  if (!rateLimits) return usage;
+  return {
+    updatedAt: now,
+    rateLimits,
+    tokens: usage?.tokens || {
+      total: null, input: null, cachedInput: null, output: null, reasoning: null,
+    },
+    contextWindow: usage?.contextWindow ?? null,
+  };
+}
+
+export async function getUsage(home = homedir(), options = {}) {
+  const codex = readCodexUsage(home, options);
+  const rateLimits = await getCodexRateLimitsCached(home, options);
+  return {
+    claude: readClaudeUsage(home),
+    codex: mergeCodexRateLimits(codex, rateLimits, options.now ?? Date.now()),
+  };
+}
+
+// Small TTL cache so a phone that re-polls doesn't rescan the rollout every few seconds. In-flight requests
+// share the same promise, while the heavier Codex account query has its own one-minute cache above.
+let _cache = {
+  at: 0, home: null, data: null, promise: null,
+};
+export async function getUsageCached(
+  home = homedir(),
+  options = {},
+) {
+  const { ttlMs = 15000, now = Date.now(), calibrationMs = 60_000 } = options;
   if (_cache.data && _cache.home === home && (now - _cache.at) < ttlMs) return _cache.data;
-  _cache = { at: now, home, data: getUsage(home) };
-  return _cache.data;
+  if (_cache.promise && _cache.home === home) return _cache.promise;
+  const promise = getUsage(home, {
+    ...options, now, calibrationMs,
+  }).then((data) => {
+    _cache = {
+      at: now, home, data, promise: null,
+    };
+    return data;
+  });
+  _cache = {
+    at: _cache.at, home, data: _cache.home === home ? _cache.data : null, promise,
+  };
+  return promise;
 }
