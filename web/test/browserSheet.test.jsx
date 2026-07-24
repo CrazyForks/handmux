@@ -178,7 +178,7 @@ describe('BrowserSheet', () => {
     expect(model.setHistoryMode).toHaveBeenCalledWith(model.history[0], 'proxy');
   });
 
-  it('shows each history mode inline and offers separate cleanup and deletion actions', async () => {
+  it('shows each history mode inline and keeps Cookie cleanup out of history-row menus', async () => {
     const model = browser({ historyActive: true, activeId: null });
     await render(model);
 
@@ -187,26 +187,19 @@ describe('BrowserSheet', () => {
     const menu = document.querySelector('.browser-history-mode-menu');
     expect(menu.textContent).toContain('手机直连');
     expect(menu.textContent).toContain('经电脑代理');
-    expect(menu.textContent).toContain('清理本站登录状态');
+    expect(menu.textContent).not.toContain('清理本站代理 Cookie');
     expect(menu.textContent).toContain('删除此记录');
-
-    click([...menu.querySelectorAll('button')].find((node) => node.textContent === '清理本站登录状态'));
-    const confirmation = document.querySelector('.browser-profile-confirm');
-    expect(confirmation.textContent).toContain('当前设备');
-    expect(confirmation.textContent).toContain('父域 Cookie');
-    click([...confirmation.querySelectorAll('button')].find((node) => node.textContent === '确认'));
-    expect(model.clearProxyLogin).toHaveBeenCalledWith('https://old.example');
   });
 
   it('makes site-clear confirmation keyboard-modal and restores trigger focus', async () => {
     const outside = document.createElement('button');
     document.body.appendChild(outside);
-    const model = browser({ historyActive: true, activeId: null });
+    const model = browser();
     await render(model);
-    const menuTrigger = document.querySelector('.browser-history-more');
+    const menuTrigger = document.querySelector('button[aria-label="浏览器菜单"]');
     click(menuTrigger);
-    const trigger = [...document.querySelectorAll('.browser-history-mode-menu button')]
-      .find((node) => node.textContent === '清理本站登录状态');
+    const trigger = [...document.querySelectorAll('.browser-options-card button')]
+      .find((node) => node.textContent === '清理本站代理 Cookie');
     trigger.focus();
     click(trigger);
     await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
@@ -230,7 +223,7 @@ describe('BrowserSheet', () => {
     expect(document.activeElement).toBe(cancel);
     act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
     expect(document.querySelector('.browser-profile-confirm')).toBeNull();
-    expect(document.activeElement).toBe(menuTrigger);
+    expect(document.activeElement).toBe(trigger);
     outside.remove();
   });
 
@@ -562,7 +555,7 @@ describe('BrowserSheet', () => {
     expect(postMessage).not.toHaveBeenCalled();
   });
 
-  it('consolidates browser controls and device settings into one more card', async () => {
+  it('shows site Cookie cleanup only in a proxied webpage menu', async () => {
     const model = browser({
       persistProxyLogin: false,
       proxyLoginRetentionDays: 30,
@@ -579,8 +572,10 @@ describe('BrowserSheet', () => {
     expect(card.textContent).not.toContain('当前网页');
     expect(card.textContent).toContain('页面视图');
     expect(card.textContent).toContain('后台页签关闭');
-    expect(card.textContent).toContain('代理登录');
-    expect(card.textContent).toContain('关闭内置浏览器');
+    expect(card.textContent).toContain('清理本站代理 Cookie');
+    expect(card.textContent).not.toContain('清理全部代理 Cookie');
+    expect(card.textContent).not.toContain('代理登录持久化');
+    expect(card.textContent).not.toContain('关闭内置浏览器');
 
     const modeButtons = [...card.querySelectorAll('.browser-mode-segment button')];
     expect(modeButtons.map((node) => node.textContent)).toEqual(['手机直连', '经电脑代理']);
@@ -600,6 +595,32 @@ describe('BrowserSheet', () => {
     click(closeChoices[1]);
     expect(model.setCloseAfter).toHaveBeenCalledWith(30);
 
+    click(card.querySelector('.browser-options-help'));
+    expect(document.querySelector('.browser-profile-confirm').textContent).toContain('手机直连 Cookie 不受影响');
+    click(document.querySelector('.browser-profile-confirm button'));
+    click([...card.querySelectorAll('button')].find((node) => node.textContent === '清理本站代理 Cookie'));
+    expect(document.querySelector('.browser-profile-confirm').textContent).toContain('父域 Cookie');
+    click([...document.querySelectorAll('.browser-profile-confirm button')]
+      .find((node) => node.textContent === '确认'));
+    expect(model.clearProxyLogin).toHaveBeenCalledWith('https://a.example');
+  });
+
+  it('keeps proxy persistence and clear-all controls only in the Home menu', async () => {
+    const model = browser({
+      historyActive: true,
+      activeId: null,
+      persistProxyLogin: false,
+      proxyLoginRetentionDays: 30,
+    });
+    await render(model);
+    click(document.querySelector('button[aria-label="浏览器菜单"]'));
+    const card = document.querySelector('.browser-options-card');
+
+    expect(card.textContent).toContain('代理登录');
+    expect(card.textContent).toContain('清理全部代理 Cookie');
+    expect(card.textContent).not.toContain('清理本站代理 Cookie');
+    expect(card.textContent).not.toContain('关闭内置浏览器');
+
     click(card.querySelector('.browser-profile-persist input'));
     expect(model.setPersistProxyLogin).toHaveBeenCalledWith(true);
     const retention = [...card.querySelectorAll('.browser-retention button')];
@@ -607,19 +628,16 @@ describe('BrowserSheet', () => {
     click(retention[1]);
     expect(model.setProxyLoginRetentionDays).toHaveBeenCalledWith(7);
 
-    click([...card.querySelectorAll('button')].find((node) => node.textContent === '清理全部代理登录状态'));
+    click(card.querySelector('.browser-options-help'));
+    expect(document.querySelector('.browser-profile-confirm').textContent).toContain('当前设备');
+    expect(document.querySelector('.browser-profile-confirm').textContent).toContain('代理 Cookie');
+    click(document.querySelector('.browser-profile-confirm button'));
+
+    click([...card.querySelectorAll('button')].find((node) => node.textContent === '清理全部代理 Cookie'));
     expect(document.querySelector('.browser-profile-confirm').textContent).toContain('当前设备');
     click([...document.querySelectorAll('.browser-profile-confirm button')]
       .find((node) => node.textContent === '确认'));
     expect(model.clearProxyLogin).toHaveBeenCalledWith(null);
-
-    const disable = [...card.querySelectorAll('button')].find((node) => node.textContent === '关闭内置浏览器');
-    click(disable);
-    expect(model.setEnabled).not.toHaveBeenCalled();
-    expect(document.querySelector('.browser-profile-confirm').textContent).toContain('关闭全部页签');
-    click([...document.querySelectorAll('.browser-profile-confirm button')]
-      .find((node) => node.textContent === '确认'));
-    expect(model.setEnabled).toHaveBeenCalledWith(false);
   });
 
   it('lets a new page choose its connection mode before opening the address', async () => {

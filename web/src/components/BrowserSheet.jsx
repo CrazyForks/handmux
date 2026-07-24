@@ -30,7 +30,7 @@ export default function BrowserSheet({ browser }) {
     persistProxyLogin, proxyLoginRetentionDays, proxyAvailable,
     openUrl, switchTab, closeTab, setOpen, setCloseAfter,
     navigateTab, ensureBinding, recoverBinding, markBindingReady, updateTabMeta,
-    clearHistory, setHistoryMode, enableAccess, cancelAccess, setEnabled,
+    clearHistory, setHistoryMode, enableAccess, cancelAccess,
     setPersistProxyLogin, setProxyLoginRetentionDays,
     clearProxyLogin, deleteHistory,
   } = browser;
@@ -269,14 +269,11 @@ export default function BrowserSheet({ browser }) {
     openUrl(entry.url, { mode });
   };
 
-  const requestSiteClear = (entry) => {
+  const requestActiveSiteClear = () => {
     let origin;
-    try { origin = new URL(entry.url).origin; } catch { return; }
-    clearTriggerRef.current = document.activeElement
-      ?.closest('.browser-history-row')
-      ?.querySelector('.browser-history-more') || document.activeElement;
-    setHistoryModeOpen(null);
-    setClearConfirmation({ type: 'site', entry, origin });
+    try { origin = new URL(active.originalUrl).origin; } catch { return; }
+    clearTriggerRef.current = document.activeElement;
+    setClearConfirmation({ type: 'site', origin });
   };
 
   const confirmSiteClear = () => {
@@ -285,7 +282,6 @@ export default function BrowserSheet({ browser }) {
     if (pending?.type === 'site') clearProxyLogin(pending.origin);
     if (pending?.type === 'all') clearProxyLogin(null);
     if (pending?.type === 'disable-persist') setPersistProxyLogin(false);
-    if (pending?.type === 'disable-browser') setEnabled(false);
   };
 
   const removeHistory = (entry) => {
@@ -434,9 +430,16 @@ export default function BrowserSheet({ browser }) {
                 )}
               </div>
 
-              {proxyAvailable && (
+              {proxyAvailable && (historyActive || !active) && (
                 <div className="browser-options-section browser-profile-options">
-                  <strong>{t('browser.proxyLogin')}</strong>
+                  <div className="browser-options-heading">
+                    <strong>{t('browser.proxyLogin')}</strong>
+                    <button className="browser-options-help" aria-label={t('browser.proxyLoginHelpLabel')}
+                      onClick={() => {
+                        clearTriggerRef.current = document.activeElement;
+                        setClearConfirmation({ type: 'help-profile' });
+                      }}>?</button>
+                  </div>
                   <label className="browser-options-row browser-profile-persist">
                     <span>{t('settings.browserPersistLogin')}</span>
                     <span className="cmd-switch">
@@ -467,10 +470,21 @@ export default function BrowserSheet({ browser }) {
                 </div>
               )}
 
-              <button className="browser-options-danger browser-disable" onClick={() => {
-                clearTriggerRef.current = document.activeElement;
-                setClearConfirmation({ type: 'disable-browser' });
-              }}>{t('browser.disable')}</button>
+              {proxyAvailable && active?.mode === 'proxy' && !historyActive && (
+                <div className="browser-options-section browser-profile-options">
+                  <div className="browser-options-heading">
+                    <strong>{t('browser.siteProxyCookie')}</strong>
+                    <button className="browser-options-help" aria-label={t('browser.siteCookieHelpLabel')}
+                      onClick={() => {
+                        clearTriggerRef.current = document.activeElement;
+                        setClearConfirmation({ type: 'help-site' });
+                      }}>?</button>
+                  </div>
+                  <button className="browser-options-danger" onClick={requestActiveSiteClear}>
+                    {t('browser.clearSiteLogin')}
+                  </button>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -507,9 +521,6 @@ export default function BrowserSheet({ browser }) {
                         <button className="browser-history-mode-option proxy" disabled={!proxyAvailable}
                           aria-describedby={!proxyAvailable ? `browser-history-proxy-unavailable-${index}` : undefined}
                           onClick={() => openHistory(entry, 'proxy', true)}>{t('browser.proxyMode')}</button>
-                        <button className="browser-history-mode-option danger" disabled={!proxyAvailable}
-                          aria-describedby={!proxyAvailable ? `browser-history-proxy-unavailable-${index}` : undefined}
-                          onClick={() => requestSiteClear(entry)}>{t('browser.clearSiteLogin')}</button>
                         <button className="browser-history-mode-option danger"
                           onClick={() => removeHistory(entry)}>{t('browser.deleteHistoryEntry')}</button>
                         {!proxyAvailable && <p id={`browser-history-proxy-unavailable-${index}`}>{t('browser.proxyUnavailable')}</p>}
@@ -570,24 +581,35 @@ export default function BrowserSheet({ browser }) {
       </div>
       {clearConfirmation && (
         <div className="browser-profile-confirm-backdrop">
-          <div ref={clearDialogRef} className="browser-profile-confirm" role="alertdialog" aria-modal="true"
-            aria-label={t(clearConfirmation.type === 'site'
+          <div ref={clearDialogRef} className="browser-profile-confirm"
+            role={clearConfirmation.type.startsWith('help-') ? 'dialog' : 'alertdialog'} aria-modal="true"
+            aria-label={t(clearConfirmation.type === 'help-profile'
+              ? 'browser.proxyLogin'
+              : clearConfirmation.type === 'help-site'
+                ? 'browser.siteProxyCookie'
+                : clearConfirmation.type === 'site'
               ? 'browser.clearSiteLogin'
               : clearConfirmation.type === 'all'
                 ? 'browser.clearAllLogin'
-                : clearConfirmation.type === 'disable-browser'
-                  ? 'browser.disable'
-                  : 'settings.browserPersistLogin')}>
-            <p>{t(clearConfirmation.type === 'site'
+                : 'settings.browserPersistLogin')}>
+            <p>{t(clearConfirmation.type === 'help-profile'
+              ? 'browser.proxyLoginHelp'
+              : clearConfirmation.type === 'help-site'
+                ? 'browser.siteCookieHelp'
+                : clearConfirmation.type === 'site'
               ? 'browser.clearSiteLoginConfirm'
               : clearConfirmation.type === 'all'
                 ? 'browser.clearAllLoginConfirm'
-                : clearConfirmation.type === 'disable-browser'
-                  ? 'browser.disableConfirm'
-                  : 'settings.browserDisablePersistConfirm')}</p>
+                : 'settings.browserDisablePersistConfirm')}</p>
             <div>
-              <button ref={clearCancelRef} onClick={() => setClearConfirmation(null)}>{t('common.cancel')}</button>
-              <button className="danger" onClick={confirmSiteClear}>{t('common.confirm')}</button>
+              {clearConfirmation.type.startsWith('help-') ? (
+                <button ref={clearCancelRef} onClick={() => setClearConfirmation(null)}>{t('common.ok')}</button>
+              ) : (
+                <>
+                  <button ref={clearCancelRef} onClick={() => setClearConfirmation(null)}>{t('common.cancel')}</button>
+                  <button className="danger" onClick={confirmSiteClear}>{t('common.confirm')}</button>
+                </>
+              )}
             </div>
           </div>
         </div>

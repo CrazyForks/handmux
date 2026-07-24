@@ -1256,7 +1256,12 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-time-options { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; padding-bottom: 4px; }
 .browser-time-options .browser-time-option { min-height: 38px; text-align: center; }
 .browser-profile-options { display: flex; flex-direction: column; gap: 5px; }
-.browser-profile-options > strong { padding: 4px 0 0; }
+.browser-options-heading { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.browser-options-heading strong { font-size: 14px; font-weight: 600; }
+.browser-options-help {
+  width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0;
+  border-radius: 50%; background: transparent; color: #aab4bf; font-size: 14px; font-weight: 600;
+}
 .browser-profile-options .browser-options-row { padding-inline: 0; }
 .browser-retention { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
 .browser-retention button {
@@ -1266,7 +1271,6 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-options-danger {
   width: 100%; min-height: 44px; padding: 0; border: 0; background: transparent; color: #ff6961; text-align: left; font-size: 14px;
 }
-.browser-disable { margin-top: 2px; padding: 0 10px; border-top: 1px solid #41464e; }
 
 .browser-content { position: relative; flex: 1; min-height: 0; display: flex; overflow: hidden; background: #fff; }
 .browser-pane { flex: 1; min-width: 0; min-height: 0; }
