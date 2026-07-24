@@ -164,6 +164,11 @@ export async function sendText(paneId, text) {
   await runTmux(['send-keys', '-t', paneId, '-l', '--', text]);
 }
 
+export async function sendHexInput(paneId, hex) {
+  const bytes = hex.match(/../g) || [];
+  await runTmux(['send-keys', '-t', paneId, '-H', ...bytes]);
+}
+
 export async function sendEnter(paneId) {
   await runTmux(['send-keys', '-t', paneId, 'Enter']);
 }
