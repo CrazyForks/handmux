@@ -94,6 +94,10 @@ const Terminal = forwardRef(function Terminal({
   const lastCurForFollowRef = useRef(''); // last cursor key seen by follow → a change re-arms it
   const onTapRef = useRef(onTap); // a clean single tap → dismiss the dock keyboard (called synchronously)
   onTapRef.current = onTap;
+  const onAuthFailRef = useRef(onAuthFail);
+  onAuthFailRef.current = onAuthFail;
+  const onInputFocusChangeRef = useRef(onInputFocusChange);
+  onInputFocusChangeRef.current = onInputFocusChange;
   // Clickable doc-path underlines (xterm decorations), rebuilt after every full repaint. The tap
   // handler is held in a ref so the poll loop's stable closure always calls the latest prop (mirrors
   // how the loop reaches outside state via fitRef/wakeRef). Tapping a path does NOT open it directly
@@ -229,6 +233,7 @@ const Terminal = forwardRef(function Terminal({
   }, [inset]);
 
   useEffect(() => {
+    let disposed = false;
     const term = new XTerm({
       disableStdin: !desktop,
       // registerDecoration() — the doc-path highlight below — is a PROPOSED xterm API; without this it
@@ -283,17 +288,21 @@ const Terminal = forwardRef(function Terminal({
     const inputQueue = createTerminalInputQueue({
       send: sendInput,
       onDelivered: (targetPane) => {
-        if (targetPane === pane) wakeRef.current?.();
+        if (!disposed && targetPane === pane) wakeRef.current?.();
       },
       onError: (error, targetPane) => {
-        if (targetPane !== pane) return;
-        if (error instanceof UnauthorizedError) onAuthFail?.();
+        if (disposed || targetPane !== pane) return;
+        if (error instanceof UnauthorizedError) onAuthFailRef.current?.();
         else setConnected(false);
       },
     });
     const dataSub = desktop ? term.onData((data) => inputQueue.enqueue(pane, data)) : null;
-    const focusSub = desktop ? term.onFocus(() => onInputFocusChange?.(true)) : null;
-    const blurSub = desktop ? term.onBlur(() => onInputFocusChange?.(false)) : null;
+    const focusSub = desktop ? term.onFocus(() => {
+      if (!disposed) onInputFocusChangeRef.current?.(true);
+    }) : null;
+    const blurSub = desktop ? term.onBlur(() => {
+      if (!disposed) onInputFocusChangeRef.current?.(false);
+    }) : null;
     // Subscribe first so desktop's mount focus is observable. Mobile has no focus subscriptions and stays
     // on the atomic neuter-then-prime path, preserving its focus/blur cursor-prime behavior exactly.
     prepareTerminalInput(term, elRef.current, desktop);
@@ -325,7 +334,6 @@ const Terminal = forwardRef(function Terminal({
     };
     mountWebgl();
     let timer = null;
-    let disposed = false;
     let busy = false;
     let wakeAgain = false; // a wake() landed mid-poll — re-poll right after the in-flight one finishes
     let seeded = false;

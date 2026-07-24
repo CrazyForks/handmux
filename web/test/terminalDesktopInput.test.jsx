@@ -12,6 +12,16 @@ const mocks = vi.hoisted(() => ({
   UnauthorizedError: class UnauthorizedError extends Error {},
 }));
 
+const deferred = () => {
+  let resolve;
+  let reject;
+  const promise = new Promise((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+};
+
 vi.mock('../src/api.js', () => ({
   UnauthorizedError: mocks.UnauthorizedError,
   getHistory: mocks.getHistory,
@@ -158,6 +168,46 @@ describe('desktop terminal input', () => {
     expect(onInputFocusChange.mock.calls).toEqual([[true], [true], [false]]);
   });
 
+  it('uses the latest callback props without rebuilding xterm', async () => {
+    const input = deferred();
+    const firstAuthFail = vi.fn();
+    const latestAuthFail = vi.fn();
+    const firstFocusChange = vi.fn();
+    const latestFocusChange = vi.fn();
+    mocks.sendInput.mockReturnValue(input.promise);
+    const view = render(
+      <Terminal
+        pane="%1"
+        desktop
+        onAuthFail={firstAuthFail}
+        onInputFocusChange={firstFocusChange}
+      />,
+    );
+    const term = mocks.instances[0];
+    term.onDataCallback('x');
+    await vi.waitFor(() => expect(mocks.sendInput).toHaveBeenCalledOnce());
+
+    view.rerender(
+      <Terminal
+        pane="%1"
+        desktop
+        onAuthFail={latestAuthFail}
+        onInputFocusChange={latestFocusChange}
+      />,
+    );
+    term.onBlurCallback();
+    await act(async () => {
+      input.reject(new mocks.UnauthorizedError());
+      await input.promise.catch(() => {});
+    });
+
+    expect(mocks.instances).toHaveLength(1);
+    expect(firstFocusChange.mock.calls).toEqual([[true]]);
+    expect(latestFocusChange).toHaveBeenCalledWith(false);
+    expect(firstAuthFail).not.toHaveBeenCalled();
+    expect(latestAuthFail).toHaveBeenCalledOnce();
+  });
+
   it('leaves browser Command shortcuts alone and forwards terminal control keys', async () => {
     mocks.sendInput.mockResolvedValue({ ok: true });
     render(<Terminal pane="%1" desktop />);
@@ -234,5 +284,61 @@ describe('desktop terminal input', () => {
     expect(term._subscriptions).toHaveLength(4);
     for (const sub of term._subscriptions) expect(sub.dispose).toHaveBeenCalledOnce();
     expect(mocks.sendInput).not.toHaveBeenCalled();
+  });
+
+  it('ignores an in-flight input error that settles after unmount', async () => {
+    const input = deferred();
+    const onAuthFail = vi.fn();
+    mocks.sendInput.mockReturnValue(input.promise);
+    const view = render(<Terminal pane="%1" desktop onAuthFail={onAuthFail} />);
+    mocks.instances[0].onDataCallback('x');
+    await vi.waitFor(() => expect(mocks.sendInput).toHaveBeenCalledOnce());
+
+    view.unmount();
+    await act(async () => {
+      input.reject(new mocks.UnauthorizedError());
+      await input.promise.catch(() => {});
+    });
+
+    expect(onAuthFail).not.toHaveBeenCalled();
+  });
+
+  it('does not let an old pane delivery wake the replacement pane', async () => {
+    const input = deferred();
+    mocks.getHistory.mockResolvedValue({ unchanged: true });
+    mocks.sendInput.mockReturnValue(input.promise);
+    const view = render(<Terminal pane="%1" desktop />);
+    mocks.instances[0].onDataCallback('x');
+    await vi.waitFor(() => expect(mocks.sendInput).toHaveBeenCalledOnce());
+
+    view.rerender(<Terminal pane="%2" desktop />);
+    await vi.waitFor(() => expect(mocks.instances).toHaveLength(2));
+    await vi.waitFor(() => expect(mocks.getHistory.mock.calls.length).toBeGreaterThanOrEqual(2));
+    const callsAfterSwitch = mocks.getHistory.mock.calls.length;
+    await act(async () => {
+      input.resolve({ ok: true });
+      await input.promise;
+    });
+    await Promise.resolve();
+
+    expect(mocks.getHistory).toHaveBeenCalledTimes(callsAfterSwitch);
+  });
+
+  it('does not let an old pane error affect the replacement pane', async () => {
+    const input = deferred();
+    const onAuthFail = vi.fn();
+    mocks.sendInput.mockReturnValue(input.promise);
+    const view = render(<Terminal pane="%1" desktop onAuthFail={onAuthFail} />);
+    mocks.instances[0].onDataCallback('x');
+    await vi.waitFor(() => expect(mocks.sendInput).toHaveBeenCalledOnce());
+
+    view.rerender(<Terminal pane="%2" desktop onAuthFail={onAuthFail} />);
+    await act(async () => {
+      input.reject(new Error('offline'));
+      await input.promise.catch(() => {});
+    });
+
+    expect(onAuthFail).not.toHaveBeenCalled();
+    expect(view.container.textContent).not.toContain('连接断开');
   });
 });
