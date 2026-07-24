@@ -21,11 +21,21 @@ describe('browser target policy', () => {
     await expect(policy().check(url)).resolves.toMatchObject({ allowed: true });
   });
 
-  it('returns one approved DNS address so the outbound request can pin resolution', async () => {
-    await expect(policy().check('https://portal.corp.example/app')).resolves.toEqual({
+  it('returns every approved DNS address so the outbound request can pin dual-stack resolution', async () => {
+    const targetPolicy = policy({
+      lookup: async () => [
+        { address: '::1', family: 6 },
+        { address: '127.0.0.1', family: 4 },
+      ],
+      topLevelUrl: 'http://localhost:5173/',
+    });
+
+    await expect(targetPolicy.check('http://localhost:5173/app')).resolves.toEqual({
       allowed: true,
-      address: '10.20.30.40',
-      family: 4,
+      addresses: [
+        { address: '::1', family: 6 },
+        { address: '127.0.0.1', family: 4 },
+      ],
     });
   });
 
@@ -102,7 +112,7 @@ describe('browser target policy', () => {
   it('allows an ordinary remote service that happens to use the Handmux port', async () => {
     await expect(policy().check('https://remote.example:30443/')).resolves.toMatchObject({
       allowed: true,
-      address: '10.20.30.40',
+      addresses: [{ address: '10.20.30.40', family: 4 }],
     });
   });
 

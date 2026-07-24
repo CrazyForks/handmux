@@ -29,6 +29,14 @@ const runtimeTab = (tab) => ({
   ...tab,
   ...(tab.mode === 'direct' ? { url: tab.originalUrl } : {}),
 });
+const PROXY_RETRY_DELAYS = [250, 500, 1000, 2000, 4000, 5000];
+
+function transientProxyError(error) {
+  return [502, 503, 504].includes(error?.status)
+    || /(?:timeout|browser unavailable|failed to fetch|networkerror|load failed)/i.test(error?.message || '');
+}
+
+const wait = (duration) => new Promise((resolve) => setTimeout(resolve, duration));
 
 function localId() {
   const bytes = new Uint8Array(18);
@@ -152,27 +160,66 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       setError(new Error(t('browser.proxyUnavailable')));
       return Promise.resolve(null);
     }
-    if (bindingPromises.current.has(id)) return bindingPromises.current.get(id);
     const requestedUrl = tab.originalUrl;
+    const existing = bindingPromises.current.get(id);
+    if (existing?.url === requestedUrl) return existing.promise;
     let profileWarning = false;
-    const pending = enqueueProfileOperation(async () => {
-      let profile;
-      try {
-        const prefs = readBrowserPrefs();
-        profile = await setBrowserProxyProfilePrefs({
-          persist: prefs.persistProxyLogin,
-          retentionDays: prefs.proxyLoginRetentionDays,
-        });
-      } catch {
-        throw new Error(t('browser.profileSyncFailed'));
+    const stillCurrent = () => {
+      const current = tabsRef.current.find((item) => item.id === id);
+      return current?.mode === 'proxy' && current.originalUrl === requestedUrl;
+    };
+    const pending = (async () => {
+      for (let attempt = 0; attempt <= PROXY_RETRY_DELAYS.length; attempt += 1) {
+        if (!stillCurrent()) return null;
+        let status;
+        try {
+          status = await getBrowserProxyStatus();
+        } catch (nextError) {
+          if (!transientProxyError(nextError)) throw nextError;
+        }
+        if (!stillCurrent()) return null;
+        let transientFailure = !status?.ready;
+        if (status?.ready) {
+          try {
+            const binding = await enqueueProfileOperation(async () => {
+              if (!stillCurrent()) return null;
+              let profile;
+              try {
+                const prefs = readBrowserPrefs();
+                profile = await setBrowserProxyProfilePrefs({
+                  persist: prefs.persistProxyLogin,
+                  retentionDays: prefs.proxyLoginRetentionDays,
+                });
+              } catch (nextError) {
+                if (!transientProxyError(nextError)) {
+                  throw new Error(t('browser.profileSyncFailed'));
+                }
+                throw nextError;
+              }
+              if (!stillCurrent()) return null;
+              profileWarning = profile?.warning === 'profile-recovery-failed';
+              if (profileWarning && !recoveryWarningShown.current) {
+                recoveryWarningShown.current = true;
+                setError(new Error(t('browser.profileRecoveryWarning')));
+              }
+              return acquireBrowserProxyLease(id, requestedUrl);
+            });
+            if (!stillCurrent()) return null;
+            return binding;
+          } catch (nextError) {
+            if (!transientProxyError(nextError)) throw nextError;
+            transientFailure = true;
+          }
+        }
+        if (!transientFailure) return null;
+        if (attempt === PROXY_RETRY_DELAYS.length) {
+          throw new Error(t('browser.loadFailed'));
+        }
+        await wait(PROXY_RETRY_DELAYS[attempt]);
       }
-      profileWarning = profile?.warning === 'profile-recovery-failed';
-      if (profileWarning && !recoveryWarningShown.current) {
-        recoveryWarningShown.current = true;
-        setError(new Error(t('browser.profileRecoveryWarning')));
-      }
-      return acquireBrowserProxyLease(id, requestedUrl);
-    }).then((binding) => {
+      return null;
+    })().then((binding) => {
+      if (!binding) return null;
       const current = tabsRef.current.find((item) => item.id === id);
       if (!current || current.mode !== 'proxy' || current.originalUrl !== requestedUrl) {
         deleteBrowserProxyLease(id).catch(() => {});
@@ -184,8 +231,12 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     }).catch((nextError) => {
       setError(nextError);
       return null;
-    }).finally(() => bindingPromises.current.delete(id));
-    bindingPromises.current.set(id, pending);
+    }).finally(() => {
+      if (bindingPromises.current.get(id)?.promise === pending) {
+        bindingPromises.current.delete(id);
+      }
+    });
+    bindingPromises.current.set(id, { url: requestedUrl, promise: pending });
     return pending;
   }, [applyBinding, browserProxy, enqueueProfileOperation]);
 

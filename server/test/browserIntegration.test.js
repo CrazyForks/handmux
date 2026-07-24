@@ -169,6 +169,40 @@ describe('built-in browser vertical slice', () => {
     }
   });
 
+  it('loads localhost when the target listens only on IPv4', async () => {
+    const target = http.createServer((_req, res) => {
+      res.setHeader('content-type', 'text/html; charset=utf-8');
+      res.end('<!doctype html><title>IPv4 localhost</title><main>dual-stack fallback</main>');
+    });
+    const targetPort = await listen(target);
+    const manager = await createBrowserPreviewManager({ hammerhead });
+    const publicProxy = createBrowserPublicProxy({ browser: manager });
+    const app = express();
+    app.use(publicProxy.handler);
+    const outer = http.createServer(app);
+    const outerPort = await listen(outer);
+
+    try {
+      const origin = `http://127.0.0.1:${outerPort}`;
+      const deviceId = 'device_abcdefghijklmnopqrstuvwxyz123456';
+      const tab = await manager.putLease({
+        tabId: 'ipv4-localhost',
+        url: `http://localhost:${targetPort}/`,
+        origin,
+        deviceId,
+      });
+      const response = await fetch(tab.url, {
+        headers: { accept: 'text/html', cookie: `tw_browser_device=${deviceId}` },
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.text()).resolves.toContain('dual-stack fallback');
+    } finally {
+      await manager.close();
+      await Promise.all([close(outer), close(target)]);
+    }
+  });
+
   it('shares target cookies across same-device tabs while keeping distinct Hammerhead windows', async () => {
     const target = http.createServer((req, res) => {
       res.setHeader('content-type', 'text/html; charset=utf-8');
@@ -231,7 +265,7 @@ describe('built-in browser vertical slice', () => {
       previewDomain: `http://preview.test:${outerPort}`,
       browserBootstrap,
       targetPolicyFactory: ({ topLevelUrl }) => ({
-        check: async () => ({ allowed: true, address: '127.0.0.1', family: 4 }),
+        check: async () => ({ allowed: true, addresses: [{ address: '127.0.0.1', family: 4 }] }),
         authorizeTopLevel: () => topLevelUrl,
       }),
     });

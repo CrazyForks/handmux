@@ -184,6 +184,46 @@ describe('browser proxy leases', () => {
     });
   });
 
+  it('pins every approved address and enables Node dual-stack connection fallback', async () => {
+    const fake = fakeHammerhead();
+    const approved = [
+      { address: '::1', family: 6 },
+      { address: '127.0.0.1', family: 4 },
+    ];
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      targetPolicyFactory: () => ({
+        check: vi.fn(async () => ({ allowed: true, addresses: approved })),
+      }),
+    });
+    await manager.putLease({
+      tabId: 'client-a',
+      deviceId: DEVICE,
+      url: 'http://localhost:5173/',
+      origin: 'https://b-local.preview.example',
+    });
+    const session = fake.proxies[0].openSession.mock.calls[0][1];
+    const requestOptions = {};
+
+    await session.requestListeners.onRequest({
+      _requestInfo: {
+        url: 'http://localhost:5173/',
+        isAjax: true,
+        headers: {},
+      },
+      requestOptions,
+      setMock: vi.fn(),
+    });
+
+    expect(requestOptions.autoSelectFamily).toBe(true);
+    await expect(new Promise((resolve, reject) => {
+      requestOptions.lookup('localhost', { all: true }, (error, addresses) => {
+        if (error) reject(error);
+        else resolve(addresses);
+      });
+    })).resolves.toEqual(approved);
+  });
+
   it.each(['GET', 'POST'])('rehomes cross-origin top-level %s with method-preserving bootstrap', async (method) => {
     const fake = fakeHammerhead();
     const browserBootstrap = {

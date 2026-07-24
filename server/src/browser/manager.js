@@ -283,11 +283,12 @@ export async function createBrowserPreviewManager({
         if (await rehomeNavigation(event, session)) return;
         const result = await policy.check(event._requestInfo.url);
         if (result.allowed) {
-          if (result.address && event.requestOptions) {
+          if (result.addresses?.length && event.requestOptions) {
+            const approved = result.addresses.map(({ address, family }) => ({ address, family }));
+            event.requestOptions.autoSelectFamily = true;
             event.requestOptions.lookup = (_hostname, options, callback) => {
-              const approved = { address: result.address, family: result.family };
-              if (options?.all) callback(null, [approved]);
-              else callback(null, approved.address, approved.family);
+              if (options?.all) callback(null, approved);
+              else callback(null, approved[0].address, approved[0].family);
             };
           }
           return;

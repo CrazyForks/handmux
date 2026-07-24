@@ -86,11 +86,12 @@ export function createBrowserTargetPolicy({
         if (reason === 'loopback' && loopbackNavigationAllowed) continue;
         if (reason) return { allowed: false, reason: reason === 'loopback' ? 'loopback-not-authorized' : reason };
       }
-      const approved = addresses[0];
       return {
         allowed: true,
-        address: approved.address,
-        family: approved.family || net.isIP(approved.address),
+        addresses: addresses.map((item) => ({
+          address: item.address,
+          family: item.family || net.isIP(item.address),
+        })),
       };
     },
   };

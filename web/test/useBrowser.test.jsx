@@ -16,6 +16,7 @@ import {
   readBrowserHistory, readBrowserTabs, setPersistProxyLogin, writeBrowserTabs,
 } from '../src/browserState.js';
 import { useBrowser } from '../src/hooks/useBrowser.js';
+import { t } from '../src/i18n';
 
 const binding = (id, url, generation = 1) => ({
   tabId: id,
@@ -28,7 +29,7 @@ const binding = (id, url, generation = 1) => ({
 beforeEach(() => {
   localStorage.clear();
   localStorage.setItem('hm_browser_access1', '1');
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   api.acquireBrowserProxyLease.mockImplementation((id, url) => Promise.resolve(binding(id, url)));
   api.navigateBrowserProxyLease.mockImplementation((id, url) => Promise.resolve(binding(id, url)));
   api.deleteBrowserProxyLease.mockResolvedValue(undefined);
@@ -40,6 +41,225 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('useBrowser device ownership', () => {
+  const restoredProxy = async () => {
+    writeBrowserTabs({
+      tabs: [{ id: 'proxy-a', mode: 'proxy', originalUrl: 'https://a.example/', title: '', deadline: null }],
+      activeId: 'proxy-a',
+      open: true,
+      historyActive: false,
+    });
+    const hook = renderHook(() => useBrowser({ browserProxy: true }));
+    await act(async () => { await Promise.resolve(); });
+    api.getBrowserProxyStatus.mockClear();
+    api.setBrowserProxyProfilePrefs.mockClear();
+    api.acquireBrowserProxyLease.mockClear();
+    return hook;
+  };
+
+  it('waits for worker readiness before restoring profile then lease', async () => {
+    vi.useFakeTimers();
+    try {
+      const order = [];
+      const { result } = await restoredProxy();
+      api.getBrowserProxyStatus
+        .mockResolvedValueOnce({ ready: false, generation: 2 })
+        .mockResolvedValueOnce({ ready: true, generation: 3 });
+      api.setBrowserProxyProfilePrefs.mockImplementation(async () => {
+        order.push('profile');
+        return { persist: false, retentionDays: 30 };
+      });
+      api.acquireBrowserProxyLease.mockImplementation(async (id, url) => {
+        order.push('acquire');
+        return binding(id, url, 3);
+      });
+
+      let restoring;
+      act(() => { restoring = result.current.ensureBinding('proxy-a'); });
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(order).toEqual([]);
+      expect(result.current.error).toBeNull();
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+      await act(async () => { await restoring; });
+      expect(order).toEqual(['profile', 'acquire']);
+      expect(result.current.tabs[0].url).toContain('/bootstrap');
+      expect(result.current.error).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries a transient profile timeout without showing a profile settings error', async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = await restoredProxy();
+      api.getBrowserProxyStatus.mockResolvedValue({ ready: true, generation: 2 });
+      api.setBrowserProxyProfilePrefs
+        .mockRejectedValueOnce(new Error('/api/browser-proxy/profile -> timeout'))
+        .mockResolvedValueOnce({ persist: false, retentionDays: 30 });
+
+      let restoring;
+      act(() => { restoring = result.current.ensureBinding('proxy-a'); });
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(result.current.error?.message).not.toBe('无法同步代理登录设置。请重试，或改用手机直连。');
+      await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+      await act(async () => { await restoring; });
+
+      expect(api.setBrowserProxyProfilePrefs).toHaveBeenCalledTimes(2);
+      expect(api.acquireBrowserProxyLease).toHaveBeenCalledOnce();
+      expect(result.current.error).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries a transient acquire 503 from the profile step boundary', async () => {
+    vi.useFakeTimers();
+    try {
+      const unavailable = Object.assign(new Error('browser unavailable'), { status: 503 });
+      const order = [];
+      const { result } = await restoredProxy();
+      api.getBrowserProxyStatus.mockResolvedValue({ ready: true, generation: 2 });
+      api.setBrowserProxyProfilePrefs.mockImplementation(async () => {
+        order.push('profile');
+        return { persist: false, retentionDays: 30 };
+      });
+      api.acquireBrowserProxyLease
+        .mockImplementationOnce(async () => { order.push('acquire'); throw unavailable; })
+        .mockImplementationOnce(async (id, url) => {
+          order.push('acquire');
+          return binding(id, url, 2);
+        });
+
+      let restoring;
+      act(() => { restoring = result.current.ensureBinding('proxy-a'); });
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(result.current.error?.message).not.toBe('无法同步代理登录设置。请重试，或改用手机直连。');
+      await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+      await act(async () => { await restoring; });
+
+      expect(order).toEqual(['profile', 'acquire', 'profile', 'acquire']);
+      expect(result.current.error).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('still reports a real non-transient profile failure', async () => {
+    const failure = Object.assign(new Error('profile persistence failed'), { status: 500 });
+    const { result } = await restoredProxy();
+    api.getBrowserProxyStatus.mockResolvedValue({ ready: true, generation: 2 });
+    api.setBrowserProxyProfilePrefs.mockRejectedValue(failure);
+
+    await act(async () => { await result.current.ensureBinding('proxy-a'); });
+
+    expect(result.current.error?.message).toBe('无法同步代理登录设置。请重试，或改用手机直连。');
+    expect(api.acquireBrowserProxyLease).not.toHaveBeenCalled();
+  });
+
+  it('stops readiness retries after the tab changes mode', async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = await restoredProxy();
+      api.getBrowserProxyStatus.mockResolvedValue({ ready: false, generation: 2 });
+
+      let restoring;
+      act(() => { restoring = result.current.ensureBinding('proxy-a'); });
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      await act(async () => {
+        await result.current.navigateTab('proxy-a', 'https://a.example/', 'direct');
+      });
+      await act(async () => { await vi.runAllTimersAsync(); });
+      await act(async () => { await restoring; });
+
+      expect(result.current.tabs[0].mode).toBe('direct');
+      expect(api.setBrowserProxyProfilePrefs).not.toHaveBeenCalled();
+      expect(api.acquireBrowserProxyLease).not.toHaveBeenCalled();
+      expect(result.current.error).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('starts a new binding when the canonical URL changes during an older retry', async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = await restoredProxy();
+      api.getBrowserProxyStatus
+        .mockResolvedValueOnce({ ready: false, generation: 2 })
+        .mockResolvedValue({ ready: true, generation: 2 });
+
+      let older;
+      act(() => { older = result.current.ensureBinding('proxy-a'); });
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      act(() => {
+        result.current.updateTabMeta('proxy-a', { url: 'https://b.example/' });
+      });
+
+      let newer;
+      act(() => { newer = result.current.ensureBinding('proxy-a'); });
+      await act(async () => { await vi.runAllTimersAsync(); });
+      await act(async () => { await Promise.all([older, newer]); });
+
+      expect(api.acquireBrowserProxyLease).toHaveBeenCalledWith('proxy-a', 'https://b.example/');
+      expect(result.current.tabs[0]).toMatchObject({
+        originalUrl: 'https://b.example/',
+        url: expect.stringContaining('/bootstrap'),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not hold profile settings saves behind readiness backoff', async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = await restoredProxy();
+      api.getBrowserProxyStatus.mockResolvedValue({ ready: false, generation: 2 });
+
+      let restoring;
+      act(() => { restoring = result.current.ensureBinding('proxy-a'); });
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+      let saving;
+      act(() => { saving = result.current.setPersistProxyLogin(true); });
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      const savedWhileWaiting = api.setBrowserProxyProfilePrefs.mock.calls.some(
+        ([prefs]) => prefs.persist === true,
+      );
+
+      await act(async () => {
+        await result.current.navigateTab('proxy-a', 'https://a.example/', 'direct');
+        await vi.runAllTimersAsync();
+        await Promise.all([restoring, saving]);
+      });
+      expect(savedWhileWaiting).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries WebKit Load failed errors to the bound and reports load failure', async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = await restoredProxy();
+      api.getBrowserProxyStatus.mockResolvedValue({ ready: true, generation: 2 });
+      api.setBrowserProxyProfilePrefs.mockRejectedValue(new Error('Load failed'));
+
+      let restoring;
+      act(() => { restoring = result.current.ensureBinding('proxy-a'); });
+      await act(async () => { await vi.runAllTimersAsync(); });
+      await act(async () => { await restoring; });
+
+      expect(api.getBrowserProxyStatus).toHaveBeenCalledTimes(7);
+      expect(api.setBrowserProxyProfilePrefs).toHaveBeenCalledTimes(7);
+      expect(api.acquireBrowserProxyLease).not.toHaveBeenCalled();
+      expect(result.current.error?.message).toBe(t('browser.loadFailed'));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not revive persisted tabs while the built-in browser is disabled', async () => {
     localStorage.removeItem('hm_browser_access1');
     writeBrowserTabs({
