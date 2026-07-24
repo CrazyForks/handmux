@@ -49,7 +49,7 @@ export default {
   'browser.proxyBadge': '代理',
   'browser.switchMode': '切换浏览模式',
   'browser.menu': '浏览器菜单',
-  'browser.currentPage': '当前网页',
+  'browser.connectionMode': '连接方式',
   'browser.pageView': '页面视图',
   'browser.proxyLogin': '代理登录',
   'browser.disable': '关闭内置浏览器',

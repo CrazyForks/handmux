@@ -308,7 +308,7 @@ describe('BrowserSheet', () => {
     click(document.querySelector('.browser-history-main'));
     setInput(document.querySelector('.browser-address'), 'https://valid.example/');
     submit(document.querySelector('.browser-address-form'));
-    expect(model.openUrl).toHaveBeenCalledWith('https://valid.example/');
+    expect(model.openUrl).toHaveBeenCalledWith('https://valid.example/', { mode: 'direct' });
     expect(document.querySelector('.browser-error')).toBeNull();
   });
 
@@ -575,7 +575,8 @@ describe('BrowserSheet', () => {
     click(menuButton);
     const card = document.querySelector('.browser-options-card');
     expect(card).not.toBeNull();
-    expect(card.textContent).toContain('当前网页');
+    expect(card.textContent).toContain('连接方式');
+    expect(card.textContent).not.toContain('当前网页');
     expect(card.textContent).toContain('页面视图');
     expect(card.textContent).toContain('后台页签关闭');
     expect(card.textContent).toContain('代理登录');
@@ -619,5 +620,22 @@ describe('BrowserSheet', () => {
     click([...document.querySelectorAll('.browser-profile-confirm button')]
       .find((node) => node.textContent === '确认'));
     expect(model.setEnabled).toHaveBeenCalledWith(false);
+  });
+
+  it('lets a new page choose its connection mode before opening the address', async () => {
+    const model = browser({ historyActive: true });
+    await render(model);
+    click(document.querySelector('button[aria-label="浏览器菜单"]'));
+
+    const modeButtons = [...document.querySelectorAll('.browser-mode-segment button')];
+    expect(modeButtons.map((node) => node.disabled)).toEqual([false, false]);
+    expect(modeButtons.map((node) => node.getAttribute('aria-pressed'))).toEqual(['true', 'false']);
+    click(modeButtons[1]);
+    expect(modeButtons.map((node) => node.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+
+    setInput(document.querySelector('.browser-address'), 'https://portal.example/');
+    submit(document.querySelector('.browser-address-form'));
+    expect(model.openUrl).toHaveBeenCalledWith('https://portal.example/', { mode: 'proxy' });
+    expect(model.navigateTab).not.toHaveBeenCalled();
   });
 });

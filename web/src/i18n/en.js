@@ -50,7 +50,7 @@ export default {
   'browser.proxyBadge': 'Proxy',
   'browser.switchMode': 'Switch browsing mode',
   'browser.menu': 'Browser menu',
-  'browser.currentPage': 'Current page',
+  'browser.connectionMode': 'Connection',
   'browser.pageView': 'Page view',
   'browser.proxyLogin': 'Proxy sign-in',
   'browser.disable': 'Turn off built-in browser',

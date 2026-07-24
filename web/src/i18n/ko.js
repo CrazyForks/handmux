@@ -48,7 +48,7 @@ export default {
   'browser.proxyBadge': '프록시',
   'browser.switchMode': '탐색 모드 전환',
   'browser.menu': '브라우저 메뉴',
-  'browser.currentPage': '현재 페이지',
+  'browser.connectionMode': '연결 방식',
   'browser.pageView': '페이지 보기',
   'browser.proxyLogin': '프록시 로그인',
   'browser.disable': '내장 브라우저 끄기',

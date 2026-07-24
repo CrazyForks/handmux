@@ -48,7 +48,7 @@ export default {
   'browser.proxyBadge': 'プロキシ',
   'browser.switchMode': '閲覧モードを切り替え',
   'browser.menu': 'ブラウザメニュー',
-  'browser.currentPage': '現在のページ',
+  'browser.connectionMode': '接続方法',
   'browser.pageView': 'ページ表示',
   'browser.proxyLogin': 'プロキシログイン',
   'browser.disable': '内蔵ブラウザをオフにする',

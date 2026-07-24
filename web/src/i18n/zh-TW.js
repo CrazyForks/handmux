@@ -48,7 +48,7 @@ export default {
   'browser.proxyBadge': '代理',
   'browser.switchMode': '切換瀏覽模式',
   'browser.menu': '瀏覽器選單',
-  'browser.currentPage': '目前網頁',
+  'browser.connectionMode': '連線方式',
   'browser.pageView': '頁面檢視',
   'browser.proxyLogin': '代理登入',
   'browser.disable': '關閉內建瀏覽器',

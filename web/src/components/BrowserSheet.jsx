@@ -36,6 +36,8 @@ export default function BrowserSheet({ browser }) {
   } = browser;
   const active = tabs.find((tab) => tab.id === activeId) || null;
   const proxied = active?.mode === 'proxy';
+  const [newPageMode, setNewPageMode] = useState('direct');
+  const menuMode = historyActive || !active ? newPageMode : active.mode;
   const [address, setAddress] = useState(active?.originalUrl || '');
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [timeOpen, setTimeOpen] = useState(false);
@@ -66,6 +68,10 @@ export default function BrowserSheet({ browser }) {
   useEffect(() => {
     setAddress(historyActive ? '' : (active?.originalUrl || ''));
   }, [active?.originalUrl, historyActive]);
+
+  useEffect(() => {
+    if (!proxyAvailable) setNewPageMode('direct');
+  }, [proxyAvailable]);
 
   useEffect(() => {
     setOptionsOpen(false);
@@ -185,6 +191,7 @@ export default function BrowserSheet({ browser }) {
   const selectHistory = () => {
     setOptionsOpen(false);
     setHistoryError(null);
+    setNewPageMode('direct');
     return switchTab('history');
   };
 
@@ -237,13 +244,17 @@ export default function BrowserSheet({ browser }) {
   const submitAddress = (event) => {
     event.preventDefault();
     setHistoryError(null);
-    if (historyActive || !active) openUrl(address);
+    if (historyActive || !active) openUrl(address, { mode: newPageMode });
     else navigateTab(active.id, address);
   };
 
   const chooseMode = (mode) => {
-    if (!active || mode === active.mode || (mode === 'proxy' && !proxyAvailable)) return;
+    if (mode === menuMode || (mode === 'proxy' && !proxyAvailable)) return;
     setHistoryError(null);
+    if (historyActive || !active) {
+      setNewPageMode(mode);
+      return;
+    }
     navigateTab(active.id, active.originalUrl, mode);
   };
 
@@ -382,12 +393,12 @@ export default function BrowserSheet({ browser }) {
             <div className="browser-options-backdrop" onClick={() => setOptionsOpen(false)} />
             <div className="browser-options-card" role="dialog" aria-label={t('browser.menu')}>
               <div className="browser-options-section browser-current-mode">
-                <strong>{t('browser.currentPage')}</strong>
+                <strong>{t('browser.connectionMode')}</strong>
                 <div className="browser-mode-segment" role="group" aria-label={t('browser.switchMode')}>
-                  <button aria-pressed={!proxied} disabled={!active || historyActive}
+                  <button aria-pressed={menuMode === 'direct'}
                     onClick={() => chooseMode('direct')}>{t('browser.directMode')}</button>
-                  <button className="proxy" aria-pressed={proxied}
-                    disabled={!active || historyActive || !proxyAvailable}
+                  <button className="proxy" aria-pressed={menuMode === 'proxy'}
+                    disabled={!proxyAvailable}
                     aria-describedby={!proxyAvailable ? 'browser-options-proxy-unavailable' : undefined}
                     onClick={() => chooseMode('proxy')}>{t('browser.proxyMode')}</button>
                 </div>

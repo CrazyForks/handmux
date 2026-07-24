@@ -65,6 +65,16 @@ describe('browser dual-mode copy', () => {
   });
 
   it.each([
+    ['en', en, 'Connection'],
+    ['zh', zh, '连接方式'],
+    ['zh-TW', zhTW, '連線方式'],
+    ['ja', ja, '接続方法'],
+    ['ko', ko, '연결 방식'],
+  ])('%s labels the mode selector as connection', (_code, dict, expected) => {
+    expect(dict['browser.connectionMode']).toBe(expected);
+  });
+
+  it.each([
     ['en', en, 'phone', 'proxy', 'destroyed'],
     ['zh', zh, '手机', '代理', '销毁'],
     ['zh-TW', zhTW, '手機', '代理', '銷毀'],
