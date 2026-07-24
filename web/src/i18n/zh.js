@@ -76,6 +76,8 @@ export default {
   'settings.language': '语言 Language',
   'settings.browserDefaultMode': '网页默认打开方式',
   'settings.browserDefaultModeHint': '用于地址栏新页签，以及没有保存打开方式的历史记录。',
+  'settings.browserEnabled': '启用内置浏览器',
+  'settings.browserEnabledHint': '标签页仅属于当前设备。关闭后会关闭全部标签页，但保留历史记录。',
 
   // home / drawer / windowbar
   'home.empty': '还没有打开过文件',

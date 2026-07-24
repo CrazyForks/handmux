@@ -75,6 +75,8 @@ export default {
   'settings.language': '言語 Language',
   'settings.browserDefaultMode': 'ウェブの既定モード',
   'settings.browserDefaultModeHint': 'アドレスバーから開く新しいタブと、保存済みモードがない履歴に使用します。',
+  'settings.browserEnabled': '内蔵ブラウザ',
+  'settings.browserEnabledHint': 'タブはこの端末専用です。オフにすると全タブを閉じますが、履歴は残ります。',
 
   // home / drawer / windowbar
   'home.empty': 'ファイルが開かれていません',

@@ -153,45 +153,26 @@ const browserReq = (path, options = {}) => req(path, {
   ...options,
   headers: { ...(options.headers || {}), 'X-Handmux-Browser-Device': getBrowserDeviceId() },
 });
-export const createBrowserTab = (url, closeAfterMinutes, mode, options = {}) =>
-  browserReq('/api/browser-tabs', {
-    ...options,
-    method: 'POST',
-    body: JSON.stringify({ url, closeAfterMinutes, mode }),
-  });
-export const getBrowserTabs = () => browserReq('/api/browser-tabs');
-export const setBrowserProfilePrefs = (prefs) =>
-  browserReq('/api/browser-tabs/profile', {
+export const acquireBrowserProxyLease = (tabId, url) =>
+  browserReq(`/api/browser-proxy/leases/${encodeURIComponent(tabId)}`, {
     method: 'PUT',
-    body: JSON.stringify(prefs),
+    body: JSON.stringify({ url }),
   });
-export const clearBrowserProfile = (origin = null) =>
-  browserReq('/api/browser-tabs/profile/clear', {
-    method: 'POST',
-    body: JSON.stringify({ origin }),
-  });
-export const setBrowserTabVisible = (id, visible, closeAfterMinutes) =>
-  browserReq(`/api/browser-tabs/${encodeURIComponent(id)}/visibility`, {
-    method: 'PATCH',
-    body: JSON.stringify({ visible, closeAfterMinutes }),
-  });
-export const navigateBrowserTab = (id, url, mode) =>
-  browserReq(`/api/browser-tabs/${encodeURIComponent(id)}/navigate`, {
-    method: 'POST',
-    body: JSON.stringify({ url, mode }),
-  });
-export const updateBrowserTabMeta = (id, url, title) =>
-  browserReq(`/api/browser-tabs/${encodeURIComponent(id)}/metadata`, {
-    method: 'PATCH',
-    body: JSON.stringify({ url, title }),
-  });
-export const prepareBrowserFormNavigation = (id, url) =>
-  browserReq(`/api/browser-tabs/${encodeURIComponent(id)}/prepare-form-navigation`, {
+export const navigateBrowserProxyLease = (tabId, url) =>
+  browserReq(`/api/browser-proxy/leases/${encodeURIComponent(tabId)}/navigate`, {
     method: 'POST',
     body: JSON.stringify({ url }),
   });
-export const deleteBrowserTab = (id) =>
-  browserReq(`/api/browser-tabs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const deleteBrowserProxyLease = (tabId) =>
+  browserReq(`/api/browser-proxy/leases/${encodeURIComponent(tabId)}`, { method: 'DELETE' });
+export const getBrowserProxyStatus = () => browserReq('/api/browser-proxy/status');
+export const setBrowserProxyProfilePrefs = (prefs) =>
+  browserReq('/api/browser-proxy/profile', { method: 'PUT', body: JSON.stringify(prefs) });
+export const clearBrowserProxyProfile = (origin = null) =>
+  browserReq('/api/browser-proxy/profile/clear', {
+    method: 'POST',
+    body: JSON.stringify({ origin }),
+  });
 
 // Orphan Claude sessions running outside tmux (see server/src/orphans.js). getOrphans returns the roster;
 // takeoverOrphan spawns `claude --resume` in tmux and (default) SIGTERMs the original. Takeover involves a

@@ -77,6 +77,8 @@ export default {
   'settings.language': 'Language',
   'settings.browserDefaultMode': 'Default web mode',
   'settings.browserDefaultModeHint': 'Used for new address-bar tabs and history entries without a saved mode.',
+  'settings.browserEnabled': 'Built-in browser',
+  'settings.browserEnabledHint': 'Tabs belong to this device. Turning this off closes all tabs but keeps history.',
 
   // home / drawer / windowbar
   'home.empty': 'No files opened yet',

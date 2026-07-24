@@ -75,6 +75,8 @@ export default {
   'settings.language': '언어 Language',
   'settings.browserDefaultMode': '기본 웹 모드',
   'settings.browserDefaultModeHint': '주소 표시줄에서 여는 새 탭과 저장된 모드가 없는 방문 기록에 사용됩니다.',
+  'settings.browserEnabled': '내장 브라우저',
+  'settings.browserEnabledHint': '탭은 이 기기에만 속합니다. 끄면 모든 탭을 닫지만 방문 기록은 유지합니다.',
 
   // home / drawer / windowbar
   'home.empty': '열린 파일이 없습니다',

@@ -6,6 +6,7 @@ const DEFAULT_MODE_KEY = 'hm_browser_default_mode1';
 const PROFILE_PERSIST_KEY = 'hm_browser_profile_persist1';
 const PROFILE_RETENTION_KEY = 'hm_browser_profile_retention1';
 const HISTORY_KEY = 'hm_browser_history1';
+const TABS_KEY = 'hm_browser_tabs1';
 const HISTORY_LIMIT = 200;
 const SENSITIVE_URL_FIELD = /^(?:access_token|id_token|refresh_token|token|code|authorization|api_?key)$/i;
 
@@ -140,4 +141,48 @@ export function deleteBrowserHistoryEntry(entry) {
 
 export function clearBrowserHistory() {
   localStorage.removeItem(HISTORY_KEY);
+}
+
+function persistedTab(tab) {
+  const originalUrl = normalizeBrowserInput(tab?.originalUrl);
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(String(tab?.id || '')) || !originalUrl) return null;
+  return {
+    id: String(tab.id),
+    mode: tab.mode === 'proxy' ? 'proxy' : 'direct',
+    originalUrl,
+    title: String(tab.title || '').slice(0, 1024),
+    deadline: Number.isFinite(tab.deadline) ? tab.deadline : null,
+  };
+}
+
+export function readBrowserTabs() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(TABS_KEY) || '{}');
+    const tabs = Array.isArray(raw.tabs) ? raw.tabs.map(persistedTab).filter(Boolean) : [];
+    const activeId = tabs.some((tab) => tab.id === raw.activeId) ? raw.activeId : null;
+    const historyActive = activeId ? !!raw.historyActive : true;
+    return {
+      tabs,
+      activeId,
+      open: !!raw.open && (!!activeId || raw.historyActive === true),
+      historyActive,
+    };
+  } catch {
+    return { tabs: [], activeId: null, open: false, historyActive: true };
+  }
+}
+
+export function writeBrowserTabs({ tabs, activeId, open, historyActive }) {
+  const persisted = (tabs || []).map(persistedTab).filter(Boolean);
+  const selected = persisted.some((tab) => tab.id === activeId) ? activeId : null;
+  localStorage.setItem(TABS_KEY, JSON.stringify({
+    tabs: persisted,
+    activeId: selected,
+    open: !!open,
+    historyActive: selected ? !!historyActive : true,
+  }));
+}
+
+export function clearBrowserTabs() {
+  localStorage.removeItem(TABS_KEY);
 }

@@ -172,6 +172,22 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
           </div>
         </div>
 
+        {browser && (
+          <div className="settings-section">
+            <label className="settings-toggle">
+              <span className="settings-label">{t('settings.browserEnabled')}</span>
+              <span className="cmd-switch">
+                <input type="checkbox" checked={!!browser.accessEnabled}
+                  aria-describedby="browser-enabled-hint"
+                  onChange={(event) => browser.setEnabled(event.target.checked)} />
+                <span className="cmd-switch-track" aria-hidden="true" />
+                <span className="cmd-switch-knob" aria-hidden="true" />
+              </span>
+            </label>
+            <div id="browser-enabled-hint" className="settings-hint">{t('settings.browserEnabledHint')}</div>
+          </div>
+        )}
+
         <div className="settings-section">
           <div className="settings-label">{t('settings.browserDefaultMode')}</div>
           <div className="preview-seg browser-default-mode" role="group" aria-label={t('settings.browserDefaultMode')}>

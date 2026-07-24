@@ -25,10 +25,11 @@ function tabLabel(tab) {
 
 export default function BrowserSheet({ browser }) {
   const {
-    open, consentOpen, tabs, activeId, historyActive, closeAfter, history, error,
+    open, accessEnabled, consentOpen, tabs, activeId, historyActive, closeAfter, history, error,
     defaultMode, proxyAvailable,
     openUrl, switchTab, closeTab, setOpen, setCloseAfter,
-    navigateTab, updateTabMeta, clearHistory, setHistoryMode, enableAccess, cancelAccess,
+    navigateTab, ensureBinding, recoverBinding, markBindingReady, updateTabMeta,
+    clearHistory, setHistoryMode, enableAccess, cancelAccess,
     clearProxyLogin, deleteHistory,
   } = browser;
   const active = tabs.find((tab) => tab.id === activeId) || null;
@@ -45,13 +46,25 @@ export default function BrowserSheet({ browser }) {
   const [clearConfirmation, setClearConfirmation] = useState(null);
   const [historyError, setHistoryError] = useState(null);
   const [slowDirectId, setSlowDirectId] = useState(null);
+  const [mountedTabs, setMountedTabs] = useState(() => new Set());
+  const [unhealthyTabs, setUnhealthyTabs] = useState(() => new Set());
   const frames = useRef(new Map());
   const frameUrls = useRef(new Map());
+  const bridgeTimers = useRef(new Map());
+  const activeIdRef = useRef(activeId);
+  const openRef = useRef(open);
   const addressRef = useRef(null);
   const bodyRef = useRef(null);
   const clearTriggerRef = useRef(null);
   const clearCancelRef = useRef(null);
   const clearDialogRef = useRef(null);
+  activeIdRef.current = activeId;
+  openRef.current = open;
+
+  useEffect(() => () => {
+    bridgeTimers.current.forEach(clearTimeout);
+    bridgeTimers.current.clear();
+  }, []);
 
   useEffect(() => {
     setAddress(historyActive ? '' : (active?.originalUrl || ''));
@@ -61,6 +74,28 @@ export default function BrowserSheet({ browser }) {
     setModeOpen(false);
     if (!historyActive) setHistoryModeOpen(null);
   }, [activeId, historyActive, open]);
+
+  useEffect(() => {
+    if (!accessEnabled) {
+      setMountedTabs(new Set());
+      return;
+    }
+    if (!open || historyActive || !active) return;
+    setMountedTabs((current) => new Set(current).add(active.id));
+    if (active.mode === 'proxy' && unhealthyTabs.has(active.id)) {
+      setUnhealthyTabs((current) => {
+        const next = new Set(current);
+        next.delete(active.id);
+        return next;
+      });
+      void recoverBinding(active.id);
+    } else if (active.mode === 'proxy' && !active.url) {
+      void ensureBinding(active.id);
+    }
+  }, [
+    accessEnabled, active?.id, active?.mode, active?.url, ensureBinding, historyActive,
+    open, recoverBinding, unhealthyTabs,
+  ]);
 
   useModalFocusTrap({
     active: !!clearConfirmation,
@@ -77,6 +112,17 @@ export default function BrowserSheet({ browser }) {
         .find(([, frame]) => frame.contentWindow === event.source);
       const tab = frameEntry && tabs.find((item) => item.id === frameEntry[0]);
       if (!tab || tab.mode !== 'proxy' || tab.channel !== event.data.channel) return;
+      if (event.data.type === 'ready') {
+        clearTimeout(bridgeTimers.current.get(tab.id));
+        bridgeTimers.current.delete(tab.id);
+        markBindingReady(tab.id, event.data.channel);
+        setUnhealthyTabs((current) => {
+          if (!current.has(tab.id)) return current;
+          const next = new Set(current);
+          next.delete(tab.id);
+          return next;
+        });
+      }
       if (event.data.type === 'navigate') {
         setRefreshingTabs((current) => new Set(current).add(tab.id));
       }
@@ -86,7 +132,7 @@ export default function BrowserSheet({ browser }) {
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [tabs, updateTabMeta]);
+  }, [markBindingReady, tabs, updateTabMeta]);
 
   useEffect(() => {
     setLoadedTabs((current) => {
@@ -96,6 +142,14 @@ export default function BrowserSheet({ browser }) {
       }
       frameUrls.current = new Map(tabs.map((tab) => [tab.id, tab.url]));
       return next;
+    });
+    setMountedTabs((current) => {
+      const live = new Set(tabs.map((tab) => tab.id));
+      return new Set([...current].filter((id) => live.has(id)));
+    });
+    setUnhealthyTabs((current) => {
+      const live = new Set(tabs.map((tab) => tab.id));
+      return new Set([...current].filter((id) => live.has(id)));
     });
   }, [tabs]);
 
@@ -162,6 +216,19 @@ export default function BrowserSheet({ browser }) {
       next.delete(tab.id);
       return next;
     });
+    if (tab.mode === 'proxy') {
+      clearTimeout(bridgeTimers.current.get(tab.id));
+      const expectedUrl = tab.url;
+      bridgeTimers.current.set(tab.id, setTimeout(() => {
+        bridgeTimers.current.delete(tab.id);
+        if (openRef.current && activeIdRef.current === tab.id
+          && frameUrls.current.get(tab.id) === expectedUrl) {
+          void recoverBinding(tab.id);
+        } else if (frameUrls.current.get(tab.id) === expectedUrl) {
+          setUnhealthyTabs((current) => new Set(current).add(tab.id));
+        }
+      }, 3000));
+    }
   };
 
   const submitAddress = (event) => {
@@ -381,7 +448,7 @@ export default function BrowserSheet({ browser }) {
             </div>
           )}
         </section>
-        {tabs.map((tab) => {
+        {tabs.filter((tab) => mountedTabs.has(tab.id)).map((tab) => {
           const selected = !historyActive && tab.id === activeId;
           const loading = selected && (!loadedTabs.has(tab.id) || frameUrls.current.get(tab.id) !== tab.url || refreshingTabs.has(tab.id));
           return (
@@ -397,6 +464,11 @@ export default function BrowserSheet({ browser }) {
                 inert={loading ? '' : undefined}
                 style={frameStyle}
                 onLoad={() => frameLoaded(tab)}
+                onError={() => {
+                  if (tab.mode !== 'proxy') return;
+                  if (openRef.current && activeIdRef.current === tab.id) void recoverBinding(tab.id);
+                  else setUnhealthyTabs((current) => new Set(current).add(tab.id));
+                }}
               />
               {loading && (
                 <div className="browser-page-loading" role="status" aria-live="polite">
@@ -415,7 +487,11 @@ export default function BrowserSheet({ browser }) {
             <span>{historyError || error?.message || t('browser.loadFailed')}</span>
             {!historyError && active && active.mode === 'direct' && proxyAvailable
               ? <button onClick={() => navigateTab(active.id, active.originalUrl, 'proxy')}>{t('browser.tryProxy')}</button>
-              : !historyError && active && <button onClick={() => navigateTab(active.id, active.originalUrl, active.mode)}>{t('browser.retry')}</button>}
+              : !historyError && active && <button onClick={() => (
+                active.mode === 'proxy'
+                  ? recoverBinding(active.id)
+                  : navigateTab(active.id, active.originalUrl, active.mode)
+              )}>{t('browser.retry')}</button>}
           </div>
         )}
       </div>

@@ -21,6 +21,23 @@ const render = (props) => act(() => root.render(
 const click = (n) => act(() => n.dispatchEvent(new MouseEvent('click', { bubbles: true })));
 
 describe('Settings preview section', () => {
+  it('toggles the device-local browser feature from its default-off setting', async () => {
+    const browser = {
+      accessEnabled: false,
+      proxyAvailable: false,
+      defaultMode: 'direct',
+      setEnabled: vi.fn(),
+      setDefaultMode: vi.fn(),
+    };
+    await render({ browser });
+    const toggle = container.querySelector('input[aria-describedby="browser-enabled-hint"]');
+    expect(toggle.checked).toBe(false);
+    expect(container.textContent).toContain('启用内置浏览器');
+    expect(container.textContent).toContain('标签页仅属于当前设备');
+    click(toggle);
+    expect(browser.setEnabled).toHaveBeenCalledWith(true);
+  });
+
   it('chooses the default browser mode and explains an unavailable proxy', async () => {
     const setDefaultMode = vi.fn();
     await render({ browserDefaultMode: 'direct', browserProxyAvailable: false, onBrowserDefaultMode: setDefaultMode });

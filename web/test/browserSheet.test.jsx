@@ -17,6 +17,7 @@ const tabs = [
 
 const browser = (overrides = {}) => ({
   open: true,
+  accessEnabled: true,
   tabs,
   activeId: 'a',
   historyActive: false,
@@ -37,6 +38,9 @@ const browser = (overrides = {}) => ({
   clearProxyLogin: vi.fn(),
   deleteHistory: vi.fn(),
   navigateTab: vi.fn(),
+  ensureBinding: vi.fn(),
+  recoverBinding: vi.fn(),
+  markBindingReady: vi.fn(),
   prepareFormNavigation: vi.fn(),
   updateTabMeta: vi.fn(),
   clearHistory: vi.fn(),
@@ -52,6 +56,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(() => root.unmount());
   container.remove();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -378,12 +383,15 @@ describe('BrowserSheet', () => {
     expect(model.setOpen).toHaveBeenCalledWith(false);
   });
 
-  it('keeps every iframe mounted and temporarily allows same-origin storage for compatibility validation', async () => {
-    await render(browser());
+  it('cold-loads only the active iframe, then retains visited iframes', async () => {
+    const model = browser();
+    await render(model);
+    expect(document.querySelectorAll('.browser-frame')).toHaveLength(1);
+    await render({ ...model, activeId: 'b' });
     const frames = [...document.querySelectorAll('.browser-frame')];
     expect(frames).toHaveLength(2);
-    expect(frames[0].closest('.browser-pane').hidden).toBe(false);
-    expect(frames[1].closest('.browser-pane').hidden).toBe(true);
+    expect(frames[0].closest('.browser-pane').hidden).toBe(true);
+    expect(frames[1].closest('.browser-pane').hidden).toBe(false);
     for (const frame of frames) {
       const sandbox = frame.getAttribute('sandbox').split(/\s+/);
       expect(sandbox).toEqual(expect.arrayContaining([
@@ -395,6 +403,8 @@ describe('BrowserSheet', () => {
 
   it('keeps iframe state mounted without reloading when tabs are switched', async () => {
     const model = browser({ switchTab: vi.fn().mockResolvedValue(true) });
+    await render(model);
+    await render({ ...model, activeId: 'b' });
     await render(model);
     const first = document.querySelector('iframe[data-tab-id="a"]');
     const second = document.querySelector('iframe[data-tab-id="b"]');
@@ -416,6 +426,20 @@ describe('BrowserSheet', () => {
     expect(postFirst).not.toHaveBeenCalled();
   });
 
+  it('reacquires an unhealthy proxy binding when its background tab becomes active again', async () => {
+    vi.useFakeTimers();
+    const model = browser();
+    await render(model);
+    const first = document.querySelector('iframe[data-tab-id="a"]');
+    act(() => first.dispatchEvent(new Event('load')));
+    await render({ ...model, activeId: 'b' });
+    act(() => vi.advanceTimersByTime(3000));
+    expect(model.recoverBinding).not.toHaveBeenCalled();
+
+    await render(model);
+    expect(model.recoverBinding).toHaveBeenCalledWith('a');
+  });
+
   it('does not reload either tab when switch promises finish out of order', async () => {
     let resolveA;
     let resolveB;
@@ -424,6 +448,8 @@ describe('BrowserSheet', () => {
       if (id === 'b') resolveB = resolve;
     }));
     const model = browser({ switchTab });
+    await render(model);
+    await render({ ...model, activeId: 'b' });
     await render(model);
     const first = document.querySelector('iframe[data-tab-id="a"]');
     const second = document.querySelector('iframe[data-tab-id="b"]');
@@ -460,6 +486,7 @@ describe('BrowserSheet', () => {
     const sharedTabs = tabs.map((tab) => ({ ...tab, channel: 'shared' }));
     const model = browser({ tabs: sharedTabs });
     await render(model);
+    await render({ ...model, activeId: 'b' });
     const frame = document.querySelector('iframe[data-tab-id="b"]');
 
     act(() => window.dispatchEvent(new MessageEvent('message', {

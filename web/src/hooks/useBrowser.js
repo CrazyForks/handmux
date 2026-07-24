@@ -1,110 +1,85 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  clearBrowserProfile,
-  createBrowserTab,
-  deleteBrowserTab,
-  getBrowserTabs,
-  navigateBrowserTab,
-  prepareBrowserFormNavigation,
-  setBrowserProfilePrefs,
-  setBrowserTabVisible,
-  updateBrowserTabMeta,
+  acquireBrowserProxyLease,
+  clearBrowserProxyProfile,
+  deleteBrowserProxyLease,
+  getBrowserProxyStatus,
+  navigateBrowserProxyLease,
+  setBrowserProxyProfilePrefs,
 } from '../api.js';
 import {
   clearBrowserHistory,
+  clearBrowserTabs,
   deleteBrowserHistoryEntry,
   normalizeBrowserInput,
   readBrowserHistory,
   readBrowserPrefs,
+  readBrowserTabs,
   setBrowserCloseAfter,
   setBrowserDefaultMode,
   setPersistProxyLogin as persistProxyLoginLocally,
   setProxyLoginRetentionDays as persistProxyLoginRetentionLocally,
   upsertBrowserHistory,
+  writeBrowserTabs,
 } from '../browserState.js';
 import { isBrowserAccessEnabled, setBrowserAccessEnabled } from '../storage.js';
 import { t } from '../i18n';
 
-function replaceTab(tabs, next) {
-  return tabs.map((tab) => (tab.id === next.id ? { ...tab, ...next } : tab));
-}
+const runtimeTab = (tab) => ({
+  ...tab,
+  ...(tab.mode === 'direct' ? { url: tab.originalUrl } : {}),
+});
 
-function normalizeServerTab(tab) {
-  if (!tab) return tab;
-  return { ...tab, mode: tab.mode === 'direct' ? 'direct' : 'proxy' };
-}
-
-function normalizeServerTabs(tabs) {
-  return tabs.map(normalizeServerTab);
-}
-
-function mirrorVisibleTab(tabs, next, closeAfter) {
-  if (!next.visible) return replaceTab(tabs, next);
-  const hiddenAt = Date.now();
-  let found = false;
-  const updated = tabs.map((tab) => {
-    if (tab.id === next.id) {
-      found = true;
-      return { ...tab, ...next };
-    }
-    if (!tab.visible) return tab;
-    return {
-      ...tab,
-      visible: false,
-      hiddenAt,
-      expiresAt: closeAfter == null ? null : hiddenAt + closeAfter * 60_000,
-    };
-  });
-  return found ? updated : [...updated, next];
+function localId() {
+  const bytes = new Uint8Array(18);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((value) => value.toString(16).padStart(2, '0')).join('');
 }
 
 export function useBrowser({ enabled = true, browserProxy = false } = {}) {
-  const [open, setOpenState] = useState(false);
-  const [accessEnabled, setAccessEnabled] = useState(isBrowserAccessEnabled);
+  const accessAtMount = useRef(isBrowserAccessEnabled()).current;
+  const initial = useRef(null);
+  if (!initial.current) {
+    initial.current = accessAtMount
+      ? readBrowserTabs()
+      : { tabs: [], activeId: null, open: false, historyActive: true };
+  }
+  const [accessEnabled, setAccessEnabled] = useState(accessAtMount);
+  const [tabs, setTabs] = useState(() => initial.current.tabs.map(runtimeTab));
+  const [activeId, setActiveId] = useState(initial.current.activeId);
+  const [open, setOpenState] = useState(initial.current.open && accessAtMount);
+  const [historyActive, setHistoryActive] = useState(initial.current.historyActive);
   const [consentOpen, setConsentOpen] = useState(false);
   const [pendingUrl, setPendingUrl] = useState(null);
-  const [tabs, setTabs] = useState([]);
-  const [activeId, setActiveId] = useState(null);
-  const [historyActive, setHistoryActive] = useState(true);
-  const [closeAfter, setCloseAfterState] = useState(() => readBrowserPrefs().closeAfter);
-  const [defaultMode, setDefaultModeState] = useState(() => readBrowserPrefs().defaultMode);
-  const [persistProxyLogin, setPersistProxyLoginState] = useState(
-    () => readBrowserPrefs().persistProxyLogin,
-  );
-  const [proxyLoginRetentionDays, setProxyLoginRetentionDaysState] = useState(() => readBrowserPrefs().proxyLoginRetentionDays);
-  const [history, setHistory] = useState(() => readBrowserHistory());
+  const [history, setHistory] = useState(readBrowserHistory);
   const [error, setError] = useState(null);
-  const enablePromise = useRef(null);
-  const openRequest = useRef(null);
-  const openEpoch = useRef(0);
-  const navigateEpoch = useRef(new Map());
-  const navigateQueue = useRef(new Map());
-  const metadataQueues = useRef(new Map());
-  const metadataEpoch = useRef(0);
-  const mutationGeneration = useRef(0);
-  const lastSuccessfulResync = useRef(null);
-  const browserProxyRef = useRef(browserProxy);
-  const switchQueue = useRef(Promise.resolve());
-  const profileSyncPromise = useRef(null);
-  const profilePrefsGeneration = useRef(0);
-  const recoveryWarningShown = useRef(false);
-  const persistProxyLoginRef = useRef(persistProxyLogin);
-  const proxyLoginRetentionDaysRef = useRef(proxyLoginRetentionDays);
-  const pendingProfilePrefsRef = useRef({
-    persist: persistProxyLogin,
-    retentionDays: proxyLoginRetentionDays,
-  });
+  const prefs = readBrowserPrefs();
+  const [closeAfter, setCloseAfterState] = useState(prefs.closeAfter);
+  const [defaultMode, setDefaultModeState] = useState(prefs.defaultMode);
+  const [persistProxyLogin, setPersistProxyLoginState] = useState(prefs.persistProxyLogin);
+  const [proxyLoginRetentionDays, setProxyLoginRetentionDaysState] = useState(prefs.proxyLoginRetentionDays);
   const tabsRef = useRef(tabs);
-  const activeIdRef = useRef(activeId);
-  const historyActiveRef = useRef(historyActive);
+  const activeRef = useRef(activeId);
   const openRef = useRef(open);
+  const historyRef = useRef(historyActive);
+  const bindingPromises = useRef(new Map());
+  const proxyGeneration = useRef(null);
+  const openSequence = useRef(0);
+  const navigateSequence = useRef(new Map());
+  const navigateQueues = useRef(new Map());
+  const pendingUrlRef = useRef(pendingUrl);
+  const enablePromise = useRef(null);
+  const profileQueue = useRef(Promise.resolve());
+  const recoveryWarningShown = useRef(false);
+  const pendingProfilePrefs = useRef({
+    persist: prefs.persistProxyLogin,
+    retentionDays: prefs.proxyLoginRetentionDays,
+  });
+  const navigatingTabs = useRef(new Map());
   tabsRef.current = tabs;
-  activeIdRef.current = activeId;
-  historyActiveRef.current = historyActive;
+  activeRef.current = activeId;
   openRef.current = open;
-  browserProxyRef.current = browserProxy;
-  persistProxyLoginRef.current = persistProxyLogin;
-  proxyLoginRetentionDaysRef.current = proxyLoginRetentionDays;
+  historyRef.current = historyActive;
 
   const commitTabs = useCallback((update) => {
     const next = typeof update === 'function' ? update(tabsRef.current) : update;
@@ -112,522 +87,387 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     setTabs(next);
     return next;
   }, []);
-  const commitActiveId = useCallback((update) => {
-    const next = typeof update === 'function' ? update(activeIdRef.current) : update;
-    activeIdRef.current = next;
-    setActiveId(next);
-    return next;
+  const commitActive = useCallback((value) => {
+    activeRef.current = value;
+    setActiveId(value);
   }, []);
-  const commitHistoryActive = useCallback((next) => {
-    historyActiveRef.current = next;
-    setHistoryActive(next);
+  const commitOpen = useCallback((value) => {
+    openRef.current = value;
+    setOpenState(value);
   }, []);
-  const commitOpen = useCallback((next) => {
-    openRef.current = next;
-    setOpenState(next);
+  const commitHistory = useCallback((value) => {
+    historyRef.current = value;
+    setHistoryActive(value);
   }, []);
-  const enqueueTransition = useCallback((work) => {
-    const task = switchQueue.current.then(work);
-    switchQueue.current = task.then(() => undefined, () => undefined);
-    return task;
-  }, []);
-  const beginOpenRequest = useCallback((signal) => {
-    openRequest.current?.controller.abort();
-    openRequest.current?.detachCaller?.();
-    const controller = new AbortController();
-    const abortFromCaller = () => controller.abort();
-    if (signal?.aborted) abortFromCaller();
-    else signal?.addEventListener('abort', abortFromCaller, { once: true });
-    const request = {
-      controller,
-      epoch: ++openEpoch.current,
-      generation: ++mutationGeneration.current,
-      previousVisibleId: tabsRef.current.find((tab) => tab.visible)?.id || null,
-      detachCaller: () => signal?.removeEventListener('abort', abortFromCaller),
-    };
-    openRequest.current = request;
-    return request;
-  }, []);
-  const finishOpenRequest = useCallback((request) => {
-    request?.detachCaller?.();
-    if (openRequest.current === request) openRequest.current = null;
-  }, []);
-
-
-  const noteRecoveryWarning = useCallback((response) => {
-    if (response?.warning !== 'profile-recovery-failed' || recoveryWarningShown.current) return;
-    recoveryWarningShown.current = true;
-    setError(new Error(t('browser.profileRecoveryWarning')));
-  }, []);
-
-  const synchronizeProfile = useCallback(() => {
-    if (profileSyncPromise.current) return profileSyncPromise.current;
-    const prefs = readBrowserPrefs();
-    const generation = profilePrefsGeneration.current;
-    let task;
-    task = setBrowserProfilePrefs({
-      persist: prefs.persistProxyLogin,
-      retentionDays: prefs.proxyLoginRetentionDays,
-    }).then((response) => {
-      noteRecoveryWarning(response);
-      return { response, generation };
-    }).catch(() => {
-      throw new Error(t('browser.profileSyncFailed'));
-    }).finally(() => {
-      if (profileSyncPromise.current === task) profileSyncPromise.current = null;
-    });
-    profileSyncPromise.current = task;
-    task.catch(() => {});
-    return task;
-  }, [noteRecoveryWarning]);
-
-  const awaitProfileSyncForOpen = useCallback(async () => {
-    while (true) {
-      const queue = switchQueue.current;
-      await queue;
-      if (queue !== switchQueue.current) continue;
-      const generation = profilePrefsGeneration.current;
-      const synced = await synchronizeProfile();
-      if (
-        queue === switchQueue.current
-        && generation === profilePrefsGeneration.current
-        && synced.generation === generation
-      ) return;
-    }
-  }, [synchronizeProfile]);
 
   useEffect(() => {
-    if (!enabled || !accessEnabled || !browserProxy) {
-      profileSyncPromise.current = null;
-      return;
-    }
-    synchronizeProfile().catch((nextError) => setError(nextError));
-  }, [accessEnabled, browserProxy, enabled, synchronizeProfile]);
+    writeBrowserTabs({ tabs, activeId, open, historyActive });
+  }, [activeId, historyActive, open, tabs]);
+
   const recordHistory = useCallback((tab) => {
     if (!tab?.originalUrl) return;
     upsertBrowserHistory({
-      url: tab.originalUrl,
-      title: tab.title,
-      visitedAt: Date.now(),
-      lastMode: tab.mode,
+      url: tab.originalUrl, title: tab.title, lastMode: tab.mode, visitedAt: Date.now(),
     });
     setHistory(readBrowserHistory());
   }, []);
 
-  const resyncLostWorker = useCallback(async (nextError, isCurrent = () => true) => {
-    if (nextError?.status !== 404 && nextError?.status !== 503) return false;
-    const generation = mutationGeneration.current;
-    try {
-      const { tabs: loaded = [] } = await getBrowserTabs();
-      if (!isCurrent()) return false;
-      if (mutationGeneration.current !== generation) {
-        const peer = lastSuccessfulResync.current;
-        return peer?.fromGeneration === generation
-          && peer.toGeneration === mutationGeneration.current;
-      }
-      const normalized = normalizeServerTabs(loaded);
-      mutationGeneration.current += 1;
-      commitTabs(normalized);
-      const visible = normalized.find((tab) => tab.visible);
-      const selected = visible || normalized[0] || null;
-      commitActiveId(selected?.id || null);
-      commitHistoryActive(!selected);
-      if (!visible) commitOpen(false);
-      lastSuccessfulResync.current = {
-        fromGeneration: generation,
-        toGeneration: mutationGeneration.current,
-      };
-      return true;
-    } catch { return false; }
-  }, [commitActiveId, commitHistoryActive, commitOpen, commitTabs]);
-
-  useEffect(() => {
-    if (!enabled || !accessEnabled) return undefined;
-    let live = true;
-    const generation = mutationGeneration.current;
-    getBrowserTabs().then(({ tabs: loaded = [] }) => {
-      if (!live || mutationGeneration.current !== generation) return;
-      const normalized = normalizeServerTabs(loaded);
-      mutationGeneration.current += 1;
-      commitTabs(normalized);
-      const visible = normalized.find((tab) => tab.visible);
-      const selected = visible || normalized[0] || null;
-      commitActiveId(selected?.id || null);
-      commitHistoryActive(!selected);
-      commitOpen(!!visible);
-    }).catch((nextError) => { if (live) setError(nextError); });
-    return () => { live = false; };
-  }, [commitActiveId, commitHistoryActive, commitOpen, commitTabs, enabled]); // access is loaded explicitly by enableAccess on first consent
-
-  useEffect(() => () => {
-    openRequest.current?.controller.abort();
-    openRequest.current?.detachCaller?.();
+  const release = useCallback((tab) => {
+    if (tab?.mode === 'proxy') deleteBrowserProxyLease(tab.id).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    const timers = tabs
-      .filter((tab) => !tab.visible && tab.expiresAt != null)
-      .map((tab) => setTimeout(() => {
-        mutationGeneration.current += 1;
-        recordHistory(tab);
-        commitTabs((current) => current.filter((item) => item.id !== tab.id));
-        commitActiveId((current) => {
-          if (current !== tab.id) return current;
-          commitHistoryActive(true);
-          return null;
+  const enqueueProfileOperation = useCallback((work) => {
+    const operation = profileQueue.current.catch(() => {}).then(work);
+    profileQueue.current = operation.then(() => undefined, () => undefined);
+    return operation;
+  }, []);
+
+  const applyBinding = useCallback((id, binding) => {
+    if (binding.generation != null && proxyGeneration.current !== binding.generation) {
+      proxyGeneration.current = binding.generation;
+      commitTabs((current) => current.map((item) => (
+        item.mode === 'proxy' && item.id !== id
+          ? { ...item, url: undefined, channel: undefined, generation: undefined }
+          : item
+      )));
+    }
+    let result = null;
+    commitTabs((current) => current.map((item) => {
+      if (item.id !== id || item.mode !== 'proxy') return item;
+      result = {
+        ...item,
+        url: binding.url,
+        channel: binding.channel,
+        generation: binding.generation,
+      };
+      return result;
+    }));
+    return result;
+  }, [commitTabs]);
+
+  const ensureBinding = useCallback((id, { force = false } = {}) => {
+    const tab = tabsRef.current.find((item) => item.id === id);
+    if (!tab || tab.mode !== 'proxy' || (tab.url && !force)) return Promise.resolve(tab || null);
+    if (!browserProxy) {
+      setError(new Error(t('browser.proxyUnavailable')));
+      return Promise.resolve(null);
+    }
+    if (bindingPromises.current.has(id)) return bindingPromises.current.get(id);
+    const requestedUrl = tab.originalUrl;
+    let profileWarning = false;
+    const pending = enqueueProfileOperation(async () => {
+      let profile;
+      try {
+        const prefs = readBrowserPrefs();
+        profile = await setBrowserProxyProfilePrefs({
+          persist: prefs.persistProxyLogin,
+          retentionDays: prefs.proxyLoginRetentionDays,
         });
-      }, Math.max(0, tab.expiresAt - Date.now())));
-    return () => timers.forEach(clearTimeout);
-  }, [commitActiveId, commitHistoryActive, commitTabs, tabs, recordHistory]);
-
-  const updateVisibility = useCallback(async (id, visible, duration = closeAfter) => {
-    mutationGeneration.current += 1;
-    const next = normalizeServerTab(await setBrowserTabVisible(id, visible, duration));
-    const current = tabsRef.current.find((tab) => tab.id === next.id);
-    const stableNext = current?.mode === 'proxy' && next.mode === 'proxy'
-      ? { ...next, url: current.url }
-      : next;
-    mutationGeneration.current += 1;
-    commitTabs((currentTabs) => mirrorVisibleTab(currentTabs, stableNext, duration));
-    return stableNext;
-  }, [closeAfter, commitTabs]);
-
-  const switchTab = useCallback((id) => {
-    mutationGeneration.current += 1;
-    return enqueueTransition(async () => {
-      setError(null);
-      try {
-        const currentActiveId = activeIdRef.current;
-        const currentHistoryActive = historyActiveRef.current;
-        if (id === 'history') {
-          if (openRef.current && currentActiveId && !currentHistoryActive) {
-            await updateVisibility(currentActiveId, false);
-          }
-          mutationGeneration.current += 1;
-          commitHistoryActive(true);
-          return true;
-        }
-        if (!tabsRef.current.some((tab) => tab.id === id)) return false;
-        if (openRef.current) await updateVisibility(id, true);
-        if (!tabsRef.current.some((tab) => tab.id === id)) return false;
-        mutationGeneration.current += 1;
-        commitActiveId(id);
-        commitHistoryActive(false);
-        return true;
-      } catch (nextError) {
-        const recovered = await resyncLostWorker(nextError);
-        if (!recovered) setError(nextError);
-        return false;
+      } catch {
+        throw new Error(t('browser.profileSyncFailed'));
       }
-    });
-  }, [commitActiveId, commitHistoryActive, enqueueTransition, resyncLostWorker, updateVisibility]);
-
-  const setOpen = useCallback((visible) => {
-    if (visible && !accessEnabled) {
-      setConsentOpen(true);
-      return Promise.resolve(false);
-    }
-    mutationGeneration.current += 1;
-    return enqueueTransition(async () => {
-      setError(null);
-      try {
-        if (activeIdRef.current && !historyActiveRef.current) {
-          await updateVisibility(activeIdRef.current, visible);
-        }
-        mutationGeneration.current += 1;
-        commitOpen(visible);
-        return true;
-      } catch (nextError) {
-        const recovered = await resyncLostWorker(nextError);
-        if (!visible) {
-          mutationGeneration.current += 1;
-          commitOpen(false);
-        }
-        if (!recovered && visible) setError(nextError);
-        return !visible;
+      profileWarning = profile?.warning === 'profile-recovery-failed';
+      if (profileWarning && !recoveryWarningShown.current) {
+        recoveryWarningShown.current = true;
+        setError(new Error(t('browser.profileRecoveryWarning')));
       }
-    });
-  }, [accessEnabled, commitOpen, enqueueTransition, resyncLostWorker, updateVisibility]);
-
-  const openUrl = useCallback((input, { mode = defaultMode, signal } = {}) => {
-    const url = normalizeBrowserInput(input);
-    if (!url) {
-      setError(new Error('browser URL must use http or https'));
-      return Promise.resolve(null);
-    }
-    if (mode === 'proxy' && !browserProxy) {
-      setError(new Error('browser proxy unavailable'));
-      return Promise.resolve(null);
-    }
-    const request = beginOpenRequest(signal);
-    if (!accessEnabled) {
-      setPendingUrl({ url, mode, request });
-      setConsentOpen(true);
-      return Promise.resolve({ pending: true });
-    }
-    const task = (async () => {
-      setError(null);
-      try {
-        if (request.controller.signal.aborted) return null;
-        if (mode === 'proxy') {
-          await awaitProfileSyncForOpen();
-        }
-        const created = normalizeServerTab(await createBrowserTab(
-          url, closeAfter, mode, { signal: request.controller.signal },
-        ));
-        if (request.controller.signal.aborted || openRequest.current !== request) {
-          try {
-            await deleteBrowserTab(created.id);
-            mutationGeneration.current += 1;
-          } catch { /* best-effort stale tab cleanup */ }
-          return null;
-        }
-        mutationGeneration.current += 1;
-        commitTabs((current) => mirrorVisibleTab(current, created, closeAfter));
-        commitActiveId(created.id);
-        commitHistoryActive(false);
-        commitOpen(true);
-        return created;
-      } catch (nextError) {
-        if (request.controller.signal.aborted || openRequest.current !== request) return null;
-        if (request.previousVisibleId && tabsRef.current.some((tab) => tab.id === request.previousVisibleId)) {
-          try {
-            const restored = await setBrowserTabVisible(request.previousVisibleId, true, closeAfter);
-            if (!request.controller.signal.aborted && openRequest.current === request) {
-              mutationGeneration.current += 1;
-              commitTabs((current) => mirrorVisibleTab(current, restored, closeAfter));
-              commitActiveId(restored.id);
-              commitHistoryActive(false);
-              commitOpen(true);
-            }
-          } catch { /* preserve the original create error */ }
-        }
-        setError(nextError);
+      return acquireBrowserProxyLease(id, requestedUrl);
+    }).then((binding) => {
+      const current = tabsRef.current.find((item) => item.id === id);
+      if (!current || current.mode !== 'proxy' || current.originalUrl !== requestedUrl) {
+        deleteBrowserProxyLease(id).catch(() => {});
         return null;
       }
-    })().finally(() => {
-      finishOpenRequest(request);
+      const result = applyBinding(id, binding);
+      if (!profileWarning) setError(null);
+      return result;
+    }).catch((nextError) => {
+      setError(nextError);
+      return null;
+    }).finally(() => bindingPromises.current.delete(id));
+    bindingPromises.current.set(id, pending);
+    return pending;
+  }, [applyBinding, browserProxy, enqueueProfileOperation]);
+
+  const recoverBinding = useCallback((id) => {
+    commitTabs((current) => current.map((tab) => tab.id === id && tab.mode === 'proxy'
+      ? { ...tab, url: undefined, channel: undefined, generation: undefined }
+      : tab));
+    return ensureBinding(id, { force: true });
+  }, [commitTabs, ensureBinding]);
+
+  const refreshProxyStatus = useCallback(async () => {
+    if (!enabled || !accessEnabled || !browserProxy) return;
+    try {
+      const status = await getBrowserProxyStatus();
+      if (status.generation == null) return;
+      const changed = proxyGeneration.current != null && proxyGeneration.current !== status.generation;
+      proxyGeneration.current = status.generation;
+      if (changed) {
+        commitTabs((current) => current.map((tab) => tab.mode === 'proxy'
+          ? { ...tab, url: undefined, channel: undefined, generation: undefined }
+          : tab));
+      }
+    } catch {
+      // Status is advisory: device-owned tabs survive proxy worker outages.
+    }
+  }, [accessEnabled, browserProxy, commitTabs, enabled]);
+
+  const hideTab = useCallback((tab, duration = closeAfter) => ({
+    ...tab,
+    deadline: duration == null ? null : Date.now() + duration * 60_000,
+  }), [closeAfter]);
+
+  const pruneExpired = useCallback(() => {
+    const now = Date.now();
+    const expired = tabsRef.current.filter((tab) => tab.deadline != null && tab.deadline <= now);
+    if (!expired.length) return;
+    const ids = new Set(expired.map((tab) => tab.id));
+    expired.forEach((tab) => { recordHistory(tab); release(tab); });
+    const remaining = commitTabs((current) => current.filter((tab) => !ids.has(tab.id)));
+    if (ids.has(activeRef.current)) {
+      const next = remaining[0] || null;
+      commitActive(next?.id || null);
+      commitHistory(!next);
+    }
+  }, [commitActive, commitHistory, commitTabs, recordHistory, release]);
+
+  useEffect(() => {
+    pruneExpired();
+    void refreshProxyStatus();
+    const onVisibility = () => {
+      if (!document.hidden) {
+        pruneExpired();
+        void refreshProxyStatus();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [pruneExpired, refreshProxyStatus]);
+
+  useEffect(() => {
+    const deadlines = tabs.filter((tab) => tab.deadline != null).map((tab) => tab.deadline);
+    if (!deadlines.length) return undefined;
+    const timer = setTimeout(pruneExpired, Math.max(0, Math.min(...deadlines) - Date.now()));
+    return () => clearTimeout(timer);
+  }, [pruneExpired, tabs]);
+
+  const openUrl = useCallback(async (input, { mode = defaultMode, force = false } = {}) => {
+    const sequence = ++openSequence.current;
+    const url = normalizeBrowserInput(input);
+    if (!url) { setError(new Error('browser URL must use http or https')); return null; }
+    if (!accessEnabled && !force) {
+      const pending = { url, mode };
+      pendingUrlRef.current = pending;
+      setPendingUrl(pending);
+      setConsentOpen(true);
+      return { pending: true };
+    }
+    if (mode === 'proxy' && !browserProxy) {
+      setError(new Error(t('browser.proxyUnavailable')));
+      return null;
+    }
+    const id = localId();
+    const created = runtimeTab({
+      id, mode, originalUrl: url, title: '', deadline: null,
     });
-    return task;
-  }, [accessEnabled, awaitProfileSyncForOpen, beginOpenRequest, browserProxy, closeAfter, commitActiveId, commitHistoryActive, commitOpen, commitTabs, defaultMode, finishOpenRequest]);
+    commitTabs((current) => [...current.map((tab) => (
+      tab.id === activeRef.current && openRef.current && !historyRef.current ? hideTab(tab) : tab
+    )), created]);
+    commitActive(id);
+    commitHistory(false);
+    commitOpen(true);
+    setError(null);
+    if (mode === 'proxy') await ensureBinding(id);
+    else await Promise.resolve();
+    if (sequence !== openSequence.current) {
+      const stale = tabsRef.current.find((tab) => tab.id === id);
+      if (stale) {
+        release(stale);
+        commitTabs((current) => current.filter((tab) => tab.id !== id));
+      }
+      return null;
+    }
+    return tabsRef.current.find((tab) => tab.id === id) || created;
+  }, [accessEnabled, browserProxy, commitActive, commitHistory, commitOpen, commitTabs, defaultMode, ensureBinding, hideTab, release]);
 
   const enableAccess = useCallback(() => {
     if (enablePromise.current) return enablePromise.current;
-    const task = (async () => {
-      const expectedOpenEpoch = openEpoch.current;
-      const expectedGeneration = mutationGeneration.current;
-      const pending = pendingUrl;
+    const pending = pendingUrlRef.current;
+    pendingUrlRef.current = null;
+    setPendingUrl(null);
+    const operation = (async () => {
       setBrowserAccessEnabled(true);
       setAccessEnabled(true);
       setConsentOpen(false);
-      setError(null);
-      try {
-        const { tabs: loaded = [] } = await getBrowserTabs();
-        const normalized = normalizeServerTabs(loaded);
-        if (pending) {
-          const { request } = pending;
-          if (
-            request.controller.signal.aborted
-            || openEpoch.current !== request.epoch
-            || openRequest.current !== request
-            || mutationGeneration.current !== expectedGeneration
-          ) {
-            return;
-          }
-          if (pending.mode === 'proxy' && !browserProxyRef.current) {
-            throw new Error('browser proxy unavailable');
-          }
-          if (pending.mode === 'proxy') {
-            await awaitProfileSyncForOpen();
-          }
-          const created = normalizeServerTab(await createBrowserTab(
-            pending.url, closeAfter, pending.mode, { signal: request.controller.signal },
-          ));
-          if (
-            request.controller.signal.aborted
-            || openEpoch.current !== request.epoch
-            || openRequest.current !== request
-            || mutationGeneration.current !== expectedGeneration
-          ) {
-            try {
-              await deleteBrowserTab(created.id);
-              mutationGeneration.current += 1;
-            } catch { /* best-effort stale tab cleanup */ }
-            return;
-          }
-          mutationGeneration.current += 1;
-          commitTabs(mirrorVisibleTab(normalized, created, closeAfter));
-          commitActiveId(created.id);
-          commitHistoryActive(false);
-        } else {
-          if (
-            openEpoch.current !== expectedOpenEpoch
-            || mutationGeneration.current !== expectedGeneration
-          ) return;
-          mutationGeneration.current += 1;
-          commitTabs(normalized);
-          const selected = normalized.find((tab) => tab.visible) || normalized[0] || null;
-          commitActiveId(selected?.id || null);
-          commitHistoryActive(!selected);
-        }
-        commitOpen(true);
-      } catch (nextError) {
-        if (pending?.request && (
-          pending.request.controller.signal.aborted
-          || openEpoch.current !== pending.request.epoch
-          || openRequest.current !== pending.request
-        )) return;
-        setError(nextError);
-      } finally {
-        if (pending?.request) {
-          setPendingUrl((current) => (current?.request === pending.request ? null : current));
-          finishOpenRequest(pending.request);
-        }
-      }
+      if (pending) return openUrl(pending.url, { mode: pending.mode, force: true });
+      commitOpen(true);
+      return true;
     })().finally(() => {
-      if (enablePromise.current === task) enablePromise.current = null;
+      if (enablePromise.current === operation) enablePromise.current = null;
     });
-    enablePromise.current = task;
-    return task;
-  }, [awaitProfileSyncForOpen, closeAfter, commitActiveId, commitHistoryActive, commitOpen, commitTabs, finishOpenRequest, pendingUrl]);
+    enablePromise.current = operation;
+    return operation;
+  }, [commitOpen, openUrl]);
 
   const cancelAccess = useCallback(() => {
-    pendingUrl?.request?.controller.abort();
-    finishOpenRequest(pendingUrl?.request);
+    pendingUrlRef.current = null;
     setPendingUrl(null);
     setConsentOpen(false);
-  }, [finishOpenRequest, pendingUrl]);
-
-  const closeTab = useCallback(async (id) => {
-    const closing = tabsRef.current.find((tab) => tab.id === id);
-    if (!closing) return;
-    mutationGeneration.current += 1;
-    setError(null);
-    try {
-      await deleteBrowserTab(id);
-      mutationGeneration.current += 1;
-      recordHistory(closing);
-      const remaining = commitTabs((current) => current.filter((tab) => tab.id !== id));
-      if (activeIdRef.current === id) {
-        if (openRef.current && remaining.length) {
-          await updateVisibility(remaining[0].id, true);
-        }
-        mutationGeneration.current += 1;
-        commitActiveId(remaining[0]?.id || null);
-        commitHistoryActive(!remaining.length);
-      }
-    } catch (nextError) {
-      if (!await resyncLostWorker(nextError)) setError(nextError);
-    }
-  }, [commitActiveId, commitHistoryActive, commitTabs, recordHistory, resyncLostWorker, updateVisibility]);
-
-  const navigateTab = useCallback(async (id, input, mode) => {
-    const url = normalizeBrowserInput(input);
-    if (!url) {
-      setError(new Error('browser URL must use http or https'));
-      return null;
-    }
-    const current = tabsRef.current.find((tab) => tab.id === id);
-    const nextMode = mode || current?.mode || defaultMode;
-    if (nextMode === 'proxy' && !browserProxy) {
-      setError(new Error('browser proxy unavailable'));
-      return null;
-    }
-    const epoch = (navigateEpoch.current.get(id) || 0) + 1;
-    navigateEpoch.current.set(id, epoch);
-    mutationGeneration.current += 1;
-    const isCurrent = () => navigateEpoch.current.get(id) === epoch;
-    const previous = navigateQueue.current.get(id) || Promise.resolve();
-    const request = previous.catch(() => undefined).then(async () => {
-      const latest = tabsRef.current.find((tab) => tab.id === id);
-      if (nextMode === 'proxy' && latest?.mode !== 'proxy') {
-        await awaitProfileSyncForOpen();
-      }
-      return navigateBrowserTab(id, url, nextMode);
-    });
-    navigateQueue.current.set(id, request);
-    try {
-      const next = normalizeServerTab(await request);
-      if (!isCurrent()) return null;
-      mutationGeneration.current += 1;
-      commitTabs((current) => replaceTab(current, next));
-      const committedMode = next.mode || nextMode;
-      if (current && committedMode !== current.mode) {
-        upsertBrowserHistory({
-          url: next.originalUrl || url,
-          title: next.title || current.title || '',
-          visitedAt: Date.now(),
-          lastMode: committedMode,
-        });
-        setHistory(readBrowserHistory());
-      }
-      setError(null);
-      return next;
-    } catch (nextError) {
-      if (!isCurrent()) return null;
-      if (!await resyncLostWorker(nextError, isCurrent) && isCurrent()) setError(nextError);
-      return null;
-    } finally {
-      if (navigateQueue.current.get(id) === request) navigateQueue.current.delete(id);
-    }
-  }, [awaitProfileSyncForOpen, browserProxy, commitTabs, defaultMode, resyncLostWorker]);
-
-  const enqueueMetadataSync = useCallback((tab) => {
-    const previous = metadataQueues.current.get(tab.id) || Promise.resolve();
-    const pending = previous
-      .catch(() => {})
-      .then(() => updateBrowserTabMeta(
-        tab.id,
-        tab.originalUrl,
-        String(tab.title || '').slice(0, 1024),
-      ));
-    metadataQueues.current.set(tab.id, pending);
-    pending.finally(() => {
-      if (metadataQueues.current.get(tab.id) === pending) metadataQueues.current.delete(tab.id);
-    }).catch(() => {});
-    return pending;
   }, []);
 
-  const updateTabMeta = useCallback((id, patch) => {
-    const current = tabsRef.current.find((tab) => tab.id === id);
-    if (!current) return;
-    const url = normalizeBrowserInput(patch?.url) || current.originalUrl;
-    const title = typeof patch?.title === 'string' ? patch.title : current.title;
-    if (url === current.originalUrl && title === current.title) return;
-    const urlChanged = url !== current.originalUrl;
-    const updated = { ...current, originalUrl: url, title };
-    mutationGeneration.current += 1;
-    commitTabs((all) => replaceTab(all, updated));
-    if (current.mode === 'proxy' && urlChanged) {
-      metadataEpoch.current += 1;
-      enqueueMetadataSync(updated).catch(() => {});
+  const disableAccess = useCallback(() => {
+    tabsRef.current.forEach(release);
+    commitTabs([]);
+    commitActive(null);
+    commitHistory(true);
+    commitOpen(false);
+    clearBrowserTabs();
+    setBrowserAccessEnabled(false);
+    setAccessEnabled(false);
+    setConsentOpen(false);
+    pendingUrlRef.current = null;
+  }, [commitActive, commitHistory, commitOpen, commitTabs, release]);
+  const setEnabled = useCallback((value) => {
+    if (!value) {
+      disableAccess();
+      return false;
     }
-    if (url && title?.trim()) {
-      upsertBrowserHistory({ url, title, visitedAt: Date.now(), lastMode: current.mode });
+    setBrowserAccessEnabled(true);
+    setAccessEnabled(true);
+    return true;
+  }, [disableAccess]);
+
+  const switchTab = useCallback(async (id) => {
+    if (id === 'history') {
+      if (openRef.current && activeRef.current && !historyRef.current) {
+        commitTabs((current) => current.map((tab) => tab.id === activeRef.current ? hideTab(tab) : tab));
+      }
+      commitHistory(true);
+      return true;
+    }
+    const target = tabsRef.current.find((tab) => tab.id === id);
+    if (!target) return false;
+    commitTabs((current) => current.map((tab) => {
+      if (tab.id === id) return { ...tab, deadline: null };
+      if (tab.id === activeRef.current && openRef.current && !historyRef.current) return hideTab(tab);
+      return tab;
+    }));
+    commitActive(id);
+    commitHistory(false);
+    if (openRef.current) await ensureBinding(id);
+    return true;
+  }, [commitActive, commitHistory, commitTabs, ensureBinding, hideTab]);
+
+  const setOpen = useCallback(async (visible) => {
+    if (visible && !accessEnabled) { setConsentOpen(true); return false; }
+    if (activeRef.current && !historyRef.current) {
+      commitTabs((current) => current.map((tab) => (
+        tab.id === activeRef.current ? (visible ? { ...tab, deadline: null } : hideTab(tab)) : tab
+      )));
+    }
+    commitOpen(visible);
+    if (visible && activeRef.current && !historyRef.current) await ensureBinding(activeRef.current);
+    return true;
+  }, [accessEnabled, commitOpen, commitTabs, ensureBinding, hideTab]);
+
+  const closeTab = useCallback((id) => {
+    const index = tabsRef.current.findIndex((tab) => tab.id === id);
+    if (index < 0) return;
+    const closing = tabsRef.current[index];
+    recordHistory(closing);
+    release(closing);
+    const remaining = commitTabs((current) => current.filter((tab) => tab.id !== id));
+    if (activeRef.current === id) {
+      const next = remaining[Math.min(index, remaining.length - 1)] || null;
+      commitActive(next?.id || null);
+      commitHistory(!next);
+      if (next && openRef.current) {
+        commitTabs((current) => current.map((tab) => tab.id === next.id ? { ...tab, deadline: null } : tab));
+        void ensureBinding(next.id);
+      }
+    }
+  }, [commitActive, commitHistory, commitTabs, ensureBinding, recordHistory, release]);
+
+  const navigateTab = useCallback(async (id, input, requestedMode) => {
+    const url = normalizeBrowserInput(input);
+    const current = tabsRef.current.find((tab) => tab.id === id);
+    if (!url || !current) return null;
+    const mode = requestedMode || current.mode;
+    if (mode === 'proxy' && !browserProxy) return null;
+    const sequence = (navigateSequence.current.get(id) || 0) + 1;
+    navigateSequence.current.set(id, sequence);
+    navigatingTabs.current.set(id, sequence);
+    if (current.mode === 'proxy' && mode === 'direct') release(current);
+    commitTabs((all) => all.map((tab) => tab.id === id ? {
+      ...tab,
+      mode,
+      originalUrl: url,
+      title: '',
+      ...(mode === 'direct'
+        ? { url, channel: undefined, generation: undefined }
+        : (current.mode === 'proxy'
+          ? {}
+          : { url: undefined, channel: undefined, generation: undefined })),
+    } : tab));
+    if (mode === 'proxy') {
+      const prior = navigateQueues.current.get(id) || Promise.resolve();
+      const request = prior.catch(() => {}).then(() => (
+        current.mode === 'proxy'
+          ? navigateBrowserProxyLease(id, url)
+          : ensureBinding(id, { force: true })
+      ));
+      navigateQueues.current.set(id, request);
+      try {
+        const binding = await request;
+        if (navigateQueues.current.get(id) === request) navigateQueues.current.delete(id);
+        if (navigateSequence.current.get(id) === sequence) {
+          if (binding?.url) {
+            applyBinding(id, binding);
+            setError(null);
+          } else {
+            navigatingTabs.current.delete(id);
+          }
+        }
+      } catch (nextError) {
+        if (navigateQueues.current.get(id) === request) navigateQueues.current.delete(id);
+        if (navigateSequence.current.get(id) === sequence) {
+          commitTabs((all) => all.map((tab) => tab.id === id
+            ? { ...tab, url: undefined, channel: undefined, generation: undefined }
+            : tab));
+          setError(nextError);
+          navigatingTabs.current.delete(id);
+        }
+      }
+    } else if (navigateSequence.current.get(id) === sequence) {
+      navigatingTabs.current.delete(id);
+    }
+    return tabsRef.current.find((tab) => tab.id === id) || null;
+  }, [applyBinding, browserProxy, commitTabs, ensureBinding, release]);
+
+  const updateTabMeta = useCallback((id, patch) => {
+    if (navigatingTabs.current.has(id)) return null;
+    let updated;
+    commitTabs((all) => all.map((tab) => {
+      if (tab.id !== id) return tab;
+      updated = {
+        ...tab,
+        originalUrl: normalizeBrowserInput(patch?.url) || tab.originalUrl,
+        title: typeof patch?.title === 'string' ? patch.title : tab.title,
+      };
+      return updated;
+    }));
+    if (updated?.title) {
+      upsertBrowserHistory({
+        url: updated.originalUrl, title: updated.title, lastMode: updated.mode, visitedAt: Date.now(),
+      });
       setHistory(readBrowserHistory());
     }
-  }, [commitTabs, enqueueMetadataSync]);
+  }, [commitTabs]);
 
-  const flushMetadata = useCallback(async () => {
-    while (true) {
-      const epoch = metadataEpoch.current;
-      tabsRef.current
-        .filter((tab) => tab.mode === 'proxy')
-        .forEach(enqueueMetadataSync);
-      await Promise.all([...metadataQueues.current.values()]);
-      if (epoch === metadataEpoch.current && metadataQueues.current.size === 0) return;
-    }
-  }, [enqueueMetadataSync]);
-
-  const prepareFormNavigation = useCallback(async (id, url) => {
-    try {
-      const prepared = await prepareBrowserFormNavigation(id, url);
-      setError(null);
-      return prepared;
-    } catch (nextError) {
-      setError(nextError);
-      return null;
-    }
+  const markBindingReady = useCallback((id, channel) => {
+    const tab = tabsRef.current.find((item) => item.id === id);
+    if (tab?.mode === 'proxy' && tab.channel === channel) navigatingTabs.current.delete(id);
   }, []);
 
   const setCloseAfter = useCallback((value) => {
@@ -636,146 +476,72 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     setCloseAfterState(saved);
     return saved;
   }, []);
-
   const setDefaultMode = useCallback((mode) => {
     setBrowserDefaultMode(mode);
     const saved = readBrowserPrefs().defaultMode;
     setDefaultModeState(saved);
     return saved;
   }, []);
-
   const setHistoryMode = useCallback((entry, mode) => {
-    if (mode !== 'direct' && mode !== 'proxy') return null;
     upsertBrowserHistory({ ...entry, lastMode: mode });
     const next = readBrowserHistory();
     setHistory(next);
     return next.find((item) => item.url === entry?.url) || null;
   }, []);
 
-  const saveProfilePrefs = useCallback((change) => {
-    pendingProfilePrefsRef.current = { ...pendingProfilePrefsRef.current, ...change };
-    const generation = ++profilePrefsGeneration.current;
-    const operation = enqueueTransition(async () => {
-      const prefs = { ...pendingProfilePrefsRef.current };
-      const response = await setBrowserProfilePrefs(prefs);
-      persistProxyLoginLocally(response.persist);
-      persistProxyLoginRetentionLocally(response.retentionDays);
-      persistProxyLoginRef.current = response.persist;
-      proxyLoginRetentionDaysRef.current = response.retentionDays;
+  const saveProfilePrefs = useCallback(async (change) => {
+    const next = {
+      persist: change.persist ?? pendingProfilePrefs.current.persist,
+      retentionDays: change.retentionDays ?? pendingProfilePrefs.current.retentionDays,
+    };
+    pendingProfilePrefs.current = next;
+    try {
+      const response = await enqueueProfileOperation(async () => {
+        const saved = await setBrowserProxyProfilePrefs(next);
+        persistProxyLoginLocally(saved.persist);
+        persistProxyLoginRetentionLocally(saved.retentionDays);
+        return saved;
+      });
       setPersistProxyLoginState(response.persist);
       setProxyLoginRetentionDaysState(response.retentionDays);
-      if (profilePrefsGeneration.current === generation) {
-        pendingProfilePrefsRef.current = {
-          persist: response.persist,
-          retentionDays: response.retentionDays,
-        };
-      }
-      if (response?.warning === 'profile-recovery-failed') noteRecoveryWarning(response);
-      else setError(null);
-      return response;
-    });
-    return operation.then(
-      () => {
-        return true;
-      },
-      () => {
-        if (profilePrefsGeneration.current === generation) {
-          pendingProfilePrefsRef.current = {
-            persist: persistProxyLoginRef.current,
-            retentionDays: proxyLoginRetentionDaysRef.current,
-          };
-        }
-        setError(new Error(t('browser.profileSaveFailed')));
-        return false;
-      },
-    );
-  }, [enqueueTransition, noteRecoveryWarning]);
+      return true;
+    } catch {
+      setError(new Error(t('browser.profileSaveFailed')));
+      return false;
+    }
+  }, [enqueueProfileOperation]);
 
-  const setPersistProxyLogin = useCallback((value) => saveProfilePrefs({
-    persist: !!value,
-  }), [saveProfilePrefs]);
-
-  const setProxyLoginRetentionDays = useCallback((value) => saveProfilePrefs({
-    retentionDays: value,
-  }), [saveProfilePrefs]);
-
-  const clearProxyLogin = useCallback((origin = null) => enqueueTransition(async () => {
-    setError(null);
-    mutationGeneration.current += 1;
+  const clearProxyLogin = useCallback(async (origin = null) => {
     try {
-      await flushMetadata();
-      const response = await clearBrowserProfile(origin);
-      mutationGeneration.current += 1;
-      const closed = new Set(response.closedTabIds || []);
-      const remaining = commitTabs((current) => current.filter((tab) => !closed.has(tab.id)));
-      if (closed.has(activeIdRef.current)) {
-        const selected = remaining.find((tab) => tab.visible) || null;
-        commitActiveId(selected?.id || null);
-        commitHistoryActive(!selected);
-        if (!selected) commitOpen(false);
+      await clearBrowserProxyProfile(origin);
+      const removed = tabsRef.current.filter((tab) => tab.mode === 'proxy' && (
+        origin === null || new URL(tab.originalUrl).origin === origin
+      ));
+      removed.forEach(release);
+      const ids = new Set(removed.map((tab) => tab.id));
+      commitTabs((current) => current.filter((tab) => !ids.has(tab.id)));
+      if (ids.has(activeRef.current)) {
+        const next = tabsRef.current[0] || null;
+        commitActive(next?.id || null);
+        commitHistory(!next);
       }
       return true;
     } catch {
-      try {
-        while (true) {
-          const generation = mutationGeneration.current;
-          const { tabs: loaded = [] } = await getBrowserTabs();
-          if (mutationGeneration.current !== generation) continue;
-          const normalized = normalizeServerTabs(loaded);
-          mutationGeneration.current += 1;
-          commitTabs(normalized);
-          const selected = normalized.find((tab) => tab.visible) || null;
-          commitActiveId(selected?.id || null);
-          commitHistoryActive(!selected);
-          if (!selected) commitOpen(false);
-          break;
-        }
-      } catch { /* keep the last confirmed local state if resync also fails */ }
       setError(new Error(t('browser.profileClearFailed')));
       return false;
     }
-  }), [commitActiveId, commitHistoryActive, commitOpen, commitTabs, enqueueTransition, flushMetadata]);
-
-  const deleteHistory = useCallback((entry) => {
-    deleteBrowserHistoryEntry(entry);
-    setHistory(readBrowserHistory());
-  }, []);
-
-  const clearHistory = useCallback(() => {
-    clearBrowserHistory();
-    setHistory([]);
-  }, []);
+  }, [commitActive, commitHistory, commitTabs, release]);
 
   return {
-    open,
-    accessEnabled,
-    consentOpen,
-    tabs,
-    activeId,
-    historyActive,
-    closeAfter,
-    defaultMode,
-    persistProxyLogin,
-    proxyLoginRetentionDays,
-    proxyAvailable: browserProxy,
-    history,
-    error,
-    openUrl,
-    enableAccess,
-    cancelAccess,
-    switchTab,
-    closeTab,
-    setOpen,
-    setCloseAfter,
-    setDefaultMode,
-    setPersistProxyLogin,
-    setProxyLoginRetentionDays,
-    clearProxyLogin,
-    setHistoryMode,
-    navigateTab,
-    prepareFormNavigation,
-    updateTabMeta,
-    deleteHistory,
-    clearHistory,
+    open, accessEnabled, consentOpen, tabs, activeId, historyActive, closeAfter, defaultMode,
+    persistProxyLogin, proxyLoginRetentionDays, proxyAvailable: browserProxy, history, error,
+    openUrl, enableAccess, disableAccess, setEnabled, cancelAccess, switchTab, closeTab, setOpen,
+    setCloseAfter, setDefaultMode,
+    setPersistProxyLogin: (value) => saveProfilePrefs({ persist: !!value }),
+    setProxyLoginRetentionDays: (value) => saveProfilePrefs({ retentionDays: value }),
+    clearProxyLogin, setHistoryMode, navigateTab, ensureBinding, recoverBinding,
+    markBindingReady, updateTabMeta,
+    deleteHistory: (entry) => { deleteBrowserHistoryEntry(entry); setHistory(readBrowserHistory()); },
+    clearHistory: () => { clearBrowserHistory(); setHistory([]); },
   };
 }

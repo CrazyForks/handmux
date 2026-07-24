@@ -75,6 +75,8 @@ export default {
   'settings.language': '語言 Language',
   'settings.browserDefaultMode': '網頁預設開啟方式',
   'settings.browserDefaultModeHint': '用於網址列新分頁，以及未儲存開啟方式的歷史記錄。',
+  'settings.browserEnabled': '啟用內建瀏覽器',
+  'settings.browserEnabledHint': '分頁僅屬於目前裝置。關閉後會關閉全部分頁，但保留歷史記錄。',
 
   // home / drawer / windowbar
   'home.empty': '尚未開啟任何檔案',
