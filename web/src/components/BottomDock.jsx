@@ -435,6 +435,7 @@ function BottomDock({
   const uploadRef = useRef(null);
   const overlayOwnerRef = useRef(null);
   const filePickerPendingRef = useRef(false);
+  const filePickerSessionRef = useRef(null);
 
   const leaveTerminalForControl = () => {
     if (desktopUnified) {
@@ -460,14 +461,15 @@ function BottomDock({
       });
     }
   };
-  const restoreFilePickerOwner = () => {
-    if (!filePickerPendingRef.current) return;
+  const restoreFilePickerOwner = (finalize = false) => {
+    const session = filePickerSessionRef.current;
+    if (!session) return;
     filePickerPendingRef.current = false;
-    const owner = overlayOwnerRef.current;
-    overlayOwnerRef.current = null;
-    if (!desktopUnified || !owner) return;
+    if (finalize) filePickerSessionRef.current = null;
+    if (!desktopUnified || !session.owner || session.focusRestored) return;
+    session.focusRestored = true;
     queueMicrotask(() => {
-      if (owner === 'terminal') onReturnToTerminal?.();
+      if (session.owner === 'terminal') onReturnToTerminal?.();
       else ref.current?.focus({ preventScroll: true });
     });
   };
@@ -476,7 +478,7 @@ function BottomDock({
     const picker = uploadRef.current;
     let sawWindowBlur = false;
     let fallbackTimer = null;
-    const onCancel = () => restoreFilePickerOwner();
+    const onCancel = () => restoreFilePickerOwner(true);
     const onWindowBlur = () => {
       if (filePickerPendingRef.current) sawWindowBlur = true;
     };
@@ -986,6 +988,10 @@ function BottomDock({
                     onClick={() => {
                       leaveTerminalForControl();
                       filePickerPendingRef.current = desktopUnified;
+                      filePickerSessionRef.current = desktopUnified
+                        ? { owner: overlayOwnerRef.current, focusRestored: false, phase: 'open' }
+                        : null;
+                      overlayOwnerRef.current = null;
                       uploadRef.current?.click();
                     }}>
                     <UploadIcon /><span>{t('dock.attach')}</span></button>
@@ -1008,11 +1014,25 @@ function BottomDock({
               {/* 离屏(非 display:none)以便程序化 .click() 在 iOS Safari 可靠唤起原生选择器,见 .browse-file-input。 */}
               <input ref={uploadRef} className="browse-file-input" type="file" multiple
                 accept={UPLOAD_ACCEPT}
-                onChange={(e) => {
+                onChange={async (e) => {
+                  const session = filePickerSessionRef.current;
+                  const files = e.target.files;
+                  e.target.value = '';
                   filePickerPendingRef.current = false;
                   overlayOwnerRef.current = null;
-                  uploadFiles(e.target.files);
-                  e.target.value = '';
+                  if (session?.phase === 'open') {
+                    session.phase = 'uploading';
+                    // A window-focus fallback may have restored the owner before the browser emitted
+                    // `change`. Re-enter the no-input upload state synchronously; the session retains its
+                    // original owner so completion can restore it without relying on event timing.
+                    if (session.focusRestored) {
+                      onLeaveTerminal?.();
+                      if (document.activeElement === ref.current) ref.current.blur();
+                      session.focusRestored = false;
+                    }
+                  }
+                  await uploadFiles(files);
+                  if (filePickerSessionRef.current === session) restoreFilePickerOwner(true);
                 }} />
               {/* flex 行:textarea(占满)· 麦克风 · 发送,全是 flex 兄弟、不重叠文字框,所以选词/移光标碰不到
                   按键。录音时整条变绿 + 呼吸。＋上传与▤常用已上移到快捷栏。 */}

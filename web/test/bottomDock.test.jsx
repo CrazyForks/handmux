@@ -2,9 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 
+const api = vi.hoisted(() => ({
+  uploadFile: vi.fn(async () => ({ path: '/uploads/picked.txt' })),
+}));
 vi.mock('../src/api.js', () => ({
   sendText: vi.fn(async () => ({ ok: true })),
+  uploadFile: api.uploadFile,
   UnauthorizedError: class UnauthorizedError extends Error {},
+  UploadAbort: class UploadAbort extends Error {},
 }));
 
 // 可驱动的语音 mock:测试改 voice.state/voice.partial 再重渲染来模拟"录音中/实时增量";
@@ -42,6 +47,19 @@ const render = (props) => act(() => root.render(<BottomDock micAvailable {...pro
 const fire = (node, type) => act(() => node.dispatchEvent(new MouseEvent(type, { bubbles: true })));
 // Quick-command chips are HoldButtons (pointer events, no onClick): a clean tap = pointerdown + pointerup.
 const tap = (node) => { fire(node, 'pointerdown'); fire(node, 'pointerup'); };
+const deferred = () => {
+  let resolve;
+  let reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+};
+const chooseFile = (picker, name = 'picked.txt') => {
+  Object.defineProperty(picker, 'files', {
+    configurable: true,
+    value: [new File(['picked'], name, { type: 'text/plain' })],
+  });
+  act(() => picker.dispatchEvent(new Event('change', { bubbles: true })));
+};
 
 // React tracks the controlled value via the native setter; set it then fire `input` so onChange runs.
 const typeInto = (node, text) => act(() => {
@@ -684,10 +702,86 @@ describe('BottomDock', () => {
 
     fire(window, 'blur', Event);
     fire(window, 'focus', Event);
+    fire(window, 'focus', Event);
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
+    expect(onReturnToTerminal).toHaveBeenCalledOnce();
+    const picker = container.querySelector('.browse-file-input');
+    fire(picker, 'cancel', Event);
+    fire(picker, 'cancel', Event);
+    await act(async () => Promise.resolve());
+    expect(onReturnToTerminal).toHaveBeenCalledOnce();
+  });
+
+  it.each(['terminal', 'composer'])(
+    're-enters the upload overlay when %s fallback restoration runs before change, then restores after upload',
+    async (owner) => {
+      vi.useFakeTimers();
+      const upload = deferred();
+      api.uploadFile.mockReturnValueOnce(upload.promise);
+      const onLeaveTerminal = vi.fn();
+      const onReturnToTerminal = vi.fn();
+      render({
+        pane: '%1',
+        cwd: '/work',
+        desktopUnified: true,
+        terminalFocused: owner === 'terminal',
+        onLeaveTerminal,
+        onReturnToTerminal,
+      });
+      const composer = container.querySelector('.input-text');
+      if (owner === 'composer') act(() => composer.focus());
+      fire(container.querySelector(`[aria-label="${t('dock.attach')}"]`), 'click');
+      const picker = container.querySelector('.browse-file-input');
+
+      fire(window, 'blur', Event);
+      fire(window, 'focus', Event);
+      act(() => vi.runOnlyPendingTimers());
+      await act(async () => Promise.resolve());
+      expect(onReturnToTerminal).toHaveBeenCalledTimes(owner === 'terminal' ? 1 : 0);
+      expect(document.activeElement === composer).toBe(owner === 'composer');
+
+      chooseFile(picker);
+      await vi.waitFor(() => expect(api.uploadFile).toHaveBeenCalledOnce());
+      expect(onLeaveTerminal).toHaveBeenCalledTimes(2);
+      expect(document.activeElement).not.toBe(composer);
+      expect(onReturnToTerminal).toHaveBeenCalledTimes(owner === 'terminal' ? 1 : 0);
+
+      await act(async () => {
+        upload.resolve({ path: '/uploads/picked.txt' });
+        await upload.promise;
+        await Promise.resolve();
+      });
+      expect(onReturnToTerminal).toHaveBeenCalledTimes(owner === 'terminal' ? 2 : 0);
+      expect(document.activeElement === composer).toBe(owner === 'composer');
+      vi.useRealTimers();
+    },
+  );
+
+  it('normal file change restores the terminal owner once only after upload finishes', async () => {
+    const upload = deferred();
+    api.uploadFile.mockReturnValueOnce(upload.promise);
+    const onReturnToTerminal = vi.fn();
+    render({
+      pane: '%1',
+      cwd: '/work',
+      desktopUnified: true,
+      terminalFocused: true,
+      onLeaveTerminal: vi.fn(),
+      onReturnToTerminal,
+    });
+    fire(container.querySelector(`[aria-label="${t('dock.attach')}"]`), 'click');
+    chooseFile(container.querySelector('.browse-file-input'));
+    await vi.waitFor(() => expect(api.uploadFile).toHaveBeenCalledOnce());
+    expect(onReturnToTerminal).not.toHaveBeenCalled();
+
+    await act(async () => {
+      upload.resolve({ path: '/uploads/picked.txt' });
+      await upload.promise;
+      await Promise.resolve();
+    });
     expect(onReturnToTerminal).toHaveBeenCalledOnce();
   });
 
