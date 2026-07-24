@@ -578,6 +578,12 @@ describe('BrowserSheet', () => {
     expect(card.textContent).not.toContain('清理全部代理 Cookie');
     expect(card.textContent).not.toContain('代理登录持久化');
     expect(card.textContent).not.toContain('关闭内置浏览器');
+    const cookieRow = card.querySelector('.browser-site-cookie-row');
+    expect(cookieRow).not.toBeNull();
+    expect(cookieRow.querySelector('strong')).toBeNull();
+    expect([...cookieRow.querySelectorAll('button')].map((node) => node.textContent)).toEqual([
+      '清理本站代理 Cookie', '?',
+    ]);
 
     const modeButtons = [...card.querySelectorAll('.browser-mode-segment button')];
     expect(modeButtons.map((node) => node.textContent)).toEqual(['手机直连', '经电脑代理']);

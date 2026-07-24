@@ -1262,6 +1262,8 @@ button.cmd-text { background: none; border: none; text-align: left; }
   width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0;
   border-radius: 50%; background: transparent; color: #aab4bf; font-size: 14px; font-weight: 600;
 }
+.browser-site-cookie-row { min-height: 44px; display: flex; align-items: center; gap: 8px; }
+.browser-site-cookie-row .browser-options-danger { width: auto; flex: 1; }
 .browser-profile-options .browser-options-row { padding-inline: 0; }
 .browser-retention { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
 .browser-retention button {
