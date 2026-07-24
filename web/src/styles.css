@@ -1262,10 +1262,8 @@ button.cmd-text { background: none; border: none; text-align: left; }
 }
 .browser-site-cookie-row { min-height: 44px; display: flex; align-items: center; gap: 8px; }
 .browser-site-cookie-row .browser-options-danger { width: auto; flex: 1; }
-.browser-profile-retention-row { min-height: 44px; display: flex; align-items: center; gap: 8px; }
-.browser-profile-retention-trigger { flex: 1; min-width: 0; }
-.browser-profile-retention-options { grid-template-columns: 1fr; }
-.browser-profile-retention-options .browser-time-option { text-align: left; }
+.browser-profile-persist-row { min-height: 44px; display: flex; align-items: center; gap: 8px; }
+.browser-profile-persist { flex: 1; min-width: 0; padding: 0; }
 .browser-options-danger {
   width: 100%; min-height: 44px; padding: 0; border: 0; background: transparent; color: #ff6961; text-align: left; font-size: 14px;
 }

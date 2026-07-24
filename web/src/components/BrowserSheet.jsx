@@ -12,7 +12,7 @@ import {
   StopIcon,
   XIcon,
 } from './icons.jsx';
-import { BROWSER_CLOSE_AFTER_OPTIONS, BROWSER_PROFILE_RETENTION_OPTIONS } from '../browserState.js';
+import { BROWSER_CLOSE_AFTER_OPTIONS } from '../browserState.js';
 import { t } from '../i18n';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap.js';
 
@@ -27,7 +27,7 @@ function tabLabel(tab) {
 export default function BrowserSheet({ browser }) {
   const {
     open, accessEnabled, consentOpen, tabs, activeId, historyActive, closeAfter, history, error,
-    persistProxyLogin, proxyLoginRetentionDays, proxyAvailable,
+    persistProxyLogin, proxyAvailable,
     openUrl, switchTab, closeTab, setOpen, setCloseAfter,
     navigateTab, ensureBinding, recoverBinding, markBindingReady, updateTabMeta,
     clearHistory, setHistoryMode, enableAccess, cancelAccess,
@@ -41,7 +41,6 @@ export default function BrowserSheet({ browser }) {
   const [address, setAddress] = useState(active?.originalUrl || '');
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [timeOpen, setTimeOpen] = useState(false);
-  const [profileRetentionOpen, setProfileRetentionOpen] = useState(false);
   const [device, setDevice] = useState('mobile');
   const [bodySize, setBodySize] = useState({ width: 0, height: 0 });
   const [loadedTabs, setLoadedTabs] = useState(() => new Set());
@@ -77,7 +76,6 @@ export default function BrowserSheet({ browser }) {
   useEffect(() => {
     setOptionsOpen(false);
     setTimeOpen(false);
-    setProfileRetentionOpen(false);
     if (!historyActive) setHistoryModeOpen(null);
   }, [activeId, historyActive, open]);
 
@@ -283,9 +281,6 @@ export default function BrowserSheet({ browser }) {
     setClearConfirmation(null);
     if (pending?.type === 'site') clearProxyLogin(pending.origin);
     if (pending?.type === 'all') clearProxyLogin(null);
-    if (pending?.type === 'disable-persist') {
-      setProxyLoginPolicy({ persist: false, retentionDays: proxyLoginRetentionDays });
-    }
   };
 
   const removeHistory = (entry) => {
@@ -303,21 +298,6 @@ export default function BrowserSheet({ browser }) {
     setCloseAfter(value);
     setTimeOpen(false);
   };
-  const pickProfileRetention = (value) => {
-    setProfileRetentionOpen(false);
-    if (value === 'session') {
-      if (!persistProxyLogin) return;
-      clearTriggerRef.current = document.activeElement;
-      setClearConfirmation({ type: 'disable-persist' });
-      return;
-    }
-    setProxyLoginPolicy({ persist: true, retentionDays: value });
-  };
-  const profileRetentionLabel = !persistProxyLogin
-    ? t('browser.retentionNotSaved')
-    : t(proxyLoginRetentionDays === null
-      ? 'browser.retentionNever'
-      : `browser.retention${proxyLoginRetentionDays}`);
   const desktopScale = device === 'desktop' && bodySize.width > 0 ? bodySize.width / 1280 : 1;
   const scalerStyle = device === 'desktop' && bodySize.height > 0
     ? { width: `${1280 * desktopScale}px`, height: `${bodySize.height}px` }
@@ -451,37 +431,25 @@ export default function BrowserSheet({ browser }) {
 
               {proxyAvailable && (historyActive || !active) && (
                 <div className="browser-options-section browser-profile-options">
-                  <div className="browser-profile-retention-row">
-                    <button className="browser-close-trigger browser-profile-retention-trigger"
-                      aria-expanded={profileRetentionOpen}
-                      onClick={() => setProfileRetentionOpen((value) => !value)}>
-                      <span>{t('settings.browserRetention')}</span>
-                      <span>{profileRetentionLabel} ▾</span>
-                    </button>
+                  <div className="browser-profile-persist-row">
+                    <label className="browser-options-row browser-profile-persist">
+                      <span>{t('settings.browserPersistLogin')}</span>
+                      <span className="cmd-switch">
+                        <input type="checkbox" checked={!!persistProxyLogin}
+                          onChange={(event) => setProxyLoginPolicy({
+                            persist: event.target.checked,
+                            retentionDays: null,
+                          })} />
+                        <span className="cmd-switch-track" aria-hidden="true" />
+                        <span className="cmd-switch-knob" aria-hidden="true" />
+                      </span>
+                    </label>
                     <button className="browser-options-help" aria-label={t('browser.proxyLoginHelpLabel')}
                       onClick={() => {
                         clearTriggerRef.current = document.activeElement;
                         setClearConfirmation({ type: 'help-profile' });
                       }}>?</button>
                   </div>
-                  {profileRetentionOpen && (
-                    <div className="browser-time-options browser-profile-retention-options"
-                      role="group" aria-label={t('settings.browserRetention')}>
-                      {['session', ...BROWSER_PROFILE_RETENTION_OPTIONS].map((value) => (
-                        <button key={value ?? 'never'} className="browser-time-option"
-                          aria-pressed={value === 'session'
-                            ? !persistProxyLogin
-                            : persistProxyLogin && proxyLoginRetentionDays === value}
-                          onClick={() => pickProfileRetention(value)}>
-                          {t(value === 'session'
-                            ? 'browser.retentionNotSaved'
-                            : value === null
-                              ? 'browser.retentionNever'
-                              : `browser.retention${value}`)}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                   <button className="browser-options-danger" onClick={() => {
                     clearTriggerRef.current = document.activeElement;
                     setClearConfirmation({ type: 'all' });
@@ -620,7 +588,7 @@ export default function BrowserSheet({ browser }) {
               ? 'browser.clearSiteLogin'
               : clearConfirmation.type === 'all'
                 ? 'browser.clearAllLogin'
-                : 'settings.browserPersistLogin')}>
+                : 'browser.proxyLogin')}>
             {clearConfirmation.type === 'help-about' ? (
               <>
                 <h2>{t('browser.about')}</h2>
@@ -640,7 +608,7 @@ export default function BrowserSheet({ browser }) {
                     ? 'browser.clearSiteLoginConfirm'
                     : clearConfirmation.type === 'all'
                       ? 'browser.clearAllLoginConfirm'
-                      : 'settings.browserDisablePersistConfirm')}</p>
+                      : 'browser.proxyLoginHelp')}</p>
             )}
             <div>
               {clearConfirmation.type.startsWith('help-') ? (

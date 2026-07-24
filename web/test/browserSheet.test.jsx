@@ -629,7 +629,7 @@ describe('BrowserSheet', () => {
     click(document.querySelector('button[aria-label="浏览器菜单"]'));
     const card = document.querySelector('.browser-options-card');
 
-    expect(card.textContent).toContain('代理登录');
+    expect(card.textContent).toContain('在电脑上持久化保存代理 Cookie');
     expect(card.textContent).toContain('清理全部代理 Cookie');
     expect(card.textContent).toContain('关于内置浏览器');
     expect(card.textContent).not.toContain('清理本站代理 Cookie');
@@ -643,25 +643,18 @@ describe('BrowserSheet', () => {
     expect([...about.querySelectorAll('button')].map((node) => node.textContent)).toEqual(['好的']);
     click(about.querySelector('button'));
 
-    expect(card.querySelector('.browser-profile-persist')).toBeNull();
+    const persistence = card.querySelector('.browser-profile-persist');
+    expect(persistence).not.toBeNull();
+    expect(persistence.textContent).toContain('在电脑上持久化保存代理 Cookie');
     expect(card.querySelector('.browser-retention')).toBeNull();
-    const retentionTrigger = card.querySelector('.browser-profile-retention-trigger');
-    expect(retentionTrigger.textContent).toBe('代理登录保留不保存 ▾');
-    click(retentionTrigger);
-    const retention = [...card.querySelectorAll('.browser-profile-retention-options button')];
-    expect(retention.map((node) => node.textContent)).toEqual([
-      '不保存', '1 天', '7 天', '30 天', '长期保存',
-    ]);
-    click(retention[2]);
-    expect(model.setProxyLoginPolicy).toHaveBeenCalledWith({ persist: true, retentionDays: 7 });
-    click(retentionTrigger);
-    click([...card.querySelectorAll('.browser-profile-retention-options button')]
-      .find((node) => node.textContent === '长期保存'));
-    expect(model.setProxyLoginPolicy).toHaveBeenLastCalledWith({ persist: true, retentionDays: null });
+    expect(card.querySelector('.browser-profile-retention-trigger')).toBeNull();
+    click(persistence.querySelector('input'));
+    expect(model.setProxyLoginPolicy).toHaveBeenCalledWith({ persist: true, retentionDays: null });
 
     click(card.querySelector('.browser-options-help'));
-    expect(document.querySelector('.browser-profile-confirm').textContent).toContain('当前设备');
-    expect(document.querySelector('.browser-profile-confirm').textContent).toContain('代理 Cookie');
+    expect(document.querySelector('.browser-profile-confirm p').textContent).toBe(
+      '是否将代理 Cookie 加密保存在运行 Handmux 的电脑上，以便重启后保持登录状态。',
+    );
     click(document.querySelector('.browser-profile-confirm button'));
 
     click([...card.querySelectorAll('button')].find((node) => node.textContent === '清理全部代理 Cookie'));
@@ -671,26 +664,19 @@ describe('BrowserSheet', () => {
     expect(model.clearProxyLogin).toHaveBeenCalledWith(null);
   });
 
-  it('confirms before changing a saved proxy login policy to not saved', async () => {
+  it('stops persistent proxy Cookie storage immediately without confirmation', async () => {
     const model = browser({
       historyActive: true,
       activeId: null,
       persistProxyLogin: true,
-      proxyLoginRetentionDays: 7,
+      proxyLoginRetentionDays: null,
     });
     await render(model);
     click(document.querySelector('button[aria-label="浏览器菜单"]'));
-    const trigger = document.querySelector('.browser-profile-retention-trigger');
-    expect(trigger.textContent).toBe('代理登录保留7 天 ▾');
-    click(trigger);
-    click([...document.querySelectorAll('.browser-profile-retention-options button')]
-      .find((node) => node.textContent === '不保存'));
+    click(document.querySelector('.browser-profile-persist input'));
 
-    expect(model.setProxyLoginPolicy).not.toHaveBeenCalled();
-    expect(document.querySelector('.browser-profile-confirm').textContent).toContain('停止保存');
-    click([...document.querySelectorAll('.browser-profile-confirm button')]
-      .find((node) => node.textContent === '确认'));
-    expect(model.setProxyLoginPolicy).toHaveBeenCalledWith({ persist: false, retentionDays: 7 });
+    expect(model.setProxyLoginPolicy).toHaveBeenCalledWith({ persist: false, retentionDays: null });
+    expect(document.querySelector('.browser-profile-confirm')).toBeNull();
   });
 
   it('lets a new page choose its connection mode before opening the address', async () => {
