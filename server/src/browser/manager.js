@@ -7,6 +7,10 @@ import { createBrowserProfilePersistence } from './profilePersistence.js';
 import { claimPublicOrigin } from './originLabel.js';
 import { browserLabelForOrigin } from './originLabel.js';
 import { createBrowserTargetPolicy } from './targetPolicy.js';
+import {
+  HAMMERHEAD_REBIND_HEADER,
+  installHammerheadRebindLocationCompat,
+} from './hammerheadRedirectCompat.js';
 
 const defaultHammerhead = importedHammerhead.default || importedHammerhead;
 
@@ -162,6 +166,7 @@ export async function createBrowserPreviewManager({
   clearTimer = clearTimeout,
   leaseTtlMs = 2 * 60 * 60 * 1000,
 } = {}) {
+  installHammerheadRebindLocationCompat();
   const ProxyClass = hammerhead.Proxy;
   const SessionClass = browserSessionClass(hammerhead);
   const profilePersistence = suppliedProfilePersistence || createBrowserProfilePersistence({
@@ -403,7 +408,10 @@ export async function createBrowserPreviewManager({
           preserveMethod: true,
           redirectStatus: 307,
         });
-        await event.setMock(new hammerhead.ResponseMock('', 307, { location: bootstrapUrl }));
+        await event.setMock(new hammerhead.ResponseMock('', 307, {
+          location: bootstrapUrl,
+          [HAMMERHEAD_REBIND_HEADER]: '1',
+        }));
         leases.set(current.key, next);
         touch(next);
         if (current.timer != null) clearTimer(current.timer);

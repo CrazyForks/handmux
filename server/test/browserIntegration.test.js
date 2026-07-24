@@ -16,6 +16,32 @@ function close(server) {
   });
 }
 
+function requestThrough(port, rawUrl, deviceId) {
+  const url = new URL(rawUrl);
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      host: '127.0.0.1',
+      port,
+      path: `${url.pathname}${url.search}`,
+      headers: {
+        host: url.host,
+        accept: 'text/html',
+        cookie: `tw_browser_device=${deviceId}`,
+      },
+    }, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => resolve({
+        status: res.statusCode,
+        headers: res.headers,
+        body: Buffer.concat(chunks).toString('utf8'),
+      }));
+    });
+    req.once('error', reject);
+    req.end();
+  });
+}
+
 describe('built-in browser vertical slice', () => {
   it('shares SSO cookies across app contexts for one device while isolating hosts and devices', async () => {
     const sessions = [];
@@ -181,6 +207,64 @@ describe('built-in browser vertical slice', () => {
     } finally {
       await manager.close();
       await Promise.all([close(outer), close(target)]);
+    }
+  });
+
+  it('rehomes a real cross-origin 302 through a new wildcard bootstrap', async () => {
+    const destination = http.createServer((_req, res) => {
+      res.setHeader('content-type', 'text/html; charset=utf-8');
+      res.end('<!doctype html><title>Destination</title><main>arrived</main>');
+    });
+    const destinationPort = await listen(destination);
+    const source = http.createServer((_req, res) => {
+      res.statusCode = 302;
+      res.setHeader('location', `http://b.test:${destinationPort}/final`);
+      res.end();
+    });
+    const sourcePort = await listen(source);
+    const publicApp = express();
+    const outer = http.createServer(publicApp);
+    const outerPort = await listen(outer);
+    const browserBootstrap = (await import('../src/browser/bootstrap.js')).createBrowserBootstrapStore();
+    const manager = await createBrowserPreviewManager({
+      hammerhead,
+      previewDomain: `http://preview.test:${outerPort}`,
+      browserBootstrap,
+      targetPolicyFactory: ({ topLevelUrl }) => ({
+        check: async () => ({ allowed: true, address: '127.0.0.1', family: 4 }),
+        authorizeTopLevel: () => topLevelUrl,
+      }),
+    });
+    const publicProxy = createBrowserPublicProxy({ browser: manager, browserBootstrap });
+    publicApp.use(publicProxy.handler);
+    const deviceId = 'device_abcdefghijklmnopqrstuvwxyz123456';
+
+    try {
+      const initialOrigin = `http://b-source.preview.test:${outerPort}`;
+      const lease = await manager.putLease({
+        tabId: 'redirect',
+        deviceId,
+        url: `http://a.test:${sourcePort}/start`,
+        origin: initialOrigin,
+      });
+      let response = await requestThrough(outerPort, lease.url, deviceId);
+      expect(response.status).toBe(302);
+
+      response = await requestThrough(outerPort, new URL(response.headers.location, lease.url), deviceId);
+      expect(response.status).toBe(307);
+      const bootstrap = new URL(response.headers.location);
+      expect(bootstrap.hostname).not.toBe(new URL(lease.url).hostname);
+
+      response = await requestThrough(outerPort, bootstrap, deviceId);
+      expect(response.status).toBe(307);
+      response = await requestThrough(outerPort, new URL(response.headers.location, bootstrap), deviceId);
+      expect(response.status).toBe(200);
+      expect(response.body).toContain('arrived');
+      expect(manager.getLease('redirect', deviceId).originalUrl)
+        .toBe(`http://b.test:${destinationPort}/final`);
+    } finally {
+      await manager.close();
+      await Promise.all([close(outer), close(source), close(destination)]);
     }
   });
 });

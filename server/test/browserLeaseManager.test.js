@@ -226,7 +226,9 @@ describe('browser proxy leases', () => {
     }));
     expect(setMock).toHaveBeenCalledWith(expect.objectContaining({
       statusCode: 307,
-      headers: { location: 'https://b-next.preview.example/_browser-bootstrap/ticket' },
+      headers: expect.objectContaining({
+        location: 'https://b-next.preview.example/_browser-bootstrap/ticket',
+      }),
     }));
     expect(fake.proxies[0].closeSession).toHaveBeenCalledWith(oldSession);
   });
