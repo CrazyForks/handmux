@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import { Terminal as XTerm } from '@xterm/xterm';
 import { WebglAddon } from '@xterm/addon-webgl';
 import '@xterm/xterm/css/xterm.css';
-import { getHistory, scrollPane, sendKeys, UnauthorizedError } from '../api.js';
+import { getHistory, scrollPane, sendInput, sendKeys, UnauthorizedError } from '../api.js';
 import { drainWheel, notchDir } from '../wheelScroll.js';
 import { shouldKeepKeyboard } from '../dockKeyboard.js';
 import { prepareSeed, cursorSeq } from '../terminalSeed.js';
@@ -19,6 +19,7 @@ import { fitRows, bottomPadRows, scrollDecision, cursorBufferLine, followTarget 
 import { ensureBundledFonts } from '../bundledFonts.js';
 import { trimCopy, expandToLines, expandToParagraph, cellToPx, selectionCounts } from '../terminalSelection.js';
 import { useFlash } from '../hooks/useFlash.js';
+import { createTerminalInputQueue } from '../terminalInputQueue.js';
 
 const CALLOUT_W = 200; // estimated callout width (px) used for right-edge clamp (3 buttons, nowrap)ing; real-device-tuned
 const LIVE_MARGIN = 20; // capture this many rows beyond the viewport so a small scroll-up has slack
@@ -50,6 +51,21 @@ function primeCursorRenderer(term, hostEl) {
   if (prevFocus && prevFocus !== document.body && typeof prevFocus.focus === 'function') prevFocus.focus();
 }
 
+function prepareTerminalInput(term, hostEl, desktop) {
+  const helper = hostEl?.querySelector('.xterm-helper-textarea');
+  if (desktop) {
+    if (helper) {
+      helper.readOnly = false;
+      helper.tabIndex = 0;
+      helper.removeAttribute('inputmode');
+      helper.removeAttribute('aria-hidden');
+    }
+    term.focus();
+    return;
+  }
+  primeCursorRenderer(term, hostEl);
+}
+
 // Pane view backed by capture-pane snapshots (tmux's already-rendered grid — no cursor
 // seam). While at the bottom we cheaply repaint a short tail every second. Scrolling up
 // pauses the refresh; reaching the top pulls a deeper history slice and keeps the content
@@ -61,7 +77,15 @@ function primeCursorRenderer(term, hostEl) {
 // a smaller font shows more rows (filled from scrollback), a larger font fewer. In AUTO mode
 // (no manual pinch) the font also shrinks so the whole pane fits — full-screen TUIs stay whole.
 // All of this lives in fit() below.
-const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onDocLinkTap, onTap }, ref) {
+const Terminal = forwardRef(function Terminal({
+  pane,
+  inset = 0,
+  desktop = false,
+  onAuthFail,
+  onDocLinkTap,
+  onTap,
+  onInputFocusChange,
+}, ref) {
   const elRef = useRef(null);
   const termRef = useRef(null);
   const insetRef = useRef(0); // keyboard overlap (px) — fit() subtracts it so the grid == visible height
@@ -182,6 +206,8 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       fitRef.current?.();
     },
     wake: () => wakeRef.current?.(),
+    focusInput: () => termRef.current?.focus(),
+    blurInput: () => termRef.current?.blur(),
     // Settings' doc-path-highlight switch: flip the flag and re-scan now (default off, so no wash until on).
     setDocHighlight: (on) => { docHighlightRef.current = !!on; refreshDecosRef.current?.(); },
   }), []);
@@ -204,7 +230,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
 
   useEffect(() => {
     const term = new XTerm({
-      disableStdin: true,
+      disableStdin: !desktop,
       // registerDecoration() — the doc-path highlight below — is a PROPOSED xterm API; without this it
       // throws "You must set the allowProposedApi option", which refreshDocDecorations' catch swallowed,
       // so the tappable paths never got their blue underline (only the link provider, which needs no
@@ -248,10 +274,29 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       },
     });
     term.open(elRef.current);
+    elRef.current.classList.toggle('desktop-input', desktop);
     termRef.current = term;
-    // Neuter-then-prime, atomically (see primeCursorRenderer): makes the read-only cursor render without a
-    // tap, while guaranteeing the prime's focus can never summon the mobile keyboard.
-    primeCursorRenderer(term, elRef.current);
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.metaKey && ['w', 't', 'l', 'r'].includes(event.key.toLowerCase())) return false;
+      return true;
+    });
+    const inputQueue = createTerminalInputQueue({
+      send: sendInput,
+      onDelivered: (targetPane) => {
+        if (targetPane === pane) wakeRef.current?.();
+      },
+      onError: (error, targetPane) => {
+        if (targetPane !== pane) return;
+        if (error instanceof UnauthorizedError) onAuthFail?.();
+        else setConnected(false);
+      },
+    });
+    const dataSub = desktop ? term.onData((data) => inputQueue.enqueue(pane, data)) : null;
+    const focusSub = desktop ? term.onFocus(() => onInputFocusChange?.(true)) : null;
+    const blurSub = desktop ? term.onBlur(() => onInputFocusChange?.(false)) : null;
+    // Subscribe first so desktop's mount focus is observable. Mobile has no focus subscriptions and stays
+    // on the atomic neuter-then-prime path, preserving its focus/blur cursor-prime behavior exactly.
+    prepareTerminalInput(term, elRef.current, desktop);
     // Make doc paths TAPPABLE. xterm decorations (the underline below) are visual-only — they sit
     // under the event-capturing .xterm-viewport and never receive taps — so clicks go through the
     // link provider instead, which hooks xterm's own hit-testing and fires through the viewport.
@@ -1335,6 +1380,10 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       wrap.removeEventListener('pointerup', onHandleUp, { capture: true });
       wrap.removeEventListener('pointercancel', onHandleUp, { capture: true });
       vp?.removeEventListener('scroll', onVpScroll);
+      dataSub?.dispose();
+      focusSub?.dispose();
+      blurSub?.dispose();
+      inputQueue.dispose();
       sub.dispose();
       linkProvider.dispose();
       for (const { deco, marker } of decosRef.current) { deco.dispose(); marker.dispose(); }
@@ -1345,7 +1394,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       term.dispose();
       termRef.current = null;
     };
-  }, [pane]);
+  }, [pane, desktop]);
 
   const resume = () => {
     stopFlingRef.current?.();
