@@ -434,6 +434,7 @@ function BottomDock({
   const cmdRef = useRef(null);   // command-mode single-line capture (streams to the pane)
   const uploadRef = useRef(null);
   const overlayOwnerRef = useRef(null);
+  const filePickerPendingRef = useRef(false);
 
   const leaveTerminalForControl = () => {
     if (desktopUnified) {
@@ -459,6 +460,41 @@ function BottomDock({
       });
     }
   };
+  const restoreFilePickerOwner = () => {
+    if (!filePickerPendingRef.current) return;
+    filePickerPendingRef.current = false;
+    const owner = overlayOwnerRef.current;
+    overlayOwnerRef.current = null;
+    if (!desktopUnified || !owner) return;
+    queueMicrotask(() => {
+      if (owner === 'terminal') onReturnToTerminal?.();
+      else ref.current?.focus({ preventScroll: true });
+    });
+  };
+  useEffect(() => {
+    if (!desktopUnified) return undefined;
+    const picker = uploadRef.current;
+    let sawWindowBlur = false;
+    let fallbackTimer = null;
+    const onCancel = () => restoreFilePickerOwner();
+    const onWindowBlur = () => {
+      if (filePickerPendingRef.current) sawWindowBlur = true;
+    };
+    const onWindowFocus = () => {
+      if (!filePickerPendingRef.current || !sawWindowBlur) return;
+      clearTimeout(fallbackTimer);
+      fallbackTimer = setTimeout(restoreFilePickerOwner, 0);
+    };
+    picker?.addEventListener('cancel', onCancel);
+    window.addEventListener('blur', onWindowBlur);
+    window.addEventListener('focus', onWindowFocus);
+    return () => {
+      clearTimeout(fallbackTimer);
+      picker?.removeEventListener('cancel', onCancel);
+      window.removeEventListener('blur', onWindowBlur);
+      window.removeEventListener('focus', onWindowFocus);
+    };
+  }, [desktopUnified, onReturnToTerminal]);
   // Hardware Back closes the history panel and follows the same desktop focus restoration as its close
   // button; mobile still takes the identical setPanelOpen(false) path inside closeOverlay.
   useBackButton(panelOpen, () => closeOverlay(setPanelOpen));
@@ -949,6 +985,7 @@ function BottomDock({
                     disabled={!!upload && !upload.error}
                     onClick={() => {
                       leaveTerminalForControl();
+                      filePickerPendingRef.current = desktopUnified;
                       uploadRef.current?.click();
                     }}>
                     <UploadIcon /><span>{t('dock.attach')}</span></button>
@@ -972,6 +1009,7 @@ function BottomDock({
               <input ref={uploadRef} className="browse-file-input" type="file" multiple
                 accept={UPLOAD_ACCEPT}
                 onChange={(e) => {
+                  filePickerPendingRef.current = false;
                   overlayOwnerRef.current = null;
                   uploadFiles(e.target.files);
                   e.target.value = '';

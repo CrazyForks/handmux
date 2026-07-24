@@ -79,6 +79,7 @@ import { windowManageSubtitle, paneManageSubtitle } from './manageLabels.js';
 import { DEFAULT_SERVER_SHORTCUTS } from './shortcutMerge.js';
 import { recoveryPromptMode } from './workspaceRecovery.js';
 import { desktopInputEnvironment } from './desktopInput.js';
+import { useDesktopTerminalInput } from './hooks/useDesktopTerminalInput.js';
 
 const COL_STEP = 10; // columns added/removed per ⊟/⊞ tap
 
@@ -107,6 +108,7 @@ export default function App() {
   const [manageWindow, setManageWindow] = useState(null); // the window long-pressed for its action menu
   const [managePane, setManagePane] = useState(null); // pane id long-pressed in the map
   const [openMapFor, setOpenMapFor] = useState(null); // window id whose split map "管理分屏" asked to open
+  const [paneMapOpen, setPaneMapOpen] = useState(false);
   const [fileManagerOpen, setFileManagerOpen] = useState(false); // file-viewer bottom-sheet visibility
   const [gitOpen, setGitOpen] = useState(false);
   const [pendingShare, setPendingShare] = useState(null); // a File shared in via Web Share Target, awaiting a destination
@@ -246,6 +248,12 @@ export default function App() {
   const drawerMenuRef = useRef(null);
 
   const onAuthFail = useCallback(() => setNeedToken(true), []);
+  const enqueueDesktopInput = useDesktopTerminalInput({
+    enabled: desktopInput,
+    currentPane: current?.paneId,
+    terminalRef: termRef,
+    onAuthFail,
+  });
   // Shared catch prelude: bounce to the token prompt on an auth failure, and report whether it WAS one so
   // each handler keeps its own non-auth control flow (swallow / return / rethrow). See authGuard.js.
   const handledAuth = useCallback((e) => authHandled(e, onAuthFail), [onAuthFail]);
@@ -306,7 +314,7 @@ export default function App() {
     drawerOpen || settingsOpen || usageOpen || bindOpen || newWinOpen || renameTarget
     || manageWindow || managePane || fileManagerOpen || gitOpen || basePrompt || docLinkPrompt
     || localUrlPrompt || recoveryDialogOpen || takeoverTarget || inboxOpen || ideaOpen
-    || changelogOpen || notifInboxOpen || (previewSheetOpen && shownPreview)
+    || changelogOpen || notifInboxOpen || paneMapOpen || (previewSheetOpen && shownPreview)
   );
   const terminalOverlayWasOpenRef = useRef(false);
   const restoreFocusAfterOverlayRef = useRef(null);
@@ -1799,6 +1807,7 @@ export default function App() {
             paneSheetOpen={!!managePane}
             openMapFor={openMapFor}
             onMapOpened={() => setOpenMapFor(null)}
+            onPaneMapOpenChange={setPaneMapOpen}
             trackWindowId={manageWindow?.id}
             lens={lens}
             chatLensEnabled={chatLensAvailable}
@@ -1815,10 +1824,12 @@ export default function App() {
                 key={current.paneId}
                 pane={current.paneId}
                 desktop={desktopInput}
+                autoFocusInput={!terminalOverlayOpen}
                 inset={inset}
                 onAuthFail={onAuthFail}
                 onDocLinkTap={onDocLinkTap}
                 onInputFocusChange={setTerminalFocused}
+                onInputData={enqueueDesktopInput}
                 onTap={() => dockRef.current?.hideKeyboard()}
               />
             )

@@ -16,6 +16,11 @@ const api = vi.hoisted(() => ({
 const storage = vi.hoisted(() => ({ applyWorkspaceRestoreMapping: vi.fn() }));
 const push = vi.hoisted(() => ({ getNotifications: vi.fn() }));
 const windowBar = vi.hoisted(() => ({ props: null }));
+const terminal = vi.hoisted(() => ({
+  props: null,
+  focusInput: vi.fn(),
+  blurInput: vi.fn(),
+}));
 
 vi.mock('./api.js', async (importOriginal) => ({ ...(await importOriginal()), ...api }));
 vi.mock('./storage.js', async (importOriginal) => ({
@@ -60,6 +65,7 @@ vi.mock('./hooks/useExitConfirm.js', () => ({ useExitConfirm: () => {} }));
 vi.mock('./hooks/useKeyboardInset.js', () => ({ useKeyboardInset: () => 0 }));
 vi.mock('./hooks/usePageScrollLock.js', () => ({ usePageScrollLock: () => {} }));
 vi.mock('./hooks/useLongPress.js', () => ({ useLongPress: () => ({}) }));
+vi.mock('./desktopInput.js', () => ({ desktopInputEnvironment: () => true }));
 
 vi.mock('./components/WindowBar.jsx', () => ({
   default: (props) => { windowBar.props = props; return null; },
@@ -69,8 +75,23 @@ vi.mock('./components/BottomDock.jsx', async () => {
   return { default: forwardRef((_props, _ref) => null) };
 });
 vi.mock('./components/Terminal.jsx', async () => {
-  const { forwardRef } = await import('react');
-  return { default: forwardRef(({ pane }, _ref) => <div data-testid="terminal-pane">{pane}</div>) };
+  const { forwardRef, useImperativeHandle } = await import('react');
+  return {
+    default: forwardRef((props, ref) => {
+      terminal.props = props;
+      useImperativeHandle(ref, () => ({
+        focusInput: () => {
+          terminal.focusInput();
+          props.onInputFocusChange?.(true);
+        },
+        blurInput: () => {
+          terminal.blurInput();
+          props.onInputFocusChange?.(false);
+        },
+      }), [props.onInputFocusChange]);
+      return <div data-testid="terminal-pane">{props.pane}</div>;
+    }),
+  };
 });
 
 import App from './App.jsx';
@@ -138,6 +159,9 @@ beforeEach(() => {
   storage.applyWorkspaceRestoreMapping.mockReset();
   push.getNotifications.mockReset();
   windowBar.props = null;
+  terminal.props = null;
+  terminal.focusInput.mockReset();
+  terminal.blurInput.mockReset();
   localStorage.clear();
   localStorage.setItem('tw_lang', 'zh');
   localStorage.setItem('tw_token', 'good');
@@ -216,6 +240,26 @@ describe('App management dimensions', () => {
 
     expect(windowBar.props.panes.find((pane) => pane.id === '%1')).toMatchObject({ width: 59, height: 30 });
     expect(api.getPanes).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a pane switched under the pane map unfocused and restores the prior terminal owner on close', async () => {
+    await renderManagedSession();
+    act(() => terminal.props.onInputFocusChange(true));
+
+    act(() => windowBar.props.onPaneMapOpenChange(true));
+    await flush();
+    expect(terminal.blurInput).toHaveBeenCalled();
+    expect(terminal.props.autoFocusInput).toBe(false);
+
+    act(() => windowBar.props.onSelectPane('%2'));
+    await flush();
+    expect(terminal.props.pane).toBe('%2');
+    expect(terminal.props.autoFocusInput).toBe(false);
+    expect(terminal.focusInput).not.toHaveBeenCalled();
+
+    act(() => windowBar.props.onPaneMapOpenChange(false));
+    await flush(20);
+    expect(terminal.focusInput).toHaveBeenCalledOnce();
   });
 });
 

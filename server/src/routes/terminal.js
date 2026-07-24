@@ -26,6 +26,9 @@ const validHexInput = (hex) => typeof hex === 'string'
   && hex.length <= RAW_INPUT_MAX_BYTES * 2
   && hex.length % 2 === 0
   && /^[0-9a-f]+$/i.test(hex);
+const isMissingPane = (error) =>
+  /(?:can't find|cannot find|no such|unknown|not found).*\bpane\b|\bpane\b.*(?:can't find|cannot find|no such|unknown|not found)/i
+    .test(error instanceof Error ? error.message : String(error));
 
 export function terminalRoutes({ commands }) {
   const r = express.Router();
@@ -102,6 +105,7 @@ export function terminalRoutes({ commands }) {
       await commands.sendHexInput(pane, hex);
       res.json({ ok: true });
     } catch (error) {
+      if (isMissingPane(error)) return res.status(404).json({ error: 'pane not found' });
       next(error);
     }
   });

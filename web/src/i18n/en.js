@@ -1,6 +1,8 @@
 // English strings (the default + fallback locale). Keys are namespaced by area: common.*, token.*,
 // settings.*, … Keep this file complete; other locales may omit keys and fall back here.
 export default {
+  'terminal.disconnected': 'Connection lost. Reconnecting…',
+  'terminal.paneMissing': 'This pane has closed. Switch to another pane.',
   'common.save': 'Save',
   'common.cancel': 'Cancel',
   'common.confirm': 'Confirm',

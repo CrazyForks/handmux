@@ -1,5 +1,7 @@
 // 日本語 strings. Missing keys fall back to English (see ./index.js translate()).
 export default {
+  'terminal.disconnected': '接続が切れました。再接続しています…',
+  'terminal.paneMissing': 'このペインは閉じられました。別のペインに切り替えてください。',
   'common.save': '保存',
   'common.cancel': 'キャンセル',
   'common.confirm': '確認',

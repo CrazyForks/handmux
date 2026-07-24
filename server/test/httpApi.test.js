@@ -297,6 +297,18 @@ describe('REST API', () => {
     expect(baseCommands.sendHexInput).toHaveBeenCalledWith('%1', '61e4bda0e5a5bd0d');
   });
 
+  it('POST /input returns an actionable 404 token when the target pane disappeared', async () => {
+    const cmds = {
+      ...baseCommands,
+      exitCopyModeIfActive: vi.fn(async () => {
+        throw new Error("can't find pane: %1");
+      }),
+    };
+    await auth(request(appWith(cmds)).post('/api/input'))
+      .send({ pane: '%1', hex: '61' })
+      .expect(404, { error: 'pane not found' });
+  });
+
   it.each([
     [{ pane: 'main', hex: '61' }, 'bad pane id'],
     [{ pane: '%1', hex: '' }, 'bad input bytes'],

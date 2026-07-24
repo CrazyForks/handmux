@@ -646,6 +646,51 @@ describe('BottomDock', () => {
     expect(document.activeElement).toBe(input);
   });
 
+  it.each(['terminal', 'composer', 'none'])(
+    'desktop file-picker cancel restores the original %s focus owner exactly once',
+    async (owner) => {
+      const onReturnToTerminal = vi.fn();
+      render({
+        pane: '%1',
+        desktopUnified: true,
+        terminalFocused: owner === 'terminal',
+        onLeaveTerminal: vi.fn(),
+        onReturnToTerminal,
+      });
+      const composer = container.querySelector('.input-text');
+      if (owner === 'composer') act(() => composer.focus());
+
+      fire(container.querySelector(`[aria-label="${t('dock.attach')}"]`), 'click');
+      const picker = container.querySelector('.browse-file-input');
+      fire(picker, 'cancel', Event);
+      fire(picker, 'cancel', Event);
+      await act(async () => Promise.resolve());
+
+      expect(onReturnToTerminal).toHaveBeenCalledTimes(owner === 'terminal' ? 1 : 0);
+      expect(document.activeElement === composer).toBe(owner === 'composer');
+    },
+  );
+
+  it('uses the window-focus fallback when a system file picker closes without change or cancel', async () => {
+    const onReturnToTerminal = vi.fn();
+    render({
+      pane: '%1',
+      desktopUnified: true,
+      terminalFocused: true,
+      onLeaveTerminal: vi.fn(),
+      onReturnToTerminal,
+    });
+    fire(container.querySelector(`[aria-label="${t('dock.attach')}"]`), 'click');
+
+    fire(window, 'blur', Event);
+    fire(window, 'focus', Event);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(onReturnToTerminal).toHaveBeenCalledOnce();
+  });
+
   describe('input mode (command ⇄ agent)', () => {
     const keydown = (node, key, opts = {}) =>
       act(() => node.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...opts })));

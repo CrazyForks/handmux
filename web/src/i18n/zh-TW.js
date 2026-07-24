@@ -1,5 +1,7 @@
 // 繁體中文 strings. Missing keys fall back to English (see ./index.js translate()).
 export default {
+  'terminal.disconnected': '連線中斷，正在重新連線…',
+  'terminal.paneMissing': '窗格已關閉，請切換到其他窗格。',
   'common.save': '儲存',
   'common.cancel': '取消',
   'common.confirm': '確認',
