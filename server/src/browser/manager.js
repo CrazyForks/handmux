@@ -8,7 +8,7 @@ import { claimPublicOrigin } from './originLabel.js';
 import { browserLabelForOrigin } from './originLabel.js';
 import { createBrowserTargetPolicy } from './targetPolicy.js';
 import {
-  HAMMERHEAD_REBIND_HEADER,
+  hammerheadRebindHeaders,
   installHammerheadRebindLocationCompat,
 } from './hammerheadRedirectCompat.js';
 
@@ -408,10 +408,11 @@ export async function createBrowserPreviewManager({
           preserveMethod: true,
           redirectStatus: 307,
         });
-        await event.setMock(new hammerhead.ResponseMock('', 307, {
-          location: bootstrapUrl,
-          [HAMMERHEAD_REBIND_HEADER]: '1',
-        }));
+        await event.setMock(new hammerhead.ResponseMock(
+          '',
+          307,
+          hammerheadRebindHeaders(bootstrapUrl),
+        ));
         leases.set(current.key, next);
         touch(next);
         if (current.timer != null) clearTimer(current.timer);

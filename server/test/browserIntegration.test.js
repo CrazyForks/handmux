@@ -252,6 +252,7 @@ describe('built-in browser vertical slice', () => {
 
       response = await requestThrough(outerPort, new URL(response.headers.location, lease.url), deviceId);
       expect(response.status).toBe(307);
+      expect(response.headers['x-handmux-browser-rebind']).toBeUndefined();
       const bootstrap = new URL(response.headers.location);
       expect(bootstrap.hostname).not.toBe(new URL(lease.url).hostname);
 
