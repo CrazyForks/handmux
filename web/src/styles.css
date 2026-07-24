@@ -1343,7 +1343,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-consent-actions button { border: 0; border-radius: 10px; padding: 10px 14px; color: #d9dce2; background: #303238; }
 .browser-consent-actions .browser-consent-enable { color: #fff; background: var(--blue); font-weight: 650; }
 .browser-entry-status-dot {
-  position: absolute; right: 4px; bottom: 4px; width: 7px; height: 7px; border-radius: 50%;
+  position: absolute; top: 7px; right: 7px; width: 7px; height: 7px; border-radius: 50%;
   box-shadow: 0 0 0 2px #1b1c1f; pointer-events: none;
 }
 .browser-entry-status-dot.direct { background: var(--blue); }

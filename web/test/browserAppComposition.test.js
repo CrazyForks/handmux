@@ -29,8 +29,9 @@ describe('built-in browser App composition', () => {
     expect(source).not.toMatch(/browser-entry \$\{browserStatus === 'proxy'/);
     expect(source).toContain('browser-entry-status-dot ${browserStatus}');
     const dot = styles.match(/\.browser-entry-status-dot\s*\{([^}]*)\}/)?.[1] || '';
-    expect(dot).toMatch(/right:\s*4px/);
-    expect(dot).toMatch(/bottom:\s*4px/);
+    expect(dot).toMatch(/top:\s*7px/);
+    expect(dot).toMatch(/right:\s*7px/);
+    expect(dot).not.toMatch(/bottom:/);
     expect(styles).toMatch(/\.browser-entry-status-dot\.direct\s*\{[^}]*background:\s*var\(--blue\)/);
     expect(styles).toMatch(/\.browser-entry-status-dot\.proxy\s*\{[^}]*background:\s*#f2a450/);
   });
