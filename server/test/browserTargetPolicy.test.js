@@ -29,17 +29,28 @@ describe('browser target policy', () => {
     });
   });
 
-  it('lets an explicitly opened loopback site navigate to another loopback port', async () => {
+  it('keeps an explicitly opened loopback site on the exact scheme, host, and port', async () => {
     const targetPolicy = policy({
       topLevelUrl: 'http://127.0.0.1:5173/',
       lookup: async (hostname) => [{ address: hostname === 'localhost' ? '127.0.0.1' : hostname, family: 4 }],
     });
 
     await expect(targetPolicy.check('http://127.0.0.1:5173/src/main.js')).resolves.toMatchObject({ allowed: true });
-    await expect(targetPolicy.check('http://127.0.0.1:9222/json')).resolves.toMatchObject({ allowed: true });
+    await expect(targetPolicy.check('http://127.0.0.1:9222/json')).resolves.toEqual({
+      allowed: false,
+      reason: 'loopback-not-authorized',
+    });
+    await expect(targetPolicy.check('http://localhost:5173/')).resolves.toEqual({
+      allowed: false,
+      reason: 'loopback-not-authorized',
+    });
+    await expect(targetPolicy.check('https://127.0.0.1:5173/')).resolves.toEqual({
+      allowed: false,
+      reason: 'loopback-not-authorized',
+    });
   });
 
-  it('keeps loopback navigation inside the explicitly opened loopback context', async () => {
+  it('replaces the exact authorized loopback origin on top-level navigation', async () => {
     const targetPolicy = policy({
       topLevelUrl: 'http://127.0.0.1:5173/',
       lookup: async (hostname) => [{ address: hostname, family: 4 }],
@@ -48,7 +59,10 @@ describe('browser target policy', () => {
     targetPolicy.authorizeTopLevel('http://127.0.0.1:3000/');
 
     await expect(targetPolicy.check('http://127.0.0.1:3000/app.js')).resolves.toMatchObject({ allowed: true });
-    await expect(targetPolicy.check('http://127.0.0.1:5173/app.js')).resolves.toMatchObject({ allowed: true });
+    await expect(targetPolicy.check('http://127.0.0.1:5173/app.js')).resolves.toEqual({
+      allowed: false,
+      reason: 'loopback-not-authorized',
+    });
   });
 
   it.each([
@@ -64,6 +78,42 @@ describe('browser target policy', () => {
 
   it('blocks the Handmux application origin and API', async () => {
     await expect(policy().check('https://handmux.example:30443/api/states')).resolves.toEqual({
+      allowed: false,
+      reason: 'handmux-origin',
+    });
+  });
+
+  it('blocks the explicit Handmux control port through another origin', async () => {
+    const targetPolicy = policy({
+      topLevelUrl: 'http://127.0.0.1:30443/',
+      lookup: async (hostname) => [{ address: hostname === 'localhost' ? '127.0.0.1' : hostname, family: 4 }],
+    });
+
+    await expect(targetPolicy.check('http://127.0.0.1:30443/api/states')).resolves.toEqual({
+      allowed: false,
+      reason: 'handmux-origin',
+    });
+    await expect(targetPolicy.check('https://localhost:30443/api/states')).resolves.toEqual({
+      allowed: false,
+      reason: 'handmux-origin',
+    });
+  });
+
+  it('allows an ordinary remote service that happens to use the Handmux port', async () => {
+    await expect(policy().check('https://remote.example:30443/')).resolves.toMatchObject({
+      allowed: true,
+      address: '10.20.30.40',
+    });
+  });
+
+  it('normalizes a default Handmux control port before blocking loopback aliases', async () => {
+    const targetPolicy = policy({
+      topLevelUrl: 'http://127.0.0.1:443/',
+      handmuxOrigin: 'https://handmux.example/',
+      lookup: async (hostname) => [{ address: hostname, family: 4 }],
+    });
+
+    await expect(targetPolicy.check('http://127.0.0.1:443/api/states')).resolves.toEqual({
       allowed: false,
       reason: 'handmux-origin',
     });

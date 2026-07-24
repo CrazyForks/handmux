@@ -30,6 +30,11 @@ function classifyIp(raw) {
   return null;
 }
 
+function effectivePort(url) {
+  if (url.port) return url.port;
+  return url.protocol === 'https:' ? '443' : '80';
+}
+
 export function createBrowserTargetPolicy({
   topLevelUrl,
   handmuxOrigin,
@@ -37,7 +42,9 @@ export function createBrowserTargetPolicy({
 } = {}) {
   let topOrigin = new URL(topLevelUrl).origin;
   let topAddressClass = null;
-  const appOrigin = new URL(handmuxOrigin).origin;
+  const appUrl = new URL(handmuxOrigin);
+  const appOrigin = appUrl.origin;
+  const appControlPort = effectivePort(appUrl);
 
   return {
     authorizeTopLevel(raw) {
@@ -65,11 +72,15 @@ export function createBrowserTargetPolicy({
       if (!addresses?.length) return { allowed: false, reason: 'dns-failed' };
 
       const classifications = addresses.map((item) => classifyIp(item.address));
+      if (effectivePort(url) === appControlPort && classifications.some((reason) => reason === 'loopback')) {
+        return { allowed: false, reason: 'handmux-origin' };
+      }
       if (url.origin === topOrigin && topAddressClass == null) {
         if (classifications.every((reason) => reason === 'loopback')) topAddressClass = 'loopback';
         else if (classifications.every((reason) => reason == null)) topAddressClass = 'ordinary';
       }
-      const loopbackNavigationAllowed = topAddressClass === 'loopback'
+      const loopbackNavigationAllowed = url.origin === topOrigin
+        && topAddressClass === 'loopback'
         && classifications.every((reason) => reason === 'loopback');
       for (const reason of classifications) {
         if (reason === 'loopback' && loopbackNavigationAllowed) continue;

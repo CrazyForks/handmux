@@ -1,4 +1,5 @@
 import { createBrowserWorkerServer } from './workerServer.js';
+import { installHammerheadWebSocketUpgradeCompat } from './hammerheadCompat.js';
 
 const internalToken = process.env.HANDMUX_BROWSER_INTERNAL_TOKEN;
 const previewDomain = process.env.HANDMUX_PREVIEW_DOMAIN || null;
@@ -21,6 +22,7 @@ process.once('SIGTERM', () => { shutdown().catch(() => process.exit(1)); });
 process.once('disconnect', () => { shutdown().catch(() => process.exit(1)); });
 
 try {
+  installHammerheadWebSocketUpgradeCompat();
   worker = await createBrowserWorkerServer({ internalToken, previewDomain });
   process.send?.({ type: 'handmux-browser-ready', port: worker.port });
 } catch (error) {
