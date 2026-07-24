@@ -140,6 +140,7 @@ export default {
   'dock.command.placeholder': '명령 입력 · Enter로 실행',
   'dock.mode.agent': '대화',
   'dock.mode.toggle': '입력 모드 전환',
+  'dock.desktopTerminalInput': '키보드 → 터미널',
   'dock.mode.command': '명령 모드',
   'dock.mode.chat': '채팅 모드',
   'fav.title': '자주 쓰기',

@@ -170,6 +170,7 @@ export default {
   'dock.command.placeholder': 'Type a command · Enter runs it',
   'dock.mode.agent': 'Chat',
   'dock.mode.toggle': 'Switch input mode',
+  'dock.desktopTerminalInput': 'Keyboard to terminal',
   'dock.mode.command': 'Command',
   'dock.mode.chat': 'Chat',
   'fav.title': 'Favorites',

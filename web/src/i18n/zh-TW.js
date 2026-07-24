@@ -140,6 +140,7 @@ export default {
   'dock.command.placeholder': '輸入指令 · Enter 執行',
   'dock.mode.agent': '對話',
   'dock.mode.toggle': '切換輸入模式',
+  'dock.desktopTerminalInput': '鍵盤直通終端',
   'dock.mode.command': '命令模式',
   'dock.mode.chat': '聊天模式',
   'fav.title': '常用',

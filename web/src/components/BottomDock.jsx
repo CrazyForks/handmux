@@ -90,6 +90,7 @@ function HoldButton({ className, onTap, onHold, children, ...rest }) {
 function BottomDock({
   pane, onAuthFail, onKey, onText, cwd = null, agent = null, windowId = null,
   recent = [], onSent, onRemoveRecent, inset = 0, shortcuts = null, micAvailable = false,
+  desktopUnified = false, terminalFocused = false, onReturnToTerminal, onLeaveTerminal,
 }, fwdRef) {
   // The composer restores its unsent draft across an app exit/kill: seeded from storage, mirrored on
   // every change (send/fill set '' → the stored draft clears with it). The mount-time autoGrow +
@@ -138,7 +139,7 @@ function BottomDock({
   const windowShortcuts = mergeShortcuts([], winFavs, 'command')
     .filter((item) => !visibleGlobalCommandIds.has(shortcutIdentity(item)));
   const [modeOverride, setModeOverride] = useState({}); // pane → 'command' | 'agent'
-  const mode = modeOverride[pane] || (agent ? 'agent' : 'command');
+  const mode = desktopUnified ? 'agent' : modeOverride[pane] || (agent ? 'agent' : 'command');
   const setMode = (next) => {
     // Carry the keyboard across a mode switch. The soft keyboard is held up by whichever field has focus
     // (command capture ⇄ chat composer); a switch used to leave focus on the OLD page's field, so the new
@@ -286,6 +287,7 @@ function BottomDock({
   // on the dots/keys and swipe up/down for the keyboard — the two no longer exclude each other. Native
   // (non-passive) so a claimed drag can preventDefault the page's own scroll.
   useEffect(() => {
+    if (desktopUnified) return undefined;
     const zone = dockLeftRef.current;
     const pager = pagerRef.current;
     if (!zone || !pager) return;
@@ -426,13 +428,40 @@ function BottomDock({
       zone.removeEventListener('touchend', onEnd);
       zone.removeEventListener('touchcancel', onEnd);
     };
-  }, []);
+  }, [desktopUnified]);
 
-  // Hardware Back closes the command panel instead of exiting the app.
-  useBackButton(panelOpen, () => setPanelOpen(false));
   const ref = useRef(null);      // agent-mode composer textarea
   const cmdRef = useRef(null);   // command-mode single-line capture (streams to the pane)
   const uploadRef = useRef(null);
+  const overlayOwnerRef = useRef(null);
+
+  const leaveTerminalForControl = () => {
+    if (desktopUnified) {
+      overlayOwnerRef.current = terminalFocused
+        ? 'terminal'
+        : (document.activeElement === ref.current ? 'composer' : null);
+      onLeaveTerminal?.();
+      if (document.activeElement === ref.current) ref.current?.blur();
+    }
+  };
+  const openOverlay = (setter) => {
+    leaveTerminalForControl();
+    setter(true);
+  };
+  const closeOverlay = (setter, restore = true) => {
+    setter(false);
+    const owner = overlayOwnerRef.current;
+    overlayOwnerRef.current = null;
+    if (desktopUnified && restore && owner) {
+      queueMicrotask(() => {
+        if (owner === 'terminal') onReturnToTerminal?.();
+        else ref.current?.focus({ preventScroll: true });
+      });
+    }
+  };
+  // Hardware Back closes the history panel and follows the same desktop focus restoration as its close
+  // button; mobile still takes the identical setPanelOpen(false) path inside closeOverlay.
+  useBackButton(panelOpen, () => closeOverlay(setPanelOpen));
 
   // The system can drop the soft keyboard WITHOUT blurring the focused field — e.g. an app-switch gesture
   // aborted mid-way, or Android's Back. Focus (hence keyboardUp) then lies "up" while the keyboard is really
@@ -581,6 +610,7 @@ function BottomDock({
       onSent?.(value); // record the sent command (App pushes it into the session's recent list)
       setValue('');
       requestAnimationFrame(() => autoGrow(ref.current)); // shrink back to one line once cleared
+      if (desktopUnified) onReturnToTerminal?.();
     } catch (err) {
       if (err instanceof UnauthorizedError) onAuthFail?.();
     }
@@ -624,6 +654,20 @@ function BottomDock({
     if (e.key === 'Backspace') { e.preventDefault(); onKey('BSpace'); }
   };
 
+  const onComposerKeyDown = (e) => {
+    if (!desktopUnified || e.nativeEvent?.isComposing) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      ref.current?.blur();
+      onReturnToTerminal?.();
+      return;
+    }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (value) void send();
+    }
+  };
+
   // ⌨ toggle: focus the hidden capture (pops the system keyboard) or blur it (dismisses it). onFocus/
   // onBlur keep `keyboardUp` in sync, so tapping the terminal — which blurs the capture — also hides it.
   const toggleKeyboard = () => {
@@ -640,6 +684,7 @@ function BottomDock({
   // Pick a command from the panel: fill the box (never send), close the panel, refocus so the user
   // can edit before submitting.
   const pick = (cmd) => {
+    overlayOwnerRef.current = null;
     setValue(cmd);
     setPanelOpen(false);
     requestAnimationFrame(() => { ref.current?.focus(); autoGrow(ref.current); });
@@ -677,6 +722,8 @@ function BottomDock({
       const a = document.activeElement;
       if (a === cmdRef.current || a === ref.current) a.blur();
     },
+    composerFocused: () => document.activeElement === ref.current,
+    focusComposer: () => ref.current?.focus({ preventScroll: true }),
   }), []);
 
   // After an upload, append the uploaded files' absolute paths to the box (then focus to keep typing).
@@ -808,24 +855,35 @@ function BottomDock({
   };
 
   return (
-    <div className="bottom-dock">
+    <div className={`bottom-dock${desktopUnified ? ' desktop-unified' : ''}`}>
       <div className="dock-left" ref={dockLeftRef} onPointerDown={keepDockFocus}>
         {/* ONE morphing handle. At rest it's the two-dot page indicator (filled dot = current page); TAP it
             to flip command ⇄ chat, swipe it (or the dock) sideways to page. Under a VERTICAL drag the two
             dots slide together, widen and fuse into a single bar (--morph) that follows the finger (--drag)
             — the keyboard grabber — arming blue past the commit point. The tiny mode label is absolute so it
             adds no height. It sits OUTSIDE the pager, so its tap never collides with the swipe handlers. */}
-        <button type="button" className="dock-handle" ref={handleRef} aria-label={t('dock.mode.toggle')}
-          onClick={() => setMode(mode === 'command' ? 'agent' : 'command')}>
-          <span className="dock-mode-label">{mode === 'command' ? t('dock.mode.command') : t('dock.mode.chat')}</span>
-          <span className="dock-dots">
-            <i className={`dock-dot${mode === 'command' ? ' on' : ''}`} data-page="command" aria-hidden="true" />
-            <i className={`dock-dot${mode === 'agent' ? ' on' : ''}`} data-page="agent" aria-hidden="true" />
-          </span>
-        </button>
+        {desktopUnified ? (
+          <div className="desktop-dock-state">
+            {terminalFocused && (
+              <span className="desktop-terminal-input">
+                <i className="desktop-terminal-input-dot" aria-hidden="true" />
+                {t('dock.desktopTerminalInput')}
+              </span>
+            )}
+          </div>
+        ) : (
+          <button type="button" className="dock-handle" ref={handleRef} aria-label={t('dock.mode.toggle')}
+            onClick={() => setMode(mode === 'command' ? 'agent' : 'command')}>
+            <span className="dock-mode-label">{mode === 'command' ? t('dock.mode.command') : t('dock.mode.chat')}</span>
+            <span className="dock-dots">
+              <i className={`dock-dot${mode === 'command' ? ' on' : ''}`} data-page="command" aria-hidden="true" />
+              <i className={`dock-dot${mode === 'agent' ? ' on' : ''}`} data-page="agent" aria-hidden="true" />
+            </span>
+          </button>
+        )}
         <div className="dock-pager" ref={pagerRef}>
           <div className={`dock-track${pageIndex === 1 ? ' at-chat' : ''}`} ref={trackRef}>
-            <div className={`dock-page command${mode === 'command' ? ' on' : ''}`}>
+            {!desktopUnified && <div className={`dock-page command${mode === 'command' ? ' on' : ''}`}>
               {/* Hidden capture: the ⌨ key focuses it to pop the system keyboard; each keystroke then
                   streams straight into the pane and the field wipes to empty (the terminal is the
                   display). onFocus/onBlur track whether the keyboard is up. */}
@@ -870,11 +928,11 @@ function BottomDock({
                       {favLabel(f)}{f.kind !== 'key' && f.enter && <span className="qc-enter" aria-hidden="true">⏎</span>}</HoldButton>
                   ))}
                   <button type="button" className="quick-cmd quick-cmd-add" aria-label={t('cmd.editTitle')}
-                    onPointerDown={keepFocus} onClick={() => setCmdEditOpen(true)}><GearIcon /></button>
+                    onPointerDown={keepFocus} onClick={() => openOverlay(setCmdEditOpen)}><GearIcon /></button>
                 </div>
               </div>
               <KeyBar onKey={onKey} onText={onText} mods={mods} setMods={setMods} keyHeldRef={keyHeldRef} />
-            </div>
+            </div>}
             <div className={`dock-page chat${mode === 'agent' ? ' on' : ''}`}>
               {/* Inline note = post-run errors / rejected types only; active-transfer progress + cancel
                   now live in the app-wide <UploadOverlay/>. */}
@@ -888,7 +946,11 @@ function BottomDock({
               <div className="quick-bar">
                 <div className="quick-fixed">
                   <button type="button" className="quick-fix" aria-label={t('dock.attach')}
-                    disabled={!!upload && !upload.error} onClick={() => uploadRef.current?.click()}>
+                    disabled={!!upload && !upload.error}
+                    onClick={() => {
+                      leaveTerminalForControl();
+                      uploadRef.current?.click();
+                    }}>
                     <UploadIcon /><span>{t('dock.attach')}</span></button>
                 </div>
                 <div className="quick-scroll">
@@ -903,13 +965,17 @@ function BottomDock({
                       {favLabel(f)}</HoldButton>
                   ))}
                   <button type="button" className="quick-cmd quick-cmd-add" aria-label={t('chat.editTitle')}
-                    onClick={() => setChatEditOpen(true)}><GearIcon /></button>
+                    onClick={() => openOverlay(setChatEditOpen)}><GearIcon /></button>
                 </div>
               </div>
               {/* 离屏(非 display:none)以便程序化 .click() 在 iOS Safari 可靠唤起原生选择器,见 .browse-file-input。 */}
               <input ref={uploadRef} className="browse-file-input" type="file" multiple
                 accept={UPLOAD_ACCEPT}
-                onChange={(e) => { uploadFiles(e.target.files); e.target.value = ''; }} />
+                onChange={(e) => {
+                  overlayOwnerRef.current = null;
+                  uploadFiles(e.target.files);
+                  e.target.value = '';
+                }} />
               {/* flex 行:textarea(占满)· 麦克风 · 发送,全是 flex 兄弟、不重叠文字框,所以选词/移光标碰不到
                   按键。录音时整条变绿 + 呼吸。＋上传与▤常用已上移到快捷栏。 */}
               <div className={`input-wrap${recording ? ' recording' : ''}${multi ? ' multi' : ''}${crowd ? ' crowd' : ''}`}
@@ -930,6 +996,7 @@ function BottomDock({
                     e.currentTarget.focus(); // 同步夺焦,确保这一下就弹出键盘
                   }}
                   onChange={(e) => { setValue(e.target.value); autoGrow(e.target); }}
+                  onKeyDown={onComposerKeyDown}
                   onFocus={() => setKeyboardUp(true)}
                   onBlur={() => setKeyboardUp(false)}
                   placeholder={t('dock.input.placeholder')}
@@ -942,7 +1009,9 @@ function BottomDock({
                 {/* 历史:麦克风左侧,只在空框时出现(仅一个图标);一打字就整个隐藏,给文字腾地方。 */}
                 {!value && (
                   <button type="button" className="input-history" aria-label={t('dock.history')} title={t('dock.history')}
-                    onClick={() => setPanelOpen((o) => !o)}><ClockIcon /></button>
+                    onClick={() => (panelOpen
+                      ? closeOverlay(setPanelOpen)
+                      : openOverlay(setPanelOpen))}><ClockIcon /></button>
                 )}
                 {micAvailable && <MicButton active={recording} disabled={voice.state === 'requesting'} onToggle={toggleMic} />}
                 {/* 发送 ↑ 常驻,空框禁用:点 = 发送组合文本,长按 = 填入。 */}
@@ -957,18 +1026,18 @@ function BottomDock({
         </div>
       </div>
       <FavDrawer open={panelOpen} mode={mode} recent={recent} historyOnly onDelete={onRemoveRecent}
-        onSend={(text) => { setPanelOpen(false); sendFav(text); }}
+        onSend={(text) => { closeOverlay(setPanelOpen); sendFav(text); }}
         onFill={(text) => { setPanelOpen(false); fillFav(text); }}
-        onClose={() => setPanelOpen(false)} />
+        onClose={() => closeOverlay(setPanelOpen)} />
       {/* Command-mode saved-command editor (opened by the ⚙ in the command quick-bar): two list sections
           (global + this window) over one add row whose 命令/按键 tab picks what you add. Mounted only while
           open so it seeds fresh each time. Never touches the agent list. */}
       {cmdEditOpen && <CmdFavEditor windowId={windowId} inset={inset} presets={serverShortcuts.command}
-        onChange={refreshCommandShortcuts} onClose={() => setCmdEditOpen(false)} />}
+        onChange={refreshCommandShortcuts} onClose={() => closeOverlay(setCmdEditOpen)} />}
       {/* Chat-mode saved-message editor (opened by the ⚙ in the chat quick-bar): one global list whose
           消息/按键 tab picks what you add. Same card as command mode, chat variant. */}
       {chatEditOpen && <CmdFavEditor variant="chat" inset={inset} presets={serverShortcuts.chat}
-        onChange={refreshChatShortcuts} onClose={() => setChatEditOpen(false)} />}
+        onChange={refreshChatShortcuts} onClose={() => closeOverlay(setChatEditOpen)} />}
     </div>
   );
 }

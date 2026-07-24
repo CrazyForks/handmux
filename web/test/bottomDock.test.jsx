@@ -534,6 +534,118 @@ describe('BottomDock', () => {
     expect(onSent).toHaveBeenCalledWith('git status');
   });
 
+  it('desktop unified mode shows the existing chat page with every existing capability', () => {
+    render({
+      pane: '%1',
+      desktopUnified: true,
+      terminalFocused: true,
+      shortcuts: { command: [], chat: [{ type: 'text', text: '继续', enter: true }] },
+    });
+    expect(container.querySelector('.dock-page.chat')).not.toBeNull();
+    expect(container.textContent).toContain('继续');
+    expect(container.querySelector(`[aria-label="${t('dock.attach')}"]`)).not.toBeNull();
+    expect(container.querySelector('.input-history')).not.toBeNull();
+    expect(container.querySelector('.input-send')).not.toBeNull();
+    expect(container.querySelector('.dock-page.command')).toBeNull();
+    expect(container.querySelector('.keybar-grid')).toBeNull();
+    expect(container.querySelector('.dock-handle')).toBeNull();
+  });
+
+  it('shows only a blue dot plus neutral terminal-input copy while xterm owns focus', () => {
+    render({ pane: '%1', desktopUnified: true, terminalFocused: true });
+    const state = container.querySelector('.desktop-terminal-input');
+    expect(state.textContent).toBe('键盘直通终端');
+    expect(state.querySelector('.desktop-terminal-input-dot')).not.toBeNull();
+    render({ pane: '%1', desktopUnified: true, terminalFocused: false });
+    expect(container.querySelector('.desktop-terminal-input')).toBeNull();
+  });
+
+  it('desktop Enter sends, Shift+Enter stays multiline, and Escape returns with the draft intact', async () => {
+    const onReturnToTerminal = vi.fn();
+    render({ pane: '%1', desktopUnified: true, onReturnToTerminal });
+    const input = container.querySelector('.input-text');
+    const keydown = (key, opts = {}) =>
+      act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...opts })));
+
+    typeInto(input, '检查修改');
+    await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Enter', bubbles: true,
+    })));
+    await vi.waitFor(() => expect(sendText).toHaveBeenCalledWith('%1', '检查修改', true));
+    expect(onReturnToTerminal).toHaveBeenCalledTimes(1);
+
+    typeInto(input, '第一行');
+    keydown('Enter', { shiftKey: true });
+    expect(sendText).toHaveBeenCalledTimes(1);
+
+    typeInto(input, '保留草稿');
+    keydown('Escape');
+    expect(input.value).toBe('保留草稿');
+    expect(onReturnToTerminal).toHaveBeenCalledTimes(2);
+  });
+
+  it('desktop IME Enter does not send', () => {
+    render({ pane: '%1', desktopUnified: true, onReturnToTerminal: vi.fn() });
+    const input = container.querySelector('.input-text');
+    typeInto(input, '输入法候选');
+    act(() => input.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Enter', bubbles: true, isComposing: true,
+    })));
+    expect(sendText).not.toHaveBeenCalled();
+  });
+
+  it('desktop drawers blur terminal input and restore it only when terminal owned focus before opening', async () => {
+    const onLeaveTerminal = vi.fn();
+    const onReturnToTerminal = vi.fn();
+    render({
+      pane: '%1',
+      desktopUnified: true,
+      terminalFocused: true,
+      onLeaveTerminal,
+      onReturnToTerminal,
+    });
+    fire(container.querySelector('.input-history'), 'click');
+    expect(onLeaveTerminal).toHaveBeenCalledTimes(1);
+    fire(container.querySelector('.input-history'), 'click');
+    await act(async () => Promise.resolve());
+    expect(onReturnToTerminal).toHaveBeenCalledTimes(1);
+
+    render({
+      pane: '%1',
+      desktopUnified: true,
+      terminalFocused: false,
+      onLeaveTerminal,
+      onReturnToTerminal,
+    });
+    fire(container.querySelector('.input-history'), 'click');
+    fire(container.querySelector('.input-history'), 'click');
+    await act(async () => Promise.resolve());
+    expect(onReturnToTerminal).toHaveBeenCalledTimes(1);
+
+    render({
+      pane: '%1',
+      desktopUnified: true,
+      terminalFocused: true,
+      onLeaveTerminal,
+      onReturnToTerminal,
+    });
+    fire(container.querySelector(`[aria-label="${t('dock.attach')}"]`), 'click');
+    expect(onLeaveTerminal).toHaveBeenCalledTimes(3);
+  });
+
+  it('desktop drawers blur and restore the composer when it owned focus before opening', async () => {
+    render({ pane: '%1', desktopUnified: true, terminalFocused: false });
+    const input = container.querySelector('.input-text');
+    act(() => input.focus());
+    expect(document.activeElement).toBe(input);
+
+    fire(container.querySelector('.input-history'), 'click');
+    expect(document.activeElement).not.toBe(input);
+    fire(container.querySelector('.input-history'), 'click');
+    await act(async () => Promise.resolve());
+    expect(document.activeElement).toBe(input);
+  });
+
   describe('input mode (command ⇄ agent)', () => {
     const keydown = (node, key, opts = {}) =>
       act(() => node.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...opts })));

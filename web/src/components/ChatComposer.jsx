@@ -38,7 +38,7 @@ const chipTint = (text) => (text.startsWith('/') ? 'cmd' : 'reply');
 
 export default function ChatComposer({
   pane, kind, cwd = null, onKey = () => {}, onAuthFail, onSent, onInteractiveSlash,
-  shortcuts = null, micAvailable = false,
+  shortcuts = null, micAvailable = false, desktop = false,
 }) {
   // Draft persists across an app exit / lens switch (shared store with the dock's chat page — switching
   // lenses carries your half-typed message either way). send/clear set '' → the stored draft clears too.
@@ -47,6 +47,9 @@ export default function ChatComposer({
   const ref = useRef(null);          // the textarea
   const uploadRef = useRef(null);    // hidden <input type=file>
   const tapPt = useRef({ x: 0, y: 0, moved: false }); // for tap-to-focus on the card's blank areas
+  useEffect(() => {
+    if (desktop) ref.current?.focus({ preventScroll: true });
+  }, [desktop, pane]);
 
   // Shared presets and phone-local additions use one device-local layout. App fetches the server half once;
   // editor changes reload both the local items and layout immediately, even while the sheet stays open.
@@ -132,6 +135,18 @@ export default function ChatComposer({
 
   // Interrupt the working agent — Escape is Claude Code's stop key (same path the terminal ESC uses).
   const stop = () => onKey('Escape');
+  const onComposerKeyDown = (event) => {
+    if (!desktop || event.nativeEvent?.isComposing) return;
+    if (event.key === 'Escape' && busy) {
+      event.preventDefault();
+      stop();
+      return;
+    }
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      if (!busy && value.trim()) void send();
+    }
+  };
 
   // Tap the card's blank areas (chiefly the action row's empty middle) to focus the textarea — a bigger,
   // forgiving target than the thin textarea itself. A movement threshold (like MicButton) rejects a
@@ -206,6 +221,7 @@ export default function ChatComposer({
           rows={1}
           value={value}
           onChange={(e) => { setValue(e.target.value); autoGrow(e.target); }}
+          onKeyDown={onComposerKeyDown}
           placeholder={t('chat.composer.placeholder')}
           autoCapitalize="off"
           autoCorrect="off"

@@ -140,6 +140,7 @@ export default {
   'dock.command.placeholder': 'コマンドを入力 · Enterで実行',
   'dock.mode.agent': '会話',
   'dock.mode.toggle': '入力モードを切替',
+  'dock.desktopTerminalInput': 'キーボード → ターミナル',
   'dock.mode.command': 'コマンド',
   'dock.mode.chat': 'チャット',
   'fav.title': 'よく使う',

@@ -4,6 +4,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Added
+- 电脑浏览器现在可用物理键盘直接操作终端；底部完整保留快捷用语和聊天输入框，点击输入框可先整理多行文字，Enter 发送、Shift+Enter 换行。
+
 ### Fixed
 - Agent 用量现在展示所有设备共享的本机最新状态；新会话尚未产生额度数据时，不再让 Codex / Claude 的已有用量短暂消失。
 - Codex 用量改为读取本机快照，历史会话较多时不再频繁遍历全部记录；未安装 hook 时仍会低频校准。

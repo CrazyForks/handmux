@@ -169,6 +169,7 @@ export default {
   'dock.command.placeholder': '输入命令 · 回车执行',
   'dock.mode.agent': '对话',
   'dock.mode.toggle': '切换输入模式',
+  'dock.desktopTerminalInput': '键盘直通终端',
   'dock.mode.command': '命令模式',
   'dock.mode.chat': '聊天模式',
   'fav.title': '常用',
