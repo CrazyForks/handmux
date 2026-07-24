@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { tmpHome } from './tmphome.js';
 import request from 'supertest';
 import express from 'express';
+import { expressAuth } from '../src/auth.js';
 import { createApiRouter } from '../src/httpApi.js';
 import { writeCache } from '../src/cli/updateCheck.js';
 import fs from 'node:fs';
@@ -698,23 +699,26 @@ describe('previews API', () => {
 });
 
 describe('browser API composition', () => {
-  const browser = {
-    create: vi.fn(({ url }) => ({ id: 'tab-a', originalUrl: url, url: 'https://handmux.example/_browser-tab-a/https://target/' })),
-    list: vi.fn(() => []),
-  };
-  const app = express();
-  app.use('/api', createApiRouter({ token: 'good', commands: baseCommands, browser }));
+  it('does not expose the legacy server-owned browser tab API', async () => {
+    const app = express();
+    app.use('/api', createApiRouter({ token: 'good', commands: baseCommands }));
 
-  it('requires the normal Handmux authorization', async () => {
-    await request(app).post('/api/browser-tabs').send({ url: 'https://target.example/', closeAfterMinutes: 10 }).expect(401);
+    await request(app).post('/api/browser-tabs').expect(401);
+    await auth(request(app).post('/api/browser-tabs'))
+      .send({ url: 'https://target.example/' })
+      .expect(404);
   });
 
-  it('mounts browser routes behind the authenticated API', async () => {
-    const res = await auth(request(app).post('/api/browser-tabs'))
-      .set('X-Handmux-Browser-Device', 'device_abcdefghijklmnopqrstuvwxyz123456')
-      .send({ url: 'https://target.example/', closeAfterMinutes: 10, mode: 'direct' })
-      .expect(201);
-    expect(res.body.id).toBe('tab-a');
+  it('mounts browser proxy composition separately behind normal Handmux auth', async () => {
+    const browserProxy = vi.fn((_req, res) => res.json({ ready: false, generation: 0 }));
+    const app = express();
+    app.use('/api/browser-proxy', expressAuth('good'), browserProxy);
+    app.use('/api', createApiRouter({ token: 'good', commands: baseCommands }));
+
+    await request(app).get('/api/browser-proxy/status').expect(401);
+    await auth(request(app).get('/api/browser-proxy/status'))
+      .expect(200, { ready: false, generation: 0 });
+    expect(browserProxy).toHaveBeenCalledOnce();
   });
 });
 

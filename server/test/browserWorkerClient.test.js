@@ -51,7 +51,7 @@ function clientFor(port, options = {}) {
 }
 
 describe('browser worker client', () => {
-  it('does not fork the proxy worker without a preview domain and still serves direct tabs', async () => {
+  it('does not fork without a preview domain and reports proxy leases unavailable', async () => {
     const forkWorker = vi.fn();
     const client = createBrowserWorkerClient({
       appToken: 'app-secret', forkWorker, randomToken: () => 'internal-secret',
@@ -59,18 +59,21 @@ describe('browser worker client', () => {
     clients.push(client);
     const app = express();
     app.use(express.json());
-    app.use('/api/browser-tabs', expressAuth('app-secret'), client.apiHandler);
+    app.use('/api/browser-proxy', expressAuth('app-secret'), client.apiHandler);
 
-    await request(app).post('/api/browser-tabs')
+    await request(app).get('/api/browser-proxy/status')
+      .set('Authorization', 'Bearer app-secret')
+      .expect(200, { ready: false, generation: 0 });
+    await request(app).put('/api/browser-proxy/leases/client-a')
       .set('Authorization', 'Bearer app-secret')
       .set('X-Handmux-Browser-Device', DEVICE)
-      .send({ url: 'https://direct.example/', closeAfterMinutes: 30, mode: 'direct' })
-      .expect(201);
+      .send({ url: 'https://target.example/' })
+      .expect(503, { error: 'browser unavailable' });
 
     expect(forkWorker).not.toHaveBeenCalled();
   });
 
-  it('creates and lists direct tabs while the proxy worker is not ready or has exited', async () => {
+  it('reports a configured proxy worker unavailable while starting and after exit', async () => {
     const child = new EventEmitter();
     child.kill = vi.fn(() => {
       queueMicrotask(() => child.emit('exit', 0, 'SIGTERM'));
@@ -83,27 +86,24 @@ describe('browser worker client', () => {
     clients.push(client);
     const app = express();
     app.use(express.json());
-    app.use('/api/browser-tabs', expressAuth('app-secret'), client.apiHandler);
+    app.use('/api/browser-proxy', expressAuth('app-secret'), client.apiHandler);
 
-    const created = await request(app).post('/api/browser-tabs')
+    await request(app).get('/api/browser-proxy/status')
+      .set('Authorization', 'Bearer app-secret')
+      .expect(200, { ready: false, generation: 0 });
+    await request(app).put('/api/browser-proxy/leases/client-a')
       .set('Authorization', 'Bearer app-secret')
       .set('X-Handmux-Browser-Device', DEVICE)
-      .send({ url: 'https://direct.example/', closeAfterMinutes: 30, mode: 'direct' })
-      .expect(201);
-    expect(created.body).toMatchObject({
-      mode: 'direct', url: 'https://direct.example/', originalUrl: 'https://direct.example/',
-      closeAfterMinutes: 30, visible: true,
-    });
+      .send({ url: 'https://target.example/' })
+      .expect(503, { error: 'browser unavailable' });
 
     child.emit('exit', 1, null);
-    const listed = await request(app).get('/api/browser-tabs')
+    await request(app).get('/api/browser-proxy/status')
       .set('Authorization', 'Bearer app-secret')
-      .set('X-Handmux-Browser-Device', DEVICE)
-      .expect(200);
-    expect(listed.body.tabs).toEqual([expect.objectContaining({ id: created.body.id, mode: 'direct' })]);
+      .expect(200, { ready: false, generation: 1 });
   });
 
-  it('returns an empty unified tab list and browser-only public errors before the worker is ready', async () => {
+  it('keeps status available while lease and claimed public requests fail closed', async () => {
     const child = new EventEmitter();
     child.kill = vi.fn(() => {
       queueMicrotask(() => child.emit('exit', 0, 'SIGTERM'));
@@ -115,13 +115,18 @@ describe('browser worker client', () => {
     clients.push(client);
     const app = express();
     app.use(client.publicHandler);
-    app.use('/api/browser-tabs', expressAuth('app-secret'), client.apiHandler);
+    app.use(express.json());
+    app.use('/api/browser-proxy', expressAuth('app-secret'), client.apiHandler);
     app.get('*', (_req, res) => res.status(218).send('main'));
 
-    await request(app).get('/api/browser-tabs')
+    await request(app).get('/api/browser-proxy/status')
+      .set('Authorization', 'Bearer app-secret')
+      .expect(200, { ready: false, generation: 0 });
+    await request(app).put('/api/browser-proxy/leases/client-a')
       .set('Authorization', 'Bearer app-secret')
       .set('X-Handmux-Browser-Device', DEVICE)
-      .expect(200, { tabs: [] });
+      .send({ url: 'https://target.example/' })
+      .expect(503, { error: 'browser unavailable' });
     await request(app).get('/_browser-a/https://target.example/').expect(502);
     await request(app).get('/_browser-bootstrap/ticket').expect(502);
     await request(app).get('/api/states').expect(218, 'main');
@@ -145,18 +150,18 @@ describe('browser worker client', () => {
     await new Promise((resolve) => setImmediate(resolve));
     const app = express();
     app.use(express.json());
-    app.use('/api/browser-tabs', expressAuth('app-secret'), client.apiHandler);
+    app.use('/api/browser-proxy', expressAuth('app-secret'), client.apiHandler);
 
-    const response = await request(app).post('/api/browser-tabs')
+    const response = await request(app).put('/api/browser-proxy/leases/client-a')
       .set('Authorization', 'Bearer app-secret')
       .set('Host', 'phone.example:30443')
       .set('X-Forwarded-Proto', 'https')
       .set('X-Handmux-Browser-Device', DEVICE)
-      .send({ url: 'https://target.example/', closeAfterMinutes: 10, mode: 'proxy' });
+      .send({ url: 'https://target.example/' });
 
     expect(response.status).toBe(201);
     expect(response.headers['set-cookie'][0]).toContain('tw_browser_device=device');
-    expect(seen[0]).toMatchObject({ url: '/api/browser-tabs' });
+    expect(seen[0]).toMatchObject({ url: '/api/browser-proxy/leases/client-a' });
     expect(seen[0].body).toContain('target.example');
     expect(seen[0].headers.host).toBe('phone.example:30443');
     expect(seen[0].headers['x-forwarded-proto']).toBe('https');
@@ -182,6 +187,46 @@ describe('browser worker client', () => {
 
     expect(seen[0].authorization).toBe('Basic dXNlcjpwYXNz');
     expect(seen[0]['x-handmux-browser-internal']).toBe('internal-secret');
+  });
+
+  it('forwards claimed public upgrades with target Authorization and upgrade head', async () => {
+    const socket = Object.assign(new EventEmitter(), {
+      pipe: vi.fn(),
+      destroy: vi.fn(),
+    });
+    const upstream = Object.assign(new EventEmitter(), {
+      pipe: vi.fn(),
+      write: vi.fn(),
+      destroy: vi.fn(),
+    });
+    socket.pipe.mockReturnValue(upstream);
+    upstream.pipe.mockReturnValue(socket);
+    const connect = vi.fn(() => upstream);
+    const { client } = clientFor(9, { connect });
+    await new Promise((resolve) => setImmediate(resolve));
+    const head = Buffer.from('upgrade-head');
+    const req = {
+      method: 'GET',
+      url: '/_browser-a/https://target.example/socket',
+      httpVersion: '1.1',
+      headers: {
+        host: 'phone.example',
+        connection: 'Upgrade',
+        upgrade: 'websocket',
+        authorization: 'Basic dXNlcjpwYXNz',
+      },
+    };
+
+    expect(client.onUpgrade({ ...req, url: '/api/states' }, socket, head)).toBe(false);
+    expect(client.onUpgrade(req, socket, head)).toBe(true);
+    upstream.emit('connect');
+
+    expect(connect).toHaveBeenCalledWith({ host: '127.0.0.1', port: 9 });
+    expect(upstream.write.mock.calls[0][0]).toContain('authorization: Basic dXNlcjpwYXNz');
+    expect(upstream.write.mock.calls[0][0]).toContain('x-handmux-browser-internal: internal-secret');
+    expect(upstream.write.mock.calls[1][0]).toBe(head);
+    expect(socket.pipe).toHaveBeenCalledWith(upstream);
+    expect(upstream.pipe).toHaveBeenCalledWith(socket);
   });
 
   it('restarts after an unexpected exit with bounded backoff', async () => {
@@ -259,6 +304,7 @@ describe('browser worker client', () => {
     const forkWorker = vi.fn(() => fakeChild(9));
     const client = createBrowserWorkerClient({
       appToken: 'app-secret', previewDomain: 'preview.example', forkWorker, randomToken: () => 'internal-secret',
+      handmuxOrigin: 'https://handmux.example:30443',
       parentEnv: {
         PATH: '/usr/bin',
         HTTPS_PROXY: 'http://proxy.example',
@@ -275,6 +321,7 @@ describe('browser worker client', () => {
     expect(env.PATH).toBe('/usr/bin');
     expect(env.HTTPS_PROXY).toBe('http://proxy.example');
     expect(env.HANDMUX_BROWSER_INTERNAL_TOKEN).toBe('internal-secret');
+    expect(env.HANDMUX_BROWSER_CONTROL_ORIGIN).toBe('https://handmux.example:30443');
     expect(env.HANDMUX_TOKEN).toBeUndefined();
     expect(env.HANDMUX_AUTHTOKEN).toBeUndefined();
     expect(env.VAPID_PRIVATE).toBeUndefined();
