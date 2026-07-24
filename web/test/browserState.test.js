@@ -118,6 +118,22 @@ describe('device-local browser history', () => {
     });
   });
 
+  it('replaces an earlier URL from the same tab session', () => {
+    upsertBrowserHistory({
+      url: 'https://portal.example/a', title: 'A', visitedAt: 123, sessionId: 'tab-a',
+    });
+    upsertBrowserHistory({
+      url: 'https://portal.example/b', title: 'B', visitedAt: 124, sessionId: 'tab-a',
+    });
+
+    expect(readBrowserHistory()).toEqual([{
+      url: 'https://portal.example/b',
+      title: 'B',
+      visitedAt: 124,
+      sessionId: 'tab-a',
+    }]);
+  });
+
   it('keeps the newest 200 records and can clear them', () => {
     for (let i = 0; i < 205; i += 1) {
       addBrowserHistory({ url: `https://example.com/${i}`, title: `Page ${i}`, visitedAt: i });

@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ChevronDownIcon,
-  ClockIcon,
   GlobeIcon,
+  HomeIcon,
   MoreHorizontalIcon,
   MonitorIcon,
   PlusIcon,
@@ -336,8 +336,9 @@ export default function BrowserSheet({ browser }) {
       <div className="browser-tabs" role="tablist" aria-label={t('browser.openTabs')}
         inert={clearConfirmation ? '' : undefined}>
         <button className={`browser-tab browser-history-tab ${historyActive ? 'active' : ''}`} role="tab"
-          aria-selected={historyActive} onClick={selectHistory}>
-          <ClockIcon />{t('browser.history')}
+          aria-selected={historyActive} aria-label={t('browser.history')} title={t('browser.history')}
+          onClick={selectHistory}>
+          <HomeIcon />
         </button>
         <div className="browser-tabs-scroll">
           {tabs.map((tab) => {

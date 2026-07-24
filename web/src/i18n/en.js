@@ -18,7 +18,7 @@ export default {
 
   'app.browser': 'Browser',
   'browser.openTabs': 'Open browser tabs',
-  'browser.history': 'History',
+  'browser.history': 'Recently Visited',
   'browser.closeTab': 'Close {title}',
   'browser.newTab': 'New tab',
   'browser.minimize': 'Minimize',
@@ -35,7 +35,7 @@ export default {
   'browser.minutes': '{value} minutes',
   'browser.neverClose': 'Never close',
   'browser.clearHistory': 'Clear',
-  'browser.emptyHistory': 'No browsing history yet',
+  'browser.emptyHistory': 'No recent visits yet',
   'browser.loadFailed': 'This page could not be loaded. Check the address and try again.',
   'browser.retry': 'Retry',
   'browser.consentTitle': 'Choose how websites connect',
@@ -54,7 +54,7 @@ export default {
   'browser.pageView': 'Page view',
   'browser.proxyLogin': 'Proxy sign-in',
   'browser.disable': 'Turn off built-in browser',
-  'browser.disableConfirm': 'Turn off the built-in browser and close every tab? Browsing history will be kept.',
+  'browser.disableConfirm': 'Turn off the built-in browser and close every tab? Recent visits will be kept.',
   'browser.openMode': 'Choose how to open',
   'browser.historyMore': 'More opening options',
   'browser.proxyUnavailable': 'Browser proxy is not enabled on this server.',
@@ -82,9 +82,9 @@ export default {
 
   'settings.language': 'Language',
   'settings.browserDefaultMode': 'Default web mode',
-  'settings.browserDefaultModeHint': 'Used for new address-bar tabs and history entries without a saved mode.',
+  'settings.browserDefaultModeHint': 'Used for new address-bar tabs and recent visits without a saved mode.',
   'settings.browserEnabled': 'Built-in browser',
-  'settings.browserEnabledHint': 'Tabs belong to this device. Turning this off closes all tabs but keeps history.',
+  'settings.browserEnabledHint': 'Tabs belong to this device. Turning this off closes all tabs but keeps recent visits.',
 
   // home / drawer / windowbar
   'home.empty': 'No files opened yet',

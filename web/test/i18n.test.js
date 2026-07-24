@@ -55,6 +55,16 @@ describe('AVAILABLE', () => {
 
 describe('browser dual-mode copy', () => {
   it.each([
+    ['en', en, 'Recently Visited'],
+    ['zh', zh, '最近访问'],
+    ['zh-TW', zhTW, '最近瀏覽'],
+    ['ja', ja, '最近の閲覧'],
+    ['ko', ko, '최근 방문'],
+  ])('%s names browser history as recent visits', (_code, dict, expected) => {
+    expect(dict['browser.history']).toBe(expected);
+  });
+
+  it.each([
     ['en', en, 'phone', 'proxy', 'destroyed'],
     ['zh', zh, '手机', '代理', '销毁'],
     ['zh-TW', zhTW, '手機', '代理', '銷毀'],

@@ -85,11 +85,15 @@ function sanitizedHistoryEntry(entry) {
     const lastMode = entry?.lastMode === 'proxy'
       ? 'proxy'
       : entry?.lastMode === 'direct' ? 'direct' : null;
+    const sessionId = /^[A-Za-z0-9_-]{1,128}$/.test(String(entry?.sessionId || ''))
+      ? String(entry.sessionId)
+      : null;
     return {
       url: url.toString(),
       title: String(entry?.title || ''),
       visitedAt: Number.isFinite(Number(entry?.visitedAt)) ? Number(entry.visitedAt) : Date.now(),
       ...(lastMode ? { lastMode } : {}),
+      ...(sessionId ? { sessionId } : {}),
     };
   } catch {
     return null;
@@ -115,7 +119,9 @@ export function addBrowserHistory(entry) {
 export function upsertBrowserHistory(entry) {
   const clean = sanitizedHistoryEntry(entry);
   if (!clean) return;
-  const remaining = readBrowserHistory().filter((item) => item.url !== clean.url);
+  const remaining = readBrowserHistory().filter((item) => (
+    item.url !== clean.url && (!clean.sessionId || item.sessionId !== clean.sessionId)
+  ));
   localStorage.setItem(HISTORY_KEY, JSON.stringify([clean, ...remaining].slice(0, HISTORY_LIMIT)));
 }
 

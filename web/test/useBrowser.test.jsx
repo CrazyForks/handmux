@@ -529,6 +529,24 @@ describe('useBrowser device ownership', () => {
     });
   });
 
+  it('keeps only the latest page visited within one tab session', async () => {
+    const { result } = renderHook(() => useBrowser());
+    await act(async () => { await result.current.openUrl('https://portal.example/start'); });
+    const id = result.current.activeId;
+
+    act(() => result.current.updateTabMeta(id, {
+      url: 'https://portal.example/section-a', title: 'Section A',
+    }));
+    act(() => result.current.updateTabMeta(id, {
+      url: 'https://portal.example/section-b', title: 'Section B',
+    }));
+
+    expect(readBrowserHistory()).toEqual([expect.objectContaining({
+      url: 'https://portal.example/section-b',
+      title: 'Section B',
+    })]);
+  });
+
   it('disabling releases proxy tabs, closes them locally, and keeps history', async () => {
     const { result } = renderHook(() => useBrowser({ browserProxy: true }));
     await act(async () => { await result.current.openUrl('https://a.example/', { mode: 'proxy' }); });

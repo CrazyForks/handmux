@@ -113,7 +113,8 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const recordHistory = useCallback((tab) => {
     if (!tab?.originalUrl) return;
     upsertBrowserHistory({
-      url: tab.originalUrl, title: tab.title, lastMode: tab.mode, visitedAt: Date.now(),
+      url: tab.originalUrl, title: tab.title, lastMode: tab.mode,
+      visitedAt: Date.now(), sessionId: tab.id,
     });
     setHistory(readBrowserHistory());
   }, []);
@@ -508,7 +509,8 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     }));
     if (updated?.title) {
       upsertBrowserHistory({
-        url: updated.originalUrl, title: updated.title, lastMode: updated.mode, visitedAt: Date.now(),
+        url: updated.originalUrl, title: updated.title, lastMode: updated.mode,
+        visitedAt: Date.now(), sessionId: updated.id,
       });
       setHistory(readBrowserHistory());
     }

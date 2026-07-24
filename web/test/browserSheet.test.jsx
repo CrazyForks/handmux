@@ -86,14 +86,18 @@ describe('BrowserSheet', () => {
     click(document.querySelector('.browser-consent-enable'));
     expect(model.enableAccess).toHaveBeenCalledOnce();
   });
-  it('renders tabs above navigation with fixed History first', async () => {
+  it('renders tabs above navigation with a fixed icon-only Recent tab first', async () => {
     await render(browser());
     const sheet = document.querySelector('.browser-sheet');
     expect(sheet.children[0].classList.contains('browser-tabs')).toBe(true);
     expect(sheet.children[1].classList.contains('browser-nav')).toBe(true);
     const tabButtons = [...document.querySelectorAll('[role="tab"]')];
-    expect(tabButtons.map((node) => node.textContent)).toEqual(['历史', 'Alpha', 'Beta']);
-    expect(document.querySelector('.browser-history-tab .browser-tab-close')).toBeNull();
+    expect(tabButtons.map((node) => node.textContent)).toEqual(['', 'Alpha', 'Beta']);
+    const recent = document.querySelector('.browser-history-tab');
+    expect(recent.getAttribute('aria-label')).toBe('最近访问');
+    expect(recent.getAttribute('title')).toBe('最近访问');
+    expect(recent.querySelector('svg')).not.toBeNull();
+    expect(recent.querySelector('.browser-tab-close')).toBeNull();
   });
 
   it('marks proxy tabs orange and lets an existing tab switch modes in place', async () => {

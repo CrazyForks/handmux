@@ -1158,7 +1158,10 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-mode-badge.proxy, .browser-address-mode.proxy { background: rgba(217,130,43,.18); color: #f2a450; }
 .browser-mode-badge.proxy::after { content: '•'; font-size: 13px; line-height: 7px; }
 .browser-tab-wrap.active .browser-tab, .browser-history-tab.active { color: #fff; }
-.browser-history-tab { flex: 0 0 auto; border-right: 1px solid #1d2630; }
+.browser-history-tab {
+  flex: 0 0 44px; width: 44px; justify-content: center; padding: 0;
+  border-right: 1px solid #1d2630;
+}
 .browser-tab-close, .browser-head-button {
   min-width: 44px; min-height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
   border: 0; background: transparent; color: #758494; touch-action: manipulation;
