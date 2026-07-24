@@ -1,8 +1,7 @@
-export const BROWSER_CLOSE_AFTER_OPTIONS = [10, 30, 60, 120, null];
+export const BROWSER_CLOSE_AFTER_OPTIONS = [10, 30, 60, 120];
 export const BROWSER_PROFILE_RETENTION_OPTIONS = [1, 7, 30, null];
 
 const PREF_KEY = 'hm_browser_close_after1';
-const DEFAULT_MODE_KEY = 'hm_browser_default_mode1';
 const PROFILE_PERSIST_KEY = 'hm_browser_profile_persist1';
 const PROFILE_RETENTION_KEY = 'hm_browser_profile_retention1';
 const HISTORY_KEY = 'hm_browser_history1';
@@ -38,17 +37,15 @@ export function normalizeBrowserInput(value) {
 
 export function readBrowserPrefs() {
   const raw = localStorage.getItem(PREF_KEY);
-  const defaultMode = localStorage.getItem(DEFAULT_MODE_KEY) === 'proxy' ? 'proxy' : 'direct';
   const persistProxyLogin = localStorage.getItem(PROFILE_PERSIST_KEY) === '1';
   const retentionRaw = localStorage.getItem(PROFILE_RETENTION_KEY);
   const parsedRetention = retentionRaw === 'never' ? null : Number(retentionRaw);
   const proxyLoginRetentionDays = BROWSER_PROFILE_RETENTION_OPTIONS.includes(parsedRetention)
     ? parsedRetention : 30;
   const profile = { persistProxyLogin, proxyLoginRetentionDays };
-  if (raw === 'never') return { closeAfter: null, defaultMode, ...profile };
   const value = Number(raw);
   return {
-    closeAfter: isCloseAfter(value) && value != null ? value : 10, defaultMode, ...profile,
+    closeAfter: isCloseAfter(value) ? value : 10, ...profile,
   };
 }
 
@@ -57,15 +54,7 @@ export function setBrowserCloseAfter(value) {
     localStorage.removeItem(PREF_KEY);
     return;
   }
-  localStorage.setItem(PREF_KEY, value == null ? 'never' : String(value));
-}
-
-export function setBrowserDefaultMode(mode) {
-  if (mode !== 'direct' && mode !== 'proxy') {
-    localStorage.removeItem(DEFAULT_MODE_KEY);
-    return;
-  }
-  localStorage.setItem(DEFAULT_MODE_KEY, mode);
+  localStorage.setItem(PREF_KEY, String(value));
 }
 
 export function setPersistProxyLogin(value) {
@@ -185,4 +174,9 @@ export function writeBrowserTabs({ tabs, activeId, open, historyActive }) {
 
 export function clearBrowserTabs() {
   localStorage.removeItem(TABS_KEY);
+}
+
+export function browserEntryStatus(tabs) {
+  if (!Array.isArray(tabs) || tabs.length === 0) return null;
+  return tabs.some((tab) => tab?.mode === 'proxy') ? 'proxy' : 'direct';
 }

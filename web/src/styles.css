@@ -1203,6 +1203,51 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-mode-switch.proxy { color: #e8892f; }
 .browser-time-option { min-height: 44px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: #e8edf2; text-align: left; font-size: 14px; }
 .browser-time-option[aria-pressed="true"] { background: rgba(var(--blue-rgb),.18); color: #73b8ff; }
+.browser-options-trigger { font: 700 24px/1 system-ui, sans-serif; letter-spacing: 1px; }
+.browser-options-backdrop { position: fixed; inset: 0; z-index: 4; background: transparent; }
+.browser-options-card {
+  position: absolute; top: 48px; right: 6px; z-index: 5; width: min(340px, calc(100vw - 12px));
+  max-height: min(72vh, 620px); overflow-y: auto; padding: 8px;
+  background: rgba(39,42,48,.98); border: 1px solid #454a53; border-radius: 16px;
+  box-shadow: 0 18px 48px rgba(0,0,0,.58); backdrop-filter: blur(18px);
+}
+.browser-options-row {
+  min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 7px 10px; color: #eef1f4;
+}
+.browser-options-row > span:first-child { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.browser-options-row strong, .browser-options-section > strong { font-size: 14px; font-weight: 600; }
+.browser-options-row small, .browser-options-hint { color: #8f9aa6; font-size: 11px; line-height: 1.35; }
+.browser-options-hint { margin: -3px 10px 8px; }
+.browser-options-section { padding: 8px 10px; border-top: 1px solid #41464e; }
+.browser-view-segment {
+  display: inline-flex; padding: 2px; border-radius: 9px; background: #191c20;
+}
+.browser-view-segment button {
+  width: 42px; height: 34px; display: grid; place-items: center; padding: 0; border: 0;
+  border-radius: 7px; background: transparent; color: #8e99a5;
+}
+.browser-view-segment button[aria-pressed="true"] { background: #4b515a; color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.browser-view-segment svg { width: 17px; height: 17px; }
+.browser-close-trigger {
+  width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: space-between;
+  padding: 0; border: 0; background: transparent; color: #eef1f4; font-size: 14px; text-align: left;
+}
+.browser-close-trigger span:last-child { color: #9fc6ff; font-size: 13px; }
+.browser-time-options { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; padding-bottom: 4px; }
+.browser-time-options .browser-time-option { min-height: 38px; text-align: center; }
+.browser-profile-options { display: flex; flex-direction: column; gap: 5px; }
+.browser-profile-options > strong { padding: 4px 0 0; }
+.browser-profile-options .browser-options-row { padding-inline: 0; }
+.browser-retention { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.browser-retention button {
+  min-height: 36px; padding: 0 4px; border: 0; border-radius: 8px; background: #343940; color: #c4cbd2; font-size: 12px;
+}
+.browser-retention button[aria-pressed="true"] { background: rgba(var(--blue-rgb),.24); color: #91c5ff; }
+.browser-options-danger {
+  width: 100%; min-height: 44px; padding: 0; border: 0; background: transparent; color: #ff6961; text-align: left; font-size: 14px;
+}
+.browser-disable { margin-top: 2px; padding: 0 10px; border-top: 1px solid #41464e; }
 
 .browser-content { position: relative; flex: 1; min-height: 0; display: flex; overflow: hidden; background: #fff; }
 .browser-pane { flex: 1; min-width: 0; min-height: 0; }
@@ -1281,7 +1326,11 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-consent-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .browser-consent-actions button { border: 0; border-radius: 10px; padding: 10px 14px; color: #d9dce2; background: #303238; }
 .browser-consent-actions .browser-consent-enable { color: #fff; background: var(--blue); font-weight: 650; }
-.browser-entry[aria-pressed="true"] { color: var(--blue); }
+.browser-entry.proxy { color: #f2a450; }
+.browser-entry-status-dot {
+  position: absolute; right: 4px; bottom: 4px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--blue); box-shadow: 0 0 0 2px #1b1c1f; pointer-events: none;
+}
 @media (max-width: 430px) {
   .browser-nav { gap: 1px; padding-inline: 3px; }
   .browser-nav-button { width: 36px; }

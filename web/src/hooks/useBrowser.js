@@ -16,7 +16,6 @@ import {
   readBrowserPrefs,
   readBrowserTabs,
   setBrowserCloseAfter,
-  setBrowserDefaultMode,
   setPersistProxyLogin as persistProxyLoginLocally,
   setProxyLoginRetentionDays as persistProxyLoginRetentionLocally,
   upsertBrowserHistory,
@@ -63,7 +62,6 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const [error, setError] = useState(null);
   const prefs = readBrowserPrefs();
   const [closeAfter, setCloseAfterState] = useState(prefs.closeAfter);
-  const [defaultMode, setDefaultModeState] = useState(prefs.defaultMode);
   const [persistProxyLogin, setPersistProxyLoginState] = useState(prefs.persistProxyLogin);
   const [proxyLoginRetentionDays, setProxyLoginRetentionDaysState] = useState(prefs.proxyLoginRetentionDays);
   const tabsRef = useRef(tabs);
@@ -303,7 +301,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     return () => clearTimeout(timer);
   }, [pruneExpired, tabs]);
 
-  const openUrl = useCallback(async (input, { mode = defaultMode, force = false } = {}) => {
+  const openUrl = useCallback(async (input, { mode = 'direct', force = false } = {}) => {
     const sequence = ++openSequence.current;
     const url = normalizeBrowserInput(input);
     if (!url) { setError(new Error('browser URL must use http or https')); return null; }
@@ -340,7 +338,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       return null;
     }
     return tabsRef.current.find((tab) => tab.id === id) || created;
-  }, [accessEnabled, browserProxy, commitActive, commitHistory, commitOpen, commitTabs, defaultMode, ensureBinding, hideTab, release]);
+  }, [accessEnabled, browserProxy, commitActive, commitHistory, commitOpen, commitTabs, ensureBinding, hideTab, release]);
 
   const enableAccess = useCallback(() => {
     if (enablePromise.current) return enablePromise.current;
@@ -527,12 +525,6 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     setCloseAfterState(saved);
     return saved;
   }, []);
-  const setDefaultMode = useCallback((mode) => {
-    setBrowserDefaultMode(mode);
-    const saved = readBrowserPrefs().defaultMode;
-    setDefaultModeState(saved);
-    return saved;
-  }, []);
   const setHistoryMode = useCallback((entry, mode) => {
     upsertBrowserHistory({ ...entry, lastMode: mode });
     const next = readBrowserHistory();
@@ -584,10 +576,10 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   }, [commitActive, commitHistory, commitTabs, release]);
 
   return {
-    open, accessEnabled, consentOpen, tabs, activeId, historyActive, closeAfter, defaultMode,
+    open, accessEnabled, consentOpen, tabs, activeId, historyActive, closeAfter,
     persistProxyLogin, proxyLoginRetentionDays, proxyAvailable: browserProxy, history, error,
     openUrl, enableAccess, disableAccess, setEnabled, cancelAccess, switchTab, closeTab, setOpen,
-    setCloseAfter, setDefaultMode,
+    setCloseAfter,
     setPersistProxyLogin: (value) => saveProfilePrefs({ persist: !!value }),
     setProxyLoginRetentionDays: (value) => saveProfilePrefs({ retentionDays: value }),
     clearProxyLogin, setHistoryMode, navigateTab, ensureBinding, recoverBinding,

@@ -23,7 +23,6 @@ const browser = (overrides = {}) => ({
   historyActive: false,
   closeAfter: 10,
   history: [{ url: 'https://old.example/', title: 'Old', visitedAt: 1000, lastMode: 'direct' }],
-  defaultMode: 'proxy',
   proxyAvailable: true,
   error: null,
   consentOpen: false,
@@ -34,6 +33,9 @@ const browser = (overrides = {}) => ({
   closeTab: vi.fn(),
   setOpen: vi.fn(),
   setCloseAfter: vi.fn(),
+  setEnabled: vi.fn(),
+  setPersistProxyLogin: vi.fn(),
+  setProxyLoginRetentionDays: vi.fn(),
   setHistoryMode: vi.fn(),
   clearProxyLogin: vi.fn(),
   deleteHistory: vi.fn(),
@@ -100,22 +102,22 @@ describe('BrowserSheet', () => {
     const alpha = [...document.querySelectorAll('[role="tab"]')].find((node) => node.textContent.includes('Alpha'));
     expect(alpha.querySelector('.browser-mode-badge.proxy')).not.toBeNull();
     expect(alpha.closest('.browser-tab-wrap').classList.contains('proxy')).toBe(true);
-    click(document.querySelector('button[aria-label="切换浏览模式"]'));
-    click([...document.querySelectorAll('.browser-mode-option')].find((node) => node.textContent === '手机直连'));
+    click(document.querySelector('button[aria-label="浏览器菜单"]'));
+    click(document.querySelector('.browser-current-mode input'));
     expect(model.navigateTab).toHaveBeenCalledWith('a', 'https://a.example/', 'direct');
   });
 
-  it('closes the mode menu when entering History and does not revive it on return', async () => {
+  it('closes the options card when entering History and does not revive it on return', async () => {
     const model = browser();
     await render(model);
-    click(document.querySelector('button[aria-label="切换浏览模式"]'));
-    expect(document.querySelector('.browser-mode-menu')).not.toBeNull();
+    click(document.querySelector('button[aria-label="浏览器菜单"]'));
+    expect(document.querySelector('.browser-options-card')).not.toBeNull();
 
     click(document.querySelector('.browser-history-tab'));
     await render({ ...model, historyActive: true });
-    expect(document.querySelector('.browser-mode-menu')).toBeNull();
+    expect(document.querySelector('.browser-options-card')).toBeNull();
     await render({ ...model, historyActive: false });
-    expect(document.querySelector('.browser-mode-menu')).toBeNull();
+    expect(document.querySelector('.browser-options-card')).toBeNull();
     expect(model.navigateTab).not.toHaveBeenCalled();
   });
 
@@ -285,7 +287,7 @@ describe('BrowserSheet', () => {
 
   it('clears stale history errors when switching tabs or starting a valid address operation', async () => {
     const model = browser({
-      proxyAvailable: false, historyActive: true, activeId: null, defaultMode: 'direct',
+      proxyAvailable: false, historyActive: true, activeId: null,
       history: [{ url: 'https://old.example/', title: 'Old', visitedAt: 1000, lastMode: 'proxy' }],
     });
     await render(model);
@@ -303,8 +305,8 @@ describe('BrowserSheet', () => {
     expect(document.querySelector('.browser-error')).toBeNull();
   });
 
-  it('submits the editable address, hides unreliable history controls, and can reload', async () => {
-    const model = browser();
+  it('submits the editable address and refreshes through the same authoritative navigation path', async () => {
+    const model = browser({ navigateTab: vi.fn().mockResolvedValue(tabs[0]) });
     await render(model);
     const input = document.querySelector('.browser-address');
     setInput(input, 'https://next.example/path');
@@ -316,13 +318,14 @@ describe('BrowserSheet', () => {
     const post = vi.spyOn(frame.contentWindow, 'postMessage');
     expect(document.querySelector('button[aria-label="后退"]')).toBeNull();
     expect(document.querySelector('button[aria-label="前进"]')).toBeNull();
-    click(document.querySelector('button[aria-label="刷新"]'));
-    expect(post.mock.calls.map(([message]) => message.command)).toEqual(['reload']);
-    expect(post.mock.calls.every(([message]) => message.channel === 'ca')).toBe(true);
+    await clickAndFlush(document.querySelector('button[aria-label="刷新"]'));
+    expect(model.navigateTab).toHaveBeenLastCalledWith('a', 'https://a.example/', 'proxy');
+    expect(post).not.toHaveBeenCalled();
+    expect(document.querySelector('iframe[data-tab-id="a"]')).not.toBe(frame);
   });
 
   it('shows a top progress bar and changes Refresh into Stop while loading', async () => {
-    await render(browser());
+    await render(browser({ navigateTab: vi.fn(() => new Promise(() => {})) }));
     const frame = document.querySelector('iframe[data-tab-id="a"]');
     const overlay = document.querySelector('.browser-page-loading');
     const progress = document.querySelector('.browser-page-progress');
@@ -355,7 +358,11 @@ describe('BrowserSheet', () => {
   });
 
   it('stops the current iframe navigation and keeps its mounted page state', async () => {
-    await render(browser());
+    let resolveNavigate;
+    const model = browser({
+      navigateTab: vi.fn(() => new Promise((resolve) => { resolveNavigate = resolve; })),
+    });
+    await render(model);
     const frame = document.querySelector('iframe[data-tab-id="a"]');
     const post = vi.spyOn(frame.contentWindow, 'postMessage');
 
@@ -363,10 +370,17 @@ describe('BrowserSheet', () => {
     click(document.querySelector('button[aria-label="刷新"]'));
     click(document.querySelector('button[aria-label="停止加载"]'));
 
-    expect(post.mock.calls.map(([message]) => message.command)).toEqual(['reload', 'stop']);
+    expect(model.navigateTab).toHaveBeenCalledWith('a', 'https://a.example/', 'proxy');
+    expect(post.mock.calls.map(([message]) => message.command)).toEqual(['stop']);
     expect(document.querySelector('iframe[data-tab-id="a"]')).toBe(frame);
     expect(frame.hasAttribute('inert')).toBe(false);
     expect(document.querySelector('.browser-page-loading')).toBeNull();
+
+    await act(async () => {
+      resolveNavigate(tabs[0]);
+      await Promise.resolve();
+    });
+    expect(document.querySelector('iframe[data-tab-id="a"]')).toBe(frame);
   });
 
   it('switches, closes, starts a new address and minimizes through the model', async () => {
@@ -541,10 +555,55 @@ describe('BrowserSheet', () => {
     expect(postMessage).not.toHaveBeenCalled();
   });
 
-  it('offers exactly 10, 30, 60, 120 minutes and never', async () => {
-    await render(browser());
-    click(document.querySelector('button[aria-label="后台标签自动关闭"]'));
-    const choices = [...document.querySelectorAll('.browser-time-option')];
-    expect(choices.map((node) => node.textContent)).toEqual(['10 分钟', '30 分钟', '60 分钟', '120 分钟', '永不关闭']);
+  it('consolidates browser controls and device settings into one more card', async () => {
+    const model = browser({
+      persistProxyLogin: false,
+      proxyLoginRetentionDays: 30,
+    });
+    await render(model);
+    expect(document.querySelectorAll('.browser-nav > button')).toHaveLength(2);
+    click(document.querySelector('button[aria-label="浏览器菜单"]'));
+    const card = document.querySelector('.browser-options-card');
+    expect(card).not.toBeNull();
+    expect(card.textContent).toContain('当前网页');
+    expect(card.textContent).toContain('页面视图');
+    expect(card.textContent).toContain('后台页签关闭');
+    expect(card.textContent).toContain('代理登录');
+    expect(card.textContent).toContain('关闭内置浏览器');
+
+    click(card.querySelector('.browser-current-mode input'));
+    expect(model.navigateTab).toHaveBeenCalledWith('a', 'https://a.example/', 'direct');
+
+    const viewButtons = [...card.querySelectorAll('.browser-view-segment button')];
+    expect(viewButtons.map((node) => node.getAttribute('aria-label'))).toEqual(['手机视图', '电脑视图']);
+    click(viewButtons[1]);
+    expect(viewButtons[1].getAttribute('aria-pressed')).toBe('true');
+
+    click(card.querySelector('.browser-close-trigger'));
+    const closeChoices = [...card.querySelectorAll('.browser-time-option')];
+    expect(closeChoices.map((node) => node.textContent)).toEqual(['10 分钟', '30 分钟', '60 分钟', '120 分钟']);
+    click(closeChoices[1]);
+    expect(model.setCloseAfter).toHaveBeenCalledWith(30);
+
+    click(card.querySelector('.browser-profile-persist input'));
+    expect(model.setPersistProxyLogin).toHaveBeenCalledWith(true);
+    const retention = [...card.querySelectorAll('.browser-retention button')];
+    expect(retention.map((node) => node.textContent)).toEqual(['1 天', '7 天', '30 天', '永不']);
+    click(retention[1]);
+    expect(model.setProxyLoginRetentionDays).toHaveBeenCalledWith(7);
+
+    click([...card.querySelectorAll('button')].find((node) => node.textContent === '清理全部代理登录状态'));
+    expect(document.querySelector('.browser-profile-confirm').textContent).toContain('当前设备');
+    click([...document.querySelectorAll('.browser-profile-confirm button')]
+      .find((node) => node.textContent === '确认'));
+    expect(model.clearProxyLogin).toHaveBeenCalledWith(null);
+
+    const disable = [...card.querySelectorAll('button')].find((node) => node.textContent === '关闭内置浏览器');
+    click(disable);
+    expect(model.setEnabled).not.toHaveBeenCalled();
+    expect(document.querySelector('.browser-profile-confirm').textContent).toContain('关闭全部页签');
+    click([...document.querySelectorAll('.browser-profile-confirm button')]
+      .find((node) => node.textContent === '确认'));
+    expect(model.setEnabled).toHaveBeenCalledWith(false);
   });
 });

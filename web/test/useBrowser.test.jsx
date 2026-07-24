@@ -290,6 +290,7 @@ describe('useBrowser device ownership', () => {
     await act(async () => { await Promise.all([first, second]); });
     expect(result.current.tabs).toHaveLength(1);
     expect(result.current.tabs[0].originalUrl).toBe('https://a.example/');
+    expect(result.current.tabs[0].mode).toBe('direct');
   });
 
   it('applies latest-wins to same-tick direct opens', async () => {

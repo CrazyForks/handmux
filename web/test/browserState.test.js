@@ -1,17 +1,18 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   addBrowserHistory,
+  BROWSER_CLOSE_AFTER_OPTIONS,
   clearBrowserHistory,
   deleteBrowserHistoryEntry,
   normalizeBrowserInput,
   readBrowserHistory,
   readBrowserPrefs,
   setBrowserCloseAfter,
-  setBrowserDefaultMode,
   setPersistProxyLogin,
   setProxyLoginRetentionDays,
   upsertBrowserHistory,
 } from '../src/browserState.js';
+import * as browserState from '../src/browserState.js';
 
 beforeEach(() => localStorage.clear());
 
@@ -31,26 +32,20 @@ describe('browser address normalization', () => {
 });
 
 describe('browser preferences', () => {
-  it('defaults to 10 and accepts only the five product choices', () => {
+  it('defaults to 10 and accepts only the four finite close choices', () => {
+    expect(BROWSER_CLOSE_AFTER_OPTIONS).toEqual([10, 30, 60, 120]);
     expect(readBrowserPrefs()).toEqual({
-      closeAfter: 10, defaultMode: 'direct',
+      closeAfter: 10,
       persistProxyLogin: false, proxyLoginRetentionDays: 30,
     });
-    for (const value of [10, 30, 60, 120, null]) {
+    for (const value of [10, 30, 60, 120]) {
       setBrowserCloseAfter(value);
-      expect(readBrowserPrefs()).toMatchObject({ closeAfter: value, defaultMode: 'direct' });
+      expect(readBrowserPrefs()).toMatchObject({ closeAfter: value });
     }
+    setBrowserCloseAfter(null);
+    expect(readBrowserPrefs()).toMatchObject({ closeAfter: 10 });
     setBrowserCloseAfter(240);
-    expect(readBrowserPrefs()).toMatchObject({ closeAfter: 10, defaultMode: 'direct' });
-  });
-
-  it('persists only valid default modes without changing the close timer', () => {
-    setBrowserCloseAfter(30);
-    setBrowserDefaultMode('proxy');
-    expect(readBrowserPrefs()).toMatchObject({ closeAfter: 30, defaultMode: 'proxy' });
-
-    setBrowserDefaultMode('invalid');
-    expect(readBrowserPrefs()).toMatchObject({ closeAfter: 30, defaultMode: 'direct' });
+    expect(readBrowserPrefs()).toMatchObject({ closeAfter: 10 });
   });
 
   it('stores proxy login preferences only in device local storage', () => {
@@ -61,6 +56,16 @@ describe('browser preferences', () => {
     });
     localStorage.setItem('hm_browser_profile_retention1', '14');
     expect(readBrowserPrefs().proxyLoginRetentionDays).toBe(30);
+  });
+});
+
+describe('browser toolbar entry status', () => {
+  it('uses proxy precedence, direct for direct-only tabs, and no status without tabs', () => {
+    expect(typeof browserState.browserEntryStatus).toBe('function');
+    expect(browserState.browserEntryStatus([])).toBeNull();
+    expect(browserState.browserEntryStatus([{ mode: 'direct' }])).toBe('direct');
+    expect(browserState.browserEntryStatus([{ mode: 'direct' }, { mode: 'proxy' }])).toBe('proxy');
+    expect(browserState.browserEntryStatus([{ mode: 'proxy' }, { mode: 'direct' }])).toBe('proxy');
   });
 });
 

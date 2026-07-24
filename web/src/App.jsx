@@ -36,6 +36,7 @@ import { isImageName } from './mime.js';
 import { useDocTabs } from './hooks/useDocTabs.js';
 import { usePreviews } from './hooks/usePreviews.js';
 import { useBrowser } from './hooks/useBrowser.js';
+import { browserEntryStatus } from './browserState.js';
 import { usePollingLoop } from './hooks/usePollingLoop.js';
 import { useServerConfig } from './hooks/useServerConfig.js';
 import { authHandled } from './authGuard.js';
@@ -119,6 +120,7 @@ export default function App() {
   const [localUrlPrompt, setLocalUrlPrompt] = useState(null); // { raw, x, y } for a tapped web URL
   const docTabs = useDocTabs(); // file-viewer tab state, kept across sheet open/close
   const browser = useBrowser({ enabled: !needToken, browserProxy: !!serverConfig?.browserProxy });
+  const browserStatus = browserEntryStatus(browser.tabs);
   const [bound, setBound] = useState(getBoundSessions); // session names pinned on this device
   const [favorites, setFavorites] = useState(getFavorites); // global favorite commands
   const [recent, setRecent] = useState([]); // current session's recent commands (keyed by session name)
@@ -1290,7 +1292,7 @@ export default function App() {
   const [localUrlBusyMode, setLocalUrlBusyMode] = useState(null);
   const localUrlAbortRef = useRef(null);
   const localUrlRequestRef = useRef(0);
-  const confirmLocalUrl = async (_path, mode = browser.defaultMode) => {
+  const confirmLocalUrl = async (_path, mode = 'direct') => {
     const p = localUrlPrompt;
     if (!p) return;
     localUrlAbortRef.current?.abort();
@@ -1495,8 +1497,11 @@ export default function App() {
           onEnableHooks={enableHooks}
         />
         <button className="topbar-icon" onClick={() => setUsageOpen(true)} aria-label={t('usage.title')} title={t('usage.title')}><GaugeIcon /></button>
-        <button className="topbar-icon browser-entry" onClick={() => browser.setOpen(true)}
-          aria-label={t('app.browser')} title={t('app.browser')}><GlobeIcon /></button>
+        <button className={`topbar-icon browser-entry ${browserStatus === 'proxy' ? 'proxy' : ''}`}
+          onClick={() => browser.setOpen(true)} aria-label={t('app.browser')} title={t('app.browser')}>
+          <GlobeIcon />
+          {browserStatus === 'direct' && <span className="browser-entry-status-dot" aria-hidden="true" />}
+        </button>
         <button className="topbar-icon" onClick={reopenFiles} aria-label={t('app.files')} title={t('app.files')}><FolderIcon /></button>
         <button className="topbar-icon" onClick={() => setGitOpen(true)} aria-label="Git" title="Git"><GitIcon /></button>
         <button className="topbar-icon" onClick={openSettings} aria-label={t('app.settings')} title={t('app.settings')}>
@@ -1529,7 +1534,6 @@ export default function App() {
         notifUnread={hasNewNotif}
         onOpenInbox={openNotifInbox}
         updateInfo={updateInfo}
-        browser={browser}
         activePreview={activePreview}
         pane={current?.paneId}
         lastPreviewDir={getPreviewDir(current?.window?.id)}

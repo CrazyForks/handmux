@@ -11,7 +11,7 @@ import {
   StopIcon,
   XIcon,
 } from './icons.jsx';
-import { BROWSER_CLOSE_AFTER_OPTIONS } from '../browserState.js';
+import { BROWSER_CLOSE_AFTER_OPTIONS, BROWSER_PROFILE_RETENTION_OPTIONS } from '../browserState.js';
 import { t } from '../i18n';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap.js';
 
@@ -26,22 +26,23 @@ function tabLabel(tab) {
 export default function BrowserSheet({ browser }) {
   const {
     open, accessEnabled, consentOpen, tabs, activeId, historyActive, closeAfter, history, error,
-    defaultMode, proxyAvailable,
+    persistProxyLogin, proxyLoginRetentionDays, proxyAvailable,
     openUrl, switchTab, closeTab, setOpen, setCloseAfter,
     navigateTab, ensureBinding, recoverBinding, markBindingReady, updateTabMeta,
-    clearHistory, setHistoryMode, enableAccess, cancelAccess,
+    clearHistory, setHistoryMode, enableAccess, cancelAccess, setEnabled,
+    setPersistProxyLogin, setProxyLoginRetentionDays,
     clearProxyLogin, deleteHistory,
   } = browser;
   const active = tabs.find((tab) => tab.id === activeId) || null;
   const proxied = active?.mode === 'proxy';
   const [address, setAddress] = useState(active?.originalUrl || '');
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const [timeOpen, setTimeOpen] = useState(false);
   const [device, setDevice] = useState('mobile');
   const [bodySize, setBodySize] = useState({ width: 0, height: 0 });
   const [loadedTabs, setLoadedTabs] = useState(() => new Set());
   const [refreshingTabs, setRefreshingTabs] = useState(() => new Set());
   const [reloadKeys, setReloadKeys] = useState({});
-  const [modeOpen, setModeOpen] = useState(false);
   const [historyModeOpen, setHistoryModeOpen] = useState(null);
   const [clearConfirmation, setClearConfirmation] = useState(null);
   const [historyError, setHistoryError] = useState(null);
@@ -50,6 +51,7 @@ export default function BrowserSheet({ browser }) {
   const [unhealthyTabs, setUnhealthyTabs] = useState(() => new Set());
   const frames = useRef(new Map());
   const frameUrls = useRef(new Map());
+  const refreshSequences = useRef(new Map());
   const activeIdRef = useRef(activeId);
   const openRef = useRef(open);
   const addressRef = useRef(null);
@@ -65,7 +67,8 @@ export default function BrowserSheet({ browser }) {
   }, [active?.originalUrl, historyActive]);
 
   useEffect(() => {
-    setModeOpen(false);
+    setOptionsOpen(false);
+    setTimeOpen(false);
     if (!historyActive) setHistoryModeOpen(null);
   }, [activeId, historyActive, open]);
 
@@ -137,6 +140,9 @@ export default function BrowserSheet({ browser }) {
     });
     setMountedTabs((current) => {
       const live = new Set(tabs.map((tab) => tab.id));
+      for (const id of refreshSequences.current.keys()) {
+        if (!live.has(id)) refreshSequences.current.delete(id);
+      }
       return new Set([...current].filter((id) => live.has(id)));
     });
     setUnhealthyTabs((current) => {
@@ -170,26 +176,43 @@ export default function BrowserSheet({ browser }) {
   const postCommand = (command) => postTabCommand(active, command);
 
   const selectTab = (tab) => {
-    setModeOpen(false);
+    setOptionsOpen(false);
     setHistoryError(null);
     switchTab(tab.id);
   };
 
   const selectHistory = () => {
-    setModeOpen(false);
+    setOptionsOpen(false);
     setHistoryError(null);
     return switchTab('history');
   };
 
-  const refreshActive = () => {
+  const refreshActive = async () => {
     if (!active) return;
-    setRefreshingTabs((current) => new Set(current).add(active.id));
-    if (proxied) postCommand('reload');
-    else setReloadKeys((current) => ({ ...current, [active.id]: (current[active.id] || 0) + 1 }));
+    const tab = active;
+    const sequence = (refreshSequences.current.get(tab.id) || 0) + 1;
+    refreshSequences.current.set(tab.id, sequence);
+    setRefreshingTabs((current) => new Set(current).add(tab.id));
+    if (!proxied) {
+      setReloadKeys((current) => ({ ...current, [tab.id]: (current[tab.id] || 0) + 1 }));
+      return;
+    }
+    const navigated = await navigateTab(tab.id, tab.originalUrl, tab.mode);
+    if (refreshSequences.current.get(tab.id) !== sequence) return;
+    if (navigated?.id === tab.id && navigated.mode === 'proxy' && navigated.url) {
+      setReloadKeys((current) => ({ ...current, [tab.id]: (current[tab.id] || 0) + 1 }));
+      return;
+    }
+    setRefreshingTabs((current) => {
+      const next = new Set(current);
+      next.delete(tab.id);
+      return next;
+    });
   };
 
   const stopActive = () => {
     if (!active) return;
+    refreshSequences.current.set(active.id, (refreshSequences.current.get(active.id) || 0) + 1);
     postCommand('stop');
     frameUrls.current.set(active.id, active.url);
     setLoadedTabs((current) => new Set(current).add(active.id));
@@ -218,16 +241,12 @@ export default function BrowserSheet({ browser }) {
   };
 
   const chooseMode = (mode) => {
-    if (!active || mode === active.mode || (mode === 'proxy' && !proxyAvailable)) {
-      setModeOpen(false);
-      return;
-    }
+    if (!active || mode === active.mode || (mode === 'proxy' && !proxyAvailable)) return;
     setHistoryError(null);
     navigateTab(active.id, active.originalUrl, mode);
-    setModeOpen(false);
   };
 
-  const openHistory = (entry, mode = entry.lastMode || defaultMode, persistMode = false) => {
+  const openHistory = (entry, mode = entry.lastMode || 'direct', persistMode = false) => {
     setHistoryModeOpen(null);
     if (mode === 'proxy' && !proxyAvailable) {
       setHistoryError(t('browser.proxyUnavailable'));
@@ -245,13 +264,16 @@ export default function BrowserSheet({ browser }) {
       ?.closest('.browser-history-row')
       ?.querySelector('.browser-history-more') || document.activeElement;
     setHistoryModeOpen(null);
-    setClearConfirmation({ entry, origin });
+    setClearConfirmation({ type: 'site', entry, origin });
   };
 
   const confirmSiteClear = () => {
     const pending = clearConfirmation;
     setClearConfirmation(null);
-    if (pending) clearProxyLogin(pending.origin);
+    if (pending?.type === 'site') clearProxyLogin(pending.origin);
+    if (pending?.type === 'all') clearProxyLogin(null);
+    if (pending?.type === 'disable-persist') setPersistProxyLogin(false);
+    if (pending?.type === 'disable-browser') setEnabled(false);
   };
 
   const removeHistory = (entry) => {
@@ -335,7 +357,7 @@ export default function BrowserSheet({ browser }) {
         </div>
         <button className="browser-head-button" aria-label={t('browser.newTab')} title={t('browser.newTab')} onClick={newTab}><PlusIcon /></button>
         <button className="browser-head-button" aria-label={t('browser.minimize')} title={t('browser.minimize')}
-          onClick={() => { setModeOpen(false); setOpen(false); }}><ChevronDownIcon /></button>
+          onClick={() => { setOptionsOpen(false); setOpen(false); }}><ChevronDownIcon /></button>
       </div>
 
       <div className="browser-nav" inert={clearConfirmation ? '' : undefined}>
@@ -351,34 +373,92 @@ export default function BrowserSheet({ browser }) {
           disabled={!active || historyActive} onClick={activeLoading && proxied ? stopActive : refreshActive}>
           {activeLoading && proxied ? <StopIcon /> : <RefreshIcon />}
         </button>
-        <button className={`browser-nav-button browser-mode-switch ${proxied ? 'proxy' : ''}`}
-          aria-label={t('browser.switchMode')} aria-expanded={modeOpen} disabled={!active || historyActive}
-          onClick={() => setModeOpen((value) => !value)}>{proxied ? '●' : '○'}</button>
-        {modeOpen && active && !historyActive && open && (
-          <div className="browser-mode-menu" role="dialog" aria-label={t('browser.switchMode')}>
-            <button className="browser-mode-option" aria-pressed={active.mode === 'direct'} onClick={() => chooseMode('direct')}>{t('browser.directMode')}</button>
-            <button className="browser-mode-option proxy" aria-pressed={active.mode === 'proxy'} disabled={!proxyAvailable}
-              aria-describedby={!proxyAvailable ? 'browser-mode-proxy-unavailable' : undefined}
-              onClick={() => chooseMode('proxy')}>{t('browser.proxyMode')}</button>
-            {!proxyAvailable && <p id="browser-mode-proxy-unavailable">{t('browser.proxyUnavailable')}</p>}
-          </div>
-        )}
-        <button className="browser-nav-button" aria-label={t('browser.viewMode')}
-          title={device === 'mobile' ? t('browser.desktopView') : t('browser.mobileView')}
-          aria-pressed={device === 'desktop'} onClick={() => setDevice((value) => (value === 'mobile' ? 'desktop' : 'mobile'))}>
-          {device === 'mobile' ? <MonitorIcon /> : <SmartphoneIcon />}
-        </button>
-        <button className="browser-nav-button" aria-label={t('browser.closeTiming')} aria-expanded={timeOpen}
-          onClick={() => setTimeOpen((value) => !value)}><ClockIcon /></button>
-        {timeOpen && (
-          <div className="browser-time-menu" role="dialog" aria-label={t('browser.closeTiming')}>
-            {BROWSER_CLOSE_AFTER_OPTIONS.map((value) => (
-              <button key={value ?? 'never'} className="browser-time-option" aria-pressed={closeAfter === value}
-                onClick={() => pickTime(value)}>
-                {value == null ? t('browser.neverClose') : t('browser.minutes', { value })}
-              </button>
-            ))}
-          </div>
+        <button className="browser-nav-button browser-options-trigger" aria-label={t('browser.menu')}
+          aria-expanded={optionsOpen} onClick={() => setOptionsOpen((value) => !value)}>…</button>
+        {optionsOpen && open && (
+          <>
+            <div className="browser-options-backdrop" onClick={() => setOptionsOpen(false)} />
+            <div className="browser-options-card" role="dialog" aria-label={t('browser.menu')}>
+              <div className="browser-options-row">
+                <span>
+                  <strong>{t('browser.currentPage')}</strong>
+                  <small>{proxied ? t('browser.proxyMode') : t('browser.directMode')}</small>
+                </span>
+                <label className="cmd-switch browser-current-mode">
+                  <input type="checkbox" checked={proxied} disabled={!active || historyActive || (!proxied && !proxyAvailable)}
+                    aria-label={t('browser.switchMode')}
+                    onChange={(event) => chooseMode(event.target.checked ? 'proxy' : 'direct')} />
+                  <span className="cmd-switch-track" aria-hidden="true" />
+                  <span className="cmd-switch-knob" aria-hidden="true" />
+                </label>
+              </div>
+              {!proxyAvailable && <p className="browser-options-hint">{t('browser.proxyUnavailable')}</p>}
+
+              <div className="browser-options-row">
+                <strong>{t('browser.pageView')}</strong>
+                <div className="browser-view-segment" role="group" aria-label={t('browser.viewMode')}>
+                  <button aria-label={t('browser.mobileView')} aria-pressed={device === 'mobile'}
+                    onClick={() => setDevice('mobile')}><SmartphoneIcon /></button>
+                  <button aria-label={t('browser.desktopView')} aria-pressed={device === 'desktop'}
+                    onClick={() => setDevice('desktop')}><MonitorIcon /></button>
+                </div>
+              </div>
+
+              <div className="browser-options-section">
+                <button className="browser-close-trigger" aria-expanded={timeOpen}
+                  onClick={() => setTimeOpen((value) => !value)}>
+                  <span>{t('browser.closeTiming')}</span>
+                  <span>{t('browser.minutes', { value: closeAfter })} ▾</span>
+                </button>
+                {timeOpen && (
+                  <div className="browser-time-options" role="group" aria-label={t('browser.closeTiming')}>
+                    {BROWSER_CLOSE_AFTER_OPTIONS.map((value) => (
+                      <button key={value} className="browser-time-option" aria-pressed={closeAfter === value}
+                        onClick={() => pickTime(value)}>{t('browser.minutes', { value })}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {proxyAvailable && (
+                <div className="browser-options-section browser-profile-options">
+                  <strong>{t('browser.proxyLogin')}</strong>
+                  <label className="browser-options-row browser-profile-persist">
+                    <span>{t('settings.browserPersistLogin')}</span>
+                    <span className="cmd-switch">
+                      <input type="checkbox" checked={!!persistProxyLogin}
+                        onChange={(event) => {
+                          if (event.target.checked) setPersistProxyLogin(true);
+                          else {
+                            clearTriggerRef.current = document.activeElement;
+                            setClearConfirmation({ type: 'disable-persist' });
+                          }
+                        }} />
+                      <span className="cmd-switch-track" aria-hidden="true" />
+                      <span className="cmd-switch-knob" aria-hidden="true" />
+                    </span>
+                  </label>
+                  <div className="browser-retention" role="group" aria-label={t('settings.browserRetention')}>
+                    {BROWSER_PROFILE_RETENTION_OPTIONS.map((value) => (
+                      <button key={value ?? 'never'} aria-pressed={proxyLoginRetentionDays === value}
+                        onClick={() => setProxyLoginRetentionDays(value)}>
+                        {t(value === null ? 'browser.retentionNever' : `browser.retention${value}`)}
+                      </button>
+                    ))}
+                  </div>
+                  <button className="browser-options-danger" onClick={() => {
+                    clearTriggerRef.current = document.activeElement;
+                    setClearConfirmation({ type: 'all' });
+                  }}>{t('browser.clearAllLogin')}</button>
+                </div>
+              )}
+
+              <button className="browser-options-danger browser-disable" onClick={() => {
+                clearTriggerRef.current = document.activeElement;
+                setClearConfirmation({ type: 'disable-browser' });
+              }}>{t('browser.disable')}</button>
+            </div>
+          </>
         )}
       </div>
 
@@ -398,8 +478,8 @@ export default function BrowserSheet({ browser }) {
                     <button className="browser-history-main" onClick={() => openHistory(entry)}>
                       <strong>{entry.title || entry.url}</strong>
                       <span className="browser-history-meta">
-                        <span className={`browser-history-mode ${entry.lastMode || defaultMode}`}>
-                          {t((entry.lastMode || defaultMode) === 'proxy' ? 'browser.proxyBadge' : 'browser.directBadge')}
+                        <span className={`browser-history-mode ${entry.lastMode || 'direct'}`}>
+                          {t(entry.lastMode === 'proxy' ? 'browser.proxyBadge' : 'browser.directBadge')}
                         </span>
                         <span className="browser-history-url">{entry.url}</span>
                       </span>
@@ -477,8 +557,20 @@ export default function BrowserSheet({ browser }) {
       {clearConfirmation && (
         <div className="browser-profile-confirm-backdrop">
           <div ref={clearDialogRef} className="browser-profile-confirm" role="alertdialog" aria-modal="true"
-            aria-label={t('browser.clearSiteLogin')}>
-            <p>{t('browser.clearSiteLoginConfirm')}</p>
+            aria-label={t(clearConfirmation.type === 'site'
+              ? 'browser.clearSiteLogin'
+              : clearConfirmation.type === 'all'
+                ? 'browser.clearAllLogin'
+                : clearConfirmation.type === 'disable-browser'
+                  ? 'browser.disable'
+                  : 'settings.browserPersistLogin')}>
+            <p>{t(clearConfirmation.type === 'site'
+              ? 'browser.clearSiteLoginConfirm'
+              : clearConfirmation.type === 'all'
+                ? 'browser.clearAllLoginConfirm'
+                : clearConfirmation.type === 'disable-browser'
+                  ? 'browser.disableConfirm'
+                  : 'settings.browserDisablePersistConfirm')}</p>
             <div>
               <button ref={clearCancelRef} onClick={() => setClearConfirmation(null)}>{t('common.cancel')}</button>
               <button className="danger" onClick={confirmSiteClear}>{t('common.confirm')}</button>
