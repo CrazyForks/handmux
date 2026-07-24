@@ -50,7 +50,6 @@ export default function BrowserSheet({ browser }) {
   const [unhealthyTabs, setUnhealthyTabs] = useState(() => new Set());
   const frames = useRef(new Map());
   const frameUrls = useRef(new Map());
-  const bridgeTimers = useRef(new Map());
   const activeIdRef = useRef(activeId);
   const openRef = useRef(open);
   const addressRef = useRef(null);
@@ -60,11 +59,6 @@ export default function BrowserSheet({ browser }) {
   const clearDialogRef = useRef(null);
   activeIdRef.current = activeId;
   openRef.current = open;
-
-  useEffect(() => () => {
-    bridgeTimers.current.forEach(clearTimeout);
-    bridgeTimers.current.clear();
-  }, []);
 
   useEffect(() => {
     setAddress(historyActive ? '' : (active?.originalUrl || ''));
@@ -113,8 +107,6 @@ export default function BrowserSheet({ browser }) {
       const tab = frameEntry && tabs.find((item) => item.id === frameEntry[0]);
       if (!tab || tab.mode !== 'proxy' || tab.channel !== event.data.channel) return;
       if (event.data.type === 'ready') {
-        clearTimeout(bridgeTimers.current.get(tab.id));
-        bridgeTimers.current.delete(tab.id);
         markBindingReady(tab.id, event.data.channel);
         setUnhealthyTabs((current) => {
           if (!current.has(tab.id)) return current;
@@ -216,19 +208,6 @@ export default function BrowserSheet({ browser }) {
       next.delete(tab.id);
       return next;
     });
-    if (tab.mode === 'proxy') {
-      clearTimeout(bridgeTimers.current.get(tab.id));
-      const expectedUrl = tab.url;
-      bridgeTimers.current.set(tab.id, setTimeout(() => {
-        bridgeTimers.current.delete(tab.id);
-        if (openRef.current && activeIdRef.current === tab.id
-          && frameUrls.current.get(tab.id) === expectedUrl) {
-          void recoverBinding(tab.id);
-        } else if (frameUrls.current.get(tab.id) === expectedUrl) {
-          setUnhealthyTabs((current) => new Set(current).add(tab.id));
-        }
-      }, 3000));
-    }
   };
 
   const submitAddress = (event) => {

@@ -365,7 +365,7 @@ export async function createBrowserPreviewManager({
     const headers = info.headers || {};
     const destination = String(headers['sec-fetch-dest'] || headers['Sec-Fetch-Dest'] || '').toLowerCase();
     const acceptsHtml = String(headers.accept || headers.Accept || '').toLowerCase().includes('text/html');
-    const topLevelDocument = !info.isAjax
+    const topLevelDocument = !info.isAjax && !info.isIframe
       && (destination === 'document' || destination === 'iframe' || acceptsHtml);
     if (!topLevelDocument) return false;
     let target;

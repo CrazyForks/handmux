@@ -426,18 +426,18 @@ describe('BrowserSheet', () => {
     expect(postFirst).not.toHaveBeenCalled();
   });
 
-  it('reacquires an unhealthy proxy binding when its background tab becomes active again', async () => {
+  it('does not reload a proxy page merely because its bridge script stays silent', async () => {
     vi.useFakeTimers();
     const model = browser();
     await render(model);
     const first = document.querySelector('iframe[data-tab-id="a"]');
     act(() => first.dispatchEvent(new Event('load')));
-    await render({ ...model, activeId: 'b' });
-    act(() => vi.advanceTimersByTime(3000));
+    act(() => vi.advanceTimersByTime(30_000));
     expect(model.recoverBinding).not.toHaveBeenCalled();
 
+    await render({ ...model, activeId: 'b' });
     await render(model);
-    expect(model.recoverBinding).toHaveBeenCalledWith('a');
+    expect(model.recoverBinding).not.toHaveBeenCalled();
   });
 
   it('does not reload either tab when switch promises finish out of order', async () => {

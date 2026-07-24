@@ -233,6 +233,43 @@ describe('browser proxy leases', () => {
     expect(fake.proxies[0].closeSession).toHaveBeenCalledWith(oldSession);
   });
 
+  it('keeps a cross-origin nested iframe inside the current tab session', async () => {
+    const fake = fakeHammerhead();
+    const check = vi.fn(async () => ({ allowed: true }));
+    const browserBootstrap = { issue: vi.fn() };
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      previewDomain: 'preview.example',
+      browserBootstrap,
+      targetPolicyFactory: () => ({ check }),
+    });
+    await manager.putLease({
+      tabId: 'client-a',
+      deviceId: DEVICE,
+      url: 'https://app.example/',
+      origin: 'https://b-app.preview.example',
+    });
+    const session = fake.proxies[0].openSession.mock.calls[0][1];
+    const setMock = vi.fn();
+
+    await session.requestListeners.onRequest({
+      _requestInfo: {
+        url: 'https://frame.example/widget',
+        method: 'get',
+        isAjax: false,
+        isIframe: true,
+        headers: { 'sec-fetch-dest': 'iframe', accept: 'text/html' },
+      },
+      requestOptions: {},
+      setMock,
+    });
+
+    expect(check).toHaveBeenCalledWith('https://frame.example/widget');
+    expect(browserBootstrap.issue).not.toHaveBeenCalled();
+    expect(setMock).not.toHaveBeenCalled();
+    expect(manager.getLease('client-a', DEVICE).originalUrl).toBe('https://app.example/');
+  });
+
   it('rejects a public page top-level redirect to loopback before rehoming', async () => {
     const fake = fakeHammerhead();
     const browserBootstrap = { issue: vi.fn() };

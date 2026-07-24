@@ -90,4 +90,25 @@ describe('Hammerhead WebSocket upgrade compatibility', () => {
     expect(() => websocket.respondOnWebSocket(context)).not.toThrow();
     expect(response.end).toHaveBeenCalledOnce();
   });
+
+  it('exposes whether Hammerhead classified the request as a nested iframe', () => {
+    const { RequestInfo } = require(
+      'testcafe-hammerhead/lib/request-pipeline/request-hooks/events/info',
+    );
+    const info = RequestInfo.from({
+      isAjax: false,
+      isIframe: true,
+      isWebSocket: false,
+      reqOpts: {
+        body: Buffer.alloc(0),
+        headers: {},
+        method: 'GET',
+        url: 'https://nested.example/',
+      },
+      requestId: 'request-a',
+      session: { id: 'session-a' },
+    });
+
+    expect(info.isIframe).toBe(true);
+  });
 });

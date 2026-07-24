@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const PATCHED = Symbol.for('handmux.hammerhead.websocket-upgrade-socket');
 const RESPONDER_PATCHED = Symbol.for('handmux.hammerhead.websocket-mock-response');
+const REQUEST_INFO_PATCHED = Symbol.for('handmux.hammerhead.request-info-frame-nature');
 
 export function patchHammerheadDestinationRequest(DestinationRequest) {
   const prototype = DestinationRequest?.prototype;
@@ -54,11 +55,32 @@ export function patchHammerheadWebSocketResponder(websocket, headerTransforms) {
   return true;
 }
 
+export function patchHammerheadRequestInfo(RequestInfo) {
+  const original = RequestInfo?.from;
+  if (typeof original !== 'function') {
+    throw new Error('unsupported Hammerhead RequestInfo.from');
+  }
+  if (original[REQUEST_INFO_PATCHED]) return false;
+
+  function from(ctx) {
+    const info = original.call(this, ctx);
+    info.isIframe = !!ctx?.isIframe;
+    return info;
+  }
+  Object.defineProperty(from, REQUEST_INFO_PATCHED, { value: true });
+  RequestInfo.from = from;
+  return true;
+}
+
 export function installHammerheadWebSocketUpgradeCompat() {
   const DestinationRequest = require('testcafe-hammerhead/lib/request-pipeline/destination-request');
   const websocket = require('testcafe-hammerhead/lib/request-pipeline/websocket');
   const headerTransforms = require('testcafe-hammerhead/lib/request-pipeline/header-transforms');
+  const { RequestInfo } = require(
+    'testcafe-hammerhead/lib/request-pipeline/request-hooks/events/info',
+  );
   const destinationPatched = patchHammerheadDestinationRequest(DestinationRequest);
   const responderPatched = patchHammerheadWebSocketResponder(websocket, headerTransforms);
-  return destinationPatched || responderPatched;
+  const requestInfoPatched = patchHammerheadRequestInfo(RequestInfo);
+  return destinationPatched || responderPatched || requestInfoPatched;
 }
