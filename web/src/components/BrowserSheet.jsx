@@ -4,6 +4,7 @@ import {
   ChevronDownIcon,
   ClockIcon,
   GlobeIcon,
+  MoreHorizontalIcon,
   MonitorIcon,
   PlusIcon,
   RefreshIcon,
@@ -374,25 +375,24 @@ export default function BrowserSheet({ browser }) {
           {activeLoading && proxied ? <StopIcon /> : <RefreshIcon />}
         </button>
         <button className="browser-nav-button browser-options-trigger" aria-label={t('browser.menu')}
-          aria-expanded={optionsOpen} onClick={() => setOptionsOpen((value) => !value)}>…</button>
+          aria-expanded={optionsOpen} onClick={() => setOptionsOpen((value) => !value)}><MoreHorizontalIcon /></button>
         {optionsOpen && open && (
           <>
             <div className="browser-options-backdrop" onClick={() => setOptionsOpen(false)} />
             <div className="browser-options-card" role="dialog" aria-label={t('browser.menu')}>
-              <div className="browser-options-row">
-                <span>
-                  <strong>{t('browser.currentPage')}</strong>
-                  <small>{proxied ? t('browser.proxyMode') : t('browser.directMode')}</small>
-                </span>
-                <label className="cmd-switch browser-current-mode">
-                  <input type="checkbox" checked={proxied} disabled={!active || historyActive || (!proxied && !proxyAvailable)}
-                    aria-label={t('browser.switchMode')}
-                    onChange={(event) => chooseMode(event.target.checked ? 'proxy' : 'direct')} />
-                  <span className="cmd-switch-track" aria-hidden="true" />
-                  <span className="cmd-switch-knob" aria-hidden="true" />
-                </label>
+              <div className="browser-options-section browser-current-mode">
+                <strong>{t('browser.currentPage')}</strong>
+                <div className="browser-mode-segment" role="group" aria-label={t('browser.switchMode')}>
+                  <button aria-pressed={!proxied} disabled={!active || historyActive}
+                    onClick={() => chooseMode('direct')}>{t('browser.directMode')}</button>
+                  <button className="proxy" aria-pressed={proxied}
+                    disabled={!active || historyActive || !proxyAvailable}
+                    aria-describedby={!proxyAvailable ? 'browser-options-proxy-unavailable' : undefined}
+                    onClick={() => chooseMode('proxy')}>{t('browser.proxyMode')}</button>
+                </div>
+                {!proxyAvailable && <p id="browser-options-proxy-unavailable"
+                  className="browser-options-hint">{t('browser.proxyUnavailable')}</p>}
               </div>
-              {!proxyAvailable && <p className="browser-options-hint">{t('browser.proxyUnavailable')}</p>}
 
               <div className="browser-options-row">
                 <strong>{t('browser.pageView')}</strong>

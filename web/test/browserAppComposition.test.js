@@ -14,25 +14,25 @@ describe('built-in browser App composition', () => {
   });
 
   it('renders the browser toolbar entry unconditionally', () => {
-    expect(source).toMatch(/className=\{`topbar-icon browser-entry[^`]+`\}[^>]+onClick=\{\(\) => browser\.setOpen\(true\)\}/);
+    expect(source).toMatch(/className="topbar-icon browser-entry"[^>]+onClick=\{\(\) => browser\.setOpen\(true\)\}/);
     expect(source).not.toMatch(/\{shownPreview && \(\s*<button className="topbar-icon preview-live"/);
-    expect(source.indexOf('className={`topbar-icon browser-entry'))
+    expect(source.indexOf('className="topbar-icon browser-entry"'))
       .toBeLessThan(source.indexOf('aria-label={t(\'app.files\')}'));
     expect(source.slice(
-      source.indexOf('className={`topbar-icon browser-entry'),
+      source.indexOf('className="topbar-icon browser-entry"'),
       source.indexOf('aria-label={t(\'app.files\')}'),
     )).not.toContain('aria-label={t(\'usage.title\')}');
   });
 
   it('shows device-tab status on the browser entry with proxy precedence', () => {
     expect(source).toContain('const browserStatus = browserEntryStatus(browser.tabs)');
-    expect(source).toContain('browser-entry-status-dot');
-    expect(source).toMatch(/browser-entry \$\{browserStatus === 'proxy' \? 'proxy' : ''\}/);
-    expect(styles).toMatch(/\.browser-entry\.proxy\s*\{[^}]*color:\s*#f2a450/);
+    expect(source).not.toMatch(/browser-entry \$\{browserStatus === 'proxy'/);
+    expect(source).toContain('browser-entry-status-dot ${browserStatus}');
     const dot = styles.match(/\.browser-entry-status-dot\s*\{([^}]*)\}/)?.[1] || '';
     expect(dot).toMatch(/right:\s*4px/);
     expect(dot).toMatch(/bottom:\s*4px/);
-    expect(dot).toMatch(/background:\s*var\(--blue\)/);
+    expect(styles).toMatch(/\.browser-entry-status-dot\.direct\s*\{[^}]*background:\s*var\(--blue\)/);
+    expect(styles).toMatch(/\.browser-entry-status-dot\.proxy\s*\{[^}]*background:\s*#f2a450/);
   });
 
   it('routes confirmed terminal web links into the built-in browser', () => {

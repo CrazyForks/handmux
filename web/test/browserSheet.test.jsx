@@ -103,7 +103,10 @@ describe('BrowserSheet', () => {
     expect(alpha.querySelector('.browser-mode-badge.proxy')).not.toBeNull();
     expect(alpha.closest('.browser-tab-wrap').classList.contains('proxy')).toBe(true);
     click(document.querySelector('button[aria-label="浏览器菜单"]'));
-    click(document.querySelector('.browser-current-mode input'));
+    const modeButtons = [...document.querySelectorAll('.browser-mode-segment button')];
+    expect(modeButtons.map((node) => node.textContent)).toEqual(['手机直连', '经电脑代理']);
+    expect(modeButtons.map((node) => node.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+    click(modeButtons[0]);
     expect(model.navigateTab).toHaveBeenCalledWith('a', 'https://a.example/', 'direct');
   });
 
@@ -562,7 +565,10 @@ describe('BrowserSheet', () => {
     });
     await render(model);
     expect(document.querySelectorAll('.browser-nav > button')).toHaveLength(2);
-    click(document.querySelector('button[aria-label="浏览器菜单"]'));
+    const menuButton = document.querySelector('button[aria-label="浏览器菜单"]');
+    expect(menuButton.querySelector('svg')).not.toBeNull();
+    expect(menuButton.textContent).toBe('');
+    click(menuButton);
     const card = document.querySelector('.browser-options-card');
     expect(card).not.toBeNull();
     expect(card.textContent).toContain('当前网页');
@@ -571,7 +577,11 @@ describe('BrowserSheet', () => {
     expect(card.textContent).toContain('代理登录');
     expect(card.textContent).toContain('关闭内置浏览器');
 
-    click(card.querySelector('.browser-current-mode input'));
+    const modeButtons = [...card.querySelectorAll('.browser-mode-segment button')];
+    expect(modeButtons.map((node) => node.textContent)).toEqual(['手机直连', '经电脑代理']);
+    const segmentRule = styles.match(/\.browser-mode-segment\s*\{([^}]*)\}/)?.[1] || '';
+    expect(segmentRule).toMatch(/min-height:\s*44px/);
+    click(modeButtons[0]);
     expect(model.navigateTab).toHaveBeenCalledWith('a', 'https://a.example/', 'direct');
 
     const viewButtons = [...card.querySelectorAll('.browser-view-segment button')];

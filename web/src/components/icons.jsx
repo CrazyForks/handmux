@@ -390,6 +390,16 @@ export function GlobeIcon() {
     </svg>
   );
 }
+// horizontal ellipsis — overflow / more actions.
+export function MoreHorizontalIcon() {
+  return (
+    <svg {...base}>
+      <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
 // list-checks — TodoWrite.
 export function ListChecksIcon() {
   return (
