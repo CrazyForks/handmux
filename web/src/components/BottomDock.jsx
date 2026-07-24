@@ -764,10 +764,11 @@ function BottomDock({
     focusComposer: () => ref.current?.focus({ preventScroll: true }),
   }), []);
 
-  // After an upload, append the uploaded files' absolute paths to the box (then focus to keep typing).
+  // After an upload, append the uploaded files' absolute paths to the box. The caller decides whether
+  // insertion also focuses the composer: mobile keeps typing there; desktop restores the picker owner.
   // One file → the full path. Multiple → write the shared dir prefix ONCE and brace-expand the names
   // (`/…/.upload/{a.png,b.png}`); if they somehow don't share a dir, fall back to space-joined paths.
-  const insertPaths = (paths) => {
+  const insertPaths = (paths, { focusComposer = true } = {}) => {
     if (!paths.length) return;
     let text;
     if (paths.length === 1) {
@@ -779,12 +780,23 @@ function BottomDock({
         : paths.join(' ');
     }
     setValue((v) => (v && !/\s$/.test(v) ? `${v} ${text}` : v + text));
-    requestAnimationFrame(() => { ref.current?.focus(); autoGrow(ref.current); });
+    requestAnimationFrame(() => {
+      if (focusComposer) ref.current?.focus();
+      autoGrow(ref.current);
+    });
   };
 
   // ＋ upload: the multi-select pipeline lives in useUpload (transient note state + per-file sequential
   // transfer via the app-wide overlay); onPaths pastes the uploaded absolute paths into the composer.
-  const { upload, uploadFiles } = useUpload({ cwd, onAuthFail, onPaths: insertPaths });
+  const { upload, uploadFiles } = useUpload({
+    cwd,
+    onAuthFail,
+    onPaths: (paths) => insertPaths(paths, {
+      // Desktop restores the captured picker owner after upload; only a composer-owned session may let
+      // the path-insertion frame focus the textarea. Mobile keeps its existing focus/soft-keyboard path.
+      focusComposer: !desktopUnified || filePickerSessionRef.current?.owner === 'composer',
+    }),
+  });
 
   // 填入: type the box text into the pane WITHOUT Enter (no submit), then clear — the secondary to
   // 发送 (which types + Enter). Mirrors send() with enter=false; a filled command is still recorded.

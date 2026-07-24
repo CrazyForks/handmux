@@ -40,7 +40,9 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  document.querySelectorAll('.test-terminal-focus').forEach((node) => node.remove());
   if ('visualViewport' in window) delete window.visualViewport; // drop any per-test mock
+  vi.useRealTimers();
 });
 
 const render = (props) => act(() => root.render(<BottomDock micAvailable {...props} />));
@@ -59,6 +61,23 @@ const chooseFile = (picker, name = 'picked.txt') => {
     value: [new File(['picked'], name, { type: 'text/plain' })],
   });
   act(() => picker.dispatchEvent(new Event('change', { bubbles: true })));
+};
+const terminalFocusTarget = () => {
+  const target = document.createElement('button');
+  target.className = 'test-terminal-focus';
+  document.body.appendChild(target);
+  return target;
+};
+const captureAnimationFrames = () => {
+  const frames = [];
+  const spy = vi.spyOn(window, 'requestAnimationFrame')
+    .mockImplementation((callback) => { frames.push(callback); return frames.length; });
+  return {
+    flush: () => act(() => {
+      while (frames.length) frames.shift()(performance.now());
+    }),
+    restore: () => spy.mockRestore(),
+  };
 };
 
 // React tracks the controlled value via the native setter; set it then fire `input` so onChange runs.
@@ -719,10 +738,12 @@ describe('BottomDock', () => {
     're-enters the upload overlay when %s fallback restoration runs before change, then restores after upload',
     async (owner) => {
       vi.useFakeTimers();
+      const frames = captureAnimationFrames();
       const upload = deferred();
       api.uploadFile.mockReturnValueOnce(upload.promise);
-      const onLeaveTerminal = vi.fn();
-      const onReturnToTerminal = vi.fn();
+      const terminal = terminalFocusTarget();
+      const onLeaveTerminal = vi.fn(() => terminal.blur());
+      const onReturnToTerminal = vi.fn(() => terminal.focus());
       render({
         pane: '%1',
         cwd: '/work',
@@ -732,7 +753,7 @@ describe('BottomDock', () => {
         onReturnToTerminal,
       });
       const composer = container.querySelector('.input-text');
-      if (owner === 'composer') act(() => composer.focus());
+      act(() => (owner === 'composer' ? composer : terminal).focus());
       fire(container.querySelector(`[aria-label="${t('dock.attach')}"]`), 'click');
       const picker = container.querySelector('.browse-file-input');
 
@@ -754,16 +775,20 @@ describe('BottomDock', () => {
         await upload.promise;
         await Promise.resolve();
       });
+      frames.flush();
       expect(onReturnToTerminal).toHaveBeenCalledTimes(owner === 'terminal' ? 2 : 0);
-      expect(document.activeElement === composer).toBe(owner === 'composer');
+      expect(document.activeElement).toBe(owner === 'terminal' ? terminal : composer);
+      frames.restore();
       vi.useRealTimers();
     },
   );
 
   it('normal file change restores the terminal owner once only after upload finishes', async () => {
+    const frames = captureAnimationFrames();
     const upload = deferred();
     api.uploadFile.mockReturnValueOnce(upload.promise);
-    const onReturnToTerminal = vi.fn();
+    const terminal = terminalFocusTarget();
+    const onReturnToTerminal = vi.fn(() => terminal.focus());
     render({
       pane: '%1',
       cwd: '/work',
@@ -772,6 +797,7 @@ describe('BottomDock', () => {
       onLeaveTerminal: vi.fn(),
       onReturnToTerminal,
     });
+    act(() => terminal.focus());
     fire(container.querySelector(`[aria-label="${t('dock.attach')}"]`), 'click');
     chooseFile(container.querySelector('.browse-file-input'));
     await vi.waitFor(() => expect(api.uploadFile).toHaveBeenCalledOnce());
@@ -782,7 +808,61 @@ describe('BottomDock', () => {
       await upload.promise;
       await Promise.resolve();
     });
+    frames.flush();
     expect(onReturnToTerminal).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(terminal);
+    frames.restore();
+  });
+
+  it('mobile file upload keeps focusing the composer after inserting the uploaded path', async () => {
+    const frames = captureAnimationFrames();
+    const upload = deferred();
+    api.uploadFile.mockReturnValueOnce(upload.promise);
+    render({ pane: '%1', cwd: '/work' });
+    const composer = container.querySelector('.input-text');
+    fire(container.querySelector(`[aria-label="${t('dock.attach')}"]`), 'click');
+    chooseFile(container.querySelector('.browse-file-input'));
+
+    await act(async () => {
+      upload.resolve({ path: '/uploads/picked.txt' });
+      await upload.promise;
+      await Promise.resolve();
+    });
+    frames.flush();
+
+    expect(composer.value).toContain('/uploads/picked.txt');
+    expect(document.activeElement).toBe(composer);
+    frames.restore();
+  });
+
+  it('desktop upload error restores the terminal owner without a later composer rAF takeover', async () => {
+    const frames = captureAnimationFrames();
+    const upload = deferred();
+    api.uploadFile.mockReturnValueOnce(upload.promise);
+    const terminal = terminalFocusTarget();
+    render({
+      pane: '%1',
+      cwd: '/work',
+      desktopUnified: true,
+      terminalFocused: true,
+      onLeaveTerminal: () => terminal.blur(),
+      onReturnToTerminal: () => terminal.focus(),
+    });
+    act(() => terminal.focus());
+    fire(container.querySelector(`[aria-label="${t('dock.attach')}"]`), 'click');
+    chooseFile(container.querySelector('.browse-file-input'));
+
+    await act(async () => {
+      upload.reject(new Error('offline'));
+      await upload.promise.catch(() => {});
+      await Promise.resolve();
+    });
+    frames.flush();
+
+    expect(container.querySelector('.dock-upload.error')).not.toBeNull();
+    expect(document.activeElement).toBe(terminal);
+    expect(document.activeElement).not.toBe(container.querySelector('.input-text'));
+    frames.restore();
   });
 
   describe('input mode (command ⇄ agent)', () => {
