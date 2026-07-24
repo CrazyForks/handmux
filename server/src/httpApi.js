@@ -61,7 +61,7 @@ export function createApiRouter({
   // In the main process browser APIs are forwarded to the isolated worker before this router. Keep
   // preview-domain wiring out of this unused fallback route so capability reporting does not require
   // the worker-owned bootstrap ticket store.
-  r.use(browserRoutes(browser ? deps : { ...deps, previewDomain: null }));
+  r.use('/browser-proxy', browserRoutes(browser ? deps : { ...deps, previewDomain: null }));
   r.use(transcriptRoutes(deps));
   if (workspace) r.use(workspaceRoutes(deps));
 

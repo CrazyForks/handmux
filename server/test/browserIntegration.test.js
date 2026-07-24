@@ -36,14 +36,17 @@ describe('built-in browser vertical slice', () => {
     const deviceB = 'device_zyxwvutsrqponmlkjihgfedcba654321';
 
     try {
-      await manager.create({
-        url: 'https://app-a.example/', origin: 'https://browser-app-a.preview.example', closeAfterMinutes: 10, deviceId: deviceA,
+      await manager.putLease({
+        tabId: 'app-a', url: 'https://app-a.example/',
+        origin: 'https://browser-app-a.preview.example', deviceId: deviceA,
       });
-      await manager.create({
-        url: 'https://app-b.example/', origin: 'https://browser-app-b.preview.example', closeAfterMinutes: 10, deviceId: deviceA,
+      await manager.putLease({
+        tabId: 'app-b', url: 'https://app-b.example/',
+        origin: 'https://browser-app-b.preview.example', deviceId: deviceA,
       });
-      await manager.create({
-        url: 'https://app-a.example/', origin: 'https://browser-other.preview.example', closeAfterMinutes: 10, deviceId: deviceB,
+      await manager.putLease({
+        tabId: 'other-device', url: 'https://app-a.example/',
+        origin: 'https://browser-other.preview.example', deviceId: deviceB,
       });
       const [appA, appB, otherDevice] = sessions.map(({ session }) => session.cookies);
 
@@ -93,17 +96,17 @@ describe('built-in browser vertical slice', () => {
     try {
       const origin = `http://127.0.0.1:${outerPort}`;
       const deviceId = 'device_abcdefghijklmnopqrstuvwxyz123456';
-      const tab = await manager.create({
+      const tab = await manager.putLease({
+        tabId: 'first-device',
         url: `http://127.0.0.1:${targetPort}/keys`,
         origin,
-        closeAfterMinutes: 10,
         deviceId,
       });
       const secondDeviceId = 'device_zyxwvutsrqponmlkjihgfedcba654321';
-      const secondTab = await manager.create({
+      const secondTab = await manager.putLease({
+        tabId: 'second-device',
         url: `http://127.0.0.1:${targetPort}/second`,
         origin,
-        closeAfterMinutes: 10,
         deviceId: secondDeviceId,
       });
       const headers = { accept: 'text/html', cookie: `tw_browser_device=${deviceId}` };
@@ -157,11 +160,11 @@ describe('built-in browser vertical slice', () => {
     try {
       const origin = `http://127.0.0.1:${outerPort}`;
       const deviceId = 'device_abcdefghijklmnopqrstuvwxyz123456';
-      const first = await manager.create({
-        url: `http://127.0.0.1:${targetPort}/set`, origin, closeAfterMinutes: 10, deviceId,
+      const first = await manager.putLease({
+        tabId: 'first', url: `http://127.0.0.1:${targetPort}/set`, origin, deviceId,
       });
-      const second = await manager.create({
-        url: `http://127.0.0.1:${targetPort}/read`, origin, closeAfterMinutes: 10, deviceId,
+      const second = await manager.putLease({
+        tabId: 'second', url: `http://127.0.0.1:${targetPort}/read`, origin, deviceId,
       });
       const headers = { accept: 'text/html', cookie: `tw_browser_device=${deviceId}` };
       const firstHtml = await (await fetch(first.url, { headers })).text();
