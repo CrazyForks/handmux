@@ -170,8 +170,31 @@ describe('device cookie profile persistence and retention', () => {
     read: vi.fn(async () => null),
     write: vi.fn(),
     remove: vi.fn(),
+    readMetadata: vi.fn(async () => null),
+    writeMetadata: vi.fn(),
+    removeMetadata: vi.fn(),
     close: vi.fn(),
     ...overrides,
+  });
+
+  it('persists retention preferences and the no-lease timestamp', async () => {
+    const persistence = adapter();
+    const profiles = createDeviceCookieProfiles({
+      createCookies,
+      persistence,
+      now: () => 12_345,
+    });
+
+    await profiles.configure(DEVICE_A, { persist: true, retentionDays: 7 });
+    profiles.setActive(DEVICE_A, true);
+    profiles.setActive(DEVICE_A, false);
+    await profiles.flush(DEVICE_A);
+
+    expect(persistence.writeMetadata).toHaveBeenLastCalledWith(DEVICE_A, {
+      persist: true,
+      retentionDays: 7,
+      noLeaseSince: 12_345,
+    });
   });
 
   it('never persists by default, then restores fresh profiles but saves used memory', async () => {

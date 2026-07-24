@@ -9,6 +9,32 @@ const DEVICE_A = 'device-a';
 const DEVICE_B = 'device-b';
 
 describe('browser profile persistence', () => {
+  it('round-trips retention metadata separately from the encrypted cookie jar', async () => {
+    const store = createBrowserProfilePersistence({ dir, keyFile });
+    const metadata = { persist: true, retentionDays: 7, noLeaseSince: 12345 };
+
+    await store.writeMetadata(DEVICE_A, metadata);
+
+    await expect(store.readMetadata(DEVICE_A)).resolves.toEqual(metadata);
+    await expect(store.read(DEVICE_A)).resolves.toBeNull();
+  });
+
+  it('prunes an expired profile after restart without a device reconnect', async () => {
+    const store = createBrowserProfilePersistence({ dir, keyFile });
+    await store.write(DEVICE_A, '{"cookies":"expired"}');
+    await store.writeMetadata(DEVICE_A, {
+      persist: true,
+      retentionDays: 1,
+      noLeaseSince: 1_000,
+    });
+
+    const restarted = createBrowserProfilePersistence({ dir, keyFile });
+    await expect(restarted.pruneExpiredProfiles(1_000 + 24 * 60 * 60 * 1000))
+      .resolves.toBe(1);
+
+    await expect(restarted.read(DEVICE_A)).resolves.toBeNull();
+    await expect(restarted.readMetadata(DEVICE_A)).resolves.toBeNull();
+  });
   let root;
   let dir;
   let keyFile;

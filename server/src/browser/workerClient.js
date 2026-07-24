@@ -19,6 +19,7 @@ function forwardedHeaders(headers, internalToken, appToken, api) {
 export function createBrowserWorkerClient({
   appToken,
   previewDomain = null,
+  handmuxOrigin = 'http://127.0.0.1',
   forkWorker = fork,
   request = http.request,
   connect = net.connect,
@@ -34,6 +35,7 @@ export function createBrowserWorkerClient({
   const internalToken = randomToken();
   let child = null;
   let port = null;
+  let generation = 0;
   let stopping = false;
   let restartDelay = 250;
   let restartTimer = null;
@@ -74,6 +76,7 @@ export function createBrowserWorkerClient({
         env: {
           ...workerEnv,
           HANDMUX_BROWSER_INTERNAL_TOKEN: internalToken,
+          HANDMUX_BROWSER_CONTROL_ORIGIN: handmuxOrigin,
           ...(previewDomain ? { HANDMUX_PREVIEW_DOMAIN: previewDomain } : {}),
         },
         stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
@@ -92,6 +95,7 @@ export function createBrowserWorkerClient({
     spawned.on('message', (message) => {
       if (child !== spawned || message?.type !== 'handmux-browser-ready' || !Number.isInteger(message.port)) return;
       port = message.port;
+      generation += 1;
       clearReadyTimer();
       clearStableTimer();
       stableTimer = setTimer(() => {
@@ -103,6 +107,7 @@ export function createBrowserWorkerClient({
       if (child !== spawned) return;
       child = null;
       port = null;
+      generation += 1;
       clearReadyTimer();
       clearStableTimer();
       for (const socket of activeSockets) socket.destroy();
@@ -201,7 +206,10 @@ export function createBrowserWorkerClient({
     upstream.end(payload || undefined);
   });
 
-  const apiHandler = createBrowserCoordinator({ previewDomain, proxyRequest, setTimer, clearTimer });
+  const apiHandler = createBrowserCoordinator({
+    proxyRequest,
+    getStatus: () => ({ ready: port != null, generation }),
+  });
 
   if (previewDomain) start();
   let closePromise = null;

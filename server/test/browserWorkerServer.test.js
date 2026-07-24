@@ -12,10 +12,10 @@ afterEach(async () => {
 
 function browserFake() {
   return {
-    create: vi.fn(({ url, origin }) => ({
-      id: 'tab-a', originalUrl: url, url: `${origin}/_browser-tab-a/https://target/`,
+    putLease: vi.fn(({ tabId, url, origin }) => ({
+      tabId, originalUrl: url, channel: 'channel-a',
+      url: `${origin}/_browser-tab-a/https://target/`,
     })),
-    list: vi.fn(() => []),
     close: vi.fn(async () => {}),
   };
 }
@@ -63,9 +63,9 @@ describe('browser worker server', () => {
   it('uses the dedicated preview origin instead of the Handmux Host for proxy tabs', async () => {
     const browser = browserFake();
     const worker = await start({ browser, previewDomain: 'preview.example' });
-    const body = JSON.stringify({ url: 'https://target.example/', closeAfterMinutes: 10 });
-    const response = await rawRequest(worker, '/api/browser-tabs', {
-      method: 'POST',
+    const body = JSON.stringify({ url: 'https://target.example/' });
+    const response = await rawRequest(worker, '/api/browser-proxy/leases/client-a', {
+      method: 'PUT',
       headers: {
         'content-type': 'application/json',
         'content-length': Buffer.byteLength(body),
@@ -77,8 +77,9 @@ describe('browser worker server', () => {
       body,
     });
 
-    expect(response.status).toBe(201);
-    expect(browser.create).toHaveBeenCalledWith(expect.objectContaining({
+    expect(response.status).toBe(200);
+    expect(browser.putLease).toHaveBeenCalledWith(expect.objectContaining({
+      tabId: 'client-a',
       origin: expect.stringMatching(/^https:\/\/b-[0-9a-z]{13}\.preview\.example$/),
       deviceId: DEVICE,
     }));

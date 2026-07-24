@@ -2,17 +2,15 @@ import express from 'express';
 import { browserLabelForOrigin } from './originLabel.js';
 import { browserRequestOrigin } from './publicProxy.js';
 
-const CLOSE_AFTER_MINUTES = new Set([10, 30, 60, 120, null]);
 const RETENTION_DAYS = new Set([1, 7, 30, null]);
 const DEVICE_ID = /^[A-Za-z0-9_-]{32,128}$/;
+const TAB_ID = /^[A-Za-z0-9_-]{1,128}$/;
 const DEVICE_COOKIE = 'tw_browser_device';
 
 function previewBase(raw) {
   if (!raw) return null;
   const value = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
-  const url = new URL(value);
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('previewDomain must use http or https');
-  return url;
+  return new URL(value);
 }
 
 function wildcardOrigin(base, targetOrigin) {
@@ -21,22 +19,17 @@ function wildcardOrigin(base, targetOrigin) {
   return url.origin;
 }
 
-function validCloseAfter(value) {
-  return CLOSE_AFTER_MINUTES.has(value);
-}
-
-function validTarget(value) {
-  if (typeof value !== 'string' || !value) return false;
+function normalizedTarget(value) {
+  if (typeof value !== 'string' || !value) return null;
   try {
     const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
 function normalizedHttpOrigin(value) {
-  if (typeof value !== 'string' || !value) return null;
   try {
     const url = new URL(value);
     return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : null;
@@ -50,179 +43,103 @@ export function browserRoutes({
   previewDomain = null,
   browserBootstrap = null,
 }) {
-  const r = express.Router();
+  const router = express.Router();
   const publicBase = previewBase(previewDomain);
-  if (publicBase && !browserBootstrap) throw new Error('browser bootstrap required with previewDomain');
-  const publicTab = (tab, deviceId) => {
-    if (!publicBase || !tab?.url || tab.mode === 'direct') return tab;
-    const origin = new URL(tab.url).origin;
-    return { ...tab, url: browserBootstrap.issue({ url: tab.url, origin, deviceId }) };
-  };
 
-  r.use('/browser-tabs', (req, res, next) => {
+  router.use((req, res, next) => {
     const deviceId = req.get('x-handmux-browser-device');
     if (!DEVICE_ID.test(deviceId || '')) return res.status(400).json({ error: 'browser device id required' });
     req.browserDeviceId = deviceId;
     const origin = browserRequestOrigin(req);
-    const secure = origin.startsWith('https://') ? '; Secure' : '';
+    const secure = origin?.startsWith('https://') ? '; Secure' : '';
     res.append('Set-Cookie', `${DEVICE_COOKIE}=${deviceId}; Path=/; HttpOnly; SameSite=Strict${secure}`);
     next();
   });
 
-  r.post('/browser-tabs', async (req, res, next) => {
-    if (!browser) return res.status(503).json({ error: 'browser unavailable' });
-    const { url, closeAfterMinutes, mode = 'proxy' } = req.body || {};
-    if (!validTarget(url)) return res.status(400).json({ error: 'browser URL must use http or https' });
-    if (!validCloseAfter(closeAfterMinutes)) return res.status(400).json({ error: 'unsupported background close time' });
-    if (mode !== 'direct' && mode !== 'proxy') return res.status(400).json({ error: 'unsupported browser mode' });
-    if (mode === 'proxy' && !publicBase) return res.status(503).json({ error: 'browser proxy unavailable' });
-    let created = null;
-    let responseFinished = false;
-    let responseClosed = false;
-    let cleaned = false;
-    const cleanupUnsentTab = () => {
-      if (cleaned || responseFinished || !created) return;
-      cleaned = true;
-      browser.closeTab(created.id, req.browserDeviceId);
-      const remaining = browser.list(req.browserDeviceId);
-      const displaced = created._displacedTabs || [];
-      const restore = displaced.find((tab) => remaining.some((item) => item.id === tab.id));
-      if (restore && !remaining.some((tab) => tab.visible)) {
-        browser.setVisible(restore.id, true, restore.closeAfterMinutes, req.browserDeviceId);
-      }
-    };
-    req.once('aborted', () => { responseClosed = true; cleanupUnsentTab(); });
-    res.once('finish', () => { responseFinished = true; });
-    res.once('close', () => { responseClosed = true; cleanupUnsentTab(); });
-    try {
-      const origin = publicBase
-        ? wildcardOrigin(publicBase, new URL(url).origin)
-        : browserRequestOrigin(req);
-      created = await browser.create({ url, origin, closeAfterMinutes, deviceId: req.browserDeviceId, mode });
-      if (responseClosed && !responseFinished) return cleanupUnsentTab();
-      res.status(201).json(publicTab(created, req.browserDeviceId));
-    } catch (error) {
-      cleanupUnsentTab();
-      if (!responseClosed) next(error);
-    }
-  });
+  const responseLease = (lease, deviceId) => {
+    if (!lease) return null;
+    const url = browserBootstrap.issue({
+      url: lease.url,
+      origin: new URL(lease.url).origin,
+      deviceId,
+    });
+    return { ...lease, url };
+  };
 
-  r.get('/browser-tabs', (req, res) => {
-    if (!browser) return res.status(503).json({ error: 'browser unavailable' });
-    res.json({ tabs: browser.list(req.browserDeviceId).map((tab) => publicTab(tab, req.browserDeviceId)) });
-  });
-
-  r.put('/browser-tabs/profile', async (req, res, next) => {
-    if (!browser) return res.status(503).json({ error: 'browser unavailable' });
-    const { persist, retentionDays } = req.body || {};
-    if (typeof persist !== 'boolean' || !RETENTION_DAYS.has(retentionDays)) {
-      return res.status(400).json({ error: 'bad browser profile preferences' });
-    }
+  router.put('/leases/:tabId', async (req, res, next) => {
+    if (!browser || !publicBase) return res.status(503).json({ error: 'browser proxy unavailable' });
+    if (!TAB_ID.test(req.params.tabId)) return res.status(400).json({ error: 'bad browser tab id' });
+    const url = normalizedTarget(req.body?.url);
+    if (!url) return res.status(400).json({ error: 'browser URL must use http or https' });
     try {
-      const configured = await browser.configureDeviceProfile(
-        req.browserDeviceId,
-        { persist, retentionDays },
-      );
-      return res.json(configured);
+      const origin = wildcardOrigin(publicBase, new URL(url).origin);
+      const lease = await browser.putLease({
+        tabId: req.params.tabId,
+        url: req.body.url,
+        origin,
+        deviceId: req.browserDeviceId,
+      });
+      return res.json(responseLease(lease, req.browserDeviceId));
     } catch (error) {
       return next(error);
     }
   });
 
-  r.post('/browser-tabs/profile/clear', async (req, res, next) => {
-    if (!browser) return res.status(503).json({ error: 'browser unavailable' });
+  router.post('/leases/:tabId/navigate', async (req, res, next) => {
+    if (!browser || !publicBase) return res.status(503).json({ error: 'browser proxy unavailable' });
+    if (!TAB_ID.test(req.params.tabId)) return res.status(400).json({ error: 'bad browser tab id' });
+    const url = normalizedTarget(req.body?.url);
+    if (!url) return res.status(400).json({ error: 'browser URL must use http or https' });
+    try {
+      const origin = wildcardOrigin(publicBase, new URL(url).origin);
+      const lease = await browser.navigateLease(
+        req.params.tabId,
+        req.body.url,
+        req.browserDeviceId,
+        origin,
+      );
+      if (!lease) return res.status(404).json({ error: 'browser proxy lease not found' });
+      return res.json(responseLease(lease, req.browserDeviceId));
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.delete('/leases/:tabId', (req, res) => {
+    if (!browser) return res.status(503).json({ error: 'browser proxy unavailable' });
+    if (!browser.deleteLease(req.params.tabId, req.browserDeviceId)) {
+      return res.status(404).json({ error: 'browser proxy lease not found' });
+    }
+    return res.status(204).end();
+  });
+
+  router.put('/profile', async (req, res, next) => {
+    const { persist, retentionDays } = req.body || {};
+    if (typeof persist !== 'boolean' || !RETENTION_DAYS.has(retentionDays)) {
+      return res.status(400).json({ error: 'bad browser profile preferences' });
+    }
+    try {
+      return res.json(await browser.configureDeviceProfile(
+        req.browserDeviceId,
+        { persist, retentionDays },
+      ));
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/profile/clear', async (req, res, next) => {
     const rawOrigin = req.body?.origin;
     const origin = rawOrigin === null ? null : normalizedHttpOrigin(rawOrigin);
     if (origin === null && rawOrigin !== null) {
       return res.status(400).json({ error: 'bad browser profile clear request' });
     }
     try {
-      const cleared = await browser.clearDeviceProfile(req.browserDeviceId, { origin });
-      return res.json(cleared);
+      return res.json(await browser.clearDeviceProfile(req.browserDeviceId, { origin }));
     } catch (error) {
       return next(error);
     }
   });
 
-  r.patch('/browser-tabs/:id/visibility', (req, res) => {
-    if (!browser) return res.status(503).json({ error: 'browser unavailable' });
-    const { visible, closeAfterMinutes } = req.body || {};
-    if (typeof visible !== 'boolean' || !validCloseAfter(closeAfterMinutes)) {
-      return res.status(400).json({ error: 'bad visibility request' });
-    }
-    const tab = browser.setVisible(req.params.id, visible, closeAfterMinutes, req.browserDeviceId);
-    if (!tab) return res.status(404).json({ error: 'browser tab not found' });
-    res.json(publicTab(tab, req.browserDeviceId));
-  });
-
-  r.patch('/browser-tabs/:id/metadata', (req, res, next) => {
-    if (!browser) return res.status(503).json({ error: 'browser unavailable' });
-    const { url, title } = req.body || {};
-    if (!validTarget(url) || typeof title !== 'string' || title.length > 1024) {
-      return res.status(400).json({ error: 'bad browser tab metadata' });
-    }
-    try {
-      const tab = browser.updateMetadata(
-        req.params.id,
-        { url: new URL(url).toString(), title },
-        req.browserDeviceId,
-      );
-      if (!tab) return res.status(404).json({ error: 'browser tab not found' });
-      return res.json(publicTab(tab, req.browserDeviceId));
-    } catch (error) {
-      return next(error);
-    }
-  });
-
-  r.post('/browser-tabs/:id/prepare-form-navigation', async (req, res, next) => {
-    if (!browser) return res.status(503).json({ error: 'browser unavailable' });
-    const { url } = req.body || {};
-    if (!validTarget(url)) return res.status(400).json({ error: 'browser URL must use http or https' });
-    if (!publicBase) return res.status(503).json({ error: 'browser proxy unavailable' });
-    try {
-      const origin = wildcardOrigin(publicBase, new URL(url).origin);
-      const tab = await browser.prepareFormNavigation(
-        req.params.id,
-        url,
-        req.browserDeviceId,
-        origin,
-      );
-      if (!tab) return res.status(404).json({ error: 'browser tab not found' });
-      const bootstrapUrl = browserBootstrap.issue({
-        url: tab.url,
-        origin: new URL(tab.url).origin,
-        deviceId: req.browserDeviceId,
-        preserveMethod: true,
-        redirectStatus: 307,
-      });
-      return res.json({ url: bootstrapUrl, tab: { ...tab, url: bootstrapUrl } });
-    } catch (error) {
-      return next(error);
-    }
-  });
-
-  r.post('/browser-tabs/:id/navigate', async (req, res, next) => {
-    if (!browser) return res.status(503).json({ error: 'browser unavailable' });
-    const { url, mode = 'proxy' } = req.body || {};
-    if (!validTarget(url)) return res.status(400).json({ error: 'browser URL must use http or https' });
-    if (mode !== 'direct' && mode !== 'proxy') return res.status(400).json({ error: 'unsupported browser mode' });
-    if (mode === 'proxy' && !publicBase) return res.status(503).json({ error: 'browser proxy unavailable' });
-    try {
-      const origin = publicBase
-        ? wildcardOrigin(publicBase, new URL(url).origin)
-        : browserRequestOrigin(req);
-      const tab = await browser.navigate(req.params.id, url, req.browserDeviceId, origin, mode);
-      if (!tab) return res.status(404).json({ error: 'browser tab not found' });
-      res.json(publicTab(tab, req.browserDeviceId));
-    } catch (error) { next(error); }
-  });
-
-  r.delete('/browser-tabs/:id', (req, res) => {
-    if (!browser) return res.status(503).json({ error: 'browser unavailable' });
-    const tab = browser.closeTab(req.params.id, req.browserDeviceId);
-    if (!tab) return res.status(404).json({ error: 'browser tab not found' });
-    res.status(204).end();
-  });
-
-  return r;
+  return router;
 }

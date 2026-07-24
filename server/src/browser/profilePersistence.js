@@ -69,6 +69,7 @@ export function createBrowserProfilePersistence({
     return keyPromise;
   };
   const profilePath = (deviceId) => path.join(dir, `${profileHash(deviceId)}.profile`);
+  const metadataPath = (deviceId) => path.join(dir, `${profileHash(deviceId)}.meta`);
 
   const track = (operation) => {
     pending.add(operation);
@@ -153,11 +154,88 @@ export function createBrowserProfilePersistence({
     }),
   );
 
+  const readMetadata = async (deviceId) => {
+    const target = metadataPath(deviceId);
+    await ensureDir();
+    try {
+      await fs.chmod(target, 0o600);
+      const value = JSON.parse(await fs.readFile(target, 'utf8'));
+      if (typeof value?.persist !== 'boolean'
+        || ![1, 7, 30, null].includes(value?.retentionDays)
+        || (value?.noLeaseSince !== null && !Number.isFinite(value?.noLeaseSince))) {
+        throw new Error('invalid browser profile metadata');
+      }
+      return value;
+    } catch (error) {
+      if (error?.code === 'ENOENT') return null;
+      throw error;
+    }
+  };
+
+  const writeMetadata = (deviceId, metadata) => track((async () => {
+    await ensureDir();
+    const target = metadataPath(deviceId);
+    const temp = `${target}.tmp-${process.pid}-${randomBytes(12).toString('hex')}`;
+    let handle;
+    try {
+      handle = await fs.open(temp, 'wx', 0o600);
+      await handle.writeFile(JSON.stringify(metadata), 'utf8');
+      await handle.sync();
+      await handle.close();
+      handle = null;
+      await fs.rename(temp, target);
+    } catch (error) {
+      await handle?.close().catch(() => {});
+      await fs.unlink(temp).catch(() => {});
+      throw error;
+    }
+  })());
+
+  const removeMetadata = (deviceId) => track(
+    fs.unlink(metadataPath(deviceId)).catch((error) => {
+      if (error?.code !== 'ENOENT') throw error;
+    }),
+  );
+
+  const pruneExpiredProfiles = (currentTime = Date.now()) => track((async () => {
+    await ensureDir();
+    const names = await fs.readdir(dir);
+    let removed = 0;
+    for (const name of names) {
+      const match = name.match(/^([0-9a-f]{64})\.meta$/);
+      if (!match) continue;
+      const metadataFile = path.join(dir, name);
+      let metadata;
+      try {
+        metadata = JSON.parse(await fs.readFile(metadataFile, 'utf8'));
+      } catch {
+        continue;
+      }
+      if (!metadata?.persist
+        || metadata.retentionDays === null
+        || ![1, 7, 30].includes(metadata.retentionDays)
+        || !Number.isFinite(metadata.noLeaseSince)) continue;
+      if (metadata.noLeaseSince + metadata.retentionDays * 24 * 60 * 60 * 1000 > currentTime) continue;
+      await Promise.all([
+        fs.unlink(path.join(dir, `${match[1]}.profile`)).catch((error) => {
+          if (error?.code !== 'ENOENT') throw error;
+        }),
+        fs.unlink(metadataFile).catch((error) => {
+          if (error?.code !== 'ENOENT') throw error;
+        }),
+      ]);
+      removed += 1;
+    }
+    return removed;
+  })());
+
   const close = async () => {
     const results = await Promise.allSettled([...pending]);
     const failed = results.find((result) => result.status === 'rejected');
     if (failed) throw failed.reason;
   };
 
-  return { read, write, remove, close };
+  return {
+    read, write, remove, readMetadata, writeMetadata, removeMetadata, pruneExpiredProfiles, close,
+  };
 }

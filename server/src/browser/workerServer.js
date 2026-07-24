@@ -21,6 +21,7 @@ function authenticated(req, token) {
 export async function createBrowserWorkerServer({
   internalToken,
   previewDomain = null,
+  handmuxOrigin = 'http://127.0.0.1',
   browser: suppliedBrowser = null,
   managerFactory = createBrowserPreviewManager,
   browserPublicFactory = createBrowserPublicProxy,
@@ -28,8 +29,12 @@ export async function createBrowserWorkerServer({
   port = 0,
 } = {}) {
   if (!internalToken) throw new Error('browser worker internal token required');
-  const browser = suppliedBrowser || await managerFactory();
   const browserBootstrap = createBrowserBootstrapStore();
+  const browser = suppliedBrowser || await managerFactory({
+    handmuxOrigin,
+    previewDomain,
+    browserBootstrap,
+  });
   const browserPublic = browserPublicFactory({ browser, browserBootstrap });
   const app = express();
 
@@ -39,7 +44,11 @@ export async function createBrowserWorkerServer({
     next();
   });
   app.get('/_browser-worker/health', (_req, res) => res.json({ ok: true }));
-  app.use('/api', express.json(), browserRoutes({ browser, previewDomain, browserBootstrap }));
+  app.use(
+    '/api/browser-proxy',
+    express.json(),
+    browserRoutes({ browser, previewDomain, browserBootstrap }),
+  );
   app.use(browserPublic.handler);
 
   const server = http.createServer(app);

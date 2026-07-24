@@ -6,6 +6,9 @@ const noPersistence = {
   async read() { return null; },
   async write() {},
   async remove() {},
+  async readMetadata() { return null; },
+  async writeMetadata() {},
+  async removeMetadata() {},
   async close() {},
 };
 
@@ -75,6 +78,14 @@ export function createDeviceCookieProfiles({
 
   const queueWrite = (deviceId, profile, serialized = profile.cookies.serializeJar()) => (
     queueOperation(profile, () => persistence.write(deviceId, serialized))
+  );
+  const queueMetadata = (deviceId, profile) => queueOperation(
+    profile,
+    () => persistence.writeMetadata?.(deviceId, {
+      persist: profile.persist,
+      retentionDays: profile.retentionDays,
+      noLeaseSince: profile.idleSince,
+    }),
   );
 
   const flush = async (deviceId) => {
@@ -171,6 +182,10 @@ export function createDeviceCookieProfiles({
     let warning = null;
 
     if (prefs.persist && !wasPersisting) {
+      if (!profile.loaded) {
+        const metadata = await persistence.readMetadata?.(deviceId);
+        if (metadata?.persist) profile.idleSince = metadata.noLeaseSince;
+      }
       profile.persist = true;
       profile.retentionDays = prefs.retentionDays;
       if (!profile.loaded && !profile.used) {
@@ -220,11 +235,13 @@ export function createDeviceCookieProfiles({
       profile.dirty = false;
       profile.persist = false;
       profile.retentionDays = prefs.retentionDays;
+      await queueOperation(profile, () => persistence.removeMetadata?.(deviceId));
     } else {
       profile.persist = prefs.persist;
       profile.retentionDays = prefs.retentionDays;
     }
 
+    if (profile.persist) await queueMetadata(deviceId, profile);
     const retention = scheduleRetention(deviceId, profile);
     if (retention) await retention;
     return { persist: profile.persist, retentionDays: profile.retentionDays, warning };
@@ -240,10 +257,12 @@ export function createDeviceCookieProfiles({
       profile.active = true;
       profile.idleSince = null;
       clearRetentionTimer(profile);
+      if (profile.persist) void queueMetadata(deviceId, profile).catch(() => {});
       return;
     }
     if (profile.active || profile.idleSince === null) profile.idleSince = now();
     profile.active = false;
+    if (profile.persist) void queueMetadata(deviceId, profile).catch(() => {});
     const retention = scheduleRetention(deviceId, profile);
     if (retention) void retention.catch(() => {});
   };
@@ -342,6 +361,7 @@ export function createDeviceCookieProfiles({
     profiles.delete(deviceId);
     if (profile.persist) {
       queueOperation(profile, () => persistence.remove(deviceId));
+      queueOperation(profile, () => persistence.removeMetadata?.(deviceId));
     }
     return true;
   };

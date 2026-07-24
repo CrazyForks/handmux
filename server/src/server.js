@@ -94,13 +94,20 @@ try {
 const previews = createPreviews({ home });
 const preview = createPreview({ previews, token });
 const previewDomain = process.env.HANDMUX_PREVIEW_DOMAIN || null;
-const browserWorker = createBrowserWorkerClient({ appToken: token, previewDomain });
+const handmuxOrigin = (() => {
+  try {
+    return new URL(process.env.HANDMUX_PUBLIC_URL || `http://127.0.0.1:${cfg.port}`).origin;
+  } catch {
+    return `http://127.0.0.1:${cfg.port}`;
+  }
+})();
+const browserWorker = createBrowserWorkerClient({ appToken: token, previewDomain, handmuxOrigin });
 
 const app = express();
-// Browser APIs stay behind normal Handmux auth. Direct-tab metadata lives in the main process;
-// proxy operations and all claimed Hammerhead paths use the isolated browser worker.
+// Browser proxy leases stay behind normal Handmux auth. Client-owned direct tabs never enter
+// server state; proxy operations and all claimed Hammerhead paths use the isolated worker.
 app.use(browserWorker.publicHandler);
-app.use('/api/browser-tabs', expressAuth(token), express.json(), browserWorker.apiHandler);
+app.use('/api/browser-proxy', expressAuth(token), express.json(), browserWorker.apiHandler);
 app.use('/api', createApiRouter({
   token, events, uploadExts, previews, shortcuts: cfg.shortcuts, workspace, previewDomain,
 }));
