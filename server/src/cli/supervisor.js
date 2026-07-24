@@ -40,7 +40,10 @@ export function bareUrl(base) {
 }
 
 export function browserPublicOriginEnv(cfg) {
-  return cfg.previewDomain ? { HANDMUX_PREVIEW_DOMAIN: cfg.previewDomain } : {};
+  return {
+    ...(cfg.previewDomain ? { HANDMUX_PREVIEW_DOMAIN: cfg.previewDomain } : {}),
+    ...(cfg.publicUrl ? { HANDMUX_PUBLIC_URL: cfg.publicUrl } : {}),
+  };
 }
 
 export function supervise(cfg, { home, log = console } = {}) {
