@@ -1,8 +1,11 @@
+import { createRequire } from 'node:module';
 import { describe, expect, it, vi } from 'vitest';
 import {
   installHammerheadWebSocketUpgradeCompat,
   patchHammerheadDestinationRequest,
 } from '../src/browser/hammerheadCompat.js';
+
+const require = createRequire(import.meta.url);
 
 function fakeDestinationRequest(onUpgrade) {
   class DestinationRequest {}
@@ -61,5 +64,30 @@ describe('Hammerhead WebSocket upgrade compatibility', () => {
     patchHammerheadDestinationRequest(DestinationRequest);
 
     expect(() => DestinationRequest.prototype._onUpgrade(response, socket, Buffer.alloc(0))).toThrow(failure);
+  });
+
+  it('ends a mocked WebSocket response instead of dereferencing a missing destination socket', () => {
+    const websocket = require('testcafe-hammerhead/lib/request-pipeline/websocket');
+    const response = {
+      write: vi.fn(),
+      end: vi.fn(),
+      on: vi.fn(),
+    };
+    const context = {
+      contentInfo: { isAttachment: false },
+      dest: { isServiceWorker: false },
+      destRes: {
+        headers: {},
+        httpVersion: '1.1',
+        statusCode: 403,
+        statusMessage: 'Forbidden',
+      },
+      parsedClientSyncCookie: null,
+      res: response,
+      session: { id: 'session-a' },
+    };
+
+    expect(() => websocket.respondOnWebSocket(context)).not.toThrow();
+    expect(response.end).toHaveBeenCalledOnce();
   });
 });
