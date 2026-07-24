@@ -15,21 +15,33 @@ export function createTerminalInputQueue({
   let running = false;
   let disposed = false;
 
+  const callSafely = (callback, ...args) => {
+    try {
+      callback(...args);
+    } catch {
+      // Notification callbacks must not alter delivery or queue state.
+    }
+  };
+
   const pump = async () => {
     if (running || disposed || batches.length === 0) return;
     running = true;
-    while (!disposed && batches.length) {
-      const batch = batches.shift();
-      try {
-        await send(batch.pane, batch.hex);
-        onDelivered(batch.pane);
-      } catch (error) {
-        batches = batches.filter((item) => item.pane !== batch.pane);
-        staged = staged.filter((item) => item.pane !== batch.pane);
-        onError(error, batch.pane);
+    try {
+      while (!disposed && batches.length) {
+        const batch = batches.shift();
+        try {
+          await send(batch.pane, batch.hex);
+        } catch (error) {
+          batches = batches.filter((item) => item.pane !== batch.pane);
+          staged = staged.filter((item) => item.pane !== batch.pane);
+          callSafely(onError, error, batch.pane);
+          continue;
+        }
+        callSafely(onDelivered, batch.pane);
       }
+    } finally {
+      running = false;
     }
-    running = false;
   };
 
   const flush = () => {

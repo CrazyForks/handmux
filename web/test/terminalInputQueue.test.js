@@ -109,6 +109,47 @@ describe('terminal input queue', () => {
     expect(onDelivered.mock.calls).toEqual([['%1'], ['%2']]);
   });
 
+  it('keeps draining confirmed sends when onDelivered throws', async () => {
+    const first = deferred();
+    const send = vi.fn()
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce({ ok: true });
+    const onDelivered = vi.fn(() => { throw new Error('observer failed'); });
+    const onError = vi.fn();
+    const q = createTerminalInputQueue({ send, onDelivered, onError });
+
+    q.enqueue('%1', 'a');
+    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+    q.enqueue('%1', 'b');
+    first.resolve({ ok: true });
+
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    expect(send.mock.calls).toEqual([
+      ['%1', '61'],
+      ['%1', '62'],
+    ]);
+    expect(onDelivered).toHaveBeenCalledTimes(2);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('keeps draining other panes when onError throws', async () => {
+    const send = vi.fn()
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValueOnce({ ok: true });
+    const onError = vi.fn(() => { throw new Error('observer failed'); });
+    const q = createTerminalInputQueue({ send, onError });
+
+    q.enqueue('%1', 'a');
+    q.enqueue('%2', 'b');
+
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    expect(send.mock.calls).toEqual([
+      ['%1', '61'],
+      ['%2', '62'],
+    ]);
+    expect(onError).toHaveBeenCalledOnce();
+  });
+
   it('stops accepting and draining queued data after disposal', async () => {
     const first = deferred();
     const send = vi.fn().mockReturnValueOnce(first.promise);
