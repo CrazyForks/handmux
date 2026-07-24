@@ -36,6 +36,7 @@ const browser = (overrides = {}) => ({
   setEnabled: vi.fn(),
   setPersistProxyLogin: vi.fn(),
   setProxyLoginRetentionDays: vi.fn(),
+  setProxyLoginPolicy: vi.fn(),
   setHistoryMode: vi.fn(),
   clearProxyLogin: vi.fn(),
   deleteHistory: vi.fn(),
@@ -332,11 +333,15 @@ describe('BrowserSheet', () => {
     const overlay = document.querySelector('.browser-page-loading');
     const progress = document.querySelector('.browser-page-progress');
     const progressRule = styles.match(/\.browser-page-progress\s*\{([^}]*)\}/)?.[1] || '';
+    const proxyProgressRule = styles.match(/\.browser-pane\.proxy \.browser-page-progress\s*\{([^}]*)\}/)?.[1] || '';
+    const proxyProgressFillRule = styles.match(/\.browser-pane\.proxy \.browser-page-progress::after\s*\{([^}]*)\}/)?.[1] || '';
     expect(overlay).not.toBeNull();
     expect(document.querySelector('.browser-loading-hud')).toBeNull();
     expect(progress).not.toBeNull();
     expect(progress.getAttribute('role')).toBe('progressbar');
     expect(progressRule).toMatch(/height:\s*3px/);
+    expect(proxyProgressRule).toMatch(/background:\s*rgba\(217,130,43/);
+    expect(proxyProgressFillRule).toMatch(/background:\s*#d9822b/);
     expect(frame.hasAttribute('inert')).toBe(true);
     expect(document.querySelector('button[aria-label="停止加载"]')).not.toBeNull();
 
@@ -638,12 +643,21 @@ describe('BrowserSheet', () => {
     expect([...about.querySelectorAll('button')].map((node) => node.textContent)).toEqual(['好的']);
     click(about.querySelector('button'));
 
-    click(card.querySelector('.browser-profile-persist input'));
-    expect(model.setPersistProxyLogin).toHaveBeenCalledWith(true);
-    const retention = [...card.querySelectorAll('.browser-retention button')];
-    expect(retention.map((node) => node.textContent)).toEqual(['1 天', '7 天', '30 天', '永不']);
-    click(retention[1]);
-    expect(model.setProxyLoginRetentionDays).toHaveBeenCalledWith(7);
+    expect(card.querySelector('.browser-profile-persist')).toBeNull();
+    expect(card.querySelector('.browser-retention')).toBeNull();
+    const retentionTrigger = card.querySelector('.browser-profile-retention-trigger');
+    expect(retentionTrigger.textContent).toBe('代理登录保留不保存 ▾');
+    click(retentionTrigger);
+    const retention = [...card.querySelectorAll('.browser-profile-retention-options button')];
+    expect(retention.map((node) => node.textContent)).toEqual([
+      '不保存', '1 天', '7 天', '30 天', '长期保存',
+    ]);
+    click(retention[2]);
+    expect(model.setProxyLoginPolicy).toHaveBeenCalledWith({ persist: true, retentionDays: 7 });
+    click(retentionTrigger);
+    click([...card.querySelectorAll('.browser-profile-retention-options button')]
+      .find((node) => node.textContent === '长期保存'));
+    expect(model.setProxyLoginPolicy).toHaveBeenLastCalledWith({ persist: true, retentionDays: null });
 
     click(card.querySelector('.browser-options-help'));
     expect(document.querySelector('.browser-profile-confirm').textContent).toContain('当前设备');
@@ -655,6 +669,28 @@ describe('BrowserSheet', () => {
     click([...document.querySelectorAll('.browser-profile-confirm button')]
       .find((node) => node.textContent === '确认'));
     expect(model.clearProxyLogin).toHaveBeenCalledWith(null);
+  });
+
+  it('confirms before changing a saved proxy login policy to not saved', async () => {
+    const model = browser({
+      historyActive: true,
+      activeId: null,
+      persistProxyLogin: true,
+      proxyLoginRetentionDays: 7,
+    });
+    await render(model);
+    click(document.querySelector('button[aria-label="浏览器菜单"]'));
+    const trigger = document.querySelector('.browser-profile-retention-trigger');
+    expect(trigger.textContent).toBe('代理登录保留7 天 ▾');
+    click(trigger);
+    click([...document.querySelectorAll('.browser-profile-retention-options button')]
+      .find((node) => node.textContent === '不保存'));
+
+    expect(model.setProxyLoginPolicy).not.toHaveBeenCalled();
+    expect(document.querySelector('.browser-profile-confirm').textContent).toContain('停止保存');
+    click([...document.querySelectorAll('.browser-profile-confirm button')]
+      .find((node) => node.textContent === '确认'));
+    expect(model.setProxyLoginPolicy).toHaveBeenCalledWith({ persist: false, retentionDays: 7 });
   });
 
   it('lets a new page choose its connection mode before opening the address', async () => {

@@ -537,7 +537,9 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const saveProfilePrefs = useCallback(async (change) => {
     const next = {
       persist: change.persist ?? pendingProfilePrefs.current.persist,
-      retentionDays: change.retentionDays ?? pendingProfilePrefs.current.retentionDays,
+      retentionDays: Object.prototype.hasOwnProperty.call(change, 'retentionDays')
+        ? change.retentionDays
+        : pendingProfilePrefs.current.retentionDays,
     };
     pendingProfilePrefs.current = next;
     try {
@@ -584,6 +586,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     setCloseAfter,
     setPersistProxyLogin: (value) => saveProfilePrefs({ persist: !!value }),
     setProxyLoginRetentionDays: (value) => saveProfilePrefs({ retentionDays: value }),
+    setProxyLoginPolicy: ({ persist, retentionDays }) => saveProfilePrefs({ persist, retentionDays }),
     clearProxyLogin, setHistoryMode, navigateTab, ensureBinding, recoverBinding,
     markBindingReady, updateTabMeta,
     deleteHistory: (entry) => { deleteBrowserHistoryEntry(entry); setHistory(readBrowserHistory()); },

@@ -386,6 +386,39 @@ describe('useBrowser device ownership', () => {
     ]);
   });
 
+  it('saves proxy login persistence and retention as one policy update', async () => {
+    const saved = [];
+    api.setBrowserProxyProfilePrefs.mockImplementation(async (prefs) => {
+      saved.push(prefs);
+      return prefs;
+    });
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+
+    await act(async () => {
+      await result.current.setProxyLoginPolicy({ persist: true, retentionDays: 7 });
+    });
+
+    expect(saved).toEqual([{ persist: true, retentionDays: 7 }]);
+    expect(result.current.persistProxyLogin).toBe(true);
+    expect(result.current.proxyLoginRetentionDays).toBe(7);
+  });
+
+  it('preserves null as the explicit long-term retention value', async () => {
+    const saved = [];
+    api.setBrowserProxyProfilePrefs.mockImplementation(async (prefs) => {
+      saved.push(prefs);
+      return prefs;
+    });
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+
+    await act(async () => {
+      await result.current.setProxyLoginPolicy({ persist: true, retentionDays: null });
+    });
+
+    expect(saved).toEqual([{ persist: true, retentionDays: null }]);
+    expect(result.current.proxyLoginRetentionDays).toBeNull();
+  });
+
   it('retains the tab when acquire fails and can explicitly recover it', async () => {
     api.acquireBrowserProxyLease.mockRejectedValueOnce(new Error('worker gone'));
     const { result } = renderHook(() => useBrowser({ browserProxy: true }));
