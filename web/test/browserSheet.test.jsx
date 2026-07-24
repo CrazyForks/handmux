@@ -630,8 +630,10 @@ describe('BrowserSheet', () => {
     const modeButtons = [...document.querySelectorAll('.browser-mode-segment button')];
     expect(modeButtons.map((node) => node.disabled)).toEqual([false, false]);
     expect(modeButtons.map((node) => node.getAttribute('aria-pressed'))).toEqual(['true', 'false']);
+    expect(document.querySelector('.browser-address-mode.direct').textContent).toBe('直连');
     click(modeButtons[1]);
     expect(modeButtons.map((node) => node.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+    expect(document.querySelector('.browser-address-mode.proxy').textContent).toBe('代理');
 
     setInput(document.querySelector('.browser-address'), 'https://portal.example/');
     submit(document.querySelector('.browser-address-form'));

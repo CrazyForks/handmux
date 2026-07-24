@@ -376,7 +376,9 @@ export default function BrowserSheet({ browser }) {
       <div className="browser-nav" inert={clearConfirmation ? '' : undefined}>
         <form className="browser-address-form" onSubmit={submitAddress}>
           <GlobeIcon />
-          {active && <span className={`browser-address-mode ${active.mode}`}>{t(active.mode === 'proxy' ? 'browser.proxyBadge' : 'browser.directBadge')}</span>}
+          <span className={`browser-address-mode ${menuMode}`}>
+            {t(menuMode === 'proxy' ? 'browser.proxyBadge' : 'browser.directBadge')}
+          </span>
           <input ref={addressRef} className="browser-address" aria-label={t('browser.address')}
             value={address} onChange={(event) => setAddress(event.target.value)}
             placeholder={t('browser.addressPlaceholder')} autoCapitalize="none" autoCorrect="off" spellCheck="false" />
