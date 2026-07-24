@@ -83,7 +83,9 @@ describe('BrowserSheet', () => {
     expect(consent).toContain('手机直连');
     expect(consent).toContain('经电脑代理');
     expect(consent).not.toContain('关闭并销毁登录状态');
-    click(document.querySelector('.browser-consent-enable'));
+    const acknowledge = document.querySelector('.browser-consent-enable');
+    expect(acknowledge.textContent).toBe('好的');
+    click(acknowledge);
     expect(model.enableAccess).toHaveBeenCalledOnce();
   });
   it('renders tabs above navigation with a fixed icon-only Recent tab first', async () => {
@@ -618,8 +620,17 @@ describe('BrowserSheet', () => {
 
     expect(card.textContent).toContain('代理登录');
     expect(card.textContent).toContain('清理全部代理 Cookie');
+    expect(card.textContent).toContain('关于内置浏览器');
     expect(card.textContent).not.toContain('清理本站代理 Cookie');
     expect(card.textContent).not.toContain('关闭内置浏览器');
+
+    click([...card.querySelectorAll('button')].find((node) => node.textContent === '关于内置浏览器'));
+    const about = document.querySelector('.browser-profile-confirm');
+    expect(about.textContent).toContain('手机直连');
+    expect(about.textContent).toContain('经电脑代理');
+    expect(about.textContent).toContain('按当前设备隔离');
+    expect([...about.querySelectorAll('button')].map((node) => node.textContent)).toEqual(['好的']);
+    click(about.querySelector('button'));
 
     click(card.querySelector('.browser-profile-persist input'));
     expect(model.setPersistProxyLogin).toHaveBeenCalledWith(true);

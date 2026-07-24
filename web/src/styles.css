@@ -1271,6 +1271,9 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-options-danger {
   width: 100%; min-height: 44px; padding: 0; border: 0; background: transparent; color: #ff6961; text-align: left; font-size: 14px;
 }
+.browser-options-action {
+  width: 100%; min-height: 44px; padding: 0; border: 0; background: transparent; color: #eef1f4; text-align: left; font-size: 14px;
+}
 
 .browser-content { position: relative; flex: 1; min-height: 0; display: flex; overflow: hidden; background: #fff; }
 .browser-pane { flex: 1; min-width: 0; min-height: 0; }
@@ -1329,7 +1332,9 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-clear-all { width: 100%; min-height: 44px; }
 .browser-profile-confirm-backdrop { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 20px; background: rgba(0,0,0,.58); backdrop-filter: blur(8px); }
 .browser-profile-confirm { width: min(320px, 100%); padding: 18px; border-radius: 16px; background: #25262a; box-shadow: 0 16px 50px rgba(0,0,0,.55); }
+.browser-profile-confirm h2 { margin: 0 0 8px; color: #f2f2f7; font-size: 19px; }
 .browser-profile-confirm p { margin: 0 0 16px; color: #f2f2f7; font-size: 14px; line-height: 1.45; }
+.browser-profile-confirm ul { margin: 0 0 16px; padding-left: 20px; color: #b5bac3; font-size: 14px; line-height: 1.45; }
 .browser-profile-confirm > div { display: flex; justify-content: flex-end; gap: 8px; }
 .browser-profile-confirm button { min-width: 72px; min-height: 44px; border: 0; border-radius: 10px; background: rgba(120,120,128,.22); color: #f2f2f7; font: inherit; }
 .browser-profile-confirm button.danger { color: #ff6961; }

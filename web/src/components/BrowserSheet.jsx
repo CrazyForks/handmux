@@ -331,7 +331,7 @@ export default function BrowserSheet({ browser }) {
         </ul>
         <div className="browser-consent-actions">
           <button onClick={cancelAccess}>{t('common.cancel')}</button>
-          <button className="browser-consent-enable" onClick={enableAccess}>{t('browser.enable')}</button>
+          <button className="browser-consent-enable" onClick={enableAccess}>{t('browser.acknowledge')}</button>
         </div>
       </div>
     </div>,
@@ -485,6 +485,15 @@ export default function BrowserSheet({ browser }) {
                   </button>
                 </div>
               )}
+
+              {(historyActive || !active) && (
+                <div className="browser-options-section">
+                  <button className="browser-options-action" onClick={() => {
+                    clearTriggerRef.current = document.activeElement;
+                    setClearConfirmation({ type: 'help-about' });
+                  }}>{t('browser.about')}</button>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -583,7 +592,9 @@ export default function BrowserSheet({ browser }) {
         <div className="browser-profile-confirm-backdrop">
           <div ref={clearDialogRef} className="browser-profile-confirm"
             role={clearConfirmation.type.startsWith('help-') ? 'dialog' : 'alertdialog'} aria-modal="true"
-            aria-label={t(clearConfirmation.type === 'help-profile'
+            aria-label={t(clearConfirmation.type === 'help-about'
+              ? 'browser.about'
+              : clearConfirmation.type === 'help-profile'
               ? 'browser.proxyLogin'
               : clearConfirmation.type === 'help-site'
                 ? 'browser.siteProxyCookie'
@@ -592,18 +603,30 @@ export default function BrowserSheet({ browser }) {
               : clearConfirmation.type === 'all'
                 ? 'browser.clearAllLogin'
                 : 'settings.browserPersistLogin')}>
-            <p>{t(clearConfirmation.type === 'help-profile'
-              ? 'browser.proxyLoginHelp'
-              : clearConfirmation.type === 'help-site'
-                ? 'browser.siteCookieHelp'
-                : clearConfirmation.type === 'site'
-              ? 'browser.clearSiteLoginConfirm'
-              : clearConfirmation.type === 'all'
-                ? 'browser.clearAllLoginConfirm'
-                : 'settings.browserDisablePersistConfirm')}</p>
+            {clearConfirmation.type === 'help-about' ? (
+              <>
+                <h2>{t('browser.about')}</h2>
+                <p>{t('browser.consentBody')}</p>
+                <ul>
+                  <li>{t('browser.consentComputer')}</li>
+                  <li>{t('browser.consentPrivate')}</li>
+                  <li>{t('browser.consentIdle')}</li>
+                </ul>
+              </>
+            ) : (
+              <p>{t(clearConfirmation.type === 'help-profile'
+                ? 'browser.proxyLoginHelp'
+                : clearConfirmation.type === 'help-site'
+                  ? 'browser.siteCookieHelp'
+                  : clearConfirmation.type === 'site'
+                    ? 'browser.clearSiteLoginConfirm'
+                    : clearConfirmation.type === 'all'
+                      ? 'browser.clearAllLoginConfirm'
+                      : 'settings.browserDisablePersistConfirm')}</p>
+            )}
             <div>
               {clearConfirmation.type.startsWith('help-') ? (
-                <button ref={clearCancelRef} onClick={() => setClearConfirmation(null)}>{t('common.ok')}</button>
+                <button ref={clearCancelRef} onClick={() => setClearConfirmation(null)}>{t('browser.acknowledge')}</button>
               ) : (
                 <>
                   <button ref={clearCancelRef} onClick={() => setClearConfirmation(null)}>{t('common.cancel')}</button>
