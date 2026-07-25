@@ -602,6 +602,15 @@ describe('BottomDock', () => {
     expect(container.querySelector('.desktop-terminal-input')).toBeNull();
   });
 
+  it('compacts only the desktop unified dock without shrinking mobile controls', () => {
+    expect(styles).toMatch(/\.bottom-dock\s*\{[^}]*padding:\s*8px/);
+    expect(styles).toMatch(/\.bottom-dock\.desktop-unified\s*\{[^}]*padding:\s*4px 8px 5px/);
+    expect(styles).toMatch(/\.bottom-dock\.desktop-unified \.dock-left\s*\{[^}]*gap:\s*2px/);
+    expect(styles).toMatch(/\.desktop-unified \.desktop-dock-state\s*\{[^}]*min-height:\s*12px/);
+    expect(styles).toMatch(/\.desktop-unified \.quick-bar\s*\{[^}]*padding:\s*0 0 3px/);
+    expect(styles).toMatch(/\.desktop-unified \.input-wrap\s*\{[^}]*margin-top:\s*2px/);
+  });
+
   it('desktop Enter sends, Shift+Enter stays multiline, and Escape returns with the draft intact', async () => {
     const onReturnToTerminal = vi.fn();
     render({ pane: '%1', desktopUnified: true, onReturnToTerminal });
