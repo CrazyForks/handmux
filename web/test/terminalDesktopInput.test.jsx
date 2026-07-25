@@ -324,7 +324,11 @@ describe('desktop terminal input', () => {
     await vi.waitFor(() => expect(callbacks).toBeDefined());
 
     act(() => callbacks.onProbe({ ok: true, rttMs: 1800 }));
-    expect(view.container.querySelector('.terminal-connection').textContent).toContain('实时');
+    const status = view.container.querySelector('.terminal-connection');
+    expect(status.querySelectorAll('.terminal-connection__tag')).toHaveLength(2);
+    expect(status.querySelector('.terminal-connection__mode').classList.contains('is-live')).toBe(true);
+    expect(status.querySelector('.terminal-connection__quality').textContent).toContain('1800 ms');
+    expect(status.textContent).toContain('实时');
     act(() => {
       vi.advanceTimersByTime(15000);
       callbacks.onProbe({ ok: true, rttMs: 1800 });
@@ -334,7 +338,8 @@ describe('desktop terminal input', () => {
     });
 
     expect(suspend).toHaveBeenCalledOnce();
-    expect(view.container.querySelector('.terminal-connection').textContent).toContain('定时');
+    expect(status.querySelector('.terminal-connection__mode').classList.contains('is-snapshot')).toBe(true);
+    expect(status.textContent).toContain('定时');
   });
 
   it('returns to live updates only after thirty seconds of healthy snapshot traffic', async () => {

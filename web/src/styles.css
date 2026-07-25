@@ -381,6 +381,16 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
   border-radius: 4px;
   background: rgba(26,28,34,.46);
 }
+.terminal-connection__mode.is-live {
+  color: rgba(126,190,255,.88);
+  border-color: rgba(100,174,255,.15);
+  background: rgba(65,125,195,.12);
+}
+.terminal-connection__mode.is-snapshot {
+  color: rgba(255,203,112,.88);
+  border-color: rgba(255,190,92,.15);
+  background: rgba(180,125,45,.12);
+}
 .terminal-connection__quality { color: rgba(235,235,245,.52); }
 .terminal-connection.is-good .terminal-connection__quality {
   color: rgba(100,174,255,.84);
@@ -391,7 +401,6 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .terminal-connection.is-poor .terminal-connection__quality {
   color: rgba(255,120,112,.9);
 }
-.terminal-connection__latency { margin-left: 1px; }
 .new-output { position: absolute; right: 12px; bottom: 12px; z-index: 5; touch-action: manipulation; padding: 8px 14px; border: none; border-radius: 16px; background: var(--blue); color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
 .dbg { position: absolute; left: 6px; top: 6px; z-index: 6; font: 12px/1.4 monospace; color: #9fe; background: rgba(0,0,0,.6); padding: 2px 6px; border-radius: 4px; pointer-events: none; }
 /* Status banners: a full-width strip across the head of the terminal area. Yellow = browsing history
