@@ -7,6 +7,9 @@
   --green: #34c759;
   --green-rgb: 52,199,89;
   --red: #ff453a;
+  --scroll-thumb: rgba(151,162,178,.34);
+  --scroll-thumb-hover: rgba(174,190,211,.58);
+  --scroll-thumb-active: rgba(80,145,230,.82);
 }
 /* Bundled terminal font: JetBrainsMono Nerd Font carries the Powerline/Nerd icons and the
    Dingbat sparkles Claude Code animates with — glyphs the system monospace fonts are missing.
@@ -2294,3 +2297,69 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .chat-composer .input-mic.on { color: #fff; background: var(--green); }
 
 .push-inbox-detail-del { display: block; margin-top: 24px; }
+
+/* Desktop scrollbars: keep the browser's reliable wheel, trackpad, drag and keyboard behaviour while
+   replacing each platform's native chrome with one quiet app-wide skin. Touch-first devices retain their
+   existing overlay scrollbars. Navigation strips stay visually flat; content/code scroll areas show the
+   same slim thumb in both axes. */
+@media (hover: hover) and (pointer: fine) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    min-width: 32px;
+    min-height: 32px;
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-color: var(--scroll-thumb);
+    background-clip: padding-box;
+  }
+  *:hover::-webkit-scrollbar-thumb {
+    background-color: var(--scroll-thumb-hover);
+  }
+  *::-webkit-scrollbar-thumb:active {
+    background-color: var(--scroll-thumb-active);
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* The terminal had its own cross-platform indicator before the global desktop skin. Override that
+     stronger selector here so desktop uses the same thumb; its horizontal bar remains hidden above. */
+  .terminal .xterm-viewport {
+    scrollbar-color: var(--scroll-thumb) transparent;
+  }
+  .terminal .xterm-viewport::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  .terminal .xterm-viewport::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-color: var(--scroll-thumb);
+    background-clip: padding-box;
+  }
+  .terminal .xterm-viewport:hover::-webkit-scrollbar-thumb {
+    background-color: var(--scroll-thumb-hover);
+  }
+  .terminal .xterm-viewport::-webkit-scrollbar-thumb:active {
+    background-color: var(--scroll-thumb-active);
+  }
+
+  .file-tabs-scroll,
+  .git-tabs-scroll {
+    scrollbar-width: none;
+  }
+  .file-tabs-scroll::-webkit-scrollbar,
+  .git-tabs-scroll::-webkit-scrollbar {
+    display: none;
+  }
+}
