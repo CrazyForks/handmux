@@ -121,6 +121,13 @@ export function openXterm({
   });
 
   const dataSub = desktop ? term.onData((data) => onInputData?.(pane, data)) : null;
+  // Legacy terminal mouse protocols can contain bytes that are not valid UTF-8. xterm exposes
+  // those through onBinary rather than onData; preserve each code unit as one byte before the
+  // existing hex input queue forwards it to tmux.
+  const binarySub = desktop ? term.onBinary?.((data) => {
+    const bytes = Uint8Array.from(data, (char) => char.charCodeAt(0) & 0xff);
+    onInputData?.(pane, bytes);
+  }) : null;
   const selectionSub = desktop ? term.onSelectionChange(() => onDesktopSelection?.(term.hasSelection())) : null;
   const helper = desktop ? host.querySelector('.xterm-helper-textarea') : null;
   const focus = () => onInputFocusChange?.(true);
@@ -150,9 +157,10 @@ export function openXterm({
   let webgl = null;
   const mountWebgl = () => {
     try {
-      webgl = new WebglAddon();
-      webgl.onContextLoss(() => webgl.dispose());
-      term.loadAddon(webgl);
+      const addon = new WebglAddon();
+      addon.onContextLoss(() => addon.dispose());
+      term.loadAddon(addon);
+      webgl = addon;
     } catch { webgl = null; }
   };
   mountWebgl();
@@ -168,6 +176,7 @@ export function openXterm({
     dispose() {
       disposed = true;
       dataSub?.dispose();
+      binarySub?.dispose();
       selectionSub?.dispose();
       helper?.removeEventListener('focus', focus);
       helper?.removeEventListener('blur', blur);

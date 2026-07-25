@@ -238,6 +238,8 @@ const Terminal = forwardRef(function Terminal({
     let busy = false;
     let wakeAgain = false; // a wake() landed mid-poll — re-poll right after the in-flight one finishes
     let streamClient = null;
+    let streamMode = stream;
+    let streamFallbackTimer = null;
     let streamExact = false; // raw %output is safe only while xterm rows exactly match the tmux pane
     let historyMode = false;
     let seeded = false;
@@ -317,7 +319,7 @@ const Terminal = forwardRef(function Terminal({
     // more history would never trigger. Treat "within 3 lines of the top" as the top.
     const atTop = () => buf().viewportY <= 3;
     const pauseStreamForHistory = () => {
-      if (!stream || historyMode) return;
+      if (!streamMode || historyMode) return;
       historyMode = true;
       streamExact = false;
       elRef.current?.style.removeProperty('--stream-grid-h');
@@ -666,6 +668,10 @@ const Terminal = forwardRef(function Terminal({
 
     const applyStreamSeed = async (frame) => {
       if (disposed) return;
+      if (streamFallbackTimer) {
+        clearTimeout(streamFallbackTimer);
+        streamFallbackTimer = null;
+      }
       const returningToLive = historyMode || !streamExact;
       streamExact = true;
       historyMode = false;
@@ -889,20 +895,39 @@ const Terminal = forwardRef(function Terminal({
       if (timer) { clearTimeout(timer); timer = null; }
       tick(epoch);
     };
-    if (stream) {
+    const fallbackToPolling = async () => {
+      if (disposed || !streamMode) return;
+      streamMode = false;
+      streamExact = false;
+      historyMode = false;
+      elRef.current?.style.removeProperty('--stream-grid-h');
+      const drained = streamClient?.close();
+      streamClient = null;
+      setStreamStatus('off');
+      setConn(nextConnection(connState, 'reset'));
+      try { await drained; } catch { /* stream failure already surfaced */ }
+      if (disposed) return;
+      scheduleFit();
+      startLoop();
+    };
+    if (streamMode) {
       streamClient = openTerminalStream({
         pane,
         onSeed: applyStreamSeed,
         onData: applyStreamData,
         onReady: finishStreamSeed,
         onStatus: (status) => {
-          if (!disposed) setStreamStatus(status);
+          if (disposed) return;
+          setStreamStatus(status);
+          if ((status === 'reconnecting' || status === 'error') && !streamFallbackTimer) {
+            streamFallbackTimer = setTimeout(fallbackToPolling, 1200);
+          }
         },
         onAuthFail: () => onAuthFailRef.current?.(),
       });
     } else startLoop();
     const resumeStream = () => {
-      if (!stream || disposed) return;
+      if (!streamMode || disposed) return;
       historyMode = false;
       streamExact = false;
       setPaused(false);
@@ -923,7 +948,7 @@ const Terminal = forwardRef(function Terminal({
       // force on the first cur.vis=1 frame. placeCursor shows it this frame; the immediate poll re-places it.
       forceCursorRef.current = true;
       placeCursor();
-      if (stream) {
+      if (streamMode) {
         if (historyMode) resumeStream();
         return;
       }
@@ -935,7 +960,7 @@ const Terminal = forwardRef(function Terminal({
     // Pause polling in the background (saves battery + server-side tmux spawns); on return, reset
     // health, repaint immediately (instant refresh), and resume the loop.
     const onVisibility = () => {
-      if (stream) {
+      if (streamMode) {
         if (document.hidden) streamClient?.pause();
         else if (!historyMode) resumeStream();
         return;
@@ -960,7 +985,7 @@ const Terminal = forwardRef(function Terminal({
         if (historyMode) resumeStream();
         return;
       }
-      if (stream && !nearBottom() && !altScreenRef.current) pauseStreamForHistory();
+      if (streamMode && !nearBottom() && !altScreenRef.current) pauseStreamForHistory();
       setPaused(true);
       showScrollPos();
       maybePullMore();
@@ -976,6 +1001,7 @@ const Terminal = forwardRef(function Terminal({
       stopFlingRef.current = null;
       selection.dispose();
       if (timer) clearTimeout(timer);
+      if (streamFallbackTimer) clearTimeout(streamFallbackTimer);
       streamClient?.close();
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('resize', onResize);
@@ -1060,11 +1086,11 @@ const Terminal = forwardRef(function Terminal({
     <div className="terminal-wrap">
       <div
         ref={elRef}
-        className={`terminal${ready ? '' : ' terminal--loading'}${desktop ? ' desktop-input' : ''}${stream ? ' terminal--stream' : ''}`}
+        className={`terminal${ready ? '' : ' terminal--loading'}${desktop ? ' desktop-input' : ''}${stream && streamStatus !== 'off' ? ' terminal--stream' : ''}`}
       />
       <TerminalOverlays
         ready={ready}
-        stream={stream}
+        stream={stream && streamStatus !== 'off'}
         streamStatus={streamStatus}
         connected={connected}
         inputFailure={inputFailure}

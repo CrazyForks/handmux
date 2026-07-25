@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { openTerminalStream, terminalStreamEnabled } from '../src/terminalStreamClient.js';
+import { openTerminalStream } from '../src/terminalStreamClient.js';
+import { terminalStreamEnabled } from '../src/terminalTransport.js';
 
 class FakeWebSocket {
   static OPEN = 1;
@@ -32,9 +33,12 @@ class FakeWebSocket {
 }
 
 describe('terminalStreamEnabled', () => {
-  it('only enables the explicit query parameter', () => {
+  it('is enabled by default and supports an emergency query override', () => {
     expect(terminalStreamEnabled({ search: '?terminalStream=1' })).toBe(true);
-    expect(terminalStreamEnabled({ search: '' })).toBe(false);
+    expect(terminalStreamEnabled({ search: '' })).toBe(true);
+    expect(terminalStreamEnabled({ search: '?terminalStream=0' })).toBe(false);
+    expect(terminalStreamEnabled({ search: '' }, 'snapshot')).toBe(false);
+    expect(terminalStreamEnabled({ search: '?terminalStream=1' }, 'snapshot')).toBe(false);
   });
 });
 
@@ -85,6 +89,60 @@ describe('openTerminalStream', () => {
 
     stream.resync();
     expect(FakeWebSocket.instances).toHaveLength(2);
+    stream.close();
+    vi.useRealTimers();
+  });
+
+  it('does not open a second socket when resync is requested while connecting', () => {
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+    });
+    stream.resync();
+    stream.resync();
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    stream.close();
+  });
+
+  it('ignores a stale socket close after a newer connection exists', () => {
+    vi.useFakeTimers();
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+      reconnectMs: 10,
+    });
+    const first = FakeWebSocket.instances[0];
+    first.open();
+    first.close(1006);
+    vi.advanceTimersByTime(10);
+    const second = FakeWebSocket.instances[1];
+    second.open();
+    first.onclose?.({ code: 1006 });
+    stream.resync();
+    expect(second.sent.at(-1)).toEqual({ type: 'resync' });
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    stream.close();
+    vi.useRealTimers();
+  });
+
+  it('times out a connection that never produces a ready frame', () => {
+    vi.useFakeTimers();
+    const statuses = [];
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+      reconnectMs: 1000,
+      connectTimeoutMs: 20,
+      onStatus: (status) => statuses.push(status),
+    });
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    vi.advanceTimersByTime(20);
+    expect(ws.readyState).toBe(3);
+    expect(statuses).toContain('reconnecting');
     stream.close();
     vi.useRealTimers();
   });

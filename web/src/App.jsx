@@ -85,10 +85,13 @@ import {
   setKeyboardMode,
 } from './desktopInput.js';
 import { useDesktopTerminalInput } from './hooks/useDesktopTerminalInput.js';
-import { terminalStreamEnabled } from './terminalStreamClient.js';
+import {
+  getTerminalTransport,
+  setTerminalTransport,
+  terminalStreamEnabled,
+} from './terminalTransport.js';
 
 const COL_STEP = 10; // columns added/removed per ⊟/⊞ tap
-const terminalStreamTest = typeof window !== 'undefined' && terminalStreamEnabled(window.location);
 
 // Pick the remembered id if it still exists, else the first. We deliberately don't fall back
 // to tmux's "active" — the local last-opened choice wins, first is the fallback.
@@ -99,6 +102,9 @@ export default function App() {
   const detectedDesktopInput = useMemo(() => desktopInputEnvironment(), []);
   const [keyboardMode, setKeyboardModeState] = useState(getKeyboardMode);
   const desktopInput = keyboardModeUsesDesktop(keyboardMode, detectedDesktopInput);
+  const [terminalTransport, setTerminalTransportState] = useState(getTerminalTransport);
+  const terminalStream = typeof window !== 'undefined'
+    && terminalStreamEnabled(window.location, terminalTransport);
   const [needToken, setNeedToken] = useState(!getToken());
   const serverConfig = useServerConfig({ enabled: !needToken });
   const serverShortcuts = serverConfig?.shortcuts || DEFAULT_SERVER_SHORTCUTS;
@@ -337,6 +343,9 @@ export default function App() {
     if (mode === 'desktop' && terminalOverlayOpen) restoreFocusAfterOverlayRef.current = 'terminal';
     setKeyboardModeState(mode);
   }, [terminalOverlayOpen]);
+  const chooseTerminalTransport = useCallback((mode) => {
+    setTerminalTransportState(setTerminalTransport(mode));
+  }, []);
   useEffect(() => {
     const wasOpen = terminalOverlayWasOpenRef.current;
     if (desktopInput && terminalOverlayOpen) {
@@ -1584,6 +1593,8 @@ export default function App() {
         onChatLensEnabled={toggleChatLens}
         keyboardMode={keyboardMode}
         onKeyboardMode={chooseKeyboardMode}
+        terminalTransport={terminalTransport}
+        onTerminalTransport={chooseTerminalTransport}
         hooksStatus={hooksStatus}
         onEnableHooks={enableHooks}
         termRef={termRef}
@@ -1855,7 +1866,7 @@ export default function App() {
                 ref={termRef}
                 key={current.paneId}
                 pane={current.paneId}
-                stream={terminalStreamTest}
+                stream={terminalStream}
                 desktop={desktopInput}
                 autoFocusInput={!terminalOverlayOpen}
                 inset={inset}

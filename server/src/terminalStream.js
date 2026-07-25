@@ -5,6 +5,7 @@ import { isPaneId } from './tmux/commands.js';
 
 const MAX_BUFFERED_BYTES = 1024 * 1024;
 const START_TIMEOUT_MS = 5000;
+const HEARTBEAT_MS = 30000;
 
 export function decodeControlData(data) {
   const bytes = [];
@@ -30,7 +31,7 @@ export function decodeControlData(data) {
   return Buffer.from(bytes);
 }
 
-class PaneControlStream {
+export class PaneControlStream {
   constructor({ ws, pane, session, spawnControl = spawn }) {
     this.ws = ws;
     this.pane = pane;
@@ -38,6 +39,7 @@ class PaneControlStream {
     this.waiters = [];
     this.response = null;
     this.phase = 'attach';
+    this.wantLive = true;
     this.pendingOutput = [];
     this.resyncing = null;
     this.attached = new Promise((resolve, reject) => {
@@ -107,6 +109,10 @@ class PaneControlStream {
 
   request(command, onEnd) {
     return new Promise((resolve, reject) => {
+      if (this.phase === 'closed') {
+        reject(new Error('tmux control stream closed'));
+        return;
+      }
       this.waiters.push({ resolve, reject, onEnd });
       this.child.stdin.write(`${command}\n`);
     });
@@ -121,6 +127,16 @@ class PaneControlStream {
     this.ws.send(output, { binary: true });
   }
 
+  sendJson(message) {
+    if (this.ws.readyState !== 1) return false;
+    if (this.ws.bufferedAmount > MAX_BUFFERED_BYTES) {
+      this.ws.close(1013, 'stream fell behind');
+      return false;
+    }
+    this.ws.send(JSON.stringify(message));
+    return true;
+  }
+
   async start() {
     await this.attached;
     await this.resync();
@@ -128,12 +144,14 @@ class PaneControlStream {
 
   pause() {
     if (this.phase !== 'closed') {
+      this.wantLive = false;
       this.phase = 'paused';
       this.pendingOutput = [];
     }
   }
 
   resync() {
+    this.wantLive = true;
     if (this.resyncing) return this.resyncing;
     this.resyncing = this.runResync().finally(() => { this.resyncing = null; });
     return this.resyncing;
@@ -145,15 +163,24 @@ class PaneControlStream {
     this.pendingOutput = [];
     const captureLines = await this.request(
       `capture-pane -p -e -N -t ${this.pane}`,
-      () => { this.phase = 'buffer'; },
+      () => { this.phase = this.wantLive ? 'buffer' : 'paused'; },
     );
     const infoLines = await this.request(
       `display-message -p -t ${this.pane} "#{pane_width}\\t#{pane_height}\\t#{cursor_x}\\t#{cursor_y}\\t#{cursor_flag}\\t#{alternate_on}\\t#{mouse_any_flag}\\t#{mouse_sgr_flag}"`,
     );
     const [width, height, cursorX, cursorY, cursorFlag, alternateOn, mouseAny, mouseSgr] = Buffer.concat(infoLines)
       .toString('utf8').split('\t').map(Number);
+    if (![width, height, cursorX, cursorY, cursorFlag, alternateOn, mouseAny, mouseSgr]
+      .every(Number.isFinite) || width < 1 || height < 1) {
+      throw new Error('invalid tmux pane info');
+    }
+    if (!this.wantLive || this.phase === 'closed') {
+      this.pendingOutput = [];
+      if (this.phase !== 'closed') this.phase = 'paused';
+      return;
+    }
     const ansi = Buffer.concat(captureLines.flatMap((line) => [line, Buffer.from('\n')])).toString('utf8');
-    this.ws.send(JSON.stringify({
+    if (!this.sendJson({
       type: 'seed',
       ansi,
       width,
@@ -161,19 +188,21 @@ class PaneControlStream {
       alt: alternateOn === 1,
       mouseAware: mouseAny === 1,
       mouseSgr: mouseSgr === 1,
-    }));
+    })) return;
     for (const output of this.pendingOutput) this.sendOutput(output);
-    this.ws.send(JSON.stringify({
+    if (!this.sendJson({
       type: 'ready',
       cur: { row: height - 1 - cursorY, col: cursorX, vis: cursorFlag === 1 },
-    }));
+    })) return;
     this.pendingOutput = [];
-    this.phase = 'live';
+    this.phase = this.wantLive ? 'live' : 'paused';
   }
 
   fail(error) {
     clearTimeout(this.startTimer);
     this.rejectAttached(error);
+    this.response?.waiter?.reject(error);
+    this.response = null;
     for (const waiter of this.waiters.splice(0)) waiter.reject(error);
     if (this.ws.readyState < 2) this.ws.close(1011, 'tmux stream failed');
   }
@@ -181,6 +210,12 @@ class PaneControlStream {
   close() {
     clearTimeout(this.startTimer);
     this.phase = 'closed';
+    this.wantLive = false;
+    const error = new Error('tmux control stream closed');
+    this.response?.waiter?.reject(error);
+    this.response = null;
+    for (const waiter of this.waiters.splice(0)) waiter.reject(error);
+    this.pendingOutput = [];
     try { this.child.kill(); } catch { /* already gone */ }
   }
 }
@@ -188,8 +223,22 @@ class PaneControlStream {
 export function createTerminalStream({ token, commands, spawnControl } = {}) {
   const wss = new WebSocketServer({ noServer: true });
   const streams = new Set();
+  const heartbeat = setInterval(() => {
+    for (const ws of wss.clients) {
+      if (ws.readyState !== 1) continue;
+      if (ws.isAlive === false) {
+        ws.terminate();
+        continue;
+      }
+      ws.isAlive = false;
+      ws.ping();
+    }
+  }, HEARTBEAT_MS);
+  heartbeat.unref?.();
 
   wss.on('connection', (ws) => {
+    ws.isAlive = true;
+    ws.on('pong', () => { ws.isAlive = true; });
     let authenticating = false;
     let stream = null;
     ws.on('message', async (raw, binary) => {
@@ -240,8 +289,10 @@ export function createTerminalStream({ token, commands, spawnControl } = {}) {
   };
 
   const close = () => {
+    clearInterval(heartbeat);
     for (const stream of streams) stream.close();
     streams.clear();
+    for (const ws of wss.clients) ws.close(1001, 'server shutting down');
     wss.close();
   };
 

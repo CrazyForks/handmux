@@ -9,6 +9,7 @@ function streamLabel(status) {
   if (status === 'live') return '实时终端';
   if (status === 'paused') return '浏览历史';
   if (status === 'reconnecting') return '实时流重连中';
+  if (status === 'error') return '实时流恢复中';
   return '实时流连接中';
 }
 
@@ -36,7 +37,7 @@ export default function TerminalOverlays({
   return (
     <>
       {!ready && <LensBoot hint={t('boot.loading')} />}
-      {stream && (
+      {stream && streamStatus !== 'live' && streamStatus !== 'paused' && (
         <div className={`terminal-stream-badge is-${streamStatus}`}>
           <span aria-hidden="true" />
           {streamLabel(streamStatus)}

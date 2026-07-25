@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   instances: [],
   getHistory: vi.fn(() => new Promise(() => {})),
   sendInput: vi.fn(),
+  openTerminalStream: vi.fn(),
   UnauthorizedError: class UnauthorizedError extends Error {},
 }));
 
@@ -32,6 +33,10 @@ vi.mock('../src/api.js', () => ({
 
 vi.mock('../src/bundledFonts.js', () => ({
   ensureBundledFonts: vi.fn(() => new Promise(() => {})),
+}));
+
+vi.mock('../src/terminalStreamClient.js', () => ({
+  openTerminalStream: mocks.openTerminalStream,
 }));
 
 vi.mock('@xterm/addon-webgl', () => ({
@@ -146,6 +151,11 @@ describe('desktop terminal input', () => {
     mocks.instances.length = 0;
     mocks.getHistory.mockReset().mockImplementation(() => new Promise(() => {}));
     mocks.sendInput.mockReset();
+    mocks.openTerminalStream.mockReset().mockReturnValue({
+      pause: vi.fn(),
+      resync: vi.fn(),
+      close: vi.fn(() => Promise.resolve()),
+    });
     delete navigator.clipboard;
     Object.defineProperty(navigator, 'platform', {
       configurable: true,
@@ -205,6 +215,37 @@ describe('desktop terminal input', () => {
     });
     expect(view.container.querySelector('.terminal').classList.contains('terminal--loading')).toBe(false);
     expect(view.container.querySelector('.terminal').classList.contains('desktop-input')).toBe(true);
+  });
+
+  it('falls back to snapshot polling when the real-time stream cannot recover', async () => {
+    vi.useFakeTimers();
+    let callbacks;
+    const close = vi.fn(() => Promise.resolve());
+    mocks.openTerminalStream.mockImplementation((options) => {
+      callbacks = options;
+      return { pause: vi.fn(), resync: vi.fn(), close };
+    });
+    mocks.getHistory.mockResolvedValue({
+      ansi: 'fallback',
+      hash: 'frame-1',
+      width: 80,
+      height: 24,
+      alt: false,
+      mouseAware: false,
+      cur: { row: 23, col: 0, vis: true },
+    });
+    const view = render(<Terminal pane="%1" desktop stream />);
+
+    act(() => callbacks.onStatus('reconnecting'));
+    await act(async () => {
+      vi.advanceTimersByTime(1200);
+      await Promise.resolve();
+    });
+
+    expect(close).toHaveBeenCalledOnce();
+    expect(mocks.getHistory).toHaveBeenCalled();
+    expect(view.container.querySelector('.terminal').classList.contains('terminal--stream')).toBe(false);
+    vi.useRealTimers();
   });
 
   it('hands a desktop pointer tap back to terminal input instead of preserving composer focus', () => {
