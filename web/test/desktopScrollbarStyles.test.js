@@ -15,12 +15,15 @@ describe('desktop scrollbar styles', () => {
     expect(styles).toMatch(/\*::\-webkit-scrollbar-thumb:active\s*\{[^}]*var\(--scroll-thumb-active\)/);
   });
 
-  it('keeps navigation strips scrollable without showing a scrollbar', () => {
+  it('shows the same reserved horizontal scrollbar on desktop and touch devices', () => {
     expect(styles).toMatch(
-      /\.file-tabs-scroll,\s*\.git-tabs-scroll\s*\{[^}]*scrollbar-width:\s*none/,
+      /\*::\-webkit-scrollbar:horizontal\s*\{[^}]*height:\s*10px/,
     );
     expect(styles).toMatch(
-      /\.file-tabs-scroll::\-webkit-scrollbar,\s*\.git-tabs-scroll::\-webkit-scrollbar\s*\{[^}]*display:\s*none/,
+      /\.windowbar-scroll,[\s\S]*\.es-diff,[\s\S]*\.cc-quick\s*\{[^}]*overflow-x:\s*scroll/,
     );
+    expect(styles).not.toMatch(/scrollbar-width:\s*none/);
+    expect(styles).not.toMatch(/::\-webkit-scrollbar(?::horizontal)?\s*\{[^}]*display:\s*none/);
+    expect(styles).not.toMatch(/::\-webkit-scrollbar:horizontal\s*\{[^}]*height:\s*0/);
   });
 });

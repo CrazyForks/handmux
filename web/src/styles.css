@@ -203,8 +203,7 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .bind-confirm:disabled { opacity: .6; }
 /* Nav strip: windows scroll horizontally; the active multi-pane window's tab carries an inline pane menu. */
 .windowbar { display: flex; gap: 8px; align-items: center; padding: 6px 8px; background: #222; }
-.windowbar-scroll { flex: 1; min-width: 0; display: flex; gap: 4px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-x; scrollbar-width: none; }
-.windowbar-scroll::-webkit-scrollbar { display: none; }
+.windowbar-scroll { flex: 1; min-width: 0; display: flex; gap: 4px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-x; }
 /* 终端⇄对话 lens toggle — a single one-tap button, right-aligned in the windowbar row, only rendered for
    agent panes (its slot claims no space when absent, so the row never reflows). The swap glyph + faint
    accent border read "this flips the view"; the label shows the current mode. Sized to sit with .win-tab. */
@@ -346,12 +345,8 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .terminal .xterm-viewport::-webkit-scrollbar { width: 7px; height: 7px; }
 .terminal .xterm-viewport::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); border-radius: 4px; }
 .terminal .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
-/* The terminal scrolls HORIZONTALLY when the pane is wider than the phone (overflow-x on .terminal). Hide
-   that horizontal bar so it never overlaps the bottom row / a bottom-aligned cursor — you still pan by
-   touch, and the vertical scrollback indicator above is untouched. */
-.terminal { scrollbar-width: none; }
-.terminal::-webkit-scrollbar { height: 0; }
-.terminal .xterm-viewport::-webkit-scrollbar:horizontal { height: 0; }
+/* The outer terminal owns horizontal pane scrolling; its bar uses the shared reserved strip below so it
+   never overlays the bottom terminal row. The xterm viewport continues to own vertical scrollback. */
 /* Read-only view: don't let taps focus xterm's hidden input textarea (which would pop the
    mobile soft keyboard and steal taps near the cursor, e.g. the back-to-bottom button). */
 .terminal .xterm-helper-textarea { pointer-events: none; opacity: 0; }
@@ -675,10 +670,9 @@ div.workspace-restore-errors { padding-left: 10px; }
 .quick-fix-kbd svg { color: #d3dcec; }
 .quick-fix-kbd[aria-pressed="true"] { border-color: #3d63a8; background: #2c3849; color: #eaf1ff; }
 .quick-fix-kbd[aria-pressed="true"] svg { color: var(--blue); }
-/* 可横滑的自定义命令区:溢出横向滚动、隐藏滚动条;chip 单行不换、不压缩。 */
+/* 可横滑的自定义命令区：chip 单行不换、不压缩，横向滚动条使用全局样式。 */
 .quick-scroll { flex: 1; min-width: 0; display: flex; align-items: stretch; gap: 5px; overflow-x: auto;
-  scrollbar-width: none; -webkit-overflow-scrolling: touch; }
-.quick-scroll::-webkit-scrollbar { display: none; }
+  -webkit-overflow-scrolling: touch; }
 /* 聊天 chip:按类别上色(仅三色):按键(ESC/Tab/⌫)灰、斜杠命令蓝、其余(ok/继续/1/2/3)绿。文字/描边用该
    色、底填淡影,按下加深。竖内边距给足(好按),色相由 .qc-esc/.qc-cmd/.qc-reply 给。rgba(var(--rgb),a) 全面兼容。 */
 .quick-cmd { flex: none; display: inline-flex; align-items: center; white-space: nowrap;
@@ -1114,9 +1108,8 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .preview-tabs {
   display: flex; gap: 6px; align-items: center; flex: 0 0 auto;
   padding: 6px 10px; overflow-x: auto; -webkit-overflow-scrolling: touch;
-  border-top: 1px solid #24262b; background: #1a1c20; scrollbar-width: none;
+  border-top: 1px solid #24262b; background: #1a1c20;
 }
-.preview-tabs::-webkit-scrollbar { display: none; }
 .preview-tab {
   display: inline-flex; align-items: center; flex: 0 0 auto;
   background: #26282e; border: 1px solid #34363c; border-radius: 999px; overflow: hidden;
@@ -2237,8 +2230,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
   display: flex; flex-direction: column; gap: 6px;
   padding: 6px 8px calc(8px + env(safe-area-inset-bottom, 0px)); background: var(--ct-bar);
 }
-.cc-quick { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
-.cc-quick::-webkit-scrollbar { display: none; }
+.cc-quick { display: flex; gap: 6px; overflow-x: auto; }
 /* The card: textarea on top, action row beneath. Buttons never overlay the text (own row) → none of the
    dock's multi/crowd/ghost-hit machinery is needed. Subtle border, faint accent on focus, green while dictating. */
 .cc-card {
@@ -2298,10 +2290,56 @@ button.cmd-text { background: none; border: none; text-align: left; }
 
 .push-inbox-detail-del { display: block; margin-top: 24px; }
 
+/* Horizontal scrolling uses the same visible 10px strip on mouse and touch devices. overflow-x:scroll
+   reserves that strip below the content instead of letting an overlay thumb cover tabs, terminal rows or
+   code; it also prevents a panel from changing height when a long item first arrives. */
+.windowbar-scroll,
+.terminal,
+.quick-scroll,
+.file-tabs-scroll,
+.preview-body.pc,
+.preview-tabs,
+.git-tabs-scroll,
+.git-diff,
+.doc-md pre,
+.doc-md table,
+.push-script-cmd,
+.chat-md pre,
+.chat-md table,
+.chat-tool-body,
+.chat-diff,
+.tool-sheet-cmd,
+.es-diff,
+.cc-quick {
+  overflow-x: scroll;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+*::-webkit-scrollbar:horizontal {
+  height: 10px;
+}
+*::-webkit-scrollbar-track:horizontal {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb:horizontal {
+  min-width: 32px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-color: var(--scroll-thumb);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:horizontal:active {
+  background-color: var(--scroll-thumb-active);
+}
+*::-webkit-scrollbar-button:horizontal {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 /* Desktop scrollbars: keep the browser's reliable wheel, trackpad, drag and keyboard behaviour while
-   replacing each platform's native chrome with one quiet app-wide skin. Touch-first devices retain their
-   existing overlay scrollbars. Navigation strips stay visually flat; content/code scroll areas show the
-   same slim thumb in both axes. */
+   replacing each platform's native chrome with one quiet app-wide skin. Touch-first devices keep their
+   existing vertical indicator while sharing the persistent horizontal treatment above. */
 @media (hover: hover) and (pointer: fine) {
   * {
     scrollbar-width: thin;
@@ -2333,7 +2371,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
   }
 
   /* The terminal had its own cross-platform indicator before the global desktop skin. Override that
-     stronger selector here so desktop uses the same thumb; its horizontal bar remains hidden above. */
+     stronger selector here so desktop uses the same thumb in both directions. */
   .terminal .xterm-viewport {
     scrollbar-color: var(--scroll-thumb) transparent;
   }
@@ -2354,12 +2392,4 @@ button.cmd-text { background: none; border: none; text-align: left; }
     background-color: var(--scroll-thumb-active);
   }
 
-  .file-tabs-scroll,
-  .git-tabs-scroll {
-    scrollbar-width: none;
-  }
-  .file-tabs-scroll::-webkit-scrollbar,
-  .git-tabs-scroll::-webkit-scrollbar {
-    display: none;
-  }
 }
