@@ -63,7 +63,7 @@ export default {
   'browser.openMode': '開き方を選択',
   'browser.historyMore': 'その他の開き方',
   'browser.proxyLimitHint': 'プロキシ接続は通常遅く、すべてのサイトの動作を保証できません。',
-  'browser.proxyUnavailable': 'パソコン側で previewDomain を設定してください。設定するまではスマホからの直接接続のみ利用できます。',
+  'browser.proxyUnavailable': 'パソコンのターミナルで handmux setup を実行し、「内蔵ブラウザ」でプレビュー用ドメインを設定してください。設定するまではスマホからの直接接続のみ利用できます。',
   'browser.tryProxy': 'PC プロキシを試す',
   'browser.clearSiteLogin': 'このサイトのプロキシ Cookie を消去',
   'browser.clearAllLogin': 'プロキシ Cookie をすべて消去',

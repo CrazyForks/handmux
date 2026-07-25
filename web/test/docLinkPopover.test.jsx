@@ -22,7 +22,8 @@ describe('DocLinkPopover', () => {
     expect(buttons.map((button) => button.textContent)).toEqual(['手机直连', '经电脑代理']);
     expect(buttons[0].disabled).toBe(false);
     expect(buttons[1].disabled).toBe(true);
-    expect(container.textContent).toContain('当前服务器未开启浏览器代理');
+    expect(container.textContent).toContain('handmux setup');
+    expect(container.textContent).toContain('内置浏览器');
     click(buttons[0]);
     expect(onOpen).toHaveBeenCalledWith('https://example.com', 'direct');
   });

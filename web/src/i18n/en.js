@@ -65,7 +65,7 @@ export default {
   'browser.openMode': 'Choose how to open',
   'browser.historyMore': 'More opening options',
   'browser.proxyLimitHint': 'Proxy access is usually slower and may not work with every website.',
-  'browser.proxyUnavailable': 'Configure previewDomain on the computer to enable proxy access. Until then, only Direct mode is available.',
+  'browser.proxyUnavailable': 'Run handmux setup on the computer and choose “Built-in browser” to configure its preview domain. Until then, only Direct mode is available.',
   'browser.tryProxy': 'Try computer proxy',
   'browser.clearSiteLogin': 'Clear this site’s proxy Cookies',
   'browser.clearAllLogin': 'Clear all proxy Cookies',

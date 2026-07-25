@@ -53,6 +53,20 @@ describe('catalog parity', () => {
     expect(missing).toEqual([]);
   });
 
+  it('names and explains the built-in browser domain consistently in setup', () => {
+    expect(zh['setup.secBrowser']).toBe('内置浏览器');
+    expect(zh['setup.askBrowserDomain']).toContain('内置浏览器预览域名');
+    expect(zh['setup.browserAbout']).toContain('电脑网络');
+    expect(zh['setup.browserOff']).toContain('手机直连');
+    for (const dict of [en, zh]) {
+      expect(dict['setup.secBrowser']).toBeTruthy();
+      expect(dict['setup.askBrowserDomain']).toBeTruthy();
+      expect(dict['setup.browserAbout']).toBeTruthy();
+      expect(dict['setup.browserRoute']).toContain('*.preview.example.com');
+      expect(dict['setup.browserHttps']).toBeTruthy();
+    }
+  });
+
   it('documents both restore forms and provides actionable restore messages in both locales', () => {
     for (const dict of [en, zh]) {
       expect(dict['help.body']).toContain('handmux restore [--dry-run] [--checkpoint <id>] [--session <name>]');

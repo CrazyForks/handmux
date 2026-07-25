@@ -64,7 +64,7 @@ export default {
   'browser.openMode': '选择打开方式',
   'browser.historyMore': '更多打开方式',
   'browser.proxyLimitHint': '代理访问通常更慢，且不保证所有网站都能正常使用。',
-  'browser.proxyUnavailable': '请先在电脑端配置 previewDomain；配置前只能使用手机直连。',
+  'browser.proxyUnavailable': '请在电脑终端运行 handmux setup，选择“内置浏览器”配置预览域名；配置前只能使用手机直连。',
   'browser.tryProxy': '改用电脑代理',
   'browser.clearSiteLogin': '清理本站代理 Cookie',
   'browser.clearAllLogin': '清理全部代理 Cookie',

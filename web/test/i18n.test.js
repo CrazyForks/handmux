@@ -92,7 +92,7 @@ describe('browser dual-mode copy', () => {
     expect(consent).toContain(proxyWord);
     expect(dict['browser.consentIdle']).not.toContain(destroyedWord);
     expect(dict['browser.proxyLimitHint']).toBeTruthy();
-    expect(dict['browser.proxyUnavailable']).toContain('previewDomain');
+    expect(dict['browser.proxyUnavailable']).toContain('handmux setup');
   });
 
   it.each([

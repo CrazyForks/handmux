@@ -63,7 +63,7 @@ export default {
   'browser.openMode': '열기 방식 선택',
   'browser.historyMore': '더 많은 열기 옵션',
   'browser.proxyLimitHint': '프록시 접속은 일반적으로 더 느리고 모든 사이트의 정상 동작을 보장하지 않습니다.',
-  'browser.proxyUnavailable': '컴퓨터에서 previewDomain을 설정하세요. 설정 전에는 휴대폰 직접 연결만 사용할 수 있습니다.',
+  'browser.proxyUnavailable': '컴퓨터 터미널에서 handmux setup을 실행하고 “내장 브라우저”에서 미리보기 도메인을 설정하세요. 설정 전에는 휴대폰 직접 연결만 사용할 수 있습니다.',
   'browser.tryProxy': '컴퓨터 프록시 사용',
   'browser.clearSiteLogin': '이 사이트의 프록시 Cookie 정리',
   'browser.clearAllLogin': '모든 프록시 Cookie 정리',

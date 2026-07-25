@@ -277,7 +277,8 @@ describe('BrowserSheet', () => {
     const proxy = [...document.querySelectorAll('.browser-history-mode-option')].find((node) => node.textContent === '经电脑代理');
     expect(proxy.disabled).toBe(true);
     const reason = document.querySelector('.browser-history-mode-menu p');
-    expect(reason.textContent).toBe('请先在电脑端配置 previewDomain；配置前只能使用手机直连。');
+    expect(reason.textContent)
+      .toBe('请在电脑终端运行 handmux setup，选择“内置浏览器”配置预览域名；配置前只能使用手机直连。');
     expect(proxy.getAttribute('aria-describedby')).toBe(reason.id);
   });
 
@@ -292,7 +293,7 @@ describe('BrowserSheet', () => {
 
     expect(model.openUrl).not.toHaveBeenCalled();
     expect(document.querySelector('.browser-error').textContent)
-      .toContain('请先在电脑端配置 previewDomain；配置前只能使用手机直连。');
+      .toContain('请在电脑终端运行 handmux setup，选择“内置浏览器”配置预览域名；配置前只能使用手机直连。');
   });
 
   it('clears stale history errors when switching tabs or starting a valid address operation', async () => {
