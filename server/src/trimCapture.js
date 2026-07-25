@@ -8,9 +8,9 @@
 // bottom. We apply this BEFORE hashing/sending, so the change-hash, the transferred body, and the
 // client's render + at-bottom logic all key off the same trimmed capture.
 //
-// A row counts as blank only if it has no glyph AND no SGR escape. captureBackground normalizes
-// ambiguous blank rows before this step, so genuinely shaded padding carries its explicit SGR while
-// a default-background blank may be trimmed normally.
+// A row counts as blank only if it has no glyph AND no SGR escape — a shaded/full-width padding row
+// (e.g. Claude Code's grey message bar) carries \x1b and is NEVER trimmed here; that stays for the
+// client's trimTrailingShadow (and such boxes are never the very bottom of the pane anyway).
 export const MAX_TRAILING_BLANK = 3;
 
 const isBlank = (row) => row === '' || (/^[ \t]*$/.test(row) && !row.includes('\x1b'));
