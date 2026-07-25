@@ -370,26 +370,26 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
   top: calc(100% - var(--vis-h, 100%) + 7px); right: 9px;
   display: flex; align-items: center; gap: 4px;
   color: rgba(235,235,245,.48);
-  font: 11px/1.35 -apple-system, system-ui, sans-serif;
+  font: 500 11.5px/1.35 -apple-system, system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
   white-space: nowrap; pointer-events: none;
   text-shadow: 0 1px 2px rgba(0,0,0,.5);
 }
 .terminal-connection__tag {
-  padding: 1px 4px;
-  border: 1px solid rgba(235,235,245,.09);
+  padding: 2px 5px;
+  border: 1px solid rgba(235,235,245,.12);
   border-radius: 4px;
-  background: rgba(26,28,34,.46);
+  background: rgba(26,28,34,.62);
 }
 .terminal-connection__mode.is-live {
-  color: rgba(126,190,255,.88);
-  border-color: rgba(100,174,255,.15);
-  background: rgba(65,125,195,.12);
+  color: rgba(235,247,255,.96);
+  border-color: rgba(100,174,255,.32);
+  background: rgba(63,139,224,.38);
 }
 .terminal-connection__mode.is-snapshot {
-  color: rgba(255,203,112,.88);
-  border-color: rgba(255,190,92,.15);
-  background: rgba(180,125,45,.12);
+  color: rgba(240,240,245,.88);
+  border-color: rgba(205,208,218,.18);
+  background: rgba(105,109,120,.38);
 }
 .terminal-connection__quality { color: rgba(235,235,245,.52); }
 .terminal-connection.is-good .terminal-connection__quality {

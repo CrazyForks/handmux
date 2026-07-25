@@ -24,16 +24,20 @@ describe('connection telemetry', () => {
       clearIntervalFn: vi.fn(),
     });
     telemetry.sample({ ok: true, rttMs: 100 });
-    expect(telemetry.getSnapshot().quality).toBe('good');
+    expect(telemetry.getSnapshot()).toMatchObject({ quality: 'good', stableQuality: 'good' });
 
     telemetry.sample({ ok: false, rttMs: 2000 });
-    expect(telemetry.getSnapshot().quality).toBe('good');
+    expect(telemetry.getSnapshot()).toMatchObject({ quality: 'poor', stableQuality: 'good' });
     now = 15000;
     telemetry.sample({ ok: false, rttMs: 2000 });
-    expect(telemetry.getSnapshot().quality).toBe('poor');
+    expect(telemetry.getSnapshot()).toMatchObject({ quality: 'poor', stableQuality: 'poor' });
 
     telemetry.setMode('snapshot', { fallback: true });
-    expect(telemetry.getSnapshot()).toMatchObject({ mode: 'snapshot', quality: 'degraded' });
+    expect(telemetry.getSnapshot()).toMatchObject({
+      mode: 'snapshot',
+      quality: 'poor',
+      stableQuality: 'degraded',
+    });
     expect(updates.at(-1).mode).toBe('snapshot');
     telemetry.destroy();
   });
@@ -45,7 +49,11 @@ describe('connection telemetry', () => {
       clearIntervalFn: vi.fn(),
     });
     telemetry.sample({ ok: false });
-    expect(telemetry.getSnapshot().quality).toBe('degraded');
+    expect(telemetry.getSnapshot()).toMatchObject({
+      quality: 'poor',
+      stableQuality: 'degraded',
+      rttMs: null,
+    });
     telemetry.destroy();
   });
 
@@ -61,10 +69,10 @@ describe('connection telemetry', () => {
     telemetry.sample({ ok: true, rttMs: 100 });
     now = 29999;
     telemetry.sample({ ok: true, rttMs: 100 });
-    expect(telemetry.getSnapshot().quality).toBe('degraded');
+    expect(telemetry.getSnapshot()).toMatchObject({ quality: 'good', stableQuality: 'degraded' });
     now = 30000;
     telemetry.sample({ ok: true, rttMs: 100 });
-    expect(telemetry.getSnapshot().quality).toBe('good');
+    expect(telemetry.getSnapshot()).toMatchObject({ quality: 'good', stableQuality: 'good' });
     telemetry.destroy();
   });
 });

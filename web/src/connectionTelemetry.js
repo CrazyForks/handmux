@@ -24,41 +24,44 @@ export function createConnectionTelemetry({
   let disposed = false;
   let pendingQuality = null;
   let pendingSince = 0;
+  // `quality` always matches the displayed RTT. `stableQuality` is deliberately dampened and is
+  // consumed only by automatic live↔snapshot switching, so policy delays never make the label lie.
   let state = {
     mode,
     quality: 'connecting',
+    stableQuality: 'connecting',
     rttMs: null,
   };
 
   const emit = () => {
     if (!disposed) onChange?.({ ...state });
   };
-  const applyQuality = (quality, immediate = false) => {
+  const applyStableQuality = (quality, immediate = false) => {
     if (quality === 'connecting') {
-      if (state.quality === 'connecting') emit();
+      if (state.stableQuality === 'connecting') emit();
       return;
     }
-    if (quality === state.quality) {
+    if (quality === state.stableQuality) {
       pendingQuality = null;
       pendingSince = 0;
       emit();
       return;
     }
-    if (state.quality === 'connecting' && quality === 'poor' && !immediate) {
+    if (state.stableQuality === 'connecting' && quality === 'poor' && !immediate) {
       pendingQuality = 'poor';
       pendingSince = now();
-      state = { ...state, quality: 'degraded' };
+      state = { ...state, stableQuality: 'degraded' };
       emit();
       return;
     }
-    if (state.quality === 'connecting' || immediate) {
+    if (state.stableQuality === 'connecting' || immediate) {
       pendingQuality = null;
       pendingSince = 0;
-      state = { ...state, quality };
+      state = { ...state, stableQuality: quality };
       emit();
       return;
     }
-    const waitMs = QUALITY_RANK[quality] > QUALITY_RANK[state.quality]
+    const waitMs = QUALITY_RANK[quality] > QUALITY_RANK[state.stableQuality]
       ? DEGRADE_AFTER_MS
       : RECOVER_AFTER_MS;
     if (pendingQuality !== quality) {
@@ -70,7 +73,7 @@ export function createConnectionTelemetry({
     if (now() - pendingSince >= waitMs) {
       pendingQuality = null;
       pendingSince = 0;
-      state = { ...state, quality };
+      state = { ...state, stableQuality: quality };
     }
     emit();
   };
@@ -80,12 +83,17 @@ export function createConnectionTelemetry({
   return {
     sample({ ok, rttMs }) {
       if (disposed) return;
-      if (Number.isFinite(rttMs)) state = { ...state, rttMs: Math.max(0, Math.round(rttMs)) };
-      applyQuality(classifyConnectionSample({ ok, rttMs }));
+      const quality = classifyConnectionSample({ ok, rttMs });
+      state = {
+        ...state,
+        quality,
+        rttMs: Number.isFinite(rttMs) ? Math.max(0, Math.round(rttMs)) : null,
+      };
+      applyStableQuality(quality);
     },
     status(status) {
       if (disposed) return;
-      if (status === 'reconnecting' || status === 'error') applyQuality('degraded', true);
+      if (status === 'reconnecting' || status === 'error') applyStableQuality('degraded', true);
       else if (status === 'connecting' && state.rttMs == null) {
         state = { ...state, quality: 'connecting' };
         emit();
@@ -94,7 +102,7 @@ export function createConnectionTelemetry({
     setMode(nextMode, { fallback = false } = {}) {
       if (disposed || state.mode === nextMode) return;
       state = { ...state, mode: nextMode };
-      if (fallback) state.quality = 'degraded';
+      if (fallback) state.stableQuality = 'degraded';
       emit();
     },
     getSnapshot() {

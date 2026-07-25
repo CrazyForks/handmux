@@ -202,6 +202,22 @@ const Terminal = React.forwardRef(function QueuedTerminal(props, forwardedRef) {
   return <RawTerminal {...props} ref={setRef} onInputData={enqueue} />;
 });
 
+const revealStreamFrame = async (callbacks, ansi = 'ready') => {
+  await act(async () => callbacks.onSeed({
+    ansi: `${ansi}\n`,
+    width: 80,
+    height: 24,
+    historyLines: 0,
+    alt: false,
+    mouseAware: false,
+  }));
+  await act(async () => callbacks.onReady({ cur: { row: 0, col: 0, vis: true } }));
+  await act(async () => {
+    vi.advanceTimersByTime(450);
+    await Promise.resolve();
+  });
+};
+
 describe('desktop terminal input', () => {
   beforeEach(() => {
     mocks.instances.length = 0;
@@ -297,6 +313,7 @@ describe('desktop terminal input', () => {
     });
     const view = render(<Terminal pane="%1" desktop stream />);
     await vi.waitFor(() => expect(callbacks).toBeDefined());
+    expect(view.container.querySelector('.terminal-connection')).toBeNull();
 
     act(() => callbacks.onStatus('reconnecting'));
     await act(async () => {
@@ -307,7 +324,6 @@ describe('desktop terminal input', () => {
     expect(suspend).toHaveBeenCalledOnce();
     expect(mocks.getHistory).toHaveBeenCalled();
     expect(view.container.querySelector('.terminal').classList.contains('terminal--stream')).toBe(false);
-    expect(view.container.querySelector('.terminal-connection').textContent).toContain('定时');
   });
 
   it('falls back after application RTT remains poor', async () => {
@@ -322,12 +338,14 @@ describe('desktop terminal input', () => {
     mocks.getHistory.mockResolvedValue({ unchanged: true });
     const view = render(<Terminal pane="%1" desktop stream />);
     await vi.waitFor(() => expect(callbacks).toBeDefined());
+    expect(view.container.querySelector('.terminal-connection')).toBeNull();
+    await revealStreamFrame(callbacks);
 
     act(() => callbacks.onProbe({ ok: true, rttMs: 1800 }));
     const status = view.container.querySelector('.terminal-connection');
     expect(status.querySelectorAll('.terminal-connection__tag')).toHaveLength(2);
     expect(status.querySelector('.terminal-connection__mode').classList.contains('is-live')).toBe(true);
-    expect(status.querySelector('.terminal-connection__quality').textContent).toContain('1800 ms');
+    expect(status.querySelector('.terminal-connection__quality').textContent).toContain('较差 1800 ms');
     expect(status.textContent).toContain('实时');
     act(() => {
       vi.advanceTimersByTime(15000);
@@ -354,6 +372,8 @@ describe('desktop terminal input', () => {
     });
     const view = render(<Terminal pane="%1" desktop stream />);
     await vi.waitFor(() => expect(callbacks).toBeDefined());
+    expect(view.container.querySelector('.terminal-connection')).toBeNull();
+    await revealStreamFrame(callbacks);
 
     act(() => callbacks.onStatus('reconnecting'));
     await act(async () => {

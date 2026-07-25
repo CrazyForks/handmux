@@ -28,7 +28,7 @@ export default function TerminalOverlays({
   return (
     <>
       {!ready && <LensBoot hint={t('boot.loading')} />}
-      {connectionInfo && (
+      {ready && connected && !scrollInfo && !selInfo && connectionInfo && (
         <div className={`terminal-connection is-${connectionInfo.quality}`}>
           <span className={`terminal-connection__tag terminal-connection__mode is-${connectionInfo.mode}`}>
             {t(`terminal.transport_${connectionInfo.mode}`)}

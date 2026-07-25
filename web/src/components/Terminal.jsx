@@ -96,6 +96,7 @@ const Terminal = forwardRef(function Terminal({
   const [connectionInfo, setConnectionInfo] = useState({
     mode: stream ? 'live' : 'snapshot',
     quality: 'connecting',
+    stableQuality: 'connecting',
     rttMs: null,
   });
   const [inputFailure, setInputFailure] = useState(null);
@@ -282,8 +283,8 @@ const Terminal = forwardRef(function Terminal({
       mode: stream ? 'live' : 'snapshot',
       onChange: (info) => {
         setConnectionInfo(info);
-        if (streamMode && info.quality === 'poor') fallbackToPolling();
-        else if (!streamMode && info.mode === 'snapshot' && info.quality === 'good') {
+        if (streamMode && info.stableQuality === 'poor') fallbackToPolling();
+        else if (!streamMode && info.mode === 'snapshot' && info.stableQuality === 'good') {
           maybeRecoverStream();
         }
       },
@@ -1149,7 +1150,7 @@ const Terminal = forwardRef(function Terminal({
     maybeRecoverStream = () => {
       const currentConnection = telemetry.peek();
       if (disposed || streamMode || streamRecoveryInProgress || !stream || document.hidden
-        || currentConnection.mode !== 'snapshot' || currentConnection.quality !== 'good'
+        || currentConnection.mode !== 'snapshot' || currentConnection.stableQuality !== 'good'
         || selActiveRef.current || (seeded && !nearBottom())) return;
       streamRecoveryInProgress = true;
       connectStream().catch(() => {
