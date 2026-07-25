@@ -30,14 +30,8 @@ export function createTerminalStreamMirror({
   TerminalCtor = XTerm,
   SerializeAddonCtor = SerializeAddon,
 } = {}) {
-  const term = new TerminalCtor({
-    allowProposedApi: true,
-    scrollback,
-    convertEol: false,
-  });
-  const serializer = new SerializeAddonCtor();
-  term.loadAddon(serializer);
-
+  let term = null;
+  let serializer = null;
   let disposed = false;
   let seeded = false;
   let ready = false;
@@ -53,17 +47,33 @@ export function createTerminalStreamMirror({
   return {
     async seed(frame) {
       ensureOpen();
+      const nextTerm = new TerminalCtor({
+        allowProposedApi: true,
+        scrollback,
+        convertEol: false,
+      });
+      const nextSerializer = new SerializeAddonCtor();
+      nextTerm.loadAddon(nextSerializer);
+      if (nextTerm.cols !== frame.width || nextTerm.rows !== frame.height) {
+        nextTerm.resize(frame.width, frame.height);
+      }
+      const seed = prepareLiveSeed(frame.ansi, frame.height);
+      const screenMode = frame.alt ? '\x1b[?1049h' : '\x1b[?1049l';
+      try {
+        await write(nextTerm, `${screenMode}\x1b[?25l\x1b[0m\x1b[2J\x1b[3J\x1b[H${seed}`);
+        ensureOpen();
+      } catch (error) {
+        nextTerm.dispose();
+        throw error;
+      }
+      const previousTerm = term;
+      term = nextTerm;
+      serializer = nextSerializer;
+      previousTerm?.dispose();
       ready = false;
       cursor = { visible: false, tail: '' };
       mouse = { active: !!frame.mouseAware, tail: '' };
-      if (term.cols !== frame.width || term.rows !== frame.height) {
-        term.resize(frame.width, frame.height);
-      }
-      const seed = prepareLiveSeed(frame.ansi, frame.height);
       seedRows = seed ? seed.split('\r\n').length : 0;
-      const screenMode = frame.alt ? '\x1b[?1049h' : '\x1b[?1049l';
-      await write(term, `${screenMode}\x1b[?25l\x1b[0m\x1b[2J\x1b[3J\x1b[H${seed}`);
-      ensureOpen();
       seeded = true;
       revision += 1;
     },
@@ -111,7 +121,7 @@ export function createTerminalStreamMirror({
     dispose() {
       if (disposed) return;
       disposed = true;
-      term.dispose();
+      term?.dispose();
     },
   };
 }

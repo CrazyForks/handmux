@@ -116,4 +116,33 @@ describe('terminal stream mirror', () => {
     visible.dispose();
     mirror.dispose();
   });
+
+  it('starts a resync from a clean parser state', async () => {
+    const frame = {
+      ansi: 'h0\nh1\nr0\nr1\nr2\nr3\n',
+      width: 8,
+      height: 4,
+      alt: false,
+      mouseAware: false,
+    };
+    const reused = create();
+    await reused.seed(frame);
+    await reused.ready({ row: 3, col: 2, vis: true });
+    // Full-screen terminal applications can leave private modes and scroll margins active.
+    await reused.data(new Uint8Array(Buffer.from('\x1b[2;3r\x1b[?6h\x1b[2;1Hdirty')));
+    await reused.seed(frame);
+    await reused.ready({ row: 3, col: 2, vis: true });
+
+    const fresh = create();
+    await fresh.seed(frame);
+    await fresh.ready({ row: 3, col: 2, vis: true });
+
+    expect(reused.snapshot()).toMatchObject({
+      ansi: fresh.snapshot().ansi,
+      boundaryLine: fresh.snapshot().boundaryLine,
+      bufferRows: fresh.snapshot().bufferRows,
+    });
+    reused.dispose();
+    fresh.dispose();
+  });
 });
