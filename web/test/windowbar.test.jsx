@@ -40,6 +40,11 @@ const base = {
 };
 
 describe('WindowBar', () => {
+  it('uses flex layout so plain and expanded tabs keep the same Agent logo spacing', () => {
+    expect(styles).toMatch(/\.win-tab\s*\{[^}]*display:\s*inline-flex[^}]*align-items:\s*center/);
+    expect(styles).toMatch(/\.wt-trigger \.agent-mark\s*\{\s*margin-right:\s*0/);
+  });
+
   it('renders a tab per window and highlights the current one', () => {
     render({ ...base, onSelectWindow: vi.fn(), onSelectPane: vi.fn() });
     const tabs = container.querySelectorAll('[data-win]');
