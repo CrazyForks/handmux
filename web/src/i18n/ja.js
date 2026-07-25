@@ -1,5 +1,7 @@
 // 日本語 strings. Missing keys fall back to English (see ./index.js translate()).
 export default {
+  'terminal.disconnected': '接続が切れました。再接続しています…',
+  'terminal.paneMissing': 'このペインは閉じられました。別のペインに切り替えてください。',
   'common.save': '保存',
   'common.cancel': 'キャンセル',
   'common.confirm': '確認',
@@ -211,6 +213,7 @@ export default {
   'dock.command.placeholder': 'コマンドを入力 · Enterで実行',
   'dock.mode.agent': '会話',
   'dock.mode.toggle': '入力モードを切替',
+  'dock.desktopTerminalInput': 'キーボード → ターミナル',
   'dock.mode.command': 'コマンド',
   'dock.mode.chat': 'チャット',
   'fav.title': 'よく使う',

@@ -79,8 +79,18 @@ function PaneMapCell({ cell, cur, releasing, picking, agent, onChoose, onManage 
   );
 }
 
-function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, onManage, onManagePane, onSelectPane, onBeforePaneMapOpen, paneSheetOpen = false, openMapFor = null, onMapOpened }) {
+function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, onManage, onManagePane, onSelectPane, onBeforePaneMapOpen, paneSheetOpen = false, openMapFor = null, onMapOpened, onPaneMapOpenChange }) {
   const [open, setOpen] = useState(false);
+  const openRef = useRef(open);
+  const onPaneMapOpenChangeRef = useRef(onPaneMapOpenChange);
+  openRef.current = open;
+  onPaneMapOpenChangeRef.current = onPaneMapOpenChange;
+  useEffect(() => {
+    onPaneMapOpenChange?.(open);
+  }, [open, onPaneMapOpenChange]);
+  useEffect(() => () => {
+    if (openRef.current) onPaneMapOpenChangeRef.current?.(false);
+  }, []);
   // Id of the tile mid-selection (drives the .is-picking flash) until the switch commits.
   const [picking, setPicking] = useState(null);
   const pickTimer = useRef(null);
@@ -242,7 +252,7 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
 
 export default function WindowBar({
   windows, windowAgents = {}, paneAgents = {}, currentAgent, currentWindowId, panes, currentPaneId, onSelectWindow, onSelectPane, onNewWindow, onManageWindow,
-  onManagePane, onBeforePaneMapOpen, paneSheetOpen = false, openMapFor = null, onMapOpened, trackWindowId,
+  onManagePane, onBeforePaneMapOpen, paneSheetOpen = false, openMapFor = null, onMapOpened, onPaneMapOpenChange, trackWindowId,
   lens = 'terminal', onLensChange = () => {}, chatLensEnabled = false,
 }) {
   const scrollRef = useRef(null);
@@ -276,6 +286,7 @@ export default function WindowBar({
                 paneSheetOpen={paneSheetOpen}
                 openMapFor={openMapFor}
                 onMapOpened={onMapOpened}
+                onPaneMapOpenChange={onPaneMapOpenChange}
               />
             );
           }

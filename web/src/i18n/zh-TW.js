@@ -1,5 +1,7 @@
 // 繁體中文 strings. Missing keys fall back to English (see ./index.js translate()).
 export default {
+  'terminal.disconnected': '連線中斷，正在重新連線…',
+  'terminal.paneMissing': '窗格已關閉，請切換到其他窗格。',
   'common.save': '儲存',
   'common.cancel': '取消',
   'common.confirm': '確認',
@@ -211,6 +213,7 @@ export default {
   'dock.command.placeholder': '輸入指令 · Enter 執行',
   'dock.mode.agent': '對話',
   'dock.mode.toggle': '切換輸入模式',
+  'dock.desktopTerminalInput': '鍵盤直通終端',
   'dock.mode.command': '命令模式',
   'dock.mode.chat': '聊天模式',
   'fav.title': '常用',

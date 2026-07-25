@@ -350,6 +350,7 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 /* Read-only view: don't let taps focus xterm's hidden input textarea (which would pop the
    mobile soft keyboard and steal taps near the cursor, e.g. the back-to-bottom button). */
 .terminal .xterm-helper-textarea { pointer-events: none; opacity: 0; }
+.terminal.desktop-input .xterm-helper-textarea { pointer-events: auto; }
 .new-output { position: absolute; right: 12px; bottom: 12px; z-index: 5; touch-action: manipulation; padding: 8px 14px; border: none; border-radius: 16px; background: var(--blue); color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
 .dbg { position: absolute; left: 6px; top: 6px; z-index: 6; font: 12px/1.4 monospace; color: #9fe; background: rgba(0,0,0,.6); padding: 2px 6px; border-radius: 4px; pointer-events: none; }
 /* Status banners: a full-width strip across the head of the terminal area. Yellow = browsing history
@@ -581,6 +582,12 @@ div.workspace-restore-errors { padding-left: 10px; }
   transform: translate3d(0, 0, 0); transition: transform .3s cubic-bezier(.22,.61,.36,1); }
 .dock-track.at-chat { transform: translate3d(-50%, 0, 0); }
 .dock-track > .dock-page { flex: 0 0 50%; width: 50%; min-width: 0; }
+.bottom-dock.desktop-unified .dock-track { width: 100%; transform: none; transition: none; }
+.bottom-dock.desktop-unified .dock-track > .dock-page.chat { flex-basis: 100%; width: 100%; }
+.desktop-dock-state { min-height: 16px; display: flex; justify-content: flex-end; align-items: center; padding: 0 2px; }
+.desktop-terminal-input { display: inline-flex; align-items: center; gap: 5px; color: #aeb5c0;
+  font-size: 10px; line-height: 1; }
+.desktop-terminal-input-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--blue); }
 .dock-page.command { position: relative; } /* anchors the hidden .cmd-capture */
 /* Command keyboard: a fixed 2×7 grid, never scrolls. Equal columns keep the arrows aligned as an
    inverted-T (▲ directly above ▼) left of Enter; ⌫/enter are direct keys; Ctrl/Shift/Alt are sticky

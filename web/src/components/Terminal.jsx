@@ -50,6 +50,21 @@ function primeCursorRenderer(term, hostEl) {
   if (prevFocus && prevFocus !== document.body && typeof prevFocus.focus === 'function') prevFocus.focus();
 }
 
+function prepareTerminalInput(term, hostEl, desktop, autoFocusInput) {
+  const helper = hostEl?.querySelector('.xterm-helper-textarea');
+  if (desktop) {
+    if (helper) {
+      helper.readOnly = false;
+      helper.tabIndex = 0;
+      helper.removeAttribute('inputmode');
+      helper.removeAttribute('aria-hidden');
+    }
+    if (autoFocusInput) term.focus();
+    return;
+  }
+  primeCursorRenderer(term, hostEl);
+}
+
 // Pane view backed by capture-pane snapshots (tmux's already-rendered grid — no cursor
 // seam). While at the bottom we cheaply repaint a short tail every second. Scrolling up
 // pauses the refresh; reaching the top pulls a deeper history slice and keeps the content
@@ -61,7 +76,17 @@ function primeCursorRenderer(term, hostEl) {
 // a smaller font shows more rows (filled from scrollback), a larger font fewer. In AUTO mode
 // (no manual pinch) the font also shrinks so the whole pane fits — full-screen TUIs stay whole.
 // All of this lives in fit() below.
-const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onDocLinkTap, onTap }, ref) {
+const Terminal = forwardRef(function Terminal({
+  pane,
+  inset = 0,
+  desktop = false,
+  autoFocusInput = true,
+  onAuthFail,
+  onDocLinkTap,
+  onTap,
+  onInputFocusChange,
+  onInputData,
+}, ref) {
   const elRef = useRef(null);
   const termRef = useRef(null);
   const insetRef = useRef(0); // keyboard overlap (px) — fit() subtracts it so the grid == visible height
@@ -70,6 +95,12 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
   const lastCurForFollowRef = useRef(''); // last cursor key seen by follow → a change re-arms it
   const onTapRef = useRef(onTap); // a clean single tap → dismiss the dock keyboard (called synchronously)
   onTapRef.current = onTap;
+  const onAuthFailRef = useRef(onAuthFail);
+  onAuthFailRef.current = onAuthFail;
+  const onInputFocusChangeRef = useRef(onInputFocusChange);
+  onInputFocusChangeRef.current = onInputFocusChange;
+  const onInputDataRef = useRef(onInputData);
+  onInputDataRef.current = onInputData;
   // Clickable doc-path underlines (xterm decorations), rebuilt after every full repaint. The tap
   // handler is held in a ref so the poll loop's stable closure always calls the latest prop (mirrors
   // how the loop reaches outside state via fitRef/wakeRef). Tapping a path does NOT open it directly
@@ -93,6 +124,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
   const stopFlingRef = useRef(null);
   const [paused, setPaused] = useState(false);
   const [connected, setConnected] = useState(true); // false → show the disconnect banner
+  const [inputFailure, setInputFailure] = useState(null);
   // Touch selection: long-press starts a selection on the real grid (xterm draws the highlight
   // on its own layer, WebGL included), drag extends it, then a "复制" bubble copies it. selActive
   // is a ref so liveTick (effect scope) and the bubble (render scope) share the "don't repaint /
@@ -182,6 +214,12 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       fitRef.current?.();
     },
     wake: () => wakeRef.current?.(),
+    inputFailed: (error) => {
+      setInputFailure(error?.serverError === 'pane not found' ? 'pane-missing' : 'disconnected');
+      setConnected(false);
+    },
+    focusInput: () => termRef.current?.focus(),
+    blurInput: () => termRef.current?.blur(),
     // Settings' doc-path-highlight switch: flip the flag and re-scan now (default off, so no wash until on).
     setDocHighlight: (on) => { docHighlightRef.current = !!on; refreshDecosRef.current?.(); },
   }), []);
@@ -203,8 +241,9 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
   }, [inset]);
 
   useEffect(() => {
+    let disposed = false;
     const term = new XTerm({
-      disableStdin: true,
+      disableStdin: !desktop,
       // registerDecoration() — the doc-path highlight below — is a PROPOSED xterm API; without this it
       // throws "You must set the allowProposedApi option", which refreshDocDecorations' catch swallowed,
       // so the tappable paths never got their blue underline (only the link provider, which needs no
@@ -247,10 +286,22 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       },
     });
     term.open(elRef.current);
+    elRef.current.classList.toggle('desktop-input', desktop);
     termRef.current = term;
-    // Neuter-then-prime, atomically (see primeCursorRenderer): makes the read-only cursor render without a
-    // tap, while guaranteeing the prime's focus can never summon the mobile keyboard.
-    primeCursorRenderer(term, elRef.current);
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.metaKey && ['w', 't', 'l', 'r'].includes(event.key.toLowerCase())) return false;
+      return true;
+    });
+    const dataSub = desktop ? term.onData((data) => onInputDataRef.current?.(pane, data)) : null;
+    const focusSub = desktop ? term.onFocus(() => {
+      if (!disposed) onInputFocusChangeRef.current?.(true);
+    }) : null;
+    const blurSub = desktop ? term.onBlur(() => {
+      if (!disposed) onInputFocusChangeRef.current?.(false);
+    }) : null;
+    // Subscribe first so desktop's mount focus is observable. Mobile has no focus subscriptions and stays
+    // on the atomic neuter-then-prime path, preserving its focus/blur cursor-prime behavior exactly.
+    prepareTerminalInput(term, elRef.current, desktop, autoFocusInput);
     // Make doc paths TAPPABLE. xterm decorations (the underline below) are visual-only — they sit
     // under the event-capturing .xterm-viewport and never receive taps — so clicks go through the
     // link provider instead, which hooks xterm's own hit-testing and fires through the viewport.
@@ -279,7 +330,6 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     };
     mountWebgl();
     let timer = null;
-    let disposed = false;
     let busy = false;
     let wakeAgain = false; // a wake() landed mid-poll — re-poll right after the in-flight one finishes
     let seeded = false;
@@ -325,7 +375,11 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       requestAnimationFrame(() => { if (!disposed) setReady(true); });
     };
     let connState = initialConnection;
-    const setConn = (s) => { connState = s; setConnected(s.connected); };
+    const setConn = (s) => {
+      connState = s;
+      if (s.connected) setInputFailure(null);
+      setConnected(s.connected);
+    };
 
     // The WebGL glyph atlas is rasterized at open() time. On first open the bundled fonts often
     // aren't loaded yet, so the icons bake in as blank — switching panes (which remounts this
@@ -1217,7 +1271,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
         // measurable), reveal anyway so a switched pane can't get stuck hidden. Idempotent with fit's.
         if (firstSeed) setTimeout(reveal, 400);
       } catch (e) {
-        if (e instanceof UnauthorizedError) onAuthFail?.();
+        if (e instanceof UnauthorizedError) onAuthFailRef.current?.();
         else if (!disposed) setConn(nextConnection(connState, 'fail')); // network/500/timeout → maybe disconnect
       } finally {
         busy = false;
@@ -1334,6 +1388,9 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       wrap.removeEventListener('pointerup', onHandleUp, { capture: true });
       wrap.removeEventListener('pointercancel', onHandleUp, { capture: true });
       vp?.removeEventListener('scroll', onVpScroll);
+      dataSub?.dispose();
+      focusSub?.dispose();
+      blurSub?.dispose();
       sub.dispose();
       linkProvider.dispose();
       for (const { deco, marker } of decosRef.current) { deco.dispose(); marker.dispose(); }
@@ -1344,7 +1401,7 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
       term.dispose();
       termRef.current = null;
     };
-  }, [pane]);
+  }, [pane, desktop]);
 
   const resume = () => {
     stopFlingRef.current?.();
@@ -1413,7 +1470,11 @@ const Terminal = forwardRef(function Terminal({ pane, inset = 0, onAuthFail, onD
     <div className="terminal-wrap">
       <div ref={elRef} className={ready ? 'terminal' : 'terminal terminal--loading'} />
       {!ready && <LensBoot hint={t('boot.loading')} />}
-      {!connected && <div className="term-banner term-banner--err">⚠ 连接断开,重连中…</div>}
+      {!connected && (
+        <div className="term-banner term-banner--err">
+          ⚠ {inputFailure === 'pane-missing' ? t('terminal.paneMissing') : t('terminal.disconnected')}
+        </div>
+      )}
       {dbgVisible && <div className="dbg">{dbg}</div>}
       {connected && scrollInfo && !selInfo && <div className="term-banner term-banner--hist">{scrollInfo}</div>}
       {selInfo && <div className="term-banner term-banner--sel">{selInfo}</div>}

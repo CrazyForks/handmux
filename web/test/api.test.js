@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { getHistory, createSession, createWindow, renameSession, renameWindow, deleteWindow, swapWindows, createDir, UnauthorizedError, ApiError, fetchDoc, fetchDir, signAsr } from '../src/api.js';
+import { getHistory, createSession, createWindow, renameSession, renameWindow, deleteWindow, swapWindows, createDir, UnauthorizedError, ApiError, fetchDoc, fetchDir, signAsr, sendInput } from '../src/api.js';
 import { createPreview, getPreviews, deletePreview, previewUrl, fetchImageUrl } from '../src/api.js';
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
@@ -127,6 +127,16 @@ describe('api request timeout', () => {
       method: 'POST', body: JSON.stringify({ dir: '/home/u/proj', name: 'new' }),
     }));
     expect(res.path).toBe('/home/u/proj/new');
+  });
+
+  it('sendInput POSTs pane plus hex bytes', async () => {
+    const fetchMock = vi.fn(async () => jsonRes(200, { ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(sendInput('%1', '611b5b41')).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledWith('/api/input', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ pane: '%1', hex: '611b5b41' }),
+    }));
   });
 
   it('renameSession PATCHes /api/sessions with id + name', async () => {

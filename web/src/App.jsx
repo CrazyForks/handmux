@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { t } from './i18n';
 import {
   getToken, getLastSession, getLastWindow, getLastPane, remember, clearToken,
@@ -81,6 +81,8 @@ import { hasShareFlag, takeSharedFile, clearShareFlag } from './shareIntake.js';
 import { windowManageSubtitle, paneManageSubtitle } from './manageLabels.js';
 import { DEFAULT_SERVER_SHORTCUTS } from './shortcutMerge.js';
 import { recoveryPromptMode } from './workspaceRecovery.js';
+import { desktopInputEnvironment } from './desktopInput.js';
+import { useDesktopTerminalInput } from './hooks/useDesktopTerminalInput.js';
 
 const COL_STEP = 10; // columns added/removed per ⊟/⊞ tap
 
@@ -90,6 +92,7 @@ const pickId = (items, prefer) =>
   (prefer && items.some((x) => x.id === prefer) ? prefer : items[0].id);
 
 export default function App() {
+  const desktopInput = useMemo(() => desktopInputEnvironment(), []);
   const [needToken, setNeedToken] = useState(!getToken());
   const serverConfig = useServerConfig({ enabled: !needToken });
   const serverShortcuts = serverConfig?.shortcuts || DEFAULT_SERVER_SHORTCUTS;
@@ -108,6 +111,7 @@ export default function App() {
   const [manageWindow, setManageWindow] = useState(null); // the window long-pressed for its action menu
   const [managePane, setManagePane] = useState(null); // pane id long-pressed in the map
   const [openMapFor, setOpenMapFor] = useState(null); // window id whose split map "管理分屏" asked to open
+  const [paneMapOpen, setPaneMapOpen] = useState(false);
   const [fileManagerOpen, setFileManagerOpen] = useState(false); // file-viewer bottom-sheet visibility
   const [gitOpen, setGitOpen] = useState(false);
   const [pendingShare, setPendingShare] = useState(null); // a File shared in via Web Share Target, awaiting a destination
@@ -223,6 +227,20 @@ export default function App() {
   };
   const termRef = useRef(null);
   const dockRef = useRef(null); // imperative handle into BottomDock — idea panel fills its input box
+  const [terminalFocused, setTerminalFocused] = useState(false);
+  const terminalFocusedRef = useRef(false);
+  terminalFocusedRef.current = terminalFocused;
+  const focusTerminal = useCallback(() => termRef.current?.focusInput?.(), []);
+  const focusOwnerAtPointerRef = useRef({ owner: null, at: 0 });
+  const captureTerminalOwner = useCallback(() => {
+    if (!desktopInput) return;
+    focusOwnerAtPointerRef.current = {
+      owner: terminalFocusedRef.current
+        ? 'terminal'
+        : (dockRef.current?.composerFocused?.() ? 'composer' : null),
+      at: Date.now(),
+    };
+  }, [desktopInput]);
   const tmuxColsRef = useRef(null); // target col count, so taps accumulate (term.cols lags ~1s)
   const savedLayoutRef = useRef(null); // window_layout captured before our first resize, for ↺
   const recoveryPlanRef = useRef(null); recoveryPlanRef.current = recoveryPlan;
@@ -235,6 +253,12 @@ export default function App() {
   const drawerMenuRef = useRef(null);
 
   const onAuthFail = useCallback(() => setNeedToken(true), []);
+  const enqueueDesktopInput = useDesktopTerminalInput({
+    enabled: desktopInput,
+    currentPane: current?.paneId,
+    terminalRef: termRef,
+    onAuthFail,
+  });
   // Shared catch prelude: bounce to the token prompt on an auth failure, and report whether it WAS one so
   // each handler keeps its own non-auth control flow (swallow / return / rethrow). See authGuard.js.
   const handledAuth = useCallback((e) => authHandled(e, onAuthFail), [onAuthFail]);
@@ -291,6 +315,43 @@ export default function App() {
     activePreview, shownPreview, tabs: previewTabs, activeName: previewActiveName, openPreviewSheet,
     startPreview, switchTab, closeTab, stopPreview, renewPreview,
   } = usePreviews(current, { settingsOpen, setSettingsOpen });
+  const terminalOverlayOpen = !!(
+    drawerOpen || settingsOpen || usageOpen || bindOpen || newWinOpen || renameTarget
+    || manageWindow || managePane || fileManagerOpen || gitOpen || basePrompt || docLinkPrompt
+    || localUrlPrompt || recoveryDialogOpen || takeoverTarget || inboxOpen || ideaOpen
+    || changelogOpen || notifInboxOpen || paneMapOpen || browser.open
+    || (previewSheetOpen && shownPreview)
+  );
+  const terminalOverlayWasOpenRef = useRef(false);
+  const restoreFocusAfterOverlayRef = useRef(null);
+  useEffect(() => {
+    const wasOpen = terminalOverlayWasOpenRef.current;
+    if (desktopInput && terminalOverlayOpen) {
+      if (!wasOpen) {
+        const pointerOwner = focusOwnerAtPointerRef.current;
+        const liveOwner = terminalFocusedRef.current
+          ? 'terminal'
+          : (dockRef.current?.composerFocused?.() ? 'composer' : null);
+        restoreFocusAfterOverlayRef.current = liveOwner
+          || (Date.now() - pointerOwner.at < 1000 ? pointerOwner.owner : null);
+        focusOwnerAtPointerRef.current = { owner: null, at: 0 };
+      }
+      termRef.current?.blurInput?.();
+      dockRef.current?.hideKeyboard?.();
+    } else if (desktopInput && wasOpen && restoreFocusAfterOverlayRef.current) {
+      const owner = restoreFocusAfterOverlayRef.current;
+      restoreFocusAfterOverlayRef.current = null;
+      const raf = requestAnimationFrame(() => {
+        if (lens !== 'terminal') return;
+        if (owner === 'terminal') focusTerminal();
+        else dockRef.current?.focusComposer?.();
+      });
+      terminalOverlayWasOpenRef.current = terminalOverlayOpen;
+      return () => cancelAnimationFrame(raf);
+    }
+    terminalOverlayWasOpenRef.current = terminalOverlayOpen;
+    return undefined;
+  }, [desktopInput, terminalOverlayOpen, current?.paneId, lens, focusTerminal]);
 
   // Update check: once per app launch (not polled), ask the server whether the installed CLI is behind the
   // latest npm release. The result lights the gear's dot and drives the "run `handmux update`" hint in Settings.
@@ -1475,7 +1536,8 @@ export default function App() {
     // as one unit: the keys + input land just above the keyboard and the terminal's bottom sits
     // right above the keys (the topbar scrolls off the top, which is fine while typing). Uses a
     // transform — the same lift that worked on the dock — so iOS can't undo it by re-scrolling.
-    <div className="app" data-chat-tone={chatTone} style={inset ? { transform: `translateY(-${inset}px)` } : undefined}>
+    <div className="app" data-chat-tone={chatTone} onPointerDownCapture={captureTerminalOwner}
+      style={inset ? { transform: `translateY(-${inset}px)` } : undefined}>
       <header className="topbar">
         <button ref={drawerMenuRef} className="hamburger" onClick={() => setDrawerOpen(true)}>☰</button>
         <span className="session-name" {...sessionNameLongPress}>{current?.session?.name ?? '—'}</span>
@@ -1779,6 +1841,7 @@ export default function App() {
             paneSheetOpen={!!managePane}
             openMapFor={openMapFor}
             onMapOpened={() => setOpenMapFor(null)}
+            onPaneMapOpenChange={setPaneMapOpen}
             trackWindowId={manageWindow?.id}
             lens={lens}
             chatLensEnabled={chatLensAvailable}
@@ -1794,9 +1857,13 @@ export default function App() {
                 ref={termRef}
                 key={current.paneId}
                 pane={current.paneId}
+                desktop={desktopInput}
+                autoFocusInput={!terminalOverlayOpen}
                 inset={inset}
                 onAuthFail={onAuthFail}
                 onDocLinkTap={onDocLinkTap}
+                onInputFocusChange={setTerminalFocused}
+                onInputData={enqueueDesktopInput}
                 onTap={() => dockRef.current?.hideKeyboard()}
               />
             )
@@ -1805,6 +1872,7 @@ export default function App() {
           {chatLens ? (
             <ChatComposer
               pane={current.paneId}
+              desktop={desktopInput}
               kind={states[current.paneId]?.kind}
               cwd={currentPaneCwd}
               onKey={sendKey}
@@ -1832,6 +1900,10 @@ export default function App() {
               inset={inset}
               shortcuts={serverShortcuts}
               micAvailable={micAvailable}
+              desktopUnified={desktopInput}
+              terminalFocused={terminalFocused}
+              onLeaveTerminal={() => termRef.current?.blurInput?.()}
+              onReturnToTerminal={focusTerminal}
             />
           )}
         </>

@@ -1,5 +1,7 @@
 // 한국어 strings. Missing keys fall back to English (see ./index.js translate()).
 export default {
+  'terminal.disconnected': '연결이 끊겼습니다. 다시 연결하는 중…',
+  'terminal.paneMissing': '이 창이 닫혔습니다. 다른 창으로 전환하세요.',
   'common.save': '저장',
   'common.cancel': '취소',
   'common.confirm': '확인',
@@ -211,6 +213,7 @@ export default {
   'dock.command.placeholder': '명령 입력 · Enter로 실행',
   'dock.mode.agent': '대화',
   'dock.mode.toggle': '입력 모드 전환',
+  'dock.desktopTerminalInput': '키보드 → 터미널',
   'dock.mode.command': '명령 모드',
   'dock.mode.chat': '채팅 모드',
   'fav.title': '자주 쓰기',

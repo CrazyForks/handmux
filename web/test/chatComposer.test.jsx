@@ -139,6 +139,35 @@ describe('ChatComposer', () => {
     expect(sendText).not.toHaveBeenCalled();
   });
 
+  it('desktop focuses the existing textarea and Enter sends while Shift+Enter and IME Enter stay local', async () => {
+    render(<ChatComposer pane="%1" kind="idle" desktop />);
+    const input = screen.getByPlaceholderText('和 Claude 对话…');
+    expect(document.activeElement).toBe(input);
+
+    typeInto(input, '继续');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(sendText).toHaveBeenCalledWith('%1', '继续', true));
+    await waitFor(() => expect(input.value).toBe(''));
+
+    typeInto(input, '第一行');
+    fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+    expect(sendText).toHaveBeenCalledTimes(1);
+  });
+
+  it('desktop working Enter never stops, while Escape keeps the explicit interrupt shortcut', () => {
+    const onKey = vi.fn();
+    render(<ChatComposer pane="%1" kind="working" desktop onKey={onKey} />);
+    const input = screen.getByPlaceholderText('和 Claude 对话…');
+    typeInto(input, '下一条');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onKey).not.toHaveBeenCalled();
+    expect(sendText).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(onKey).toHaveBeenCalledWith('Escape');
+  });
+
   it('a quick-reply chip sends its text on tap', async () => {
     localStorage.setItem('hm_favs6_agent', JSON.stringify([{ text: '继续' }]));
     render(<ChatComposer pane="%1" kind="idle" />);

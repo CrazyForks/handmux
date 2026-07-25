@@ -84,6 +84,8 @@ export const sendText = (pane, text, enter = true) =>
   req('/api/send', { method: 'POST', body: JSON.stringify({ pane, text, enter }) });
 export const sendKeys = (pane, keys) =>
   req('/api/keys', { method: 'POST', body: JSON.stringify({ pane, keys }) });
+export const sendInput = (pane, hex) =>
+  req('/api/input', { method: 'POST', body: JSON.stringify({ pane, hex }) });
 // Forward a swipe over a full-screen (alt-screen) pane as `lines` wheel notches; the server injects the
 // mouse-wheel events the app scrolls on (no-op reply when the app isn't mouse-reporting — see /scroll).
 export const scrollPane = (pane, dir, lines = 1) =>

@@ -316,6 +316,31 @@ describe('WindowBar', () => {
     expect(paneMap()).not.toBeNull(); // map still open after the switch
   });
 
+  it('reports the pane map as open across a pane switch and reports its outside close', () => {
+    vi.useFakeTimers();
+    const onPaneMapOpenChange = vi.fn();
+    const onSelectPane = vi.fn();
+    render({ ...base, panes: geomPanes, onSelectPane, onPaneMapOpenChange });
+
+    openPaneMenu();
+    expect(onPaneMapOpenChange).toHaveBeenLastCalledWith(true);
+    fire(paneMapCells()[1], 'click');
+    act(() => vi.advanceTimersByTime(250));
+    render({
+      ...base,
+      panes: geomPanes,
+      currentPaneId: '%2',
+      onSelectPane,
+      onPaneMapOpenChange,
+    });
+    expect(paneMap()).not.toBeNull();
+    expect(onPaneMapOpenChange).toHaveBeenLastCalledWith(true);
+
+    fire(document.body, 'pointerdown');
+    expect(paneMap()).toBeNull();
+    expect(onPaneMapOpenChange).toHaveBeenLastCalledWith(false);
+  });
+
   it('with the pane-manage sheet open, tapping another tile re-points the sheet at it (and still switches)', () => {
     vi.useFakeTimers();
     const onSelectPane = vi.fn();
