@@ -1,27 +1,74 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { Terminal as XTerm } from '@xterm/xterm';
+import { WebglAddon } from '@xterm/addon-webgl';
+import '@xterm/xterm/css/xterm.css';
 import { getHistory, scrollPane, sendKeys, UnauthorizedError } from '../api.js';
-import { prepareSeed, prepareLiveSeed, cursorSeq } from '../terminalSeed.js';
+import { drainWheel, notchDir } from '../wheelScroll.js';
+import { shouldKeepKeyboard } from '../dockKeyboard.js';
+import { prepareSeed, cursorSeq } from '../terminalSeed.js';
 import { getFont, setFont, clearFont, getDocHighlight } from '../storage.js';
+import LensBoot from './LensBoot.jsx';
+import { t } from '../i18n';
 import { backoffDelay } from '../backoff.js';
 import { idleDelay } from '../cadence.js';
+import { flingStep, shouldFling } from '../momentum.js';
 import { initialConnection, nextConnection } from '../connection.js';
-import { scanDocLinks } from '../docDecorations.js';
+import { scanDocLinks, docLinksOnLine } from '../docDecorations.js';
+import { findLocalUrls } from '../localUrl.js';
 import { fitRows, bottomPadRows, scrollDecision, cursorBufferLine, followTarget } from '../terminalViewport.js';
-import { trimCopy } from '../terminalSelection.js';
+import { ensureBundledFonts } from '../bundledFonts.js';
+import { trimCopy, expandToLines, expandToParagraph, cellToPx, selectionCounts } from '../terminalSelection.js';
 import { useFlash } from '../hooks/useFlash.js';
-import { openTerminalStream } from '../terminalStreamClient.js';
-import TerminalOverlays from './TerminalOverlays.jsx';
-import { openXterm } from '../terminalXterm.js';
-import { createTerminalSelectionController } from '../terminalSelectionController.js';
-import { createTerminalTouchController } from '../terminalTouchController.js';
 
+const CALLOUT_W = 200; // estimated callout width (px) used for right-edge clamp (3 buttons, nowrap)ing; real-device-tuned
 const LIVE_MARGIN = 20; // capture this many rows beyond the viewport so a small scroll-up has slack
                         // before triggering a deeper history pull (replaces the old fixed 100-line tail)
 const CHUNK = 100; // how much more history to pull each time the top is reached (one page)
 const MAX_LINES = 5000; // backend cap on capture depth
 const LIVE_SCROLL_SLACK = 15; // scrolled up within this many lines of the bottom still counts as "live"
                               // (keep polling + follow new output); scroll up further to browse/pause
-const STREAM_BACKGROUND_RESET_MS = 10000;
+
+// Prime xterm's cursor renderer so the read-only 'block' cursor shows without a tap — xterm won't draw it
+// until the terminal is focused ONCE (focus()+blur() leaves the ?25h block rendered). This runs on EVERY
+// pane-switch remount, so the two steps below are ONE atomic call ON PURPOSE — never split them:
+//   1) neuter xterm's hidden helper textarea (inputmode=none / readOnly) so a focus can't summon the mobile
+//      keyboard, THEN 2) focus/blur to prime. Doing (2) before (1) — focusing a still-live input — is exactly
+//      what let rapid window-switching race the tap's user-activation and pop the Android keyboard by itself,
+//      stuck open. The neuter must precede any focus, so it lives here, welded to the prime, not 30 lines away.
+// Restores prior focus as insurance (the prime must never leave focus parked on the terminal).
+function primeCursorRenderer(term, hostEl) {
+  const ta = hostEl?.querySelector('.xterm-helper-textarea');
+  if (ta) {
+    ta.readOnly = true;
+    ta.tabIndex = -1;
+    ta.setAttribute('inputmode', 'none');
+    ta.setAttribute('aria-hidden', 'true');
+  }
+  const prevFocus = document.activeElement;
+  term.focus();
+  term.blur();
+  if (prevFocus && prevFocus !== document.body && typeof prevFocus.focus === 'function') prevFocus.focus();
+}
+
+function prepareTerminalInput(term, hostEl, desktop, autoFocusInput) {
+  const helper = hostEl?.querySelector('.xterm-helper-textarea');
+  if (desktop) {
+    if (helper) {
+      helper.readOnly = false;
+      helper.tabIndex = 0;
+      helper.removeAttribute('inputmode');
+      helper.removeAttribute('aria-hidden');
+    }
+    if (autoFocusInput) term.focus();
+    return;
+  }
+  primeCursorRenderer(term, hostEl);
+}
+
+function usesAppleCommandKey() {
+  const platform = navigator.userAgentData?.platform || navigator.platform || '';
+  return /mac|iphone|ipad|ipod/i.test(platform);
+}
 
 // Pane view backed by capture-pane snapshots (tmux's already-rendered grid — no cursor
 // seam). While at the bottom we cheaply repaint a short tail every second. Scrolling up
@@ -36,7 +83,6 @@ const STREAM_BACKGROUND_RESET_MS = 10000;
 // All of this lives in fit() below.
 const Terminal = forwardRef(function Terminal({
   pane,
-  stream = false,
   inset = 0,
   desktop = false,
   autoFocusInput = true,
@@ -86,7 +132,6 @@ const Terminal = forwardRef(function Terminal({
   const stopFlingRef = useRef(null);
   const [paused, setPaused] = useState(false);
   const [connected, setConnected] = useState(true); // false → show the disconnect banner
-  const [streamStatus, setStreamStatus] = useState(stream ? 'connecting' : 'off');
   const [inputFailure, setInputFailure] = useState(null);
   // Touch selection: long-press starts a selection on the real grid (xterm draws the highlight
   // on its own layer, WebGL included), drag extends it, then a "复制" bubble copies it. selActive
@@ -134,7 +179,6 @@ const Terminal = forwardRef(function Terminal({
   // wake() lets outside input (sends/keys, via App) snap the poll loop back to the live cadence and
   // poll immediately. Bridged through a ref like fitRef so the imperative handle can reach effect scope.
   const wakeRef = useRef(null);
-  const resyncRef = useRef(null);
   // When true, placeCursor lights the block at the cursor's real position even if the app has hidden it
   // (cur.vis === false). Set by every key/command send (see wake); cleared by the repaint loop once the app
   // shows its own cursor again (cur.vis=1). So operating the terminal always reveals WHERE the cursor is —
@@ -206,46 +250,151 @@ const Terminal = forwardRef(function Terminal({
 
   useEffect(() => {
     let disposed = false;
-    let hadDesktopSelection = false;
-    const { term, dispose: disposeXterm } = openXterm({
-      host: elRef.current,
-      desktop,
-      autoFocusInput,
-      fontSize: fontRef.current ?? 14,
+    const term = new XTerm({
+      disableStdin: !desktop,
+      // registerDecoration() — the doc-path highlight below — is a PROPOSED xterm API; without this it
+      // throws "You must set the allowProposedApi option", which refreshDocDecorations' catch swallowed,
+      // so the tappable paths never got their blue underline (only the link provider, which needs no
+      // proposed API, kept working — hence "tappable but invisible").
+      allowProposedApi: true,
       scrollback: MAX_LINES + 100,
-      pane,
-      onInputData: (targetPane, data) => onInputDataRef.current?.(targetPane, data),
-      onInputFocusChange: (focused) => {
-        if (!disposed) onInputFocusChangeRef.current?.(focused);
+      convertEol: false,
+      fontSize: fontRef.current ?? 14,
+      // The platform's native monospace comes FIRST so body text stays crisp (Android's WebGL
+      // atlas renders the JetBrains web font a bit soft at small sizes). The two bundled fonts sit
+      // at the end purely as fallbacks for glyphs the system lacks: 'JetBrainsMono Nerd Font' for
+      // the Powerline/Nerd icons, then 'TW Unifont' (full BMP) for anything still missing — e.g.
+      // Claude Code's ⏵ (U+23F5) and braille spinner, which Android has no system font for.
+      // iOS/desktop have these in their system fonts, so the bundled ones rarely get used there.
+      fontFamily: "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, 'Cascadia Mono', 'Roboto Mono', 'Noto Sans Mono', 'DejaVu Sans Mono', 'Courier New', 'JetBrainsMono Nerd Font', 'TW Unifont', monospace",
+      // A clearly visible touch-selection highlight. A near-opaque blue (not the old 0.45 translucent
+      // one, which washed out over cells that already carry a background — highlighted rows, Claude's
+      // shaded message boxes) plus a forced white foreground so the selected text stays legible whatever
+      // colour sat underneath, the macOS/iOS text-selection convention.
+      theme: { selectionBackground: 'rgba(10,132,255,0.9)', selectionForeground: '#ffffff' },
+      // The grid is read-only, so xterm draws the INACTIVE cursor — 'block' (solid, inverts its cell) reads
+      // as a real cursor on Claude's input. It renders only after a one-time focus/blur prime below (xterm
+      // won't draw the cursor on a never-focused terminal); thereafter it's shown wherever placeCursor()/
+      // cursorSeq puts it (and DECTCEM-hidden when the cursor is hidden and we're not forcing it).
+      cursorInactiveStyle: 'block',
+      // OSC 8 hyperlinks (ESC ]8;;URL … ESC ]8;;) are natively clickable in xterm and by default open in
+      // the browser. Some programs print a localhost URL AS an OSC 8 link (not plain text), so xterm's
+      // native handler would win the tap and navigate away — bypassing our loopback-URL proxy-preview. A
+      // custom linkHandler intercepts activation: a loopback URL routes to onDocLinkTap (the same
+      // 「开启代理并预览」flow as a tapped plain-text URL); anything else opens in a new tab as before. The
+      // plain-text case is unaffected — it has no OSC 8 link, so our registerLinkProvider (below) handles it.
+      linkHandler: {
+        activate: (event, text) => {
+          const u = findLocalUrls(text)[0];
+          if (u && onDocLinkTapRef.current) {
+            onDocLinkTapRef.current({ kind: 'url', protocol: u.protocol, port: u.port, urlPath: u.path, raw: u.raw, path: u.raw }, event?.clientX ?? 0, event?.clientY ?? 0);
+            return;
+          }
+          try { window.open(text, '_blank', 'noopener,noreferrer'); } catch { /* ignore */ }
+        },
       },
-      onRequestDraft: () => onRequestDraftRef.current?.(),
-      onDesktopSelection: (active) => {
-        if (disposed) return;
-        if (active) {
-          hadDesktopSelection = true;
-          selActiveRef.current = true;
-          setSelUI(null);
-          setSelInfo('');
-        } else if (hadDesktopSelection) {
-          hadDesktopSelection = false;
-          selActiveRef.current = false;
-          wakeRef.current?.();
-        }
-      },
-      getDocLinkHandler: () => onDocLinkTapRef.current,
     });
+    term.open(elRef.current);
     termRef.current = term;
+    term.attachCustomKeyEventHandler((event) => {
+      const pasteKey = desktop && event.key?.toLowerCase() === 'v' && !event.altKey;
+      const nativePaste = pasteKey && (usesAppleCommandKey()
+        ? event.metaKey && !event.ctrlKey
+        : event.ctrlKey && !event.metaKey);
+      if (nativePaste) {
+        // Skip xterm's Ctrl+V control-character mapping and let its native paste listener
+        // receive the browser paste event (including bracketed-paste handling).
+        return false;
+      }
+      const copyKey = desktop && event.key?.toLowerCase() === 'c' && term.hasSelection?.();
+      const nativeCopy = copyKey && event.metaKey && !event.ctrlKey && !event.altKey;
+      const terminalCopy = copyKey && event.ctrlKey && event.shiftKey
+        && !event.metaKey && !event.altKey;
+      if (nativeCopy || terminalCopy) {
+        if (terminalCopy) {
+          event.preventDefault?.();
+          const text = term.getSelection();
+          const fallback = () => {
+            try { document.execCommand('copy'); } catch { /* clipboard unavailable */ }
+          };
+          try {
+            const pendingCopy = navigator.clipboard?.writeText?.(text);
+            if (pendingCopy) Promise.resolve(pendingCopy).catch(fallback);
+            else fallback();
+          } catch { fallback(); }
+        }
+        // Let Cmd+C reach xterm's native `copy` listener. Ctrl+Shift+C was handled above;
+        // returning false also keeps xterm from interpreting it as terminal input.
+        return false;
+      }
+      if (desktop && event.key === 'Enter' && event.shiftKey
+        && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing) {
+        event.preventDefault?.();
+        onRequestDraftRef.current?.();
+        return false;
+      }
+      if (event.metaKey && ['w', 't', 'l', 'r'].includes(event.key.toLowerCase())) return false;
+      return true;
+    });
+    const dataSub = desktop ? term.onData((data) => onInputDataRef.current?.(pane, data)) : null;
+    let hadDesktopSelection = false;
+    const selectionSub = desktop ? term.onSelectionChange(() => {
+      if (disposed) return;
+      const active = term.hasSelection();
+      if (active) {
+        hadDesktopSelection = true;
+        selActiveRef.current = true;
+        // Desktop uses xterm's native highlight only — no phone handles, banner or callout.
+        setSelUI(null);
+        setSelInfo('');
+      } else if (hadDesktopSelection) {
+        hadDesktopSelection = false;
+        selActiveRef.current = false;
+        wakeRef.current?.();
+      }
+    }) : null;
+    const inputHelper = desktop ? elRef.current?.querySelector('.xterm-helper-textarea') : null;
+    const onInputFocus = () => {
+      if (!disposed) onInputFocusChangeRef.current?.(true);
+    };
+    const onInputBlur = () => {
+      if (!disposed) onInputFocusChangeRef.current?.(false);
+    };
+    inputHelper?.addEventListener('focus', onInputFocus);
+    inputHelper?.addEventListener('blur', onInputBlur);
+    // Subscribe first so desktop's mount focus is observable. Mobile has no focus subscriptions and stays
+    // on the atomic neuter-then-prime path, preserving its focus/blur cursor-prime behavior exactly.
+    prepareTerminalInput(term, elRef.current, desktop, autoFocusInput);
+    // Make doc paths TAPPABLE. xterm decorations (the underline below) are visual-only — they sit
+    // under the event-capturing .xterm-viewport and never receive taps — so clicks go through the
+    // link provider instead, which hooks xterm's own hit-testing and fires through the viewport.
+    // Same findDocLinks logic as the underline; handles wrapped paths (tap any row → open).
+    const linkProvider = term.registerLinkProvider({
+      provideLinks(lineNo, cb) {
+        if (!onDocLinkTapRef.current) { cb(undefined); return; }
+        const links = docLinksOnLine(term, lineNo).map((lk) => ({
+          range: lk.range,
+          text: lk.raw ?? lk.path,
+          decorations: { pointerCursor: true, underline: false }, // underline is the persistent decoration
+          activate: (e) => onDocLinkTapRef.current?.(lk, e?.clientX ?? 0, e?.clientY ?? 0),
+        }));
+        cb(links.length ? links : undefined);
+      },
+    });
+    // GPU rendering — much smoother scrolling than the default DOM renderer. Falls back to
+    // the DOM renderer automatically if WebGL is unavailable or the context is lost.
+    let webgl = null;
+    const mountWebgl = () => {
+      try {
+        webgl = new WebglAddon();
+        webgl.onContextLoss(() => webgl.dispose());
+        term.loadAddon(webgl);
+      } catch { webgl = null; /* keep the default renderer */ }
+    };
+    mountWebgl();
     let timer = null;
     let busy = false;
     let wakeAgain = false; // a wake() landed mid-poll — re-poll right after the in-flight one finishes
-    let streamClient = null;
-    let streamMode = stream;
-    let streamFallbackTimer = null;
-    let streamBackgroundTimer = null;
-    let streamBackgroundSuspended = false;
-    let hiddenAt = null;
-    let streamExact = false; // raw %output is safe only while xterm rows exactly match the tmux pane
-    let historyMode = false;
     let seeded = false;
     // Fresh slate per pane: don't carry the previous pane's alt/mouse state (else switching from a
     // full-screen pane to a normal one flashes the pager buttons until the first poll corrects it).
@@ -272,9 +421,6 @@ const Terminal = forwardRef(function Terminal({
     let lastCur = ''; // last frame's cursor key (row,col,vis) — a cursor-only move must still repaint
     let curInfo = null; // last frame's cursor {row,col,vis}, placed by placeCursor() after sizing settles
     let seedRows = 0; // rows in the last seed (trimmed capture) — cur.row counts up from its bottom
-    let streamCursorOwned = false; // after ready, raw %output owns xterm's cursor; never overwrite it with stale curInfo
-    let streamCursorVisible = false;
-    let streamCursorEscapeTail = '';
     // The last seed's RAW (un-padded) content, so fit() can re-pad it for the FINAL row count. The seed's
     // bottom-pad is computed against term.rows AT SEED TIME (the pre-fit default); fit then grows the grid
     // to fill the container, and without re-padding the short content would sit stranded mid-grid while the
@@ -283,7 +429,6 @@ const Terminal = forwardRef(function Terminal({
     let lastHash = null; // last frame's server hash, echoed as ?since= so an unchanged screen returns 204
     let idleSince = Date.now(); // timestamp of the last change/activity → drives the adaptive cadence
     setPaused(false);
-    setStreamStatus(stream ? 'connecting' : 'off');
     setReady(false); // hide until the first seed+fit settles (see `ready` state above)
     let revealed = false;
     const reveal = () => {
@@ -298,6 +443,20 @@ const Terminal = forwardRef(function Terminal({
       if (s.connected) setInputFailure(null);
       setConnected(s.connected);
     };
+
+    // The WebGL glyph atlas is rasterized at open() time. On first open the bundled fonts often
+    // aren't loaded yet, so the icons bake in as blank — switching panes (which remounts this
+    // component, hence the renderer) is what made them appear. Reproduce that: once BOTH bundled
+    // fonts are loaded, remount the WebGL renderer so its atlas is rebuilt with them.
+    // ensureBundledFonts also RETRIES a failed font fetch (a failed @font-face never retries by
+    // itself — the "symbols missing until restart" bug), so this may resolve late; the rebuild
+    // then still happens and the icons pop in instead of staying blank for the session.
+    ensureBundledFonts(fontRef.current ?? 14).then(() => {
+      if (disposed || !webgl) return; // DOM renderer (no webgl) repaints on its own
+      try { webgl.dispose(); } catch { /* ignore */ }
+      mountWebgl();
+      term.refresh(0, term.rows - 1);
+    });
 
     const buf = () => term.buffer.active;
     // History-mode banner text. Shown ONLY while browsing outside the live zone (scrolled up far
@@ -325,27 +484,18 @@ const Terminal = forwardRef(function Terminal({
     // the very top and never fire another scroll event landing exactly on 0, so pulling
     // more history would never trigger. Treat "within 3 lines of the top" as the top.
     const atTop = () => buf().viewportY <= 3;
-    const pauseStreamForHistory = () => {
-      if (!streamMode || historyMode) return;
-      historyMode = true;
-      streamExact = false;
-      elRef.current?.style.removeProperty('--stream-grid-h');
-      streamClient?.pause();
-      setStreamStatus('paused');
-    };
     // Pull a deeper history slice when sitting at the top. Driven from term.onScroll, the touch handler AND
     // the fling coast: xterm owns the 1:1 drag and its onScroll can miss the very top on mobile during a fast
     // glide, so the touch/fling paths are the dependable triggers. Idempotent while a pull is in flight
     // (!busy), until a fresh gesture re-arms (pullArmed), and once the deepest slice is loaded.
     const maybePullMore = () => {
       if (!seeded || busy || !pullArmed || depth >= MAX_LINES || !atTop()) return;
-      pauseStreamForHistory();
       pullArmed = false; // one pull per gesture — a coast re-hitting the top after the anchor won't stack
 
       // Freeze OUR coast before pulling: repaint() snapshots the scroll anchor at its START, so a coasting
       // fling that keeps driving scrollTop mid-fetch would invalidate it (re-hitting the top → stacking
       // pulls). stopFling holds the view still for the fetch → one clean page per top-reach, re-flick for more.
-      stopFlingRef.current?.();
+      stopFling();
       // Snap the pull target to the NEXT whole CHUNK boundary (100, 200, 300 …) rather than liveDepth+k·CHUNK.
       // The first pull leaves from the small liveDepth (e.g. 47), so plain +CHUNK would load 147/247/… — the
       // loaded depth (and the count the readout shows) is then a genuine multiple of 100, not a mid-number
@@ -370,26 +520,6 @@ const Terminal = forwardRef(function Terminal({
     const disposeCursorDeco = () => {
       if (cursorDecoRef.current) { cursorDecoRef.current.deco.dispose(); cursorDecoRef.current.marker.dispose(); cursorDecoRef.current = null; }
     };
-    const cursorDisplayState = () => {
-      const b = term.buffer.active;
-      if (streamExact && streamCursorOwned) {
-        return {
-          cur: {
-            row: Math.max(0, term.rows - 1 - b.cursorY),
-            col: b.cursorX,
-            vis: streamCursorVisible,
-          },
-          line: b.baseY + b.cursorY,
-          liveOwned: true,
-        };
-      }
-      const cur = curInfo;
-      return {
-        cur,
-        line: cur ? (seedRows - 1) - (cur.row | 0) : null,
-        liveOwned: false,
-      };
-    };
     // xterm renders its native cursor ONLY while the viewport sits at the live bottom (ydisp === ybase). For
     // a full-screen app whose caret we scrolled into a shorter window — bottom/top-aligned with rows still
     // off-screen below, or a caret up in scrollback — the viewport is scrolled up (viewportY < baseY) and the
@@ -398,19 +528,13 @@ const Terminal = forwardRef(function Terminal({
     // renders at the right cell at any scroll offset. At the live bottom, use the native cursor (it blinks).
     const placeCursor = () => {
       if (disposed) return;
-      const { cur, line, liveOwned } = cursorDisplayState();
+      const cur = curInfo;
       const b = term.buffer.active;
       const useDeco = cur && (cur.vis || forceCursorRef.current) && altScreenRef.current && b.viewportY < b.baseY;
-      if (!useDeco) {
-        disposeCursorDeco();
-        // Once the live stream is ready, xterm's parser is the cursor authority. Replaying an older
-        // snapshot cursor here would make the real position flash and then jump backwards.
-        if (!liveOwned) term.write(cursorSeq(cur, term.rows, seedRows, forceCursorRef.current));
-        drawLocate();
-        return;
-      }
-      if (!liveOwned) term.write('\x1b[?25l'); // xterm already hides its native cursor above live bottom
+      if (!useDeco) { disposeCursorDeco(); term.write(cursorSeq(cur, term.rows, seedRows, forceCursorRef.current)); drawLocate(); return; }
+      term.write('\x1b[?25l'); // hide native — the decoration is the cursor now
       disposeCursorDeco();
+      const line = (seedRows - 1) - (cur.row | 0); // true buffer line, counted up from the seed's bottom
       const marker = term.registerMarker(line - (b.baseY + b.cursorY));
       if (!marker) { drawLocate(); return; }
       const deco = term.registerDecoration({ marker, x: Math.max(0, cur.col | 0), width: 1 });
@@ -428,11 +552,12 @@ const Terminal = forwardRef(function Terminal({
     };
     const drawLocate = () => {
       disposeLocate();
-      const { cur, line } = cursorDisplayState();
+      const cur = curInfo;
       // Only on a full-screen app (where the 定位 toggle lives). On the main screen the highlight is cleared
       // and stays cleared — switching back to Claude mustn't leave the caret-row band behind.
       if (disposed || !locateOnRef.current || !altScreenRef.current || !cur) return;
       const b = term.buffer.active;
+      const line = (seedRows - 1) - (cur.row | 0);
       const marker = term.registerMarker(line - (b.baseY + b.cursorY));
       if (!marker) return;
       const deco = term.registerDecoration({ marker, x: 0, width: term.cols });
@@ -467,12 +592,15 @@ const Terminal = forwardRef(function Terminal({
 
     const fit = (pass = 0) => {
       if (disposed || !elRef.current || !term.rows) return;
-      // Fit to the container's ACTUAL on-screen height, not clientHeight. App translateY(-inset) lifts the
-      // whole column, so the container's top can be clipped above the screen (the topbar scrolls off) and
-      // its bottom sits at the keyboard top. Measure the visible slice = intersect its rect with
+      // Fit to the GRID container's ACTUAL on-screen height, not the outer horizontal scroller's
+      // clientHeight. On coarse-pointer devices that outer box has a real bottom gutter so iOS's overlay
+      // scrollbar cannot cover the last terminal row; .xterm is the content box above that gutter.
+      // App translateY(-inset) lifts the whole column, so the grid's top can be clipped above the screen
+      // (the topbar scrolls off) and its bottom sits at the keyboard top. Measure the visible slice = intersect its rect with
       // [0, innerHeight - inset]. Using clientHeight - inset over-subtracts the (clipped) topbar and left a
       // black band; measuring is exact for both keyboard-down (inset 0) and keyboard-up.
-      const rect = elRef.current.getBoundingClientRect();
+      const grid = elRef.current.querySelector('.xterm');
+      const rect = (grid || elRef.current).getBoundingClientRect();
       const visBottom = Math.min(rect.bottom, window.innerHeight - (insetRef.current || 0));
       const visTop = Math.max(rect.top, 0);
       const avail = Math.max(0, visBottom - visTop);
@@ -484,38 +612,6 @@ const Terminal = forwardRef(function Terminal({
       elRef.current.parentElement?.style.setProperty('--vis-h', `${avail}px`);
       if (insetRef.current === 0) fullAvailRef.current = avail; // remember the real keyboard-down usable height
       const cellH = curH / term.rows;
-
-      // A raw tmux stream contains cursor-addressing commands for the REAL pane grid. Changing xterm's row
-      // count underneath it is the old live-mode corruption seam, so streaming pins rows to paneRows. We may
-      // shrink the font while the keyboard is down, but the logical grid never changes; a keyboard-sized
-      // viewport pans over the full grid instead (CSS height below).
-      if (streamExact && paneRows) {
-        if (term.rows !== paneRows) {
-          term.resize(term.cols, paneRows);
-          requestAnimationFrame(() => fit(pass));
-          return;
-        }
-        if (insetRef.current === 0 && fontRef.current == null && pass < 4) {
-          const needed = paneRows * cellH;
-          if (needed > avail + 4) {
-            const cur = term.options.fontSize || 14;
-            const next = Math.max(6, Math.round(cur * (avail / needed)));
-            if (next < cur) {
-              term.options.fontSize = next;
-              requestAnimationFrame(() => fit(pass + 1));
-              return;
-            }
-          }
-        }
-        elRef.current.style.setProperty('--stream-grid-h', `${Math.max(avail, paneRows * cellH)}px`);
-        if (!revealed) {
-          if (altScreenRef.current) elRef.current.scrollTop = 0;
-          else elRef.current.scrollTop = elRef.current.scrollHeight;
-        }
-        placeCursor();
-        reveal();
-        return;
-      }
 
       // "适配高度" (pager button): size the font so the WHOLE pane (paneRows) fits the screen with no
       // scrollback (⇒ the cursor is always addressable), pinned as a manual size. Two steps:
@@ -621,36 +717,505 @@ const Terminal = forwardRef(function Terminal({
       : null;
     if (ro && elRef.current) ro.observe(elRef.current);
 
-    const selection = createTerminalSelectionController({
-      term,
-      host: elRef.current,
-      desktop,
-      activeRef: selActiveRef,
-      actionsRef: selActionsRef,
-      setUI: setSelUI,
-      setInfo: setSelInfo,
-    });
-    const touch = createTerminalTouchController({
-      term,
-      host: elRef.current,
-      desktop,
-      pane,
-      fontRef,
-      selection,
-      selectionActiveRef: selActiveRef,
-      stopFlingRef,
-      getStreamExact: () => streamExact,
-      getAltScreen: () => altScreenRef.current,
-      getMouseAware: () => mouseAwareRef.current,
-      onActivity: () => { idleSince = Date.now(); },
-      onUserScroll: () => { userScrolledRef.current = true; },
-      armHistoryPull: () => { pullArmed = true; },
-      showScrollPosition: showScrollPos,
-      maybePullMore,
-      scheduleFit,
-      wake: () => wakeRef.current?.(),
-      onTap: () => onTapRef.current?.(),
-    });
+    // Map a viewport point to a buffer cell {col,row}, clamped to the visible grid. cellW/cellH
+    // come from the live .xterm-screen box so they track the current font and horizontal scroll.
+    const cellFromPoint = (x, y) => {
+      const screen = elRef.current?.querySelector('.xterm-screen');
+      if (!screen || !term.cols || !term.rows) return null;
+      const r = screen.getBoundingClientRect();
+      const cw = r.width / term.cols;
+      const ch = r.height / term.rows;
+      if (!cw || !ch) return null;
+      const col = Math.max(0, Math.min(term.cols - 1, Math.floor((x - r.left) / cw)));
+      const vrow = Math.max(0, Math.min(term.rows - 1, Math.floor((y - r.top) / ch)));
+      return { col, row: buf().viewportY + vrow };
+    };
+    let selAnchor = null; // {col,row} fixed end of the drag selection
+    // Start a selection at the long-pressed cell, pre-selecting the word under the finger so
+    // there's immediate visible feedback (lift without dragging copies just that word).
+    // Recompute the handle/callout overlay from xterm's current selection (the single source of truth).
+    // getSelectionPosition() is 0-based and HALF-OPEN: start is inclusive; end.x is one PAST the last
+    // selected cell (end.y is that last cell's row). term.select / cellFromPoint / getLine / viewportY
+    // are all 0-based inclusive, so convert once here, at the single read boundary — collapse end to the
+    // inclusive last cell, leave start/rows as-is. (Device-verified: subtracting 1 from start or the rows
+    // over-corrects — handles sit a cell/row early; and using the raw half-open end as a drag anchor made
+    // it eat one extra cell per frame → the runaway.)
+    const selCells = () => {
+      const p = term.getSelectionPosition?.();
+      if (!p) return null;
+      let ec = p.end.x - 1;      // half-open end col → inclusive last cell
+      let er = p.end.y;
+      if (ec < 0) { er -= 1; ec = term.cols - 1; } // selection ended exactly at a row boundary
+      return {
+        start: { col: p.start.x, row: p.start.y },
+        end: { col: ec, row: er },
+      };
+    };
+    const refreshSelUI = () => {
+      const sel = selCells();
+      const screen = elRef.current?.querySelector('.xterm-screen');
+      if (!sel || !screen) { setSelUI(null); setSelInfo(''); return; }
+      const sr = screen.getBoundingClientRect();
+      const wr = elRef.current.parentElement.getBoundingClientRect(); // .terminal-wrap
+      const cw = sr.width / term.cols;
+      const ch = sr.height / term.rows;
+      const vy = buf().viewportY;
+      const off = { x: sr.left - wr.left, y: sr.top - wr.top };
+      const s = cellToPx(sel.start.col, sel.start.row, vy, cw, ch);
+      const e = cellToPx(sel.end.col + 1, sel.end.row, vy, cw, ch); // right edge of the last cell
+      setSelUI({
+        start: { x: s.x + off.x, y: s.y + off.y, ch },
+        end: { x: e.x + off.x, y: e.y + off.y, ch },
+        wrapW: wr.width,
+      });
+      // Blue status strip: signals copy mode + how much is selected. The char count uses the SAME trim
+      // as the copy (each line's leading/trailing whitespace dropped), so it matches what actually lands
+      // on the clipboard rather than counting the row-padding spaces.
+      const text = term.getSelection();
+      if (text) {
+        const { lines, chars } = selectionCounts(text); // rows spanned / chars after the copy-trim
+        setSelInfo(`复制模式 · ${lines} 行 · ${chars} 字`);
+      } else setSelInfo('');
+    };
+    // Helpers for the callout expand buttons (整行 / 整段). currentRange() reads xterm's live
+    // selection in the {start,end} col/row form expected by terminalSelection.js. selectRange()
+    // applies a new range back to xterm and refreshes the overlay. paraLineText() feeds the
+    // paragraph-expand function the line text it needs to locate blank-line boundaries.
+    const currentRange = () => selCells(); // 0-based {start,end} — the shape terminalSelection.js expects
+    const paraLineText = (row) => buf().getLine(row)?.translateToString(true) ?? '';
+    const selectRange = (r) => {
+      if (!r) return;
+      const cols = term.cols;
+      const len = (r.end.row * cols + r.end.col) - (r.start.row * cols + r.start.col) + 1;
+      term.select(r.start.col, r.start.row, len);
+      refreshSelUI();
+    };
+    selActionsRef.current = { currentRange, paraLineText, selectRange };
+    const startSelection = (x, y) => {
+      const cell = cellFromPoint(x, y);
+      if (!cell) return;
+      const s = buf().getLine(cell.row)?.translateToString(false) ?? '';
+      let a = cell.col;
+      let b = cell.col;
+      if (/\S/.test(s[cell.col] || '')) {
+        while (a > 0 && /\S/.test(s[a - 1])) a--;
+        while (b < term.cols - 1 && /\S/.test(s[b + 1])) b++;
+      }
+      selAnchor = { col: a, row: cell.row };
+      selActiveRef.current = true;
+      setSelUI(null);
+      term.select(a, cell.row, b - a + 1);
+      refreshSelUI();
+      navigator.vibrate?.(12);
+    };
+    // Width of the cell at a flat offset (2 = wide CJK char's first cell, 0 = its trailing spacer, 1 = normal).
+    const widthAt = (off, cols) => buf().getLine(Math.floor(off / cols))?.getCell(off % cols)?.getWidth() ?? 1;
+    // Snap the selection ends to WHOLE wide (CJK) chars so a handle never cuts a character in half:
+    //  - the low end must not begin on a trailing spacer → step left onto the char's first cell;
+    //  - the high end, if it lands on a wide char's first cell, must include that char's spacer.
+    const snapLo = (off, cols) => (off > 0 && widthAt(off, cols) === 0 ? off - 1 : off);
+    const snapHi = (off, cols) => (widthAt(off, cols) === 2 ? off + 1 : off);
+    // Extend from the fixed anchor to the finger cell (offsets flatten the grid so the run wraps
+    // across rows exactly like text selection).
+    const extendSelection = (x, y) => {
+      const cur = cellFromPoint(x, y);
+      if (!cur || !selAnchor) return;
+      const cols = term.cols;
+      const aOff = selAnchor.row * cols + selAnchor.col;
+      const cOff = cur.row * cols + cur.col;
+      const lo = snapLo(Math.min(aOff, cOff), cols);
+      const hi = snapHi(Math.max(aOff, cOff), cols);
+      term.select(lo % cols, Math.floor(lo / cols), hi - lo + 1);
+      refreshSelUI();
+    };
+    // Drop the current selection + bubble and let live refresh resume.
+    const clearSelection = () => {
+      selAnchor = null;
+      selActiveRef.current = false;
+      setSelUI(null);
+      setSelInfo('');
+      term.clearSelection();
+    };
+    // Touch handling (capture phase):
+    //  - two fingers  → pinch to change the terminal font size (our render only);
+    //  - long press   → start an in-terminal text selection, drag to extend (see selecting);
+    //  - one finger horizontal → pan the container ourselves (xterm would swallow it);
+    //  - one finger vertical → fall through to xterm's scrollback scrolling.
+    const host = elRef.current;
+    let sx = 0;
+    let sy = 0;
+    let sLeft = 0;
+    let axis = 0; // 0 = undecided, 1 = horizontal, -1 = vertical/ignored
+    let pinching = false;
+    let pinchDist0 = 0; // finger distance and font size at pinch start
+    let pinchFont0 = 0;
+    let selecting = false; // a long-press fired and we're dragging out a selection
+    let selOnDown = false; // a selection was showing when this touch began → a clean TAP clears it (a swipe keeps it)
+    // Long-press (one finger held still ~500ms) starts a selection; any real movement, a lift,
+    // or a second finger cancels it before it fires.
+    let lpTimer = null;
+    const cancelLongPress = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } };
+    const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+    // Inertial scroll on BOTH axes: neither the vertical scrollback (xterm's Viewport.handleTouchMove
+    // sets scrollTop per touchmove) nor our own horizontal pan (host.scrollLeft, below) has momentum —
+    // both track the finger 1:1 and stop dead on lift. So we sample the finger's velocity during the
+    // drag (lastMove{X,Y}/T → scrollVel{X,Y}, px/ms) and, after a flick, coast the relevant scroll
+    // offset ourselves. Vertical drives .xterm-viewport.scrollTop (each write fires xterm's own native
+    // `scroll` listener → rows repaint through the glide); horizontal drives .terminal.scrollLeft.
+    // No fight: vertical's owner (xterm) only scrolls while a finger is down; horizontal we own outright.
+    let lastMoveX = 0;
+    let lastMoveY = 0;
+    let lastMoveT = 0;
+    let scrollVelX = 0; // px/ms in scrollLeft direction (finger left = content scrolls right = +)
+    let scrollVelY = 0; // px/ms in scrollTop  direction (finger up   = content scrolls down  = +)
+    let flingRAF = null;
+    const stopFling = () => { if (flingRAF != null) { cancelAnimationFrame(flingRAF); flingRAF = null; } };
+    stopFlingRef.current = stopFling; // let resume() (component scope) interrupt a coast it can't reach
+    // Coast `el[prop]` (prop = 'scrollTop' | 'scrollLeft') from velocity v0 with the shared decay curve.
+    const startFling = (el, prop, v0) => {
+      if (!el) return;
+      let v = v0;
+      let prevT = null;
+      const frame = (t) => {
+        if (prevT == null) { prevT = t; flingRAF = requestAnimationFrame(frame); return; } // set time base
+        const dt = t - prevT;
+        prevT = t;
+        const s = flingStep(v, dt);
+        v = s.v;
+        const before = el[prop];
+        el[prop] = before + s.delta; // scrollTop → fires xterm's scroll listener → repaint
+        const hitEdge = Math.abs(s.delta) >= 1 && el[prop] === before; // clamped at an edge
+        // Drive the readout + deeper-history pull from the coast itself — xterm's onScroll is unreliable
+        // during a fast momentum glide, so relying on it alone freezes the "距底" number mid-coast and it
+        // only jumps once the glide settles. maybePullMore may stopFling() (flingRAF→null) on reaching the
+        // top — respect that and don't reschedule, so one clean page loads per coast.
+        if (prop === 'scrollTop') { showScrollPos(); maybePullMore(); }
+        if (s.done || hitEdge || flingRAF == null) { flingRAF = null; return; }
+        flingRAF = requestAnimationFrame(frame);
+      };
+      flingRAF = requestAnimationFrame(frame);
+    };
+
+    // Alt-screen swipe-to-scroll: translate the vertical drag into `count` line-notches the app scrolls on.
+    // We accumulate finger travel (wheelAccum, px) and emit one notch per WHEEL_PX; notches are coalesced
+    // (wheelPending) and sent one request at a time — so a fast flick becomes a couple of multi-line requests,
+    // not dozens. HOW they're sent depends on the app: a mouse-reporting app gets real wheel events (/scroll,
+    // which it scrolls on and ignores if it can't); a non-mouse app gets arrow keys instead — Up/Down scroll
+    // any pager (less/man/git log) line-by-line (in an editor they move the cursor, the accepted trade-off).
+    // After each send we poke the poll loop so the scrolled frame repaints at once (poll-and-repaint would
+    // otherwise lag the jump up to a tick).
+    const WHEEL_PX = 22;   // finger travel per notch — ~one text row, tuned for a natural drag feel
+    const WHEEL_PX_FWD = 12; // finger travel per key when FORWARDING a drag past the internal edge — more
+                             // sensitive than a plain scroll so alt-screen up/down keys fire readily
+    let wheelAccum = 0;    // unsent finger travel, px (+ = finger moved down the screen)
+    let wheelPrevY = 0;    // last sampled clientY, for the incremental delta
+    let wheelPending = 0;  // notches queued while a request is in flight (+ = toward earlier content)
+    let wheelBusy = false;
+    const flushWheel = async () => {
+      if (wheelBusy || wheelPending === 0) return;
+      wheelBusy = true;
+      const dir = notchDir(wheelPending);
+      const n = Math.min(Math.abs(wheelPending), 40);
+      wheelPending = 0;
+      try {
+        if (mouseAwareRef.current) await scrollPane(pane, dir, n);
+        else await sendKeys(pane, Array(n).fill(dir === 'up' ? 'Up' : 'Down'));
+        wakeRef.current?.(); // repaint immediately so the jump shows
+      } catch { /* transient (offline/timeout) — the next drag retries; nothing to undo */ }
+      finally { wheelBusy = false; if (wheelPending !== 0) flushWheel(); }
+    };
+
+    const onTouchStart = (e) => {
+      idleSince = Date.now(); // touching the pane is activity → keep the cadence live
+      cancelLongPress();
+      stopFling(); // any new touch interrupts an in-flight coast (tap-to-stop)
+      pullArmed = true; // a fresh finger arms one deeper-history pull for this gesture
+      // A showing selection is now dismissed by a clean TAP (decided in onTouchEnd), NOT on touchdown —
+      // so a swipe/scroll can pan the viewport with the handles still up. Just remember it was showing.
+      selOnDown = selActiveRef.current;
+      selecting = false;
+      if (e.touches.length === 2) {
+        pinching = true;
+        axis = -1;
+        pinchDist0 = dist(e.touches);
+        pinchFont0 = term.options.fontSize || 14;
+        return;
+      }
+      pinching = false;
+      if (e.touches.length !== 1) { axis = -1; return; }
+      sx = e.touches[0].clientX;
+      sy = e.touches[0].clientY;
+      sLeft = host.scrollLeft;
+      axis = 0;
+      lastMoveX = sx; // seed the velocity sampler for a possible fling (either axis)
+      lastMoveY = sy;
+      lastMoveT = e.timeStamp;
+      scrollVelX = 0;
+      scrollVelY = 0;
+      wheelPrevY = sy; // seed the alt-screen wheel sampler; accum carries no travel across a fresh touch
+      wheelAccum = 0;
+      lpTimer = setTimeout(() => {
+        lpTimer = null;
+        selecting = true;
+        axis = -1; // take this gesture away from pan/scroll
+        startSelection(sx, sy);
+      }, 500);
+    };
+    const onTouchMove = (e) => {
+      if (pinching && e.touches.length === 2) {
+        if (pinchDist0 > 0) {
+          const f = Math.max(8, Math.min(40, Math.round(pinchFont0 * (dist(e.touches) / pinchDist0))));
+          if (f !== (term.options.fontSize || 14)) {
+            term.options.fontSize = f;
+            fontRef.current = f; // mark manual so auto-fit won't fight the pinch
+          }
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      if (selecting && e.touches.length === 1) {
+        extendSelection(e.touches[0].clientX, e.touches[0].clientY);
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      // One finger dragging: surface the live position even when the buffer can't scroll (the readout
+      // pinned at "距底 N/N 行" is the tell there's nothing more to load), and trigger a deeper pull — xterm
+      // owns the drag so onScroll can miss the very top on mobile; this is the dependable trigger.
+      if (e.touches.length === 1) { showScrollPos(); maybePullMore(); }
+      if (e.touches.length !== 1) return; // multi-finger: pinch handled above, otherwise ignore
+      const dx = e.touches[0].clientX - sx;
+      const dy = e.touches[0].clientY - sy;
+      if (Math.abs(dx) > 6 || Math.abs(dy) > 6) cancelLongPress(); // moved → it's a scroll, not a hold
+      if (axis === 0) {
+        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+        axis = Math.abs(dx) > Math.abs(dy) ? 1 : -1;
+      }
+      if (axis === 1) {
+        host.scrollLeft = sLeft - dx;
+        const cx = e.touches[0].clientX; // sample velocity so touchend can coast it (mirrors vertical)
+        const ddt = e.timeStamp - lastMoveT;
+        if (ddt > 0) scrollVelX = (lastMoveX - cx) / ddt; // finger left (cx↓) → scroll right (+)
+        lastMoveX = cx;
+        lastMoveT = e.timeStamp;
+        e.preventDefault();
+        e.stopPropagation();
+      } else { // axis === -1 vertical
+        if (altScreenRef.current) {
+          // Alt-screen (full-screen app): scroll our WINDOW over the captured screen INTERNALLY first, and
+          // only forward the drag to the app as keys (wheel / arrows, per mouse mode) once we hit the top or
+          // bottom of that window. Nested-scroll fall-off — mirrors the long-chat-draft behaviour.
+          e.preventDefault();
+          e.stopPropagation();
+          const cy = e.touches[0].clientY;
+          const dyStep = cy - wheelPrevY; // + = finger down (reveal earlier rows), - = finger up
+          wheelPrevY = cy;
+          const vp = elRef.current.querySelector('.xterm-viewport');
+          const dir = dyStep > 0 ? -1 : 1; // finger down → scroll toward the top (dir -1)
+          if (vp && scrollDecision(buf().viewportY, buf().baseY, dir) === 'internal') {
+            vp.scrollTop -= dyStep;          // 1:1 internal scroll (finger down → content moves down)
+            userScrolledRef.current = true;  // manual scroll disarms cursor-follow
+            return;
+          }
+          // At the internal top/bottom boundary → forward the residual to the app as wheel/arrow keys.
+          const { notches, rem } = drainWheel(wheelAccum + dyStep, WHEEL_PX_FWD);
+          wheelAccum = rem;
+          if (notches) { wheelPending += notches; flushWheel(); }
+          return;
+        }
+        // Normal screen: let xterm own the 1:1 drag (don't preventDefault/stopPropagation — cutting xterm
+        // off with no native scroller to take over is what killed scrolling entirely). Just sample the
+        // velocity here so touchend can coast it onward.
+        const cy = e.touches[0].clientY;
+        const ddt = e.timeStamp - lastMoveT;
+        if (ddt > 0) scrollVelY = (lastMoveY - cy) / ddt; // finger up (cy↓) → scroll down (+)
+        lastMoveY = cy;
+        lastMoveT = e.timeStamp;
+      }
+    };
+    const onTouchEnd = (e) => {
+      cancelLongPress();
+      if (selecting && e.touches.length === 0) {
+        selecting = false;
+        const text = term.getSelection();
+        if (text && text.trim()) refreshSelUI();  // persist handles + callout
+        else clearSelection();
+        return;
+      }
+      if (pinching && e.touches.length < 2) {
+        pinching = false;
+        setFont(term.options.fontSize || 14); // persist the pinched size across panes
+        scheduleFit(); // re-fit the row count to the new font so the grid still fills the height
+        return;
+      }
+      // A pan just ended — if it left the finger on a flick, coast that axis onward.
+      if (e.touches.length === 0 && shouldFling(axis === 1 ? scrollVelX : scrollVelY, e.timeStamp - lastMoveT)) {
+        if (axis === 1) startFling(host, 'scrollLeft', scrollVelX);
+        else if (axis === -1) startFling(host.querySelector('.xterm-viewport'), 'scrollTop', scrollVelY);
+      }
+      // A clean single tap (no pan, no long-press, no pinch): if a selection was showing, the tap CLEARS it
+      // (and stops there — its job was the dismiss, not the keyboard); otherwise it dismisses the keyboard,
+      // the iOS-native "tap outside the field to put it away" habit. A SWIPE sets axis≠0, so a scroll keeps
+      // both the selection and the keyboard. Call SYNCHRONOUSLY — this touchend is the gesture iOS wants.
+      if (e.touches.length === 0 && !selecting && !pinching && axis === 0) {
+        if (selOnDown) clearSelection();
+        else onTapRef.current?.();
+      }
+    };
+    // Desktop mouse wheel / trackpad has no equivalent of the touch handler's smart scroll — wire the SAME
+    // behaviours here (the touch path branches on altScreenRef the same way, see onTouchMove).
+    //  • Horizontal-dominant trackpad gesture: scroll the OUTER terminal explicitly. xterm's inner viewport
+    //    treats any non-zero deltaY (including the tiny noise in a real horizontal swipe) as vertical and
+    //    cancels the whole event, so native ancestor scrolling is otherwise unreliable on desktop.
+    //  • Alt-screen: forward the wheel to the app as notches (it owns the scrollback), and swallow the
+    //    event so xterm doesn't scroll its stale main-screen buffer underneath — the exact "scrolling up
+    //    shows history that isn't this full-screen app's" bug. Sign: wheel DOWN (deltaY>0) reveals LATER
+    //    content, which drainWheel expects as NEGATIVE finger travel, so feed it -deltaY.
+    //  • Normal screen: let xterm own the native scroll, but ALSO trigger the deeper-history pull
+    //    directly — onScroll alone can miss the very top after a reseed (its native scrollbar doesn't
+    //    resync), which is what left desktop stuck at the first loaded chunk. onTouchMove does this
+    //    same redundant call on every move; the wheel had no such safety net.
+    const onWheel = (e) => {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && host.scrollWidth > host.clientWidth) {
+        const px = e.deltaMode === 1 ? e.deltaX * WHEEL_PX             // lines → px (Firefox)
+                 : e.deltaMode === 2 ? e.deltaX * host.clientWidth    // pages → px
+                 : e.deltaX;                                          // already px (trackpad)
+        host.scrollLeft += px;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      if (!e.deltaY) return;
+      if (altScreenRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        const px = e.deltaMode === 1 ? e.deltaY * WHEEL_PX          // lines → px (Firefox)
+                 : e.deltaMode === 2 ? e.deltaY * term.rows * WHEEL_PX // pages → px
+                 : e.deltaY;                                        // already px
+        const { notches, rem } = drainWheel(wheelAccum - px, WHEEL_PX);
+        wheelAccum = rem;
+        if (notches) { wheelPending += notches; flushWheel(); }
+        return;
+      }
+      // No touchstart to arm on desktop: treat a fresh wheel gesture (a gap since the last notch) as arming,
+      // so a continuous spin still pulls only once per top-reach but a new deliberate scroll can pull again.
+      if (e.timeStamp - lastWheelT > 200) pullArmed = true;
+      lastWheelT = e.timeStamp;
+      showScrollPos();
+      maybePullMore();
+    };
+    // Keep the on-screen keyboard up when a touch lands on the terminal. By default the browser blurs the
+    // focused command capture / composer the moment you touch a non-input element, collapsing the keyboard —
+    // so scrolling the output would dismiss it (the very thing good terminals avoid). If a real handmux field
+    // holds focus, preventDefault the pointerdown to keep it (the same keepFocus trick the dock buttons use):
+    // onClick/taps and the custom touch gestures still fire, the keyboard just no longer drops on every touch.
+    // Only pins a genuine input — never xterm's own hidden helper textarea.
+    const onKeepKbdDown = (e) => {
+      if (desktop) {
+        onTapRef.current?.();
+        return;
+      }
+      if (shouldKeepKeyboard(document.activeElement) && e.cancelable) e.preventDefault();
+    };
+    host.addEventListener('pointerdown', onKeepKbdDown, { capture: true });
+    host.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    host.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
+    host.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+    host.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
+
+    // Handle drag: pointer events on .terminal-wrap (handles are siblings of .terminal, so they don't
+    // go through host's capture listeners). Event delegation via closest('.sel-handle').
+    const wrap = elRef.current.parentElement;
+    let dragEnd = null;        // 'start' | 'end' — which handle the drag STARTED on (also the "dragging" flag)
+    let dragAnchorEdge = null; // flat EDGE index of the fixed (anchor) handle; a cell offset O spans edges [O, O+1)
+    let autoScrollRAF = null;
+    let lastHandlePt = null;
+    // autoDir/autoStep are hoisted so the rAF tick always reads the CURRENT edge direction and speed,
+    // not the ones captured when the loop started (dragging from the bottom edge to the top must be able
+    // to reverse mid-loop).
+    let autoDir = 0;
+    let autoStep = 0;
+    // Handle-drag selection in EDGE (half-open) terms, NOT inclusive cells. The start handle sits on a
+    // cell's LEFT edge, the end handle on its RIGHT edge; the fixed anchor is one such edge (dragAnchorEdge)
+    // and the dragged handle is the finger cell's matching edge. Selecting the cells strictly BETWEEN the
+    // two edges is what lets the handles cross and swap without double-counting the boundary cell (the old
+    // inclusive-cell anchor kept the anchor's own cell on a cross → one extra char). Then snap to whole
+    // wide (CJK) chars: never begin on a trailing spacer, always include a wide char's spacer at the end.
+    const dragSelect = (x, y) => {
+      const cur = cellFromPoint(x, y);
+      if (!cur || dragAnchorEdge == null) return;
+      const cols = term.cols;
+      const fo = cur.row * cols + cur.col;
+      const dragEdge = dragEnd === 'start' ? fo : fo + 1; // left edge for start handle, right edge for end
+      let lo = Math.min(dragAnchorEdge, dragEdge);
+      let hi = Math.max(dragAnchorEdge, dragEdge);
+      if (hi <= lo) hi = lo + 1;                       // never empty
+      lo = snapLo(lo, cols);                            // don't start on a wide-char spacer
+      hi = snapHi(hi - 1, cols) + 1;                    // include a trailing wide char's spacer (hi is one-past-last)
+      term.select(lo % cols, Math.floor(lo / cols), hi - lo);
+      refreshSelUI();
+    };
+    const onHandleDown = (ev) => {
+      const h = ev.target.closest?.('.sel-handle');
+      if (!h) return;
+      dragEnd = h.dataset.end;
+      // Freeze the opposite handle's EDGE now and hold it for the whole drag: the start handle's edge is
+      // its cell's left side (offset), the end handle's is its cell's right side (offset + 1). A fixed
+      // anchor keeps the other handle from drifting during auto-scroll and lets the dragged one cross it.
+      const sel = selCells();
+      if (sel) {
+        const cols = term.cols;
+        const so = sel.start.row * cols + sel.start.col;
+        const eo = sel.end.row * cols + sel.end.col;
+        dragAnchorEdge = dragEnd === 'start' ? eo + 1 : so; // opposite handle's edge
+      } else dragAnchorEdge = null;
+      ev.preventDefault();
+      ev.stopPropagation();
+      wrap.setPointerCapture?.(ev.pointerId);
+    };
+    const onHandleMove = (ev) => {
+      if (!dragEnd || dragAnchorEdge == null) return;
+      dragSelect(ev.clientX, ev.clientY);
+      // Auto-scroll when the dragged handle nears the viewport top/bottom edge, extending the selection
+      // into scrollback / newer rows. Speed ramps with how far past the edge the finger is (like iOS),
+      // capped — the old flat 24px/frame scrolled far too fast to control.
+      const EDGE = 28; // px band at each edge that triggers auto-scroll
+      lastHandlePt = { x: ev.clientX, y: ev.clientY };
+      const vpRect = vp.getBoundingClientRect();
+      let over = 0; // px the finger is past the edge band
+      if (ev.clientY < vpRect.top + EDGE) { autoDir = -1; over = vpRect.top + EDGE - ev.clientY; }
+      else if (ev.clientY > vpRect.bottom - EDGE) { autoDir = 1; over = ev.clientY - (vpRect.bottom - EDGE); }
+      else autoDir = 0;
+      autoStep = Math.min(14, 2 + over * 0.28); // px/frame, gentle near the band, faster the deeper you push
+      if (autoDir !== 0 && autoScrollRAF == null) {
+        const tick = () => {
+          if (!dragEnd || autoDir === 0) { autoScrollRAF = null; return; }
+          const before = vp.scrollTop;
+          vp.scrollTop = before + autoDir * autoStep; // fires xterm scroll → repaint + onVpScroll
+          dragSelect(lastHandlePt.x, lastHandlePt.y); // re-extend from the fixed anchor edge to the finger
+          if (vp.scrollTop === before) { autoScrollRAF = null; return; } // hit an edge — stop
+          autoScrollRAF = requestAnimationFrame(tick);
+        };
+        autoScrollRAF = requestAnimationFrame(tick);
+      } else if (autoDir === 0 && autoScrollRAF != null) {
+        cancelAnimationFrame(autoScrollRAF); autoScrollRAF = null;
+      }
+      ev.preventDefault();
+    };
+    const onHandleUp = (ev) => {
+      if (!dragEnd) return;
+      dragEnd = null;
+      dragAnchorEdge = null;
+      autoDir = 0;
+      if (autoScrollRAF != null) { cancelAnimationFrame(autoScrollRAF); autoScrollRAF = null; }
+      wrap.releasePointerCapture?.(ev.pointerId);
+    };
+    wrap.addEventListener('pointerdown', onHandleDown, { capture: true });
+    wrap.addEventListener('pointermove', onHandleMove, { capture: true });
+    wrap.addEventListener('pointerup', onHandleUp, { capture: true });
+    wrap.addEventListener('pointercancel', onHandleUp, { capture: true });
 
     // Rebuild the persistent doc-path UNDERLINE after each full repaint (the visual cue; the actual
     // tap is handled by the link provider above). Underline-only (no bg) so it can't trigger the
@@ -674,116 +1239,6 @@ const Terminal = forwardRef(function Terminal({
       }
     };
     refreshDecosRef.current = () => { if (!disposed && seeded) refreshDocDecorations(term); };
-
-    const syncLiveModes = () => {
-      const wasAlt = altScreenRef.current;
-      const isAlt = term.buffer.active.type === 'alternate';
-      altScreenRef.current = isAlt;
-      const mouseMode = term.modes?.mouseTrackingMode;
-      mouseAwareRef.current = !!mouseMode && mouseMode !== 'none';
-      setAltScreen((value) => (value === isAlt ? value : isAlt));
-      return wasAlt && !isAlt;
-    };
-
-    const followLiveCursor = () => {
-      if (!streamExact || insetRef.current <= 0 || !elRef.current) return;
-      const screen = elRef.current.querySelector('.xterm-screen');
-      if (!screen || !term.rows) return;
-      const rowHeight = screen.getBoundingClientRect().height / term.rows;
-      const rowTop = term.buffer.active.cursorY * rowHeight;
-      const rowBottom = rowTop + rowHeight;
-      if (rowTop < elRef.current.scrollTop) elRef.current.scrollTop = rowTop;
-      else if (rowBottom > elRef.current.scrollTop + elRef.current.clientHeight) {
-        elRef.current.scrollTop = rowBottom - elRef.current.clientHeight;
-      }
-    };
-
-    const applyStreamSeed = async (frame) => {
-      if (disposed) return;
-      if (streamFallbackTimer) {
-        clearTimeout(streamFallbackTimer);
-        streamFallbackTimer = null;
-      }
-      const returningToLive = historyMode || !streamExact;
-      streamExact = true;
-      streamCursorOwned = false;
-      streamCursorVisible = false;
-      streamCursorEscapeTail = '';
-      historyMode = false;
-      lastHash = null;
-      const wasSeeded = seeded;
-      paneRows = frame.height;
-      altScreenRef.current = !!frame.alt;
-      mouseAwareRef.current = !!frame.mouseAware;
-      setAltScreen((value) => (value === !!frame.alt ? value : !!frame.alt));
-      if (term.cols !== frame.width || term.rows !== frame.height) term.resize(frame.width, frame.height);
-      const seed = prepareLiveSeed(frame.ansi, frame.height);
-      const contentRows = seed ? seed.split('\r\n').length : 0;
-      lastSeed = { seed, contentRows, alt: frame.alt };
-      seedRows = contentRows;
-      depth = Math.max(liveDepth(), Number(frame.historyLines) || 0);
-      const screenMode = frame.alt ? '\x1b[?1049h' : '\x1b[?1049l';
-      await new Promise((resolve) => term.write(
-        `${screenMode}\x1b[?25l\x1b[0m\x1b[2J\x1b[3J\x1b[H${seed}`,
-        resolve,
-      ));
-      if (disposed) return;
-      lastAnsi = frame.ansi;
-      lastCur = '';
-      curInfo = null;
-      seeded = true;
-      setPaused(false);
-      setConn(nextConnection(connState, 'ok'));
-      if (frame.alt && !wasSeeded) term.scrollToTop();
-      else term.scrollToBottom();
-      try { refreshDocDecorations(term); } catch { /* cosmetic */ }
-      scheduleFit();
-      if (returningToLive) {
-        requestAnimationFrame(() => {
-          if (!disposed && elRef.current) {
-            elRef.current.scrollTop = frame.alt ? 0 : elRef.current.scrollHeight;
-          }
-        });
-      }
-      if (!wasSeeded) setTimeout(reveal, 400);
-    };
-
-    const trackStreamCursorVisibility = (data) => {
-      let ascii = streamCursorEscapeTail;
-      for (const byte of data) ascii += byte < 0x80 ? String.fromCharCode(byte) : ' ';
-      const modes = ascii.matchAll(/\x1b\[\?25([hl])/g);
-      for (const match of modes) streamCursorVisible = match[1] === 'h';
-      streamCursorEscapeTail = ascii.slice(-8);
-    };
-
-    const applyStreamData = (data) => new Promise((resolve) => {
-      trackStreamCursorVisibility(data);
-      term.write(data, () => {
-        if (!disposed) {
-          const leftAltScreen = syncLiveModes();
-          followLiveCursor();
-          placeCursor();
-          if (leftAltScreen) streamClient?.resync();
-        }
-        resolve();
-      });
-    });
-
-    const finishStreamSeed = async ({ cur }) => {
-      if (disposed) return;
-      curInfo = cur;
-      streamCursorVisible = !!cur?.vis;
-      lastCur = cur ? `${cur.row},${cur.col},${cur.vis ? 1 : 0}` : '';
-      await new Promise((resolve) => term.write(
-        cursorSeq(cur, term.rows, seedRows, forceCursorRef.current),
-        resolve,
-      ));
-      if (disposed) return;
-      streamCursorOwned = true;
-      placeCursor();
-      followLiveCursor();
-      reveal();
-    };
 
     const repaint = async (lines, keepPosition, isPull = false) => {
       if (busy || disposed) return;
@@ -948,47 +1403,7 @@ const Terminal = forwardRef(function Terminal({
       if (timer) { clearTimeout(timer); timer = null; }
       tick(epoch);
     };
-    const fallbackToPolling = async () => {
-      if (disposed || !streamMode) return;
-      streamMode = false;
-      streamExact = false;
-      historyMode = false;
-      elRef.current?.style.removeProperty('--stream-grid-h');
-      const drained = streamClient?.close();
-      streamClient = null;
-      setStreamStatus('off');
-      setConn(nextConnection(connState, 'reset'));
-      try { await drained; } catch { /* stream failure already surfaced */ }
-      if (disposed) return;
-      scheduleFit();
-      startLoop();
-    };
-    if (streamMode) {
-      streamClient = openTerminalStream({
-        pane,
-        onSeed: applyStreamSeed,
-        onData: applyStreamData,
-        onReady: finishStreamSeed,
-        onStatus: (status) => {
-          if (disposed) return;
-          setStreamStatus(status);
-          if ((status === 'reconnecting' || status === 'error') && !streamFallbackTimer) {
-            streamFallbackTimer = setTimeout(fallbackToPolling, 1200);
-          }
-        },
-        onAuthFail: () => onAuthFailRef.current?.(),
-      });
-    } else startLoop();
-    const resumeStream = () => {
-      if (!streamMode || disposed) return;
-      historyMode = false;
-      streamExact = false;
-      setPaused(false);
-      setScrollInfo('');
-      setStreamStatus('connecting');
-      streamClient?.resync();
-    };
-    resyncRef.current = resumeStream;
+    startLoop();
     // Outside input (a send/keypress from App) calls this: reset the idle clock and poll NOW — the
     // keystroke's echo should be visible immediately, not at the next tick (up to 1s away even on
     // the fast cadence). If a poll is already in flight its frame predates the keystroke, so flag
@@ -1001,10 +1416,6 @@ const Terminal = forwardRef(function Terminal({
       // force on the first cur.vis=1 frame. placeCursor shows it this frame; the immediate poll re-places it.
       forceCursorRef.current = true;
       placeCursor();
-      if (streamMode) {
-        if (historyMode) resumeStream();
-        return;
-      }
       if (busy) { wakeAgain = true; return; }
       startLoop();
     };
@@ -1013,35 +1424,6 @@ const Terminal = forwardRef(function Terminal({
     // Pause polling in the background (saves battery + server-side tmux spawns); on return, reset
     // health, repaint immediately (instant refresh), and resume the loop.
     const onVisibility = () => {
-      if (streamMode) {
-        if (document.hidden) {
-          hiddenAt = Date.now();
-          streamBackgroundSuspended = false;
-          streamClient?.pause();
-          if (streamBackgroundTimer) clearTimeout(streamBackgroundTimer);
-          streamBackgroundTimer = setTimeout(() => {
-            streamBackgroundTimer = null;
-            if (!disposed && document.hidden && streamMode) {
-              streamBackgroundSuspended = true;
-              streamClient?.suspend();
-            }
-          }, STREAM_BACKGROUND_RESET_MS);
-        } else {
-          const hiddenFor = hiddenAt === null ? 0 : Date.now() - hiddenAt;
-          hiddenAt = null;
-          if (streamBackgroundTimer) {
-            clearTimeout(streamBackgroundTimer);
-            streamBackgroundTimer = null;
-          }
-          // Background timers are throttled on phones, so enforce the cutoff again on return.
-          if (hiddenFor >= STREAM_BACKGROUND_RESET_MS && !streamBackgroundSuspended) {
-            streamClient?.suspend();
-          }
-          streamBackgroundSuspended = false;
-          if (!historyMode) resumeStream();
-        }
-        return;
-      }
       if (document.hidden) {
         epoch += 1; // invalidate any in-flight tick so it won't reschedule when it resumes
         if (timer) { clearTimeout(timer); timer = null; }
@@ -1056,45 +1438,60 @@ const Terminal = forwardRef(function Terminal({
 
     const sub = term.onScroll(() => {
       if (disposed) return;
-      if (atBottom()) {
-        setPaused(false);
-        setScrollInfo('');
-        if (historyMode) resumeStream();
-        return;
-      }
-      if (streamMode && !nearBottom() && !altScreenRef.current) pauseStreamForHistory();
+      if (atBottom()) { setPaused(false); setScrollInfo(''); return; }
       setPaused(true);
       showScrollPos();
       maybePullMore();
     });
 
+    // When the user scrolls the xterm viewport (e.g. during an active selection), the handle and
+    // callout positions need to be recomputed — their y offsets are viewport-relative.
+    const vp = elRef.current.querySelector('.xterm-viewport');
+    const onVpScroll = () => {
+      if (!desktop && selActiveRef.current) refreshSelUI();
+    };
+    vp?.addEventListener('scroll', onVpScroll, { passive: true });
+
     return () => {
       disposed = true;
+      if (autoScrollRAF != null) cancelAnimationFrame(autoScrollRAF);
       fitRef.current = null;
       wakeRef.current = null;
-      resyncRef.current = null;
-      refreshDecosRef.current = null;
-      touch.dispose();
       stopFlingRef.current = null;
-      selection.dispose();
+      refreshDecosRef.current = null;
+      selActionsRef.current = null;
+      cancelLongPress();
+      stopFling();
       if (timer) clearTimeout(timer);
-      if (streamFallbackTimer) clearTimeout(streamFallbackTimer);
-      if (streamBackgroundTimer) clearTimeout(streamBackgroundTimer);
-      streamClient?.close();
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('resize', onResize);
       window.removeEventListener('orientationchange', onResize);
       ro?.disconnect();
+      host.removeEventListener('pointerdown', onKeepKbdDown, { capture: true });
+      host.removeEventListener('wheel', onWheel, { capture: true });
+      host.removeEventListener('touchstart', onTouchStart, { capture: true });
+      host.removeEventListener('touchmove', onTouchMove, { capture: true });
+      host.removeEventListener('touchend', onTouchEnd, { capture: true });
+      wrap.removeEventListener('pointerdown', onHandleDown, { capture: true });
+      wrap.removeEventListener('pointermove', onHandleMove, { capture: true });
+      wrap.removeEventListener('pointerup', onHandleUp, { capture: true });
+      wrap.removeEventListener('pointercancel', onHandleUp, { capture: true });
+      vp?.removeEventListener('scroll', onVpScroll);
+      dataSub?.dispose();
+      selectionSub?.dispose();
+      inputHelper?.removeEventListener('focus', onInputFocus);
+      inputHelper?.removeEventListener('blur', onInputBlur);
       sub.dispose();
+      linkProvider.dispose();
       for (const { deco, marker } of decosRef.current) { deco.dispose(); marker.dispose(); }
       decosRef.current = [];
       disposeCursorDeco();
       disposeLocate();
       locateRef.current = null;
-      disposeXterm();
+      term.dispose();
       termRef.current = null;
     };
-  }, [pane, desktop, stream]);
+  }, [pane, desktop]);
 
   const resume = () => {
     stopFlingRef.current?.();
@@ -1105,7 +1502,6 @@ const Terminal = forwardRef(function Terminal({
     termRef.current?.scrollToBottom();
     setPaused(false);
     setScrollInfo(''); // clear the history-mode banner immediately
-    resyncRef.current?.();
     wakeRef.current?.(); // re-poll right away so the live screen is confirmed at the bottom
   };
 
@@ -1164,29 +1560,92 @@ const Terminal = forwardRef(function Terminal({
     <div className="terminal-wrap">
       <div
         ref={elRef}
-        className={`terminal${ready ? '' : ' terminal--loading'}${desktop ? ' desktop-input' : ''}${stream && streamStatus !== 'off' ? ' terminal--stream' : ''}`}
+        className={`terminal${ready ? '' : ' terminal--loading'}${desktop ? ' desktop-input' : ''}`}
       />
-      <TerminalOverlays
-        ready={ready}
-        stream={stream && streamStatus !== 'off'}
-        streamStatus={streamStatus}
-        connected={connected}
-        inputFailure={inputFailure}
-        dbgVisible={dbgVisible}
-        dbg={dbg}
-        scrollInfo={scrollInfo}
-        selInfo={selInfo}
-        onResume={resume}
-        altScreen={altScreen}
-        onPageScroll={pageScroll}
-        onFitScreen={fitScreen}
-        locateOn={locateOn}
-        onToggleLocate={toggleLocate}
-        selUI={selUI}
-        onCopy={doCopy}
-        selActionsRef={selActionsRef}
-        termRef={termRef}
-      />
+      {!ready && <LensBoot hint={t('boot.loading')} />}
+      {!connected && (
+        <div className="term-banner term-banner--err">
+          ⚠ {inputFailure === 'pane-missing' ? t('terminal.paneMissing') : t('terminal.disconnected')}
+        </div>
+      )}
+      {dbgVisible && <div className="dbg">{dbg}</div>}
+      {connected && scrollInfo && !selInfo && <div className="term-banner term-banner--hist">{scrollInfo}</div>}
+      {selInfo && <div className="term-banner term-banner--sel">{selInfo}</div>}
+      {scrollInfo && <button className="new-output" onClick={resume}>↓ 回到底部</button>}
+      {altScreen && (
+        <div
+          className="term-pager"
+          role="group"
+          aria-label="翻页"
+          // Keep the keyboard up when tapping the pager: preventDefault the pointerdown so it doesn't blur
+          // the focused input (same keepFocus trick as the dock buttons). onClick still fires.
+          onPointerDown={(e) => { if (shouldKeepKeyboard(document.activeElement) && e.cancelable) e.preventDefault(); }}
+        >
+          <div className="term-pager-grp">
+            <button type="button" className="term-pager-btn" aria-label="上翻页" onClick={() => pageScroll('up')}>
+              <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+                <path d="M6 14.5l6-6 6 6" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <span className="term-pager-div" aria-hidden="true" />
+            <button type="button" className="term-pager-btn" aria-label="下翻页" onClick={() => pageScroll('down')}>
+              <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+                <path d="M6 9.5l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
+          <div className="term-pager-grp">
+            <button type="button" className="term-pager-btn" aria-label="适配高度" title="适配高度" onClick={fitScreen}>
+              <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+                <path d="M5 4.5h14M5 19.5h14" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M12 8.5v7M9.8 10.8L12 8.5l2.2 2.3M9.8 13.2L12 15.5l2.2-2.3" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <span className="term-pager-div" aria-hidden="true" />
+            <button type="button" className="term-pager-btn" aria-label="定位光标行" title="定位光标行" aria-pressed={locateOn} onClick={toggleLocate}>
+              <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+                <path d="M5 7h14M5 17h14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" opacity="0.7" />
+                <rect x="4" y="10.5" width="16" height="3" rx="1.5" fill="currentColor" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+      {selUI && (() => {
+        const minX = Math.min(selUI.start.x, selUI.end.x);
+        const minY = Math.min(selUI.start.y, selUI.end.y);
+        const maxY = Math.max(selUI.start.y, selUI.end.y);
+        // Clamp left within wrap bounds, also guard right edge (CALLOUT_W is an estimate for clamping).
+        const calloutLeft = Math.max(8, Math.min(minX, (selUI.wrapW ?? 0) - CALLOUT_W - 8));
+        // Flip below the selection when the above-position would clip the top of the wrap.
+        const aboveY = minY - 44;
+        const belowY = maxY + (selUI.start.ch || 0) + 8;
+        const calloutTop = aboveY < 4 ? belowY : aboveY;
+        return (
+        <>
+          <div className="sel-handle sel-handle--start"
+               style={{ left: selUI.start.x, top: selUI.start.y, '--h': `${selUI.start.ch}px` }}
+               data-end="start" />
+          <div className="sel-handle sel-handle--end"
+               style={{ left: selUI.end.x, top: selUI.end.y, '--h': `${selUI.end.ch}px` }}
+               data-end="end" />
+          <div className="sel-callout"
+               style={{ left: calloutLeft, top: calloutTop }}>
+            <button type="button" onClick={doCopy}>拷贝</button>
+            <button type="button" onClick={() => {
+              const a = selActionsRef.current;
+              if (a) a.selectRange(expandToLines(a.currentRange(), termRef.current.cols));
+            }}>整行</button>
+            <button type="button" onClick={() => {
+              const a = selActionsRef.current;
+              if (!a) return;
+              const b = termRef.current.buffer.active;
+              a.selectRange(expandToParagraph(a.currentRange(), termRef.current.cols, a.paraLineText, 0, b.length - 1));
+            }}>整段</button>
+          </div>
+        </>
+        );
+      })()}
     </div>
   );
 });

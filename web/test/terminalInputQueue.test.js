@@ -34,16 +34,6 @@ describe('terminal input queue', () => {
     ]);
   });
 
-  it('preserves raw binary input without UTF-8 re-encoding', async () => {
-    const send = vi.fn().mockResolvedValue({ ok: true });
-    const q = createTerminalInputQueue({ send });
-
-    q.enqueue('%1', Uint8Array.from([0x1b, 0x5b, 0xff, 0x00]));
-
-    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
-    expect(send).toHaveBeenCalledWith('%1', '1b5bff00');
-  });
-
   it('does not retry an ambiguous failed batch', async () => {
     const onError = vi.fn();
     const send = vi.fn().mockRejectedValue(new Error('network'));

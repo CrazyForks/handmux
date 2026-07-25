@@ -1,26 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import xterm from '@xterm/headless';
-import { prepareSeed, prepareLiveSeed, cursorSeq } from '../src/terminalSeed.js';
+import { prepareSeed, cursorSeq } from '../src/terminalSeed.js';
 
 const { Terminal } = xterm;
 const write = (t, d) => new Promise((res) => t.write(d, res));
 const line = (t, row) => t.buffer.active.getLine(row)?.translateToString(true).trimEnd();
 
 describe('prepareSeed alignment', () => {
-  it('keeps live history in scrollback while the latest pane grid stays visible', async () => {
-    const t = new Terminal({ cols: 12, rows: 3, allowProposedApi: true, scrollback: 100 });
-    const seed = prepareLiveSeed('h0\nh1\nr0\nr1\nr2\n', 3);
-    await write(t, '\x1b[2J\x1b[3J\x1b[H' + seed);
-    t.scrollToBottom();
-
-    expect(t.buffer.active.baseY).toBe(2);
-    expect(line(t, 0)).toBe('h0');
-    expect(line(t, 1)).toBe('h1');
-    expect(line(t, t.buffer.active.baseY)).toBe('r0');
-    expect(line(t, t.buffer.active.baseY + 2)).toBe('r2');
-    t.dispose();
-  });
-
   it('aligns the visible screen to the bottom rows (drops the trailing-newline shift)', async () => {
     const t = new Terminal({ cols: 12, rows: 3, allowProposedApi: true, scrollback: 100 });
     // 1 scrollback line + a 3-row screen + capture-pane's trailing newline.
@@ -79,27 +65,25 @@ describe('prepareSeed alignment', () => {
     t.dispose();
   });
 
-  it('keeps the complete three-row message box: top padding, text, and bottom padding', async () => {
+  it('shades a message text row full-width but NOT the blank padding row below it', async () => {
     const t = new Terminal({ cols: 10, rows: 5, allowProposedApi: true, scrollback: 100 });
-    // Codex capture -e -N style: a full-width top padding row, the user text, a full-width bottom
-    // padding row, then the next plain line closes the background.
-    await write(t, '\x1b[2J\x1b[3J\x1b[H' + prepareSeed('\x1b[48;5;237m          \n❯ hi      \n          \n\x1b[49mout\n'));
+    // capture -e -N style: a sent-message text row (bg left open, padded full width by -N), a blank
+    // grey padding row, then plain output. Only the text row should carry the shade.
+    await write(t, '\x1b[2J\x1b[3J\x1b[H' + prepareSeed('\x1b[48;5;237m❯ hi\x1b[39m      \n\x1b[48;5;237m     \n\x1b[49mout\n'));
     const b = t.buffer.active;
     const bgAt = (row, col) => {
       const cell = b.getLine(row)?.getCell(col);
       return !!(cell && (cell.getBgColorMode() !== 0 || cell.isInverse()));
     };
-    expect(bgAt(0, 0)).toBe(true); // top padding
-    expect(bgAt(0, 9)).toBe(true);
-    expect(bgAt(1, 0)).toBe(true); // user text
-    expect(bgAt(1, 9)).toBe(true);
-    expect(bgAt(2, 0)).toBe(true); // bottom padding
-    expect(bgAt(2, 9)).toBe(true);
-    expect(bgAt(3, 0)).toBe(false); // following plain output unaffected
+    expect(bgAt(0, 0)).toBe(true); // text row shaded…
+    expect(bgAt(0, 9)).toBe(true); // …full width (its padding carries the bg)
+    expect(bgAt(1, 0)).toBe(false); // the blank padding row below the text is NOT shaded
+    expect(bgAt(1, 9)).toBe(false);
+    expect(bgAt(2, 0)).toBe(false); // plain output unaffected
     t.dispose();
   });
 
-  it('keeps one bottom-padding row without bleeding onto the following row when the seed scrolls (BCE)', async () => {
+  it('does not bleed the message shade onto the row below when the seed scrolls (BCE)', async () => {
     // The real bug: a tall seed written into a shorter viewport scrolls, and each scroll erases the
     // newly-exposed row with the CURRENT bg (BCE). The message row leaves its bg open, so without a
     // run-closing reset the blank row below it gets painted grey on scroll. rows=3 < 5 content rows
@@ -114,10 +98,8 @@ describe('prepareSeed alignment', () => {
       return !!(cell && (cell.getBgColorMode() !== 0 || cell.isInverse()));
     };
     expect(bgAt(2, 0)).toBe(true);  // the message row is still shaded…
-    expect(bgAt(3, 0)).toBe(true);  // the intended lower padding remains shaded…
-    expect(bgAt(3, 9)).toBe(true);
-    expect(bgAt(4, 0)).toBe(false); // …but the next plain row does not inherit it
-    expect(bgAt(4, 9)).toBe(false);
+    expect(bgAt(3, 0)).toBe(false); // …but the blank row below it is NOT (no scroll-BCE bleed)
+    expect(bgAt(3, 9)).toBe(false);
     t.dispose();
   });
 

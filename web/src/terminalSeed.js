@@ -47,19 +47,24 @@ function analyzeLine(line, bgStart) {
   return { bgEnd: bg, hasText, hasShadeText, hasShadeBlank };
 }
 
-// Agent TUIs draw a sent message as a full-width grey box: one shaded blank row above, the text rows,
-// and one shaded blank row below. Keep that first trailing row as the real bottom padding, but strip any
-// additional inherited blank rows so a malformed/unclosed background cannot wash down the screen.
+// Claude Code draws a sent message as a full-width grey bar, and below the text it often leaves one
+// or more blank grey rows (box padding). The user wants only the text rows shaded, not the trailing
+// blank rows. So within each run of shaded rows, keep shading up to the last row that has text
+// (including blank rows *between* text rows), but drop it from the trailing blank rows.
 //
 // We classify each line against the flowing background state:
 //   - has shaded text          → a real content row: keep it, and keep any blank rows held before it.
-//   - blank while shaded        → hold it (could be an interior gap or bottom padding — decide later).
-//   - anything else (plain row) → keep the first held row as bottom padding, clear any extras.
+//   - blank while shaded        → hold it (could be an interior gap or trailing padding — decide later).
+//   - anything else (plain row) → the held blank rows were trailing padding: drop their shading.
+// A held trailing row is replaced (in place, preserving the row count) by a reset on the first row
+// and empty rows after, so the background closes and nothing below it inherits the shade.
 //
-// Closing the kept row is essential: xterm scrolls while we write a tall seed
+// Trimming the row's content is not enough on its own: xterm scrolls while we write a tall seed
 // into a shorter viewport, and a scroll erases the newly-exposed bottom row with the CURRENT
-// background (BCE). Append \x1b[49m to the bottom padding itself so it stays shaded but the following
-// row cannot inherit the background.
+// background (BCE). The capture leaves the message's bg open (its text row ends with a fg-only
+// reset), so that scroll paints the blank row below it grey BEFORE we get to write its reset. So
+// we also CLOSE the background at the end of each shaded run's last row (\x1b[49m). The bg still
+// flows between rows WITHIN a run (multi-line messages stay shaded); it just can't leak past it.
 export function trimTrailingShadow(lines) {
   const out = [];
   let bgOpen = false;
@@ -67,39 +72,35 @@ export function trimTrailingShadow(lines) {
   let lastShaded = -1;        // index in `out` of the run's most recent shaded text row
   let lastShadedOpen = false; // did that row leave a non-default bg open at its end?
   const closeRun = () => {
-    if (held.length) {
-      // The closest blank row is the box's real lower padding. Seal it at its own end; closing the
-      // preceding text row would erase the inherited shade before this row is drawn.
-      out.push(`${held[0].line}${held[0].bgEnd ? '\x1b[49m' : ''}`);
-      for (let i = 1; i < held.length; i += 1) out.push('');
-    } else if (lastShaded >= 0 && lastShadedOpen) {
-      out[lastShaded] += '\x1b[49m';
-    }
-    held = [];
+    if (lastShaded >= 0 && lastShadedOpen) out[lastShaded] += '\x1b[49m';
     lastShaded = -1;
     lastShadedOpen = false;
   };
-  const keepInteriorHeld = () => {
+  const dropHeld = () => {
     if (!held.length) return;
-    out.push(...held.map(({ line }) => line));
+    out.push('\x1b[0m'); // first held row: close the background, render empty
+    for (let i = 1; i < held.length; i += 1) out.push('');
     held = [];
   };
   for (const line of lines) {
     const a = analyzeLine(line, bgOpen);
     if (a.hasShadeText) {
-      keepInteriorHeld(); // blanks held before this text row were interior gaps — keep them shaded
+      out.push(...held); // blanks held before this text row were interior gaps — keep them shaded
+      held = [];
       out.push(line);
       lastShaded = out.length - 1;
       lastShadedOpen = a.bgEnd;
     } else if (!a.hasText && (bgOpen || a.bgEnd || a.hasShadeBlank)) {
-      held.push({ line, bgEnd: a.bgEnd }); // blank row while shaded — defer the decision
+      held.push(line); // blank row while shaded — defer the decision
     } else {
-      closeRun(); // a plain row ends the shaded run — keep one bottom-padding row and seal its bg
+      closeRun(); // a plain row ends the shaded run — seal its bg so a scroll can't bleed it down
+      dropHeld(); // the held blanks were trailing padding
       out.push(line);
     }
     bgOpen = a.bgEnd;
   }
   closeRun();
+  dropHeld();
   return out;
 }
 
@@ -114,16 +115,6 @@ export function trimTrailingShadow(lines) {
 export function prepareSeed(ansi) {
   const body = normalizeSeedNewlines(ansi.replace(/\n$/, ''));
   return trimTrailingShadow(body.split('\r\n')).join('\r\n');
-}
-
-// A live %output stream addresses the source pane's exact grid. Keep any captured scrollback ABOVE that
-// grid so xterm can browse history immediately, while restoring plain blank rows when snapshot cleanup
-// leaves fewer than the pane's visible row count.
-export function prepareLiveSeed(ansi, rows) {
-  const lines = prepareSeed(ansi).split('\r\n');
-  const target = Math.max(1, Number(rows) || 1);
-  while (lines.length < target) lines.push('');
-  return lines.join('\r\n');
 }
 
 // The escape string that places xterm's OWN cursor on Claude's input cell (or hides it). capture-pane

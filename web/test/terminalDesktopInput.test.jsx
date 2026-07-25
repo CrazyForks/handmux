@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   instances: [],
   getHistory: vi.fn(() => new Promise(() => {})),
   sendInput: vi.fn(),
-  openTerminalStream: vi.fn(),
   UnauthorizedError: class UnauthorizedError extends Error {},
 }));
 
@@ -33,10 +32,6 @@ vi.mock('../src/api.js', () => ({
 
 vi.mock('../src/bundledFonts.js', () => ({
   ensureBundledFonts: vi.fn(() => new Promise(() => {})),
-}));
-
-vi.mock('../src/terminalStreamClient.js', () => ({
-  openTerminalStream: mocks.openTerminalStream,
 }));
 
 vi.mock('@xterm/addon-webgl', () => ({
@@ -151,12 +146,6 @@ describe('desktop terminal input', () => {
     mocks.instances.length = 0;
     mocks.getHistory.mockReset().mockImplementation(() => new Promise(() => {}));
     mocks.sendInput.mockReset();
-    mocks.openTerminalStream.mockReset().mockReturnValue({
-      pause: vi.fn(),
-      suspend: vi.fn(),
-      resync: vi.fn(),
-      close: vi.fn(() => Promise.resolve()),
-    });
     delete navigator.clipboard;
     Object.defineProperty(navigator, 'platform', {
       configurable: true,
@@ -166,8 +155,6 @@ describe('desktop terminal input', () => {
 
   afterEach(() => {
     cleanup();
-    vi.useRealTimers();
-    delete document.hidden;
     delete navigator.platform;
   });
 
@@ -220,102 +207,6 @@ describe('desktop terminal input', () => {
     expect(view.container.querySelector('.terminal').classList.contains('desktop-input')).toBe(true);
   });
 
-  it('falls back to snapshot polling when the real-time stream cannot recover', async () => {
-    vi.useFakeTimers();
-    let callbacks;
-    const close = vi.fn(() => Promise.resolve());
-    mocks.openTerminalStream.mockImplementation((options) => {
-      callbacks = options;
-      return { pause: vi.fn(), resync: vi.fn(), close };
-    });
-    mocks.getHistory.mockResolvedValue({
-      ansi: 'fallback',
-      hash: 'frame-1',
-      width: 80,
-      height: 24,
-      alt: false,
-      mouseAware: false,
-      cur: { row: 23, col: 0, vis: true },
-    });
-    const view = render(<Terminal pane="%1" desktop stream />);
-
-    act(() => callbacks.onStatus('reconnecting'));
-    await act(async () => {
-      vi.advanceTimersByTime(1200);
-      await Promise.resolve();
-    });
-
-    expect(close).toHaveBeenCalledOnce();
-    expect(mocks.getHistory).toHaveBeenCalled();
-    expect(view.container.querySelector('.terminal').classList.contains('terminal--stream')).toBe(false);
-    vi.useRealTimers();
-  });
-
-  it('pauses while hidden and replaces a live stream after ten seconds away', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-07-25T00:00:00Z'));
-    const pause = vi.fn();
-    const suspend = vi.fn();
-    const resync = vi.fn();
-    mocks.openTerminalStream.mockReturnValue({
-      pause,
-      suspend,
-      resync,
-      close: vi.fn(() => Promise.resolve()),
-    });
-    render(<Terminal pane="%1" desktop stream />);
-
-    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
-    act(() => document.dispatchEvent(new Event('visibilitychange')));
-    expect(pause).toHaveBeenCalledOnce();
-    expect(suspend).not.toHaveBeenCalled();
-
-    act(() => vi.advanceTimersByTime(10000));
-    expect(suspend).toHaveBeenCalledOnce();
-
-    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
-    act(() => document.dispatchEvent(new Event('visibilitychange')));
-    expect(suspend).toHaveBeenCalledOnce();
-    expect(resync).toHaveBeenCalledOnce();
-
-  });
-
-  it('does not overwrite the stream-owned cursor after ready', async () => {
-    let callbacks;
-    mocks.openTerminalStream.mockImplementation((options) => {
-      callbacks = options;
-      return {
-        pause: vi.fn(),
-        suspend: vi.fn(),
-        resync: vi.fn(),
-        close: vi.fn(() => Promise.resolve()),
-      };
-    });
-    const ref = React.createRef();
-    render(<Terminal ref={ref} pane="%1" desktop stream />);
-    const term = mocks.instances[0];
-
-    await act(async () => callbacks.onSeed({
-      ansi: 'prompt\n',
-      width: 80,
-      height: 24,
-      historyLines: 0,
-      alt: false,
-      mouseAware: false,
-    }));
-    await act(async () => callbacks.onReady({
-      cur: { row: 0, col: 6, vis: true },
-    }));
-    const move = new Uint8Array([0x1b, 0x5b, 0x31, 0x30, 0x3b, 0x31, 0x30, 0x48]);
-    await act(async () => callbacks.onData(move));
-    const writesAfterMove = term.write.mock.calls.length;
-
-    act(() => ref.current.wake());
-
-    expect(term.write).toHaveBeenCalledWith(move, expect.any(Function));
-    expect(term.write).toHaveBeenCalledTimes(writesAfterMove);
-  });
-
   it('hands a desktop pointer tap back to terminal input instead of preserving composer focus', () => {
     const onTap = vi.fn();
     const view = render(<Terminal pane="%1" desktop autoFocusInput={false} onTap={onTap} />);
@@ -328,6 +219,30 @@ describe('desktop terminal input', () => {
 
     expect(onTap).toHaveBeenCalledOnce();
     expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('routes a horizontal trackpad gesture past xterm to the outer terminal scroller', () => {
+    const view = render(<Terminal pane="%1" desktop />);
+    const host = view.container.querySelector('.terminal');
+    Object.defineProperties(host, {
+      clientWidth: { configurable: true, value: 320 },
+      scrollWidth: { configurable: true, value: 640 },
+    });
+    host.scrollLeft = 12;
+
+    // Real trackpad swipes commonly carry a little deltaY noise. xterm treats any non-zero deltaY as
+    // vertical scroll and cancels the whole wheel event, so Handmux must claim horizontal-dominant input
+    // before it reaches xterm's inner viewport.
+    const event = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaX: 30,
+      deltaY: 2,
+    });
+    view.container.querySelector('.xterm-screen').dispatchEvent(event);
+
+    expect(host.scrollLeft).toBe(42);
+    expect(event.defaultPrevented).toBe(true);
   });
 
   it('exposes focus controls and reports desktop xterm focus changes', () => {
