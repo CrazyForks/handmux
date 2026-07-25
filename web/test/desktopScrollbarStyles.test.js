@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 const styles = readFileSync(`${process.cwd()}/src/styles.css`, 'utf8');
+const terminalSource = readFileSync(`${process.cwd()}/src/components/Terminal.jsx`, 'utf8');
 
 describe('desktop scrollbar styles', () => {
   it('uses one custom scrollbar skin only for precise pointing devices', () => {
@@ -25,9 +26,24 @@ describe('desktop scrollbar styles', () => {
       /\.terminal::\-webkit-scrollbar-button\s*\{[^}]*display:\s*none[^}]*width:\s*0[^}]*height:\s*0/,
     );
     expect(styles).not.toMatch(/overflow-x:\s*scroll/);
-    expect(styles).not.toMatch(/\.terminal\s*\{[^}]*padding-bottom:/);
+  });
+
+  it('uses one visible terminal for history and the live frame', () => {
     expect(styles).toMatch(
-      /@media\s*\(hover:\s*none\)\s*and\s*\(pointer:\s*coarse\)\s*\{[\s\S]*\.terminal\.terminal--x-overflow\s*\{[^}]*padding-bottom:\s*4px[\s\S]*\.terminal::\-webkit-scrollbar:horizontal\s*\{[^}]*height:\s*4px[\s\S]*\.terminal::\-webkit-scrollbar-thumb:horizontal\s*\{[^}]*border:\s*0/,
+      /\.terminal__live\s*\{[^}]*width:\s*100%[^}]*min-width:\s*100%[^}]*height:\s*100%/,
+    );
+    expect(terminalSource).not.toMatch(/terminal__history|terminal__stack|terminal--stream-composite/);
+    expect(styles).toMatch(
+      /\.terminal-history-boundary\s*\{[^}]*repeating-linear-gradient/,
+    );
+  });
+
+  it('reserves a mobile gutter below the terminal grid instead of overlaying its last row', () => {
+    expect(styles).toMatch(
+      /@media\s*\(hover:\s*none\)\s*and\s*\(pointer:\s*coarse\)\s*\{[\s\S]*\.terminal\s*\{[^}]*padding-bottom:\s*6px[\s\S]*\.terminal::\-webkit-scrollbar:horizontal\s*\{[^}]*height:\s*6px[\s\S]*\.terminal::\-webkit-scrollbar-thumb:horizontal\s*\{[^}]*border:\s*1px\s+solid\s+transparent/,
+    );
+    expect(terminalSource).toMatch(
+      /const grid = liveHost\.querySelector\('\.xterm'\);\s*const rect = \(grid \|\| elRef\.current\)\.getBoundingClientRect\(\)/,
     );
   });
 });
