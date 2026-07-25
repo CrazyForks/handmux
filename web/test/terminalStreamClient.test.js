@@ -93,6 +93,105 @@ describe('openTerminalStream', () => {
     vi.useRealTimers();
   });
 
+  it('suspends the socket and starts from a fresh connection when resumed', () => {
+    const statuses = [];
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+      onStatus: (status) => statuses.push(status),
+    });
+    const first = FakeWebSocket.instances[0];
+    first.open();
+
+    stream.pause();
+    stream.suspend();
+    expect(first.readyState).toBe(3);
+    expect(statuses.at(-1)).toBe('paused');
+
+    stream.resync();
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    const second = FakeWebSocket.instances[1];
+    second.open();
+    expect(second.sent).toEqual([{ type: 'subscribe', token: 'secret', pane: '%7' }]);
+    stream.close();
+  });
+
+  it('does not subscribe in the background when the socket opens after pausing', () => {
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+    });
+    const ws = FakeWebSocket.instances[0];
+
+    stream.pause();
+    ws.open();
+    expect(ws.sent).toEqual([]);
+
+    stream.resync();
+    expect(ws.sent).toEqual([{ type: 'subscribe', token: 'secret', pane: '%7' }]);
+    stream.close();
+  });
+
+  it('drops queued frames across a pause and resync boundary', async () => {
+    const seed = {};
+    seed.promise = new Promise((resolve) => { seed.resolve = resolve; });
+    const events = [];
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+      onSeed: async () => {
+        events.push('seed');
+        await seed.promise;
+      },
+      onData: async () => events.push('stale-data'),
+    });
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    ws.message(JSON.stringify({ type: 'seed' }));
+    ws.message(new Uint8Array([1]).buffer);
+    await vi.waitFor(() => expect(events).toEqual(['seed']));
+
+    stream.pause();
+    stream.resync();
+    seed.resolve();
+    await stream.close();
+    expect(events).toEqual(['seed']);
+  });
+
+  it('replaces the connection instead of painting a frame queued for over ten seconds', async () => {
+    vi.useFakeTimers();
+    const seed = {};
+    seed.promise = new Promise((resolve) => { seed.resolve = resolve; });
+    const onData = vi.fn();
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+      connectTimeoutMs: 30000,
+      maxFrameLagMs: 10000,
+      onSeed: () => seed.promise,
+      onData,
+    });
+    const first = FakeWebSocket.instances[0];
+    first.open();
+    first.message(JSON.stringify({ type: 'seed' }));
+    first.message(new Uint8Array([1]).buffer);
+    await Promise.resolve();
+
+    vi.advanceTimersByTime(10001);
+    seed.resolve();
+    for (let i = 0; i < 6; i += 1) await Promise.resolve();
+
+    expect(onData).not.toHaveBeenCalled();
+    expect(first.readyState).toBe(3);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    stream.close();
+    vi.useRealTimers();
+  });
+
   it('does not open a second socket when resync is requested while connecting', () => {
     const stream = openTerminalStream({
       pane: '%7',

@@ -5,7 +5,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Added
-- 手机和电脑的终端输出改为 WebSocket 实时流；向上浏览时暂停实时流并沿用现有 tmux 历史加载，回到底部后在同一连接上重新同步。实时通路连接失败时自动退回快照刷新，也可在设置中让当前浏览器固定使用快照模式。
+- 手机和电脑的终端输出改为 WebSocket 实时流；向上浏览时暂停实时流并沿用现有 tmux 历史加载，回到底部后重新同步。离开页面超过 10 秒后会丢弃旧输出并从最新画面继续；实时通路连接失败时自动退回快照刷新，也可在设置中让当前浏览器固定使用快照模式。
 
 ### Fixed
 - Window 选中和未选中状态下，Agent 图标与窗口名称的间距保持一致。

@@ -153,6 +153,7 @@ describe('desktop terminal input', () => {
     mocks.sendInput.mockReset();
     mocks.openTerminalStream.mockReset().mockReturnValue({
       pause: vi.fn(),
+      suspend: vi.fn(),
       resync: vi.fn(),
       close: vi.fn(() => Promise.resolve()),
     });
@@ -165,6 +166,8 @@ describe('desktop terminal input', () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
+    delete document.hidden;
     delete navigator.platform;
   });
 
@@ -246,6 +249,35 @@ describe('desktop terminal input', () => {
     expect(mocks.getHistory).toHaveBeenCalled();
     expect(view.container.querySelector('.terminal').classList.contains('terminal--stream')).toBe(false);
     vi.useRealTimers();
+  });
+
+  it('pauses while hidden and replaces a live stream after ten seconds away', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-25T00:00:00Z'));
+    const pause = vi.fn();
+    const suspend = vi.fn();
+    const resync = vi.fn();
+    mocks.openTerminalStream.mockReturnValue({
+      pause,
+      suspend,
+      resync,
+      close: vi.fn(() => Promise.resolve()),
+    });
+    render(<Terminal pane="%1" desktop stream />);
+
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    expect(pause).toHaveBeenCalledOnce();
+    expect(suspend).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(10000));
+    expect(suspend).toHaveBeenCalledOnce();
+
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    expect(suspend).toHaveBeenCalledOnce();
+    expect(resync).toHaveBeenCalledOnce();
+
   });
 
   it('hands a desktop pointer tap back to terminal input instead of preserving composer focus', () => {

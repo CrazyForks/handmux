@@ -21,6 +21,7 @@ const CHUNK = 100; // how much more history to pull each time the top is reached
 const MAX_LINES = 5000; // backend cap on capture depth
 const LIVE_SCROLL_SLACK = 15; // scrolled up within this many lines of the bottom still counts as "live"
                               // (keep polling + follow new output); scroll up further to browse/pause
+const STREAM_BACKGROUND_RESET_MS = 10000;
 
 // Pane view backed by capture-pane snapshots (tmux's already-rendered grid — no cursor
 // seam). While at the bottom we cheaply repaint a short tail every second. Scrolling up
@@ -240,6 +241,9 @@ const Terminal = forwardRef(function Terminal({
     let streamClient = null;
     let streamMode = stream;
     let streamFallbackTimer = null;
+    let streamBackgroundTimer = null;
+    let streamBackgroundSuspended = false;
+    let hiddenAt = null;
     let streamExact = false; // raw %output is safe only while xterm rows exactly match the tmux pane
     let historyMode = false;
     let seeded = false;
@@ -961,8 +965,32 @@ const Terminal = forwardRef(function Terminal({
     // health, repaint immediately (instant refresh), and resume the loop.
     const onVisibility = () => {
       if (streamMode) {
-        if (document.hidden) streamClient?.pause();
-        else if (!historyMode) resumeStream();
+        if (document.hidden) {
+          hiddenAt = Date.now();
+          streamBackgroundSuspended = false;
+          streamClient?.pause();
+          if (streamBackgroundTimer) clearTimeout(streamBackgroundTimer);
+          streamBackgroundTimer = setTimeout(() => {
+            streamBackgroundTimer = null;
+            if (!disposed && document.hidden && streamMode) {
+              streamBackgroundSuspended = true;
+              streamClient?.suspend();
+            }
+          }, STREAM_BACKGROUND_RESET_MS);
+        } else {
+          const hiddenFor = hiddenAt === null ? 0 : Date.now() - hiddenAt;
+          hiddenAt = null;
+          if (streamBackgroundTimer) {
+            clearTimeout(streamBackgroundTimer);
+            streamBackgroundTimer = null;
+          }
+          // Background timers are throttled on phones, so enforce the cutoff again on return.
+          if (hiddenFor >= STREAM_BACKGROUND_RESET_MS && !streamBackgroundSuspended) {
+            streamClient?.suspend();
+          }
+          streamBackgroundSuspended = false;
+          if (!historyMode) resumeStream();
+        }
         return;
       }
       if (document.hidden) {
@@ -1002,6 +1030,7 @@ const Terminal = forwardRef(function Terminal({
       selection.dispose();
       if (timer) clearTimeout(timer);
       if (streamFallbackTimer) clearTimeout(streamFallbackTimer);
+      if (streamBackgroundTimer) clearTimeout(streamBackgroundTimer);
       streamClient?.close();
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('resize', onResize);
