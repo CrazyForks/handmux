@@ -5,6 +5,8 @@ import { isPaneId } from './tmux/commands.js';
 
 const MAX_BUFFERED_BYTES = 1024 * 1024;
 const START_TIMEOUT_MS = 5000;
+const HEARTBEAT_MS = 30000;
+const INITIAL_HISTORY_LINES = 100;
 
 export function decodeControlData(data) {
   const bytes = [];
@@ -30,7 +32,7 @@ export function decodeControlData(data) {
   return Buffer.from(bytes);
 }
 
-class PaneControlStream {
+export class PaneControlStream {
   constructor({ ws, pane, session, spawnControl = spawn }) {
     this.ws = ws;
     this.pane = pane;
@@ -38,7 +40,9 @@ class PaneControlStream {
     this.waiters = [];
     this.response = null;
     this.phase = 'attach';
+    this.wantLive = true;
     this.pendingOutput = [];
+    this.resyncing = null;
     this.attached = new Promise((resolve, reject) => {
       this.resolveAttached = resolve;
       this.rejectAttached = reject;
@@ -88,9 +92,19 @@ class PaneControlStream {
       const response = this.response;
       this.response = null;
       if (response?.waiter) {
-        response.waiter.onEnd?.();
-        if (error) response.waiter.reject(new Error(Buffer.concat(response.lines).toString('utf8')));
-        else response.waiter.resolve(response.lines);
+        if (error) {
+          response.waiter.reject(new Error(Buffer.concat(response.lines).toString('utf8')));
+        } else {
+          try {
+            // Run the boundary callback synchronously, before onChunk can consume any notification
+            // following this %end in the same stdout chunk. Resync uses this to publish ready before
+            // later %output, so an older cursor snapshot can never overwrite newer streamed movement.
+            response.waiter.onEnd?.(response.lines);
+            response.waiter.resolve(response.lines);
+          } catch (callbackError) {
+            response.waiter.reject(callbackError);
+          }
+        }
       }
       return;
     }
@@ -106,12 +120,17 @@ class PaneControlStream {
 
   request(command, onEnd) {
     return new Promise((resolve, reject) => {
+      if (this.phase === 'closed') {
+        reject(new Error('tmux control stream closed'));
+        return;
+      }
       this.waiters.push({ resolve, reject, onEnd });
       this.child.stdin.write(`${command}\n`);
     });
   }
 
   sendOutput(output) {
+    if (this.ws.readyState !== 1) return;
     if (this.ws.bufferedAmount > MAX_BUFFERED_BYTES) {
       this.ws.close(1013, 'stream fell behind');
       return;
@@ -119,31 +138,91 @@ class PaneControlStream {
     this.ws.send(output, { binary: true });
   }
 
+  sendJson(message) {
+    if (this.ws.readyState !== 1) return false;
+    if (this.ws.bufferedAmount > MAX_BUFFERED_BYTES) {
+      this.ws.close(1013, 'stream fell behind');
+      return false;
+    }
+    this.ws.send(JSON.stringify(message));
+    return true;
+  }
+
   async start() {
     await this.attached;
+    await this.resync();
+  }
+
+  pause() {
+    if (this.phase !== 'closed') {
+      this.wantLive = false;
+      this.phase = 'paused';
+      this.pendingOutput = [];
+    }
+  }
+
+  resync() {
+    this.wantLive = true;
+    if (this.resyncing) return this.resyncing;
+    this.resyncing = this.runResync().finally(() => { this.resyncing = null; });
+    return this.resyncing;
+  }
+
+  async runResync() {
+    await this.attached;
+    this.phase = 'capture';
+    this.pendingOutput = [];
     const captureLines = await this.request(
-      `capture-pane -p -e -N -t ${this.pane}`,
-      () => { this.phase = 'buffer'; },
+      `capture-pane -p -e -N -S -${INITIAL_HISTORY_LINES} -t ${this.pane}`,
+      () => { this.phase = this.wantLive ? 'buffer' : 'paused'; },
     );
-    const infoLines = await this.request(
-      `display-message -p -t ${this.pane} "#{pane_width}\\t#{pane_height}\\t#{cursor_x}\\t#{cursor_y}\\t#{cursor_flag}\\t#{alternate_on}"`,
+    await this.request(
+      `display-message -p -t ${this.pane} "#{pane_width}\\t#{pane_height}\\t#{cursor_x}\\t#{cursor_y}\\t#{cursor_flag}\\t#{alternate_on}\\t#{mouse_any_flag}\\t#{mouse_sgr_flag}"`,
+      (infoLines) => this.finishResync(captureLines, infoLines),
     );
-    const [width, height, cursorX, cursorY, cursorFlag, alternateOn] = Buffer.concat(infoLines)
+  }
+
+  finishResync(captureLines, infoLines) {
+    const [width, height, cursorX, cursorY, cursorFlag, alternateOn, mouseAny, mouseSgr] = Buffer.concat(infoLines)
       .toString('utf8').split('\t').map(Number);
-    const ansi = Buffer.concat(captureLines.flatMap((line) => [line, Buffer.from('\n')])).toString('utf8');
-    this.ws.send(JSON.stringify({ type: 'seed', ansi, width, height, alt: alternateOn === 1 }));
+    if (![width, height, cursorX, cursorY, cursorFlag, alternateOn, mouseAny, mouseSgr]
+      .every(Number.isFinite) || width < 1 || height < 1) {
+      throw new Error('invalid tmux pane info');
+    }
+    if (!this.wantLive || this.phase === 'closed') {
+      this.pendingOutput = [];
+      if (this.phase !== 'closed') this.phase = 'paused';
+      return;
+    }
+    // Alternate-screen apps have no history of their own. tmux's -S capture may prepend the main
+    // screen's scrollback, so keep only the alternate screen's real grid there.
+    const visibleCapture = alternateOn === 1 ? captureLines.slice(-height) : captureLines;
+    const historyLines = Math.max(0, visibleCapture.length - height);
+    const ansi = Buffer.concat(visibleCapture.flatMap((line) => [line, Buffer.from('\n')])).toString('utf8');
+    if (!this.sendJson({
+      type: 'seed',
+      ansi,
+      width,
+      height,
+      historyLines,
+      alt: alternateOn === 1,
+      mouseAware: mouseAny === 1,
+      mouseSgr: mouseSgr === 1,
+    })) return;
     for (const output of this.pendingOutput) this.sendOutput(output);
-    this.ws.send(JSON.stringify({
+    if (!this.sendJson({
       type: 'ready',
       cur: { row: height - 1 - cursorY, col: cursorX, vis: cursorFlag === 1 },
-    }));
+    })) return;
     this.pendingOutput = [];
-    this.phase = 'live';
+    this.phase = this.wantLive ? 'live' : 'paused';
   }
 
   fail(error) {
     clearTimeout(this.startTimer);
     this.rejectAttached(error);
+    this.response?.waiter?.reject(error);
+    this.response = null;
     for (const waiter of this.waiters.splice(0)) waiter.reject(error);
     if (this.ws.readyState < 2) this.ws.close(1011, 'tmux stream failed');
   }
@@ -151,6 +230,12 @@ class PaneControlStream {
   close() {
     clearTimeout(this.startTimer);
     this.phase = 'closed';
+    this.wantLive = false;
+    const error = new Error('tmux control stream closed');
+    this.response?.waiter?.reject(error);
+    this.response = null;
+    for (const waiter of this.waiters.splice(0)) waiter.reject(error);
+    this.pendingOutput = [];
     try { this.child.kill(); } catch { /* already gone */ }
   }
 }
@@ -158,14 +243,38 @@ class PaneControlStream {
 export function createTerminalStream({ token, commands, spawnControl } = {}) {
   const wss = new WebSocketServer({ noServer: true });
   const streams = new Set();
+  const heartbeat = setInterval(() => {
+    for (const ws of wss.clients) {
+      if (ws.readyState !== 1) continue;
+      if (ws.isAlive === false) {
+        ws.terminate();
+        continue;
+      }
+      ws.isAlive = false;
+      ws.ping();
+    }
+  }, HEARTBEAT_MS);
+  heartbeat.unref?.();
 
   wss.on('connection', (ws) => {
+    ws.isAlive = true;
+    ws.on('pong', () => { ws.isAlive = true; });
     let authenticating = false;
     let stream = null;
     ws.on('message', async (raw, binary) => {
-      if (binary || authenticating || stream) return;
+      if (binary) return;
       let message;
       try { message = JSON.parse(raw.toString()); } catch { ws.close(1003, 'bad message'); return; }
+      if (stream) {
+        if (message.type === 'pause') stream.pause();
+        else if (message.type === 'resync') {
+          try { await stream.resync(); } catch {
+            if (ws.readyState < 2) ws.close(1011, 'stream resync failed');
+          }
+        }
+        return;
+      }
+      if (authenticating) return;
       if (message.type !== 'subscribe'
         || !tokenEquals(message.token ?? '', token)
         || !isPaneId(message.pane)) {
@@ -200,8 +309,10 @@ export function createTerminalStream({ token, commands, spawnControl } = {}) {
   };
 
   const close = () => {
+    clearInterval(heartbeat);
     for (const stream of streams) stream.close();
     streams.clear();
+    for (const ws of wss.clients) ws.close(1001, 'server shutting down');
     wss.close();
   };
 
