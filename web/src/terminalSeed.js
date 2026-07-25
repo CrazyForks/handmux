@@ -117,16 +117,6 @@ export function prepareSeed(ansi) {
   return trimTrailingShadow(body.split('\r\n')).join('\r\n');
 }
 
-// A live %output stream addresses the source pane's exact grid. Keep any captured scrollback ABOVE that
-// grid so xterm can browse history immediately, while restoring plain blank rows when snapshot cleanup
-// leaves fewer than the pane's visible row count.
-export function prepareLiveSeed(ansi, rows) {
-  const lines = prepareSeed(ansi).split('\r\n');
-  const target = Math.max(1, Number(rows) || 1);
-  while (lines.length < target) lines.push('');
-  return lines.join('\r\n');
-}
-
 // The escape string that places xterm's OWN cursor on Claude's input cell (or hides it). capture-pane
 // snapshots cells only — not the terminal cursor — so without this xterm parks its cursor at the end
 // of the seed (a stray box at the bottom-left). tmux tracks the cursor separately; the server hands it

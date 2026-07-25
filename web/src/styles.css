@@ -222,8 +222,10 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .win-tab.active .win-panes { color: #d6e4ff; }
 /* Active window with >1 pane: the tab expands inline into "name │ ① cmd ▾". The trigger reuses the
    .win-tab look; the menu (below) reuses Dropdown's .dd-menu. wt-dd is the positioning anchor. */
-.wt-dd { position: relative; flex: none; }
-/* Match the plain .win-tab metrics so active/inactive tabs read the same. */
+.wt-dd { position: relative; flex: none; display: flex; }
+/* Match the plain .win-tab metrics so active/inactive tabs read the same. .windowbar-scroll stretches
+   this wrapper to the row height; making it a second flex context stretches the selected trigger too,
+   instead of leaving the blue button slightly shorter than the direct-child, inactive tabs. */
 .wt-trigger { display: inline-flex; align-items: center; gap: 4px; }
 /* Both tab variants render the logo + first label through this exact wrapper. Keeping that spacing
    in one place avoids flex-gap vs icon-margin differences between the expanded and plain tabs. */
@@ -351,12 +353,13 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
    mobile soft keyboard and steal taps near the cursor, e.g. the back-to-bottom button). */
 .terminal .xterm-helper-textarea { pointer-events: none; opacity: 0; }
 .terminal.desktop-input .xterm-helper-textarea { pointer-events: auto; }
-.terminal--stream { overflow-y: auto; }
-.terminal--stream .xterm {
-  height: var(--stream-grid-h, 100%);
+.terminal-stream-test { overflow: auto; }
+.terminal-stream-test .xterm {
+  height: max-content;
   min-height: 100%;
+  justify-content: flex-start;
 }
-.terminal-stream-badge {
+.terminal-stream-test-badge {
   position: absolute; z-index: 7; top: 7px; right: 9px;
   display: flex; align-items: center; gap: 6px;
   padding: 4px 8px; border-radius: 8px;
@@ -365,11 +368,11 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
   font: 11px/1.3 -apple-system, system-ui, sans-serif;
   pointer-events: none;
 }
-.terminal-stream-badge span {
+.terminal-stream-test-badge span {
   width: 7px; height: 7px; border-radius: 50%; background: #8e8e93;
 }
-.terminal-stream-badge.is-live span { background: #0a84ff; }
-.terminal-stream-badge.is-reconnecting span { background: #ff9f0a; }
+.terminal-stream-test-badge.is-live span { background: #0a84ff; }
+.terminal-stream-test-badge.is-reconnecting span { background: #ff9f0a; }
 .new-output { position: absolute; right: 12px; bottom: 12px; z-index: 5; touch-action: manipulation; padding: 8px 14px; border: none; border-radius: 16px; background: var(--blue); color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
 .dbg { position: absolute; left: 6px; top: 6px; z-index: 6; font: 12px/1.4 monospace; color: #9fe; background: rgba(0,0,0,.6); padding: 2px 6px; border-radius: 4px; pointer-events: none; }
 /* Status banners: a full-width strip across the head of the terminal area. Yellow = browsing history
