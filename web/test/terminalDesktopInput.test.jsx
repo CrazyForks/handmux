@@ -408,6 +408,30 @@ describe('desktop terminal input', () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
+  it('routes a horizontal trackpad gesture past xterm to the outer terminal scroller', () => {
+    const view = render(<Terminal pane="%1" desktop />);
+    const host = view.container.querySelector('.terminal');
+    Object.defineProperties(host, {
+      clientWidth: { configurable: true, value: 320 },
+      scrollWidth: { configurable: true, value: 640 },
+    });
+    host.scrollLeft = 12;
+
+    // Real trackpad swipes commonly carry a little deltaY noise. xterm treats any non-zero deltaY as
+    // vertical scroll and cancels the whole wheel event, so Handmux must claim horizontal-dominant input
+    // before it reaches xterm's inner viewport.
+    const event = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaX: 30,
+      deltaY: 2,
+    });
+    view.container.querySelector('.xterm-screen').dispatchEvent(event);
+
+    expect(host.scrollLeft).toBe(42);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
   it('exposes focus controls and reports desktop xterm focus changes', () => {
     const ref = React.createRef();
     const onInputFocusChange = vi.fn();

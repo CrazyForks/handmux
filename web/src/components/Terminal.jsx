@@ -587,12 +587,14 @@ const Terminal = forwardRef(function Terminal({
 
     const fit = (pass = 0) => {
       if (disposed || !elRef.current || !term.rows) return;
-      // Fit to the container's ACTUAL on-screen height, not clientHeight. App translateY(-inset) lifts the
-      // whole column, so the container's top can be clipped above the screen (the topbar scrolls off) and
-      // its bottom sits at the keyboard top. Measure the visible slice = intersect its rect with
+      // Fit to the LIVE GRID's actual on-screen height, not the outer horizontal scroller's clientHeight.
+      // Coarse-pointer devices reserve a small bottom gutter in that outer box so their overlay scrollbar
+      // cannot cover the final terminal row. App translateY(-inset) can also clip the grid's top.
+      // Measure the visible grid slice = intersect its rect with
       // [0, innerHeight - inset]. Using clientHeight - inset over-subtracts the (clipped) topbar and left a
       // black band; measuring is exact for both keyboard-down (inset 0) and keyboard-up.
-      const rect = elRef.current.getBoundingClientRect();
+      const grid = liveHost.querySelector('.xterm');
+      const rect = (grid || elRef.current).getBoundingClientRect();
       const visBottom = Math.min(rect.bottom, window.innerHeight - (insetRef.current || 0));
       const visTop = Math.max(rect.top, 0);
       const avail = Math.max(0, visBottom - visTop);

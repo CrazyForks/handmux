@@ -287,6 +287,19 @@ export function createTerminalTouchController({
   };
 
   const onWheel = (event) => {
+    // A horizontal trackpad swipe usually contains a little deltaY noise. Claim horizontal-dominant
+    // gestures before xterm treats that noise as vertical scroll and cancels ancestor panning.
+    if (Math.abs(event.deltaX) > Math.abs(event.deltaY) && host.scrollWidth > host.clientWidth) {
+      const pixels = event.deltaMode === 1
+        ? event.deltaX * WHEEL_PX
+        : event.deltaMode === 2
+          ? event.deltaX * host.clientWidth
+          : event.deltaX;
+      host.scrollLeft += pixels;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (!event.deltaY) return;
     if (getStreamExact()) {
       const before = host.scrollTop;

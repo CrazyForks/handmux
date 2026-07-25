@@ -222,8 +222,10 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .win-tab.active .win-panes { color: #d6e4ff; }
 /* Active window with >1 pane: the tab expands inline into "name │ ① cmd ▾". The trigger reuses the
    .win-tab look; the menu (below) reuses Dropdown's .dd-menu. wt-dd is the positioning anchor. */
-.wt-dd { position: relative; flex: none; }
-/* Match the plain .win-tab metrics so active/inactive tabs read the same. */
+.wt-dd { position: relative; flex: none; display: flex; }
+/* Match the plain .win-tab metrics so active/inactive tabs read the same. .windowbar-scroll stretches
+   this wrapper to the row height; making it a second flex context stretches the selected trigger too,
+   instead of leaving the blue button slightly shorter than the direct-child, inactive tabs. */
 .wt-trigger { display: inline-flex; align-items: center; gap: 4px; }
 /* Both tab variants render the logo + first label through this exact wrapper. Keeping that spacing
    in one place avoids flex-gap vs icon-margin differences between the expanded and plain tabs. */
@@ -2451,4 +2453,13 @@ button.cmd-text { background: none; border: none; text-align: left; }
   display: none;
   width: 0;
   height: 0;
+}
+/* iOS/Android use overlay scrollbars: setting ::-webkit-scrollbar height changes the thumb but reserves
+   no layout space. Put a compact real gutter inside the scroller so its bottom overlay paints over empty
+   chrome, never the last text row/cursor. A 6px box with a 1px inset yields the native-like 4px indicator;
+   desktop keeps its 10px draggable scrollbar. Terminal.fit() measures .xterm above this padding. */
+@media (hover: none) and (pointer: coarse) {
+  .terminal { padding-bottom: 6px; }
+  .terminal::-webkit-scrollbar:horizontal { height: 6px; }
+  .terminal::-webkit-scrollbar-thumb:horizontal { border: 1px solid transparent; }
 }
