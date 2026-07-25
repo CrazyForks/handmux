@@ -54,7 +54,7 @@ describe('Settings terminal refresh mode', () => {
     await render({ terminalTransport: 'live' });
     const group = container.querySelector('[role="group"][aria-label="终端刷新模式"]');
     const buttons = [...group.querySelectorAll('button')];
-    expect(buttons.map((button) => button.textContent)).toEqual(['实时流', '快照刷新']);
+    expect(buttons.map((button) => button.textContent)).toEqual(['实时更新', '定时刷新']);
     expect(buttons.map((button) => button.getAttribute('aria-pressed'))).toEqual(['true', 'false']);
   });
 
@@ -62,8 +62,27 @@ describe('Settings terminal refresh mode', () => {
     const onTerminalTransport = vi.fn();
     await render({ terminalTransport: 'live', onTerminalTransport });
     const snapshot = [...container.querySelectorAll('[aria-label="终端刷新模式"] button')]
-      .find((button) => button.textContent === '快照刷新');
+      .find((button) => button.textContent === '定时刷新');
     act(() => snapshot.click());
     expect(onTerminalTransport).toHaveBeenCalledWith('snapshot');
+  });
+
+  it('shows and changes the active refresh interval only in timed-refresh mode', async () => {
+    const onSnapshotInterval = vi.fn();
+    await render({
+      terminalTransport: 'snapshot',
+      snapshotInterval: 1200,
+      onSnapshotInterval,
+    });
+    const group = container.querySelector('[role="group"][aria-label="活跃时刷新频率"]');
+    const buttons = [...group.querySelectorAll('button')];
+    expect(buttons.map((button) => button.textContent)).toEqual(['0.8s', '1s', '1.2s', '1.5s', '2s']);
+    expect(buttons.map((button) => button.getAttribute('aria-pressed')))
+      .toEqual(['false', 'false', 'true', 'false', 'false']);
+    act(() => buttons[3].click());
+    expect(onSnapshotInterval).toHaveBeenCalledWith(1500);
+
+    await render({ terminalTransport: 'live' });
+    expect(container.querySelector('[aria-label="活跃时刷新频率"]')).toBeNull();
   });
 });

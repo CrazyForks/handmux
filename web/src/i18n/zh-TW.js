@@ -1,5 +1,17 @@
 // 繁體中文 strings. Missing keys fall back to English (see ./index.js translate()).
 export default {
+  'terminal.transport_live': '即時更新',
+  'terminal.transport_snapshot': '定時更新',
+  'terminal.connection_connecting': '連線中',
+  'terminal.connection_good': '連線良好',
+  'terminal.connection_degraded': '連線波動',
+  'terminal.connection_poor': '連線較差',
+  'settings.terminal_transport': '終端更新模式',
+  'settings.terminal_transport_live': '即時更新',
+  'settings.terminal_transport_snapshot': '定時更新',
+  'settings.terminal_transport_hint': '即時更新使用 WebSocket，延遲更低；網路較差時會自動暫時回退到定時更新。',
+  'settings.snapshot_interval': '活躍時更新頻率',
+  'settings.snapshot_interval_hint': '終端閒置後會自動降低頻率，減少流量和資源使用。',
   'terminal.disconnected': '連線中斷，正在重新連線…',
   'terminal.paneMissing': '窗格已關閉，請切換到其他窗格。',
   'common.save': '儲存',

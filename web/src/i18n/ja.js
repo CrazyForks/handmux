@@ -1,5 +1,17 @@
 // 日本語 strings. Missing keys fall back to English (see ./index.js translate()).
 export default {
+  'terminal.transport_live': 'リアルタイム更新',
+  'terminal.transport_snapshot': '定期更新',
+  'terminal.connection_connecting': '接続中',
+  'terminal.connection_good': '接続良好',
+  'terminal.connection_degraded': '接続が不安定',
+  'terminal.connection_poor': '接続不良',
+  'settings.terminal_transport': 'ターミナル更新モード',
+  'settings.terminal_transport_live': 'リアルタイム更新',
+  'settings.terminal_transport_snapshot': '定期更新',
+  'settings.terminal_transport_hint': 'リアルタイム更新は WebSocket を使用し、低遅延です。回線が不安定な場合は一時的に定期更新へ切り替わります。',
+  'settings.snapshot_interval': '操作中の更新間隔',
+  'settings.snapshot_interval_hint': 'ターミナルがアイドル状態になると更新頻度を下げ、通信量とリソースを節約します。',
   'terminal.disconnected': '接続が切れました。再接続しています…',
   'terminal.paneMissing': 'このペインは閉じられました。別のペインに切り替えてください。',
   'common.save': '保存',

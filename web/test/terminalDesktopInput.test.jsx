@@ -307,6 +307,34 @@ describe('desktop terminal input', () => {
     expect(close).toHaveBeenCalledOnce();
     expect(mocks.getHistory).toHaveBeenCalled();
     expect(view.container.querySelector('.terminal').classList.contains('terminal--stream')).toBe(false);
+    expect(view.container.querySelector('.terminal-connection').textContent).toContain('定时刷新');
+  });
+
+  it('falls back after application RTT remains poor', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-26T00:00:00Z'));
+    let callbacks;
+    const close = vi.fn(() => Promise.resolve());
+    mocks.openTerminalStream.mockImplementation((options) => {
+      callbacks = options;
+      return { pause: vi.fn(), resync: vi.fn(), close };
+    });
+    mocks.getHistory.mockResolvedValue({ unchanged: true });
+    const view = render(<Terminal pane="%1" desktop stream />);
+    await vi.waitFor(() => expect(callbacks).toBeDefined());
+
+    act(() => callbacks.onProbe({ ok: true, rttMs: 1800 }));
+    expect(view.container.querySelector('.terminal-connection').textContent).toContain('实时更新');
+    act(() => {
+      vi.advanceTimersByTime(15000);
+      callbacks.onProbe({ ok: true, rttMs: 1800 });
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(close).toHaveBeenCalledOnce();
+    expect(view.container.querySelector('.terminal-connection').textContent).toContain('定时刷新');
   });
 
   it('pauses while hidden and replaces a live stream after ten seconds away', async () => {

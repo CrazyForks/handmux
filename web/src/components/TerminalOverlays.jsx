@@ -1,22 +1,14 @@
 import { shouldKeepKeyboard } from '../dockKeyboard.js';
 import { expandToLines, expandToParagraph } from '../terminalSelection.js';
 import { t } from '../i18n';
+import { formatReceiveRate } from '../connectionTelemetry.js';
 import LensBoot from './LensBoot.jsx';
 
 const CALLOUT_W = 200;
 
-function streamLabel(status) {
-  if (status === 'live') return '实时终端';
-  if (status === 'paused') return '浏览历史';
-  if (status === 'reconnecting') return '实时流重连中';
-  if (status === 'error') return '实时流恢复中';
-  return '实时流连接中';
-}
-
 export default function TerminalOverlays({
   ready,
-  stream,
-  streamStatus,
+  connectionInfo,
   connected,
   inputFailure,
   dbgVisible,
@@ -37,10 +29,15 @@ export default function TerminalOverlays({
   return (
     <>
       {!ready && <LensBoot hint={t('boot.loading')} />}
-      {stream && streamStatus !== 'live' && streamStatus !== 'paused' && (
-        <div className={`terminal-stream-badge is-${streamStatus}`}>
-          <span aria-hidden="true" />
-          {streamLabel(streamStatus)}
+      {connectionInfo && (
+        <div className={`terminal-connection is-${connectionInfo.quality}`}>
+          {t(`terminal.transport_${connectionInfo.mode}`)}
+          {' · '}
+          {t(`terminal.connection_${connectionInfo.quality}`)}
+          {' · '}
+          {connectionInfo.rttMs == null ? '-- ms' : `${connectionInfo.rttMs} ms`}
+          {' · ↓'}
+          {formatReceiveRate(connectionInfo.bytesPerSecond)}
         </div>
       )}
       {!connected && (

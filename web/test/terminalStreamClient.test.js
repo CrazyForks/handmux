@@ -71,6 +71,60 @@ describe('openTerminalStream', () => {
     stream.close();
   });
 
+  it('measures application RTT and received terminal bytes on the live socket', async () => {
+    vi.useFakeTimers();
+    let now = 1000;
+    const onProbe = vi.fn();
+    const onTraffic = vi.fn();
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+      now: () => now,
+      onProbe,
+      onTraffic,
+    });
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    const ready = JSON.stringify({ type: 'ready' });
+    ws.message(ready);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ws.sent.at(-1)).toEqual({ type: 'probe', id: 1 });
+
+    now = 1086;
+    ws.message(JSON.stringify({ type: 'probe', id: 1 }));
+    expect(onProbe).toHaveBeenCalledWith({ ok: true, rttMs: 86 });
+
+    ws.message(new Uint8Array([1, 2, 3]).buffer);
+    expect(onTraffic).toHaveBeenCalledWith(new TextEncoder().encode(ready).byteLength);
+    expect(onTraffic).toHaveBeenCalledWith(3);
+    stream.close();
+    vi.useRealTimers();
+  });
+
+  it('reports a timed-out application probe without closing a healthy stream', async () => {
+    vi.useFakeTimers();
+    const onProbe = vi.fn();
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+      probeTimeoutMs: 20,
+      onProbe,
+    });
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    ws.message(JSON.stringify({ type: 'ready' }));
+    await Promise.resolve();
+    await Promise.resolve();
+    vi.advanceTimersByTime(20);
+    expect(onProbe).toHaveBeenCalledWith({ ok: false });
+    expect(ws.readyState).toBe(FakeWebSocket.OPEN);
+    stream.close();
+    vi.useRealTimers();
+  });
+
   it('pauses without reconnecting and reconnects only when resuming', () => {
     vi.useFakeTimers();
     const stream = openTerminalStream({

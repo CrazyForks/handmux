@@ -86,7 +86,9 @@ import {
 } from './desktopInput.js';
 import { useDesktopTerminalInput } from './hooks/useDesktopTerminalInput.js';
 import {
+  getSnapshotInterval,
   getTerminalTransport,
+  setSnapshotInterval,
   setTerminalTransport,
   terminalStreamEnabled,
 } from './terminalTransport.js';
@@ -103,6 +105,7 @@ export default function App() {
   const [keyboardMode, setKeyboardModeState] = useState(getKeyboardMode);
   const desktopInput = keyboardModeUsesDesktop(keyboardMode, detectedDesktopInput);
   const [terminalTransport, setTerminalTransportState] = useState(getTerminalTransport);
+  const [snapshotInterval, setSnapshotIntervalState] = useState(getSnapshotInterval);
   const terminalStream = typeof window !== 'undefined'
     && terminalStreamEnabled(window.location, terminalTransport);
   const [needToken, setNeedToken] = useState(!getToken());
@@ -345,6 +348,9 @@ export default function App() {
   }, [terminalOverlayOpen]);
   const chooseTerminalTransport = useCallback((mode) => {
     setTerminalTransportState(setTerminalTransport(mode));
+  }, []);
+  const chooseSnapshotInterval = useCallback((intervalMs) => {
+    setSnapshotIntervalState(setSnapshotInterval(intervalMs));
   }, []);
   useEffect(() => {
     const wasOpen = terminalOverlayWasOpenRef.current;
@@ -1595,6 +1601,8 @@ export default function App() {
         onKeyboardMode={chooseKeyboardMode}
         terminalTransport={terminalTransport}
         onTerminalTransport={chooseTerminalTransport}
+        snapshotInterval={snapshotInterval}
+        onSnapshotInterval={chooseSnapshotInterval}
         hooksStatus={hooksStatus}
         onEnableHooks={enableHooks}
         termRef={termRef}
@@ -1867,6 +1875,7 @@ export default function App() {
                 key={current.paneId}
                 pane={current.paneId}
                 stream={terminalStream}
+                snapshotIntervalMs={snapshotInterval}
                 desktop={desktopInput}
                 autoFocusInput={!terminalOverlayOpen}
                 inset={inset}

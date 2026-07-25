@@ -16,6 +16,10 @@ import TerminalOverlays from './TerminalOverlays.jsx';
 import { openXterm } from '../terminalXterm.js';
 import { createTerminalSelectionController } from '../terminalSelectionController.js';
 import { createTerminalTouchController } from '../terminalTouchController.js';
+import {
+  createConnectionTelemetry,
+  payloadBytes,
+} from '../connectionTelemetry.js';
 
 const LIVE_MARGIN = 20; // capture this many rows beyond the viewport so a small scroll-up has slack
                         // before triggering a deeper history pull (replaces the old fixed 100-line tail)
@@ -39,6 +43,7 @@ const STREAM_BACKGROUND_RESET_MS = 10000;
 const Terminal = forwardRef(function Terminal({
   pane,
   stream = false,
+  snapshotIntervalMs = 1000,
   inset = 0,
   desktop = false,
   autoFocusInput = true,
@@ -65,6 +70,8 @@ const Terminal = forwardRef(function Terminal({
   onInputFocusChangeRef.current = onInputFocusChange;
   const onInputDataRef = useRef(onInputData);
   onInputDataRef.current = onInputData;
+  const snapshotIntervalRef = useRef(snapshotIntervalMs);
+  snapshotIntervalRef.current = snapshotIntervalMs;
   // Clickable doc-path underlines (xterm decorations), rebuilt after every full repaint. The tap
   // handler is held in a ref so the poll loop's stable closure always calls the latest prop (mirrors
   // how the loop reaches outside state via fitRef/wakeRef). Tapping a path does NOT open it directly
@@ -89,6 +96,12 @@ const Terminal = forwardRef(function Terminal({
   const [paused, setPaused] = useState(false);
   const [connected, setConnected] = useState(true); // false → show the disconnect banner
   const [streamStatus, setStreamStatus] = useState(stream ? 'connecting' : 'off');
+  const [connectionInfo, setConnectionInfo] = useState({
+    mode: stream ? 'live' : 'snapshot',
+    quality: 'connecting',
+    rttMs: null,
+    bytesPerSecond: 0,
+  });
   const [inputFailure, setInputFailure] = useState(null);
   // Touch selection: long-press starts a selection on the real grid (xterm draws the highlight
   // on its own layer, WebGL included), drag extends it, then a "复制" bubble copies it. selActive
@@ -263,6 +276,13 @@ const Terminal = forwardRef(function Terminal({
     let scheduleStreamRender = () => {};
     let historyMode = false;
     let seeded = false;
+    const telemetry = createConnectionTelemetry({
+      mode: stream ? 'live' : 'snapshot',
+      onChange: (info) => {
+        setConnectionInfo(info);
+        if (streamMode && info.quality === 'poor') fallbackToPolling();
+      },
+    });
     // Fresh slate per pane: don't carry the previous pane's alt/mouse state (else switching from a
     // full-screen pane to a normal one flashes the pager buttons until the first poll corrects it).
     // Also reset selection state: selActiveRef survives the effect re-run and its poll gate
@@ -834,6 +854,7 @@ const Terminal = forwardRef(function Terminal({
     const repaint = async (lines, keepPosition, isPull = false) => {
       if (busy || disposed) return;
       busy = true;
+      const requestStartedAt = Date.now();
       // Anchor: remember how far the top-visible row sits from the buffer's END, so after the reseed
       // (which prepends history above, on a pull) we restore the same content via scrollToLine below.
       // TWO anchor modes, because the two callers need different things:
@@ -855,6 +876,11 @@ const Terminal = forwardRef(function Terminal({
       try {
         const hist = await getHistory(pane, lines, lastHash);
         if (disposed) return;
+        telemetry.sample({
+          ok: true,
+          rttMs: Date.now() - requestStartedAt,
+          bytes: hist.unchanged ? 0 : payloadBytes(hist),
+        });
         setConn(nextConnection(connState, 'ok')); // a successful poll → connected (clears the banner)
         // A desktop drag may have started while this request was in flight. Never apply that stale
         // snapshot: rewriting xterm would erase the selection before the user can copy it.
@@ -953,6 +979,7 @@ const Terminal = forwardRef(function Terminal({
         // measurable), reveal anyway so a switched pane can't get stuck hidden. Idempotent with fit's.
         if (firstSeed) setTimeout(reveal, 400);
       } catch (e) {
+        telemetry.sample({ ok: false, rttMs: Date.now() - requestStartedAt });
         if (e instanceof UnauthorizedError) onAuthFailRef.current?.();
         else if (!disposed) setConn(nextConnection(connState, 'fail')); // network/500/timeout → maybe disconnect
       } finally {
@@ -990,7 +1017,7 @@ const Terminal = forwardRef(function Terminal({
       if (disposed || document.hidden || myEpoch !== epoch) return;
       const delay = connState.failCount > 0
         ? backoffDelay(connState.failCount)
-        : idleDelay(Date.now() - idleSince); // healthy: slow down while idle, fast while active
+        : idleDelay(Date.now() - idleSince, snapshotIntervalRef.current); // healthy: slow down while idle, fast while active
       timer = setTimeout(() => tick(myEpoch), delay);
     }
     const startLoop = () => {
@@ -1013,6 +1040,7 @@ const Terminal = forwardRef(function Terminal({
       const drained = streamClient?.close();
       streamClient = null;
       setStreamStatus('off');
+      telemetry.setMode('snapshot', { fallback: true });
       setConn(nextConnection(connState, 'reset'));
       try { await drained; } catch { /* stream failure already surfaced */ }
       if (disposed) return;
@@ -1031,10 +1059,17 @@ const Terminal = forwardRef(function Terminal({
           onStatus: (status) => {
             if (disposed) return;
             setStreamStatus(status);
+            telemetry.status(status);
+            if (status === 'live' && streamFallbackTimer) {
+              clearTimeout(streamFallbackTimer);
+              streamFallbackTimer = null;
+            }
             if ((status === 'reconnecting' || status === 'error') && !streamFallbackTimer) {
               streamFallbackTimer = setTimeout(fallbackToPolling, 1200);
             }
           },
+          onTraffic: (bytes) => telemetry.traffic(bytes),
+          onProbe: (sample) => telemetry.sample(sample),
           onAuthFail: () => onAuthFailRef.current?.(),
         });
       }).catch(fallbackToPolling);
@@ -1164,6 +1199,7 @@ const Terminal = forwardRef(function Terminal({
       sub.dispose();
       liveViewport?.removeEventListener('scroll', handleBufferScroll);
       if (streamPaintRaf != null) cancelAnimationFrame(streamPaintRaf);
+      telemetry.destroy();
       for (const { deco, marker } of decosRef.current) { deco.dispose(); marker.dispose(); }
       decosRef.current = [];
       disposeCursorDeco();
@@ -1247,8 +1283,7 @@ const Terminal = forwardRef(function Terminal({
       />
       <TerminalOverlays
         ready={ready}
-        stream={stream && streamStatus !== 'off'}
-        streamStatus={streamStatus}
+        connectionInfo={connectionInfo}
         connected={connected}
         inputFailure={inputFailure}
         dbgVisible={dbgVisible}

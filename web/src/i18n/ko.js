@@ -1,5 +1,17 @@
 // 한국어 strings. Missing keys fall back to English (see ./index.js translate()).
 export default {
+  'terminal.transport_live': '실시간 업데이트',
+  'terminal.transport_snapshot': '주기적 새로고침',
+  'terminal.connection_connecting': '연결 중',
+  'terminal.connection_good': '연결 양호',
+  'terminal.connection_degraded': '연결 불안정',
+  'terminal.connection_poor': '연결 나쁨',
+  'settings.terminal_transport': '터미널 업데이트 모드',
+  'settings.terminal_transport_live': '실시간 업데이트',
+  'settings.terminal_transport_snapshot': '주기적 업데이트',
+  'settings.terminal_transport_hint': '실시간 업데이트는 WebSocket을 사용해 지연이 낮으며, 네트워크가 불안정하면 주기적 업데이트로 임시 전환됩니다.',
+  'settings.snapshot_interval': '활성 상태 업데이트 간격',
+  'settings.snapshot_interval_hint': '터미널이 유휴 상태가 되면 트래픽과 리소스 사용을 줄이기 위해 업데이트 빈도를 낮춥니다.',
   'terminal.disconnected': '연결이 끊겼습니다. 다시 연결하는 중…',
   'terminal.paneMissing': '이 창이 닫혔습니다. 다른 창으로 전환하세요.',
   'common.save': '저장',

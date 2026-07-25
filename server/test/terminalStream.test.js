@@ -1,6 +1,10 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
-import { decodeControlData, PaneControlStream } from '../src/terminalStream.js';
+import {
+  decodeControlData,
+  echoTerminalProbe,
+  PaneControlStream,
+} from '../src/terminalStream.js';
 
 class FakeChild extends EventEmitter {
   constructor() {
@@ -60,6 +64,16 @@ describe('terminal control data decoder', () => {
 
   it('preserves a literal backslash that is not an octal escape', () => {
     expect(decodeControlData(Buffer.from('a\\\\b'))).toEqual(Buffer.from('a\\b'));
+  });
+});
+
+describe('terminal stream probe', () => {
+  it('echoes only bounded numeric probe identifiers', () => {
+    const ws = fakeSocket();
+    expect(echoTerminalProbe(ws, { type: 'probe', id: 7 })).toBe(true);
+    expect(ws.messages).toEqual([{ type: 'probe', id: 7 }]);
+    expect(echoTerminalProbe(ws, { type: 'probe', id: '7' })).toBe(false);
+    expect(echoTerminalProbe(ws, { type: 'pause' })).toBe(false);
   });
 });
 

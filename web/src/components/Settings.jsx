@@ -7,6 +7,7 @@ import { fmtRemainMin, useRemaining } from '../previewCountdown.js';
 import { getDocHighlight, setDocHighlight } from '../storage.js';
 import { t, getLangCode, setLang, AVAILABLE } from '../i18n';
 import { previewStartError } from '../previewErrors.js';
+import { SNAPSHOT_INTERVALS } from '../terminalTransport.js';
 
 // Settings modal: the screen-column controls (⊟/⊞/↺, previously in the topbar) plus an explicit
 // font-size control. Font reads/writes the live terminal through termRef — the same persisted
@@ -15,6 +16,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   chatTone = 'ink', onChatTone = () => {}, chatLensEnabled = false, onChatLensEnabled = () => {},
   keyboardMode = 'auto', onKeyboardMode = () => {},
   terminalTransport = 'live', onTerminalTransport = () => {},
+  snapshotInterval = 1000, onSnapshotInterval = () => {},
   hooksStatus = null, onEnableHooks = null,
   notifUnread = false, onOpenInbox,
   updateInfo = null, windowId = null,
@@ -210,6 +212,21 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
             ))}
           </div>
           <div className="settings-hint">{t('settings.terminal_transport_hint')}</div>
+          {terminalTransport === 'snapshot' && (
+            <div className="settings-suboption">
+              <div className="settings-label">{t('settings.snapshot_interval')}</div>
+              <div className="settings-btns settings-btns--compact" role="group" aria-label={t('settings.snapshot_interval')}>
+                {SNAPSHOT_INTERVALS.map((intervalMs) => (
+                  <button key={intervalMs} type="button" className="fontbtn"
+                    aria-pressed={snapshotInterval === intervalMs}
+                    onClick={() => onSnapshotInterval(intervalMs)}>
+                    {(intervalMs / 1000).toFixed(intervalMs % 1000 ? 1 : 0)}s
+                  </button>
+                ))}
+              </div>
+              <div className="settings-hint">{t('settings.snapshot_interval_hint')}</div>
+            </div>
+          )}
         </div>
 
         <div className="settings-section">

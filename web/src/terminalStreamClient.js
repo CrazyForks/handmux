@@ -3,6 +3,8 @@ import { getToken } from './storage.js';
 const RECONNECT_MS = 1000;
 const CONNECT_TIMEOUT_MS = 3000;
 const MAX_FRAME_LAG_MS = 10000;
+const PROBE_INTERVAL_MS = 10000;
+const PROBE_TIMEOUT_MS = 5000;
 
 export function openTerminalStream({
   pane,
@@ -10,12 +12,17 @@ export function openTerminalStream({
   onData,
   onReady,
   onStatus,
+  onTraffic,
+  onProbe,
   onAuthFail,
   WebSocketCtor = window.WebSocket,
   token = getToken() ?? '',
   reconnectMs = RECONNECT_MS,
   connectTimeoutMs = CONNECT_TIMEOUT_MS,
   maxFrameLagMs = MAX_FRAME_LAG_MS,
+  probeIntervalMs = PROBE_INTERVAL_MS,
+  probeTimeoutMs = PROBE_TIMEOUT_MS,
+  now = () => Date.now(),
 }) {
   let socket = null;
   let subscribedSocket = null;
@@ -25,6 +32,18 @@ export function openTerminalStream({
   let writes = Promise.resolve();
   let connectTimer = null;
   let messageEpoch = 0;
+  let probeTimer = null;
+  let probeTimeout = null;
+  let probeId = 0;
+  let pendingProbe = null;
+
+  const clearProbe = () => {
+    if (probeTimer) clearInterval(probeTimer);
+    if (probeTimeout) clearTimeout(probeTimeout);
+    probeTimer = null;
+    probeTimeout = null;
+    pendingProbe = null;
+  };
 
   const clearConnectTimer = () => {
     if (connectTimer) {
@@ -42,6 +61,23 @@ export function openTerminalStream({
   const send = (message) => {
     if (socket?.readyState === WebSocketCtor.OPEN) socket.send(JSON.stringify(message));
   };
+  const probe = () => {
+    if (closed || paused || !subscribedSocket || pendingProbe) return;
+    const id = ++probeId;
+    pendingProbe = { id, sentAt: now() };
+    send({ type: 'probe', id });
+    probeTimeout = setTimeout(() => {
+      if (pendingProbe?.id !== id) return;
+      pendingProbe = null;
+      probeTimeout = null;
+      onProbe?.({ ok: false });
+    }, probeTimeoutMs);
+  };
+  const startProbes = () => {
+    clearProbe();
+    probe();
+    probeTimer = setInterval(probe, probeIntervalMs);
+  };
 
   const clearReconnectTimer = () => {
     if (reconnectTimer) {
@@ -55,6 +91,7 @@ export function openTerminalStream({
     socket = null;
     if (subscribedSocket === target) subscribedSocket = null;
     clearConnectTimer();
+    clearProbe();
     try { target?.close(); } catch { /* already closed */ }
   };
 
@@ -75,6 +112,26 @@ export function openTerminalStream({
     };
     nextSocket.onmessage = (event) => {
       if (socket !== nextSocket) return;
+      let message = null;
+      if (typeof event.data === 'string') {
+        try { message = JSON.parse(event.data); } catch {
+          nextSocket.close(1003, 'bad stream frame');
+          return;
+        }
+        if (message.type === 'probe') {
+          if (pendingProbe?.id === message.id) {
+            const rttMs = Math.max(0, now() - pendingProbe.sentAt);
+            pendingProbe = null;
+            if (probeTimeout) clearTimeout(probeTimeout);
+            probeTimeout = null;
+            onProbe?.({ ok: true, rttMs });
+          }
+          return;
+        }
+        onTraffic?.(new TextEncoder().encode(event.data).byteLength);
+      } else {
+        onTraffic?.(event.data?.byteLength ?? 0);
+      }
       const frameEpoch = messageEpoch;
       const queuedAt = Date.now();
       writes = writes.then(async () => {
@@ -89,12 +146,12 @@ export function openTerminalStream({
           await onData?.(new Uint8Array(event.data));
           return;
         }
-        const message = JSON.parse(event.data);
         if (message.type === 'seed') await onSeed?.(message);
         else if (message.type === 'ready') {
           await onReady?.(message);
           clearConnectTimer();
           onStatus?.('live');
+          startProbes();
         }
       }).catch(() => {
         onStatus?.('error');
@@ -106,6 +163,7 @@ export function openTerminalStream({
       socket = null;
       if (subscribedSocket === nextSocket) subscribedSocket = null;
       clearConnectTimer();
+      clearProbe();
       if (closed) return;
       if (event.code === 4001) {
         onAuthFail?.();
@@ -127,6 +185,7 @@ export function openTerminalStream({
       messageEpoch += 1;
       clearReconnectTimer();
       clearConnectTimer();
+      clearProbe();
       send({ type: 'pause' });
       onStatus?.('paused');
     },
@@ -146,6 +205,7 @@ export function openTerminalStream({
       if (socket?.readyState === WebSocketCtor.OPEN) {
         onStatus?.('connecting');
         armConnectTimer(socket);
+        clearProbe();
         if (subscribedSocket === socket) send({ type: 'resync' });
         else {
           subscribedSocket = socket;

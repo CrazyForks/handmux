@@ -10,6 +10,12 @@ const HEARTBEAT_MS = 30000;
 const INITIAL_HISTORY_LINES = 100;
 const PANE_INFO = '"#{pane_width}\\t#{pane_height}\\t#{cursor_x}\\t#{cursor_y}\\t#{cursor_flag}\\t#{alternate_on}\\t#{mouse_any_flag}\\t#{mouse_sgr_flag}"';
 
+export function echoTerminalProbe(ws, message) {
+  if (message?.type !== 'probe' || !Number.isSafeInteger(message.id) || message.id < 0) return false;
+  if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'probe', id: message.id }));
+  return true;
+}
+
 function parsePaneInfo(infoLines) {
   const values = Buffer.concat(infoLines).toString('utf8').split('\t').map(Number);
   if (!values.every(Number.isFinite) || values.length !== 8 || values[0] < 1 || values[1] < 1) {
@@ -296,6 +302,7 @@ export function createTerminalStream({ token, commands, spawnControl } = {}) {
       let message;
       try { message = JSON.parse(raw.toString()); } catch { ws.close(1003, 'bad message'); return; }
       if (stream) {
+        if (echoTerminalProbe(ws, message)) return;
         if (message.type === 'pause') stream.pause();
         else if (message.type === 'resync') {
           try { await stream.resync(); } catch {
