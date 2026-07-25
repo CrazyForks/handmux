@@ -30,6 +30,12 @@ describe('desktop scrollbar styles', () => {
     expect(styles).toMatch(
       /@media\s*\(hover:\s*none\)\s*and\s*\(pointer:\s*coarse\)\s*\{[\s\S]*\.terminal\.terminal--x-overflow\s*\{[^}]*padding-bottom:\s*4px[\s\S]*\.terminal::\-webkit-scrollbar:horizontal\s*\{[^}]*height:\s*4px[\s\S]*\.terminal::\-webkit-scrollbar-thumb:horizontal\s*\{[^}]*border:\s*0/,
     );
+    expect(styles).toMatch(/\.terminal\.terminal--y-overflow\s*\{[^}]*width:\s*calc\(100%\s*-\s*4px\)/);
+    expect(styles).not.toMatch(/\.terminal\.terminal--y-overflow\s*\{[^}]*padding-right:/);
+    expect(styles).toMatch(/\.terminal \.xterm-viewport::\-webkit-scrollbar:vertical\s*\{[^}]*width:\s*0/);
+    expect(styles).toMatch(/\.terminal-y-scrollbar\s*\{[^}]*width:\s*4px/);
+    expect(styles).toMatch(/\.terminal-y-scrollbar > span\s*\{[^}]*width:\s*4px[^}]*background:/);
+    expect(styles).not.toMatch(/\.terminal-y-scrollbar\s*\{[^}]*background:/);
   });
 
   it('uses one visible terminal for history and the live frame', () => {

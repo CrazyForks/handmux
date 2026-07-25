@@ -2452,10 +2452,25 @@ button.cmd-text { background: none; border: none; text-align: left; }
   width: 0;
   height: 0;
 }
-/* Mobile scrollbars overlay content by default. Give the 4px indicator its own 4px row ONLY while
-   Terminal.jsx confirms real horizontal overflow; fitting terminals keep no gutter at all. */
+/* Mobile scrollbars overlay content by default. Reserve exactly 4px only on the axis that really
+   overflows. iOS auto-hides xterm's native vertical indicator, so the vertical strip uses a persistent
+   thumb with no track/background; the native scroll viewport remains the gesture/scroll owner. */
+.terminal-y-scrollbar { display: none; }
 @media (hover: none) and (pointer: coarse) {
   .terminal.terminal--x-overflow { padding-bottom: 4px; }
+  .terminal.terminal--y-overflow { width: calc(100% - 4px); }
   .terminal::-webkit-scrollbar:horizontal { height: 4px; }
   .terminal::-webkit-scrollbar-thumb:horizontal { border: 0; }
+  .terminal .xterm-viewport { scrollbar-width: none; }
+  .terminal .xterm-viewport::-webkit-scrollbar:vertical { width: 0; }
+  .terminal-y-scrollbar {
+    display: block; position: absolute; z-index: 3;
+    top: 0; right: 0; bottom: 0; width: 4px;
+    pointer-events: none;
+  }
+  .terminal-y-scrollbar.has-x { bottom: 4px; }
+  .terminal-y-scrollbar > span {
+    position: absolute; right: 0; width: 4px;
+    border-radius: 999px; background: rgba(255,255,255,.28);
+  }
 }
