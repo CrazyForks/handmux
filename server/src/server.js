@@ -24,6 +24,7 @@ import { createEnvironmentProvider } from './workspace/environment.js';
 import { createWorkspaceLock } from './workspace/lock.js';
 import { createGracefulShutdown, createWorkspaceBackground } from './workspace/checkpointer.js';
 import { createWorkspaceRuntime } from './workspace/runtime.js';
+import { createTerminalStream } from './terminalStream.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -151,10 +152,17 @@ app.get('*', (req, res, next) => {
 const server = app.listen(cfg.port, cfg.host, () => {
   console.log(`[handmux] listening on http://${cfg.host}:${cfg.port} (serving ${staticDir})`);
 });
-// WebSocket/HMR for dynamic previews: route raw Upgrade by Host to the right loopback port.
-server.on('upgrade', preview.onUpgrade);
+const terminalStream = createTerminalStream({ token, commands });
+// The opt-in terminal-stream experiment owns one exact path. Every other Upgrade keeps using the
+// existing dynamic-preview router unchanged.
+server.on('upgrade', (req, socket, head) => {
+  if (!terminalStream.onUpgrade(req, socket, head)) preview.onUpgrade(req, socket, head);
+});
 
 const shutdown = createGracefulShutdown({ events, workspace, server });
-const handleSignal = () => { shutdown().catch(() => {}); };
+const handleSignal = () => {
+  terminalStream.close();
+  shutdown().catch(() => {});
+};
 process.on('SIGINT', handleSignal);
 process.on('SIGTERM', handleSignal);

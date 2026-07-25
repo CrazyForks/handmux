@@ -42,6 +42,7 @@ import { authHandled } from './authGuard.js';
 import Drawer from './components/Drawer.jsx';
 import WindowBar from './components/WindowBar.jsx';
 import Terminal from './components/Terminal.jsx';
+import TerminalStreamTest from './components/TerminalStreamTest.jsx';
 import BottomDock from './components/BottomDock.jsx';
 import ChatComposer from './components/ChatComposer.jsx';
 import LensSwitch from './components/LensSwitch.jsx';
@@ -87,6 +88,8 @@ import {
 import { useDesktopTerminalInput } from './hooks/useDesktopTerminalInput.js';
 
 const COL_STEP = 10; // columns added/removed per ⊟/⊞ tap
+const terminalStreamTest = typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).get('terminalStream') === '1';
 
 // Pick the remembered id if it still exists, else the first. We deliberately don't fall back
 // to tmux's "active" — the local last-opened choice wins, first is the fallback.
@@ -94,6 +97,7 @@ const pickId = (items, prefer) =>
   (prefer && items.some((x) => x.id === prefer) ? prefer : items[0].id);
 
 export default function App() {
+  const TerminalView = terminalStreamTest ? TerminalStreamTest : Terminal;
   const detectedDesktopInput = useMemo(() => desktopInputEnvironment(), []);
   const [keyboardMode, setKeyboardModeState] = useState(getKeyboardMode);
   const desktopInput = keyboardModeUsesDesktop(keyboardMode, detectedDesktopInput);
@@ -1849,7 +1853,7 @@ export default function App() {
                 slashEcho={slashEcho && slashEcho.paneId === current.paneId ? slashEcho : null}
                 onSlashEchoDone={() => setSlashEcho(null)} />
             ) : (
-              <Terminal
+              <TerminalView
                 ref={termRef}
                 key={current.paneId}
                 pane={current.paneId}

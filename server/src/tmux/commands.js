@@ -153,6 +153,13 @@ export async function paneLocation(paneId) {
   return { session, window: windowId, windowName };
 }
 
+export async function paneSession(paneId) {
+  const out = await runTmux(['display-message', '-p', '-t', paneId, '#{session_id}']);
+  const id = out.trim();
+  if (!isSessionId(id)) throw new Error('pane session not found');
+  return id;
+}
+
 // Exit tmux copy/scroll mode if the pane is currently in it. Called before any user input so
 // text and keys reach the shell instead of being swallowed by tmux's mode key-bindings.
 export async function exitCopyModeIfActive(paneId) {
