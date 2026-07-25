@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-07-25
+
 ### Added
 - 电脑浏览器现在可用物理键盘直接操作终端；按 Shift+Enter 或点击草稿框进入草稿模式，Enter 发送后继续编辑，Shift+Enter 换行，Esc 或点击终端回到直通模式；鼠标可原生拖选文字，Mac 用 Cmd+C / Cmd+V、Windows / Linux 用 Ctrl+Shift+C / Ctrl+V（或 Ctrl+Shift+V）复制粘贴；设置中可为当前浏览器自动识别或手动指定手机 / 电脑键盘模式。
 
