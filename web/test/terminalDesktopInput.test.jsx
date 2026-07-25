@@ -267,6 +267,32 @@ describe('desktop terminal input', () => {
     await vi.waitFor(() => expect(mocks.sendInput).toHaveBeenCalledWith('%1', '0312091b1b5b41'));
   });
 
+  it('uses plain Shift+Enter to enter draft mode without sending it to the terminal', () => {
+    const onRequestDraft = vi.fn();
+    render(<Terminal pane="%1" desktop onRequestDraft={onRequestDraft} />);
+    const term = mocks.instances[0];
+    const preventDefault = vi.fn();
+
+    expect(term.customKeyHandler({
+      key: 'Enter',
+      shiftKey: true,
+      ctrlKey: false,
+      altKey: false,
+      metaKey: false,
+      preventDefault,
+    })).toBe(false);
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(onRequestDraft).toHaveBeenCalledOnce();
+
+    expect(term.customKeyHandler({
+      key: 'Enter',
+      shiftKey: true,
+      ctrlKey: true,
+      altKey: false,
+      metaKey: false,
+    })).toBe(true);
+  });
+
   it('wakes polling after a delivered desktop input batch', async () => {
     mocks.getHistory.mockResolvedValue({ unchanged: true });
     mocks.sendInput.mockResolvedValue({ ok: true });

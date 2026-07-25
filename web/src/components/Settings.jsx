@@ -13,6 +13,7 @@ import { previewStartError } from '../previewErrors.js';
 // size the two-finger pinch drives — so the modal and the gesture stay in sync.
 export default function Settings({ open, onClose, termRef, onColAdjust, onColRestore, onOpenChangelog, changelogUnread,
   chatTone = 'ink', onChatTone = () => {}, chatLensEnabled = false, onChatLensEnabled = () => {},
+  keyboardMode = 'auto', onKeyboardMode = () => {},
   hooksStatus = null, onEnableHooks = null,
   notifUnread = false, onOpenInbox,
   updateInfo = null, windowId = null,
@@ -180,6 +181,20 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
             <button className="fontbtn" onClick={() => stepFont(1)} aria-label={t('settings.font_increase')}>A+</button>
             <button className="fontbtn" onClick={auto} title={t('settings.font_auto_title')}>{t('settings.font_auto')}</button>
           </div>
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-label">{t('settings.keyboard_mode')}</div>
+          <div className="settings-btns" role="group" aria-label={t('settings.keyboard_mode')}>
+            {['auto', 'mobile', 'desktop'].map((mode) => (
+              <button key={mode} type="button" className="fontbtn"
+                aria-pressed={keyboardMode === mode}
+                onClick={() => onKeyboardMode(mode)}>
+                {t(`settings.keyboard_mode_${mode}`)}
+              </button>
+            ))}
+          </div>
+          <div className="settings-hint">{t('settings.keyboard_mode_hint')}</div>
         </div>
 
         <div className="settings-section">

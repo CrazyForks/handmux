@@ -84,6 +84,7 @@ const Terminal = forwardRef(function Terminal({
   onAuthFail,
   onDocLinkTap,
   onTap,
+  onRequestDraft,
   onInputFocusChange,
   onInputData,
 }, ref) {
@@ -95,6 +96,8 @@ const Terminal = forwardRef(function Terminal({
   const lastCurForFollowRef = useRef(''); // last cursor key seen by follow → a change re-arms it
   const onTapRef = useRef(onTap); // a clean single tap → dismiss the dock keyboard (called synchronously)
   onTapRef.current = onTap;
+  const onRequestDraftRef = useRef(onRequestDraft);
+  onRequestDraftRef.current = onRequestDraft;
   const onAuthFailRef = useRef(onAuthFail);
   onAuthFailRef.current = onAuthFail;
   const onInputFocusChangeRef = useRef(onInputFocusChange);
@@ -290,6 +293,12 @@ const Terminal = forwardRef(function Terminal({
     elRef.current.classList.toggle('desktop-input', desktop);
     termRef.current = term;
     term.attachCustomKeyEventHandler((event) => {
+      if (desktop && event.key === 'Enter' && event.shiftKey
+        && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing) {
+        event.preventDefault?.();
+        onRequestDraftRef.current?.();
+        return false;
+      }
       if (event.metaKey && ['w', 't', 'l', 'r'].includes(event.key.toLowerCase())) return false;
       return true;
     });

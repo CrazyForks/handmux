@@ -647,8 +647,10 @@ function BottomDock({
       await sendText(pane, value, true);
       onSent?.(value); // record the sent command (App pushes it into the session's recent list)
       setValue('');
-      requestAnimationFrame(() => autoGrow(ref.current)); // shrink back to one line once cleared
-      if (desktopUnified) onReturnToTerminal?.();
+      requestAnimationFrame(() => {
+        autoGrow(ref.current); // shrink back to one line once cleared
+        if (desktopUnified) ref.current?.focus({ preventScroll: true });
+      });
     } catch (err) {
       if (err instanceof UnauthorizedError) onAuthFail?.();
     }
@@ -912,16 +914,7 @@ function BottomDock({
             dots slide together, widen and fuse into a single bar (--morph) that follows the finger (--drag)
             — the keyboard grabber — arming blue past the commit point. The tiny mode label is absolute so it
             adds no height. It sits OUTSIDE the pager, so its tap never collides with the swipe handlers. */}
-        {desktopUnified ? (
-          <div className="desktop-dock-state">
-            {terminalFocused && (
-              <span className="desktop-terminal-input">
-                <i className="desktop-terminal-input-dot" aria-hidden="true" />
-                {t('dock.desktopTerminalInput')}
-              </span>
-            )}
-          </div>
-        ) : (
+        {!desktopUnified && (
           <button type="button" className="dock-handle" ref={handleRef} aria-label={t('dock.mode.toggle')}
             onClick={() => setMode(mode === 'command' ? 'agent' : 'command')}>
             <span className="dock-mode-label">{mode === 'command' ? t('dock.mode.command') : t('dock.mode.chat')}</span>
@@ -1069,7 +1062,9 @@ function BottomDock({
                   onKeyDown={onComposerKeyDown}
                   onFocus={() => setKeyboardUp(true)}
                   onBlur={() => setKeyboardUp(false)}
-                  placeholder={t('dock.input.placeholder')}
+                  placeholder={desktopUnified
+                    ? t(keyboardUp ? 'dock.input.exitDraft' : 'dock.input.enterDraft')
+                    : t('dock.input.placeholder')}
                   autoCapitalize="off"
                   autoCorrect="off"
                   spellCheck={false}

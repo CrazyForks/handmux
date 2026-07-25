@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isDesktopInputEnvironment } from '../src/desktopInput.js';
+import {
+  getKeyboardMode,
+  isDesktopInputEnvironment,
+  keyboardModeUsesDesktop,
+  setKeyboardMode,
+} from '../src/desktopInput.js';
 
 const base = {
   ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
@@ -26,5 +31,31 @@ describe('isDesktopInputEnvironment', () => {
   it('fails closed without a fine pointer and hover', () => {
     expect(isDesktopInputEnvironment({ ...base, finePointer: false })).toBe(false);
     expect(isDesktopInputEnvironment({ ...base, hover: false })).toBe(false);
+  });
+});
+
+describe('keyboard mode preference', () => {
+  const storage = () => {
+    const values = new Map();
+    return {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, value),
+    };
+  };
+
+  it('defaults invalid or missing preferences to auto and persists valid choices', () => {
+    const store = storage();
+    expect(getKeyboardMode(store)).toBe('auto');
+    store.setItem('tw_keyboard_mode', 'other');
+    expect(getKeyboardMode(store)).toBe('auto');
+    setKeyboardMode('mobile', store);
+    expect(getKeyboardMode(store)).toBe('mobile');
+  });
+
+  it('lets mobile and desktop override detection while auto keeps detection', () => {
+    expect(keyboardModeUsesDesktop('mobile', true)).toBe(false);
+    expect(keyboardModeUsesDesktop('desktop', false)).toBe(true);
+    expect(keyboardModeUsesDesktop('auto', true)).toBe(true);
+    expect(keyboardModeUsesDesktop('auto', false)).toBe(false);
   });
 });

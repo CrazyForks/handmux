@@ -586,44 +586,45 @@ describe('BottomDock', () => {
     expect(container.querySelector(`[aria-label="${t('dock.attach')}"]`)).not.toBeNull();
     expect(container.querySelector('.input-history')).not.toBeNull();
     expect(container.querySelector('.input-send')).not.toBeNull();
-    expect(container.querySelector('.input-text').placeholder).toBe('草稿区');
+    expect(container.querySelector('.input-text').placeholder).toBe('按 Shift + Enter 进入草稿模式');
     expect(container.querySelector('.dock-page.command')).toBeNull();
     expect(container.querySelector('.keybar-grid')).toBeNull();
     expect(container.querySelector('.dock-handle')).toBeNull();
   });
 
-  it('shows only a blue dot plus neutral terminal-input copy while xterm owns focus', () => {
+  it('uses focus styling and dynamic placeholder instead of a terminal-mode label', () => {
     render({ pane: '%1', desktopUnified: true, terminalFocused: true });
-    const state = container.querySelector('.desktop-terminal-input');
-    expect(state.textContent).toBe('键盘直通终端');
-    expect(state.querySelector('.desktop-terminal-input-dot')).not.toBeNull();
-    expect(styles).toMatch(/\.desktop-dock-state\s*\{[^}]*justify-content:\s*flex-start/);
-    render({ pane: '%1', desktopUnified: true, terminalFocused: false });
+    const input = container.querySelector('.input-text');
     expect(container.querySelector('.desktop-terminal-input')).toBeNull();
+    expect(input.placeholder).toBe('按 Shift + Enter 进入草稿模式');
+
+    act(() => input.focus());
+    expect(input.placeholder).toBe('按 Esc 回到终端模式 · Shift + Enter 换行');
   });
 
-  it('compacts only the desktop unified dock without shrinking mobile controls', () => {
-    expect(styles).toMatch(/\.bottom-dock\s*\{[^}]*padding:\s*8px/);
-    expect(styles).toMatch(/\.bottom-dock\.desktop-unified\s*\{[^}]*padding:\s*4px 8px 5px/);
-    expect(styles).toMatch(/\.bottom-dock\.desktop-unified \.dock-left\s*\{[^}]*gap:\s*2px/);
-    expect(styles).toMatch(/\.desktop-unified \.desktop-dock-state\s*\{[^}]*min-height:\s*12px/);
-    expect(styles).toMatch(/\.desktop-unified \.quick-bar\s*\{[^}]*padding:\s*0 0 3px/);
-    expect(styles).toMatch(/\.desktop-unified \.input-wrap\s*\{[^}]*margin-top:\s*2px/);
+  it('uses a separate rectangular shortcut row and a flat draft field only on desktop', () => {
+    expect(styles).toMatch(/\.quick-cmd\s*\{[^}]*border-radius:\s*12px/);
+    expect(styles).toMatch(/\.input-wrap\s*\{[^}]*border-radius:\s*20px/);
+    expect(styles).toMatch(/\.desktop-unified \.quick-(?:fix|cmd)[^{]*\{[^}]*border-radius:\s*6px/);
+    expect(styles).toMatch(/\.desktop-unified \.input-wrap\s*\{[^}]*border-radius:\s*8px[^}]*box-shadow:\s*none/);
   });
 
-  it('desktop Enter sends, Shift+Enter stays multiline, and Escape returns with the draft intact', async () => {
+  it('desktop Enter sends and stays in draft mode, Shift+Enter stays multiline, and Escape returns', async () => {
     const onReturnToTerminal = vi.fn();
     render({ pane: '%1', desktopUnified: true, onReturnToTerminal });
     const input = container.querySelector('.input-text');
     const keydown = (key, opts = {}) =>
       act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...opts })));
 
+    act(() => input.focus());
     typeInto(input, '检查修改');
     await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'Enter', bubbles: true,
     })));
     await vi.waitFor(() => expect(sendText).toHaveBeenCalledWith('%1', '检查修改', true));
-    expect(onReturnToTerminal).toHaveBeenCalledTimes(1);
+    expect(onReturnToTerminal).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(input);
+    expect(input.placeholder).toBe('按 Esc 回到终端模式 · Shift + Enter 换行');
 
     typeInto(input, '第一行');
     keydown('Enter', { shiftKey: true });
@@ -632,7 +633,7 @@ describe('BottomDock', () => {
     typeInto(input, '保留草稿');
     keydown('Escape');
     expect(input.value).toBe('保留草稿');
-    expect(onReturnToTerminal).toHaveBeenCalledTimes(2);
+    expect(onReturnToTerminal).toHaveBeenCalledTimes(1);
   });
 
   it('desktop IME Enter does not send', () => {

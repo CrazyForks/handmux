@@ -1,3 +1,6 @@
+const KEYBOARD_MODE_KEY = 'tw_keyboard_mode';
+const KEYBOARD_MODES = new Set(['auto', 'mobile', 'desktop']);
+
 export function isDesktopInputEnvironment({
   ua = '', platform = '', maxTouchPoints = 0, mobileHint = null,
   finePointer = false, hover = false,
@@ -19,4 +22,24 @@ export function desktopInputEnvironment(win = window) {
     finePointer: win.matchMedia?.('(pointer: fine)').matches === true,
     hover: win.matchMedia?.('(hover: hover)').matches === true,
   });
+}
+
+export function getKeyboardMode(storage = window.localStorage) {
+  try {
+    const mode = storage.getItem(KEYBOARD_MODE_KEY);
+    return KEYBOARD_MODES.has(mode) ? mode : 'auto';
+  } catch {
+    return 'auto';
+  }
+}
+
+export function setKeyboardMode(mode, storage = window.localStorage) {
+  if (!KEYBOARD_MODES.has(mode)) return;
+  try { storage.setItem(KEYBOARD_MODE_KEY, mode); } catch { /* storage unavailable */ }
+}
+
+export function keyboardModeUsesDesktop(mode, detectedDesktop) {
+  if (mode === 'desktop') return true;
+  if (mode === 'mobile') return false;
+  return !!detectedDesktop;
 }

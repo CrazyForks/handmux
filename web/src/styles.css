@@ -586,21 +586,6 @@ div.workspace-restore-errors { padding-left: 10px; }
 .dock-track > .dock-page { flex: 0 0 50%; width: 50%; min-width: 0; }
 .bottom-dock.desktop-unified .dock-track { width: 100%; transform: none; transition: none; }
 .bottom-dock.desktop-unified .dock-track > .dock-page.chat { flex-basis: 100%; width: 100%; }
-.desktop-dock-state { min-height: 16px; display: flex; justify-content: flex-start; align-items: center; padding: 0 2px; }
-.desktop-terminal-input { display: inline-flex; align-items: center; gap: 5px; color: #aeb5c0;
-  font-size: 10px; line-height: 1; }
-.desktop-terminal-input-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--blue); }
-/* Desktop has a precise pointer and physical keyboard, so the dock can be denser without shrinking any
-   mobile touch target. Keep every chat control, but reclaim terminal rows from ornamental spacing. */
-.bottom-dock.desktop-unified { gap: 4px; padding: 4px 8px 5px; }
-.bottom-dock.desktop-unified .dock-left { gap: 2px; }
-.desktop-unified .desktop-dock-state { min-height: 12px; padding: 0; }
-.desktop-unified .quick-bar { gap: 4px; padding: 0 0 3px; }
-.desktop-unified .quick-fixed { gap: 4px; padding-right: 5px; }
-.desktop-unified .quick-fix, .desktop-unified .quick-cmd { font-size: 12.5px; padding: 5px 9px; }
-.desktop-unified .quick-fix svg, .desktop-unified .quick-cmd-add svg { width: 14px; height: 14px; }
-.desktop-unified .input-wrap { margin-top: 2px; }
-.desktop-unified .dock-page.chat { padding-bottom: 1px; }
 .dock-page.command { position: relative; } /* anchors the hidden .cmd-capture */
 /* Command keyboard: a fixed 2×7 grid, never scrolls. Equal columns keep the arrows aligned as an
    inverted-T (▲ directly above ▼) left of Enter; ⌫/enter are direct keys; Ctrl/Shift/Alt are sticky
@@ -713,6 +698,22 @@ div.workspace-restore-errors { padding-left: 10px; }
 .quick-cmd-plain { --rgb: 150,157,167; }
 /* Per-window saved commands — green, to set them apart from the grey global ones (shown after them). */
 .quick-cmd-win { --rgb: 95,208,138; }
+/* Desktop uses one compact two-row composer: shortcuts keep their own row and the draft field reads as
+   a regular editor instead of a large mobile pill. Mobile retains the original touch-sized geometry. */
+.bottom-dock.desktop-unified { padding: 6px 8px; }
+.bottom-dock.desktop-unified .dock-left { gap: 0; }
+.desktop-unified .quick-bar { gap: 5px; padding: 0 0 6px; }
+.desktop-unified .quick-fixed { gap: 5px; padding-right: 6px; }
+.desktop-unified .quick-fix, .desktop-unified .quick-cmd {
+  border-radius: 6px; padding: 6px 10px;
+}
+.desktop-unified .input-wrap {
+  margin-top: 0; border-radius: 8px; box-shadow: none;
+}
+.desktop-unified .input-wrap:focus-within {
+  box-shadow: none;
+}
+.desktop-unified .dock-page.chat { padding-bottom: 0; }
 /* 上传进度条:浮在输入行上方一条(失败时变红、文案自带原因),沿用 browse-progress 配色。 */
 .dock-upload { padding: 6px 4px 2px; }
 .dock-upload-label { display: block; color: #9fb6d0; font-size: 12px; margin-bottom: 4px; font-variant-numeric: tabular-nums; }

@@ -21,6 +21,7 @@ const terminal = vi.hoisted(() => ({
   focusInput: vi.fn(),
   blurInput: vi.fn(),
 }));
+const bottomDock = vi.hoisted(() => ({ focusComposer: vi.fn() }));
 
 vi.mock('./api.js', async (importOriginal) => ({ ...(await importOriginal()), ...api }));
 vi.mock('./storage.js', async (importOriginal) => ({
@@ -65,14 +66,27 @@ vi.mock('./hooks/useExitConfirm.js', () => ({ useExitConfirm: () => {} }));
 vi.mock('./hooks/useKeyboardInset.js', () => ({ useKeyboardInset: () => 0 }));
 vi.mock('./hooks/usePageScrollLock.js', () => ({ usePageScrollLock: () => {} }));
 vi.mock('./hooks/useLongPress.js', () => ({ useLongPress: () => ({}) }));
-vi.mock('./desktopInput.js', () => ({ desktopInputEnvironment: () => true }));
+vi.mock('./desktopInput.js', () => ({
+  desktopInputEnvironment: () => true,
+  getKeyboardMode: () => 'auto',
+  setKeyboardMode: vi.fn(),
+  keyboardModeUsesDesktop: () => true,
+}));
 
 vi.mock('./components/WindowBar.jsx', () => ({
   default: (props) => { windowBar.props = props; return null; },
 }));
 vi.mock('./components/BottomDock.jsx', async () => {
-  const { forwardRef } = await import('react');
-  return { default: forwardRef((_props, _ref) => null) };
+  const { forwardRef, useImperativeHandle } = await import('react');
+  return {
+    default: forwardRef((_props, ref) => {
+      useImperativeHandle(ref, () => ({
+        focusComposer: bottomDock.focusComposer,
+        composerFocused: () => false,
+      }), []);
+      return null;
+    }),
+  };
 });
 vi.mock('./components/Terminal.jsx', async () => {
   const { forwardRef, useImperativeHandle } = await import('react');
@@ -162,6 +176,7 @@ beforeEach(() => {
   terminal.props = null;
   terminal.focusInput.mockReset();
   terminal.blurInput.mockReset();
+  bottomDock.focusComposer.mockReset();
   localStorage.clear();
   localStorage.setItem('tw_lang', 'zh');
   localStorage.setItem('tw_token', 'good');
@@ -268,6 +283,15 @@ describe('App management dimensions', () => {
     act(() => terminal.props.onTap());
 
     expect(terminal.focusInput).toHaveBeenCalledOnce();
+  });
+
+  it('moves desktop keyboard ownership into the draft on Shift+Enter', async () => {
+    await renderManagedSession();
+
+    act(() => terminal.props.onRequestDraft());
+
+    expect(terminal.blurInput).toHaveBeenCalledOnce();
+    expect(bottomDock.focusComposer).toHaveBeenCalledOnce();
   });
 });
 

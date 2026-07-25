@@ -78,7 +78,12 @@ import { hasShareFlag, takeSharedFile, clearShareFlag } from './shareIntake.js';
 import { windowManageSubtitle, paneManageSubtitle } from './manageLabels.js';
 import { DEFAULT_SERVER_SHORTCUTS } from './shortcutMerge.js';
 import { recoveryPromptMode } from './workspaceRecovery.js';
-import { desktopInputEnvironment } from './desktopInput.js';
+import {
+  desktopInputEnvironment,
+  getKeyboardMode,
+  keyboardModeUsesDesktop,
+  setKeyboardMode,
+} from './desktopInput.js';
 import { useDesktopTerminalInput } from './hooks/useDesktopTerminalInput.js';
 
 const COL_STEP = 10; // columns added/removed per ⊟/⊞ tap
@@ -89,7 +94,9 @@ const pickId = (items, prefer) =>
   (prefer && items.some((x) => x.id === prefer) ? prefer : items[0].id);
 
 export default function App() {
-  const desktopInput = useMemo(() => desktopInputEnvironment(), []);
+  const detectedDesktopInput = useMemo(() => desktopInputEnvironment(), []);
+  const [keyboardMode, setKeyboardModeState] = useState(getKeyboardMode);
+  const desktopInput = keyboardModeUsesDesktop(keyboardMode, detectedDesktopInput);
   const [needToken, setNeedToken] = useState(!getToken());
   const serverConfig = useServerConfig({ enabled: !needToken });
   const serverShortcuts = serverConfig?.shortcuts || DEFAULT_SERVER_SHORTCUTS;
@@ -226,6 +233,10 @@ export default function App() {
   const terminalFocusedRef = useRef(false);
   terminalFocusedRef.current = terminalFocused;
   const focusTerminal = useCallback(() => termRef.current?.focusInput?.(), []);
+  const focusDraft = useCallback(() => {
+    termRef.current?.blurInput?.();
+    dockRef.current?.focusComposer?.();
+  }, []);
   const focusOwnerAtPointerRef = useRef({ owner: null, at: 0 });
   const captureTerminalOwner = useCallback(() => {
     if (!desktopInput) return;
@@ -318,6 +329,11 @@ export default function App() {
   );
   const terminalOverlayWasOpenRef = useRef(false);
   const restoreFocusAfterOverlayRef = useRef(null);
+  const chooseKeyboardMode = useCallback((mode) => {
+    setKeyboardMode(mode);
+    if (mode === 'desktop' && terminalOverlayOpen) restoreFocusAfterOverlayRef.current = 'terminal';
+    setKeyboardModeState(mode);
+  }, [terminalOverlayOpen]);
   useEffect(() => {
     const wasOpen = terminalOverlayWasOpenRef.current;
     if (desktopInput && terminalOverlayOpen) {
@@ -1552,6 +1568,8 @@ export default function App() {
         onChatTone={pickChatTone}
         chatLensEnabled={chatLensOn}
         onChatLensEnabled={toggleChatLens}
+        keyboardMode={keyboardMode}
+        onKeyboardMode={chooseKeyboardMode}
         hooksStatus={hooksStatus}
         onEnableHooks={enableHooks}
         termRef={termRef}
@@ -1830,6 +1848,7 @@ export default function App() {
                 onDocLinkTap={onDocLinkTap}
                 onInputFocusChange={setTerminalFocused}
                 onInputData={enqueueDesktopInput}
+                onRequestDraft={focusDraft}
                 onTap={() => {
                   if (desktopInput) focusTerminal();
                   else dockRef.current?.hideKeyboard();
