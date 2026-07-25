@@ -208,7 +208,9 @@ export function createTerminalTouchController({
       lastMoveX = x;
       lastMoveTime = event.timeStamp;
       event.preventDefault();
-      event.stopPropagation();
+      // Keep the same xterm touch chain as a vertical drag. We already own scrollLeft in capture phase,
+      // while xterm ignores horizontal movement; allowing the event through avoids making horizontal
+      // terminal gestures a browser-distinct path (notably one that can collapse the mobile keyboard).
       return;
     }
 

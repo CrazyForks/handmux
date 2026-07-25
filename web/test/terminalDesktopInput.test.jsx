@@ -57,6 +57,14 @@ const deferred = () => {
   return { promise, resolve, reject };
 };
 
+const touchEvent = (type, x, y) => {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'touches', {
+    value: [{ clientX: x, clientY: y }],
+  });
+  return event;
+};
+
 vi.mock('../src/api.js', () => ({
   UnauthorizedError: mocks.UnauthorizedError,
   getHistory: mocks.getHistory,
@@ -582,6 +590,25 @@ describe('desktop terminal input', () => {
 
     expect(onKeepKeyboard).toHaveBeenCalledOnce();
     expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('keeps horizontal mobile drags in the same xterm touch chain as vertical drags', () => {
+    const view = render(<Terminal pane="%1" desktop={false} />);
+    const host = view.container.querySelector('.terminal');
+    const screen = view.container.querySelector('.xterm-screen');
+    const reachedXterm = vi.fn();
+    screen.addEventListener('touchmove', reachedXterm);
+    host.scrollLeft = 80;
+
+    const move = touchEvent('touchmove', 160, 102);
+    act(() => {
+      screen.dispatchEvent(touchEvent('touchstart', 200, 100));
+      screen.dispatchEvent(move);
+    });
+
+    expect(host.scrollLeft).toBe(120);
+    expect(move.defaultPrevented).toBe(true);
+    expect(reachedXterm).toHaveBeenCalledOnce();
   });
 
   it('routes a horizontal trackpad gesture past xterm to the outer terminal scroller', () => {
