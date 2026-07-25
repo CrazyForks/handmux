@@ -223,11 +223,11 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 /* Active window with >1 pane: the tab expands inline into "name │ ① cmd ▾". The trigger reuses the
    .win-tab look; the menu (below) reuses Dropdown's .dd-menu. wt-dd is the positioning anchor. */
 .wt-dd { position: relative; flex: none; }
-/* Match the plain .win-tab metrics so active/inactive tabs read the same: keep its 4px 10px padding
-   (no override) and let the 4px gap own the logo→name spacing — so zero the logo's own margin, else
-   it'd stack with the gap and the active tab's title would sit further right than an inactive one. */
+/* Match the plain .win-tab metrics so active/inactive tabs read the same. */
 .wt-trigger { display: inline-flex; align-items: center; gap: 4px; }
-.wt-trigger .agent-mark { margin-right: 0; }
+/* Both tab variants render the logo + first label through this exact wrapper. Keeping that spacing
+   in one place avoids flex-gap vs icon-margin differences between the expanded and plain tabs. */
+.win-title { display: inline-flex; align-items: center; gap: 4px; }
 /* Tight separator: negative margin pulls the name/pane in so "main│① zsh" reads compact. */
 .wt-sep { margin: 0 -1px; color: #cfe0ff; opacity: .4; font-weight: 400; }
 /* Keep the expanded pane tab compact: cap the name/command widths so a long command can't blow the
@@ -1617,7 +1617,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 /* Agent brand logo (Claude / Codex) — flush in the inbox row and on a single-pane window tab. */
 .agent-mark { width: 15px; height: 15px; flex: none; display: inline-block; }
 .agent-mark svg { display: block; width: 100%; height: 100%; }
-.win-tab .agent-mark { vertical-align: -2px; margin-right: 4px; }
+.win-tab .agent-mark { margin: 0; }
 .inbox-chip { font-size: 11px; padding: 1px 6px; border-radius: 4px; flex: none; }
 .inbox-chip.needs { background: #e0a020; color: #111; }
 .inbox-chip.done { background: var(--green); color: #fff; }

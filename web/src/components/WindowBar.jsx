@@ -22,8 +22,10 @@ function WindowTab({ window: win, active, agent, onSelect, onManage }) {
   const lp = useLongPress(() => onManage(win), { onClick: () => onSelect(win) });
   return (
     <button data-win={win.id} className={`win-tab ${active ? 'active' : ''}`} {...lp}>
-      {agent && <AgentMark agent={agent} />}
-      {win.name || win.id}
+      <span className="win-title">
+        {agent && <AgentMark agent={agent} />}
+        <span>{win.name || win.id}</span>
+      </span>
       {win.panes > 1 && <span className="win-panes">{win.panes}</span>}
     </button>
   );
@@ -196,8 +198,10 @@ function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, on
         aria-expanded={open}
         {...lp}
       >
-        {agent && <AgentMark agent={agent} />}
-        <span className="wt-name">{win.name || win.id}</span>
+        <span className="win-title">
+          {agent && <AgentMark agent={agent} />}
+          <span className="wt-name">{win.name || win.id}</span>
+        </span>
         <span className="wt-sep" aria-hidden="true">│</span>
         <span className="wt-pane">{paneLabel(cur, idx)}</span>
         <span className={`wt-caret${open ? ' open' : ''}`} aria-hidden="true">▾</span>

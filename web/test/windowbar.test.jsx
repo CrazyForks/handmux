@@ -40,9 +40,30 @@ const base = {
 };
 
 describe('WindowBar', () => {
-  it('uses flex layout so plain and expanded tabs keep the same Agent logo spacing', () => {
+  it('uses one title wrapper so plain and expanded tabs keep the same Agent logo spacing', () => {
     expect(styles).toMatch(/\.win-tab\s*\{[^}]*display:\s*inline-flex[^}]*align-items:\s*center/);
-    expect(styles).toMatch(/\.wt-trigger \.agent-mark\s*\{\s*margin-right:\s*0/);
+    expect(styles).toMatch(/\.win-title\s*\{[^}]*display:\s*inline-flex[^}]*gap:\s*4px/);
+    expect(styles).toMatch(/\.win-tab \.agent-mark\s*\{\s*margin:\s*0/);
+
+    render({
+      ...base,
+      windows: [
+        { id: '@1', name: 'plain', panes: 1 },
+        { id: '@2', name: 'expanded', panes: 2 },
+      ],
+      currentWindowId: '@2',
+      currentAgent: 'codex',
+      windowAgents: { '@1': 'codex', '@2': 'codex' },
+      panes: [
+        { id: '%1', command: 'zsh' },
+        { id: '%2', command: 'codex' },
+      ],
+      onSelectWindow: vi.fn(),
+      onSelectPane: vi.fn(),
+    });
+    const titles = [...container.querySelectorAll('.win-title')];
+    expect(titles).toHaveLength(2);
+    expect(titles.every((title) => title.querySelector('.agent-mark'))).toBe(true);
   });
 
   it('renders a tab per window and highlights the current one', () => {

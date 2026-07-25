@@ -4,6 +4,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Fixed
+- Window 选中和未选中状态下，Agent 图标与窗口名称的间距保持一致。
+
 ## [0.19.0] - 2026-07-25
 
 ### Added
