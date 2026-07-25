@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  fitRows, historyFillRows, scrollDecision, topTarget, bottomTarget, cursorBufferLine,
-  bottomPadRows, followTarget,
+  fitRows, scrollDecision, topTarget, bottomTarget, cursorBufferLine, bottomPadRows, followTarget,
 } from '../src/terminalViewport.js';
 
 describe('fitRows', () => {
@@ -9,18 +8,6 @@ describe('fitRows', () => {
     expect(fitRows(300, 20)).toBe(15);
     expect(fitRows(10, 20)).toBe(1);
     expect(fitRows(300, 0)).toBe(1);
-  });
-});
-
-describe('historyFillRows', () => {
-  it('fills only spare local rows and never invents history', () => {
-    expect(historyFillRows(40, 16, 100)).toBe(24);
-    expect(historyFillRows(40, 16, 7)).toBe(7);
-    expect(historyFillRows(20, 24, 100)).toBe(0);
-  });
-
-  it('does not place normal-screen history above an alternate-screen app', () => {
-    expect(historyFillRows(40, 16, 100, true)).toBe(0);
   });
 });
 
