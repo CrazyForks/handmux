@@ -571,6 +571,19 @@ describe('desktop terminal input', () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
+  it('uses the dock keyboard keeper for every mobile terminal gesture before its axis is known', () => {
+    const onKeepKeyboard = vi.fn(() => true);
+    const view = render(
+      <Terminal pane="%1" desktop={false} onKeepKeyboard={onKeepKeyboard} />,
+    );
+    const event = new MouseEvent('pointerdown', { bubbles: true, cancelable: true });
+
+    view.container.querySelector('.terminal').dispatchEvent(event);
+
+    expect(onKeepKeyboard).toHaveBeenCalledOnce();
+    expect(event.defaultPrevented).toBe(true);
+  });
+
   it('routes a horizontal trackpad gesture past xterm to the outer terminal scroller', () => {
     const view = render(<Terminal pane="%1" desktop />);
     const host = view.container.querySelector('.terminal');

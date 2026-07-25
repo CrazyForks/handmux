@@ -769,6 +769,16 @@ function BottomDock({
   // currently holds it; a no-op when it's already down). Kept synchronous inside the tap gesture.
   useImperativeHandle(fwdRef, () => ({
     fill: pick,
+    keepKeyboardForGesture: () => {
+      const active = document.activeElement;
+      const keyboardOpen = physicalKeyboardUp()
+        || active === cmdRef.current
+        || active === ref.current;
+      if (!keyboardOpen) return false;
+      const field = fieldForPage(pageIndexRef.current);
+      field?.focus({ preventScroll: true });
+      return !!field;
+    },
     hideKeyboard: () => {
       const a = document.activeElement;
       if (a === cmdRef.current || a === ref.current) a.blur();

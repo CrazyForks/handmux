@@ -1884,6 +1884,7 @@ export default function App() {
                 onInputFocusChange={setTerminalFocused}
                 onInputData={enqueueDesktopInput}
                 onRequestDraft={focusDraft}
+                onKeepKeyboard={() => dockRef.current?.keepKeyboardForGesture?.() ?? false}
                 onTap={() => {
                   if (desktopInput) focusTerminal();
                   else dockRef.current?.hideKeyboard();

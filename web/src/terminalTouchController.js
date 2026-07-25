@@ -29,6 +29,7 @@ export function createTerminalTouchController({
   scheduleFit,
   wake,
   onTap,
+  onKeepKeyboard,
 }) {
   const buffer = () => term.buffer.active;
   let startX = 0;
@@ -353,7 +354,11 @@ export function createTerminalTouchController({
       onTap();
       return;
     }
-    if (shouldKeepKeyboard(document.activeElement) && event.cancelable) event.preventDefault();
+    // One common rule for every terminal gesture axis: if the dock field still owns the keyboard, or the
+    // physical keyboard is open but focus drifted, restore/keep that field before the browser's default
+    // pointer action can collapse it. A clean tap still dismisses explicitly in onTouchEnd; drags keep it.
+    const keepKeyboard = shouldKeepKeyboard(document.activeElement) || onKeepKeyboard?.();
+    if (keepKeyboard && event.cancelable) event.preventDefault();
   };
 
   host.addEventListener('pointerdown', onPointerDown, { capture: true });

@@ -47,6 +47,7 @@ const Terminal = forwardRef(function Terminal({
   onAuthFail,
   onDocLinkTap,
   onTap,
+  onKeepKeyboard,
   onRequestDraft,
   onInputFocusChange,
   onInputData,
@@ -59,6 +60,8 @@ const Terminal = forwardRef(function Terminal({
   const lastCurForFollowRef = useRef(''); // last cursor key seen by follow → a change re-arms it
   const onTapRef = useRef(onTap); // a clean single tap → dismiss the dock keyboard (called synchronously)
   onTapRef.current = onTap;
+  const onKeepKeyboardRef = useRef(onKeepKeyboard);
+  onKeepKeyboardRef.current = onKeepKeyboard;
   const onRequestDraftRef = useRef(onRequestDraft);
   onRequestDraftRef.current = onRequestDraft;
   const onAuthFailRef = useRef(onAuthFail);
@@ -730,6 +733,7 @@ const Terminal = forwardRef(function Terminal({
       scheduleFit,
       wake: () => wakeRef.current?.(),
       onTap: () => onTapRef.current?.(),
+      onKeepKeyboard: () => onKeepKeyboardRef.current?.() ?? false,
     });
 
     // Rebuild the persistent doc-path UNDERLINE after each full repaint (the visual cue; the actual
