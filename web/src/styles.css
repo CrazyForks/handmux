@@ -705,8 +705,12 @@ div.workspace-restore-errors { padding-left: 10px; }
   border-radius: 6px; padding: 6px 10px;
 }
 .desktop-unified .input-wrap {
-  margin-top: 0; border-radius: 8px; box-shadow: none;
+  margin-top: 0; padding: 3px 4px; border-radius: 8px; box-shadow: none;
 }
+.desktop-unified .input-wrap.multi > .input-mic,
+.desktop-unified .input-wrap.multi > .input-send { bottom: 5px; }
+.desktop-unified .input-wrap.multi > .input-send { right: 4px; }
+.desktop-unified .input-wrap.multi > .input-mic { right: 42px; }
 .desktop-unified .input-wrap:focus-within {
   box-shadow: none;
 }

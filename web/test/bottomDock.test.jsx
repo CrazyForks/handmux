@@ -606,7 +606,7 @@ describe('BottomDock', () => {
     expect(styles).toMatch(/\.quick-cmd\s*\{[^}]*border-radius:\s*12px/);
     expect(styles).toMatch(/\.input-wrap\s*\{[^}]*border-radius:\s*20px/);
     expect(styles).toMatch(/\.desktop-unified \.quick-(?:fix|cmd)[^{]*\{[^}]*border-radius:\s*6px/);
-    expect(styles).toMatch(/\.desktop-unified \.input-wrap\s*\{[^}]*border-radius:\s*8px[^}]*box-shadow:\s*none/);
+    expect(styles).toMatch(/\.desktop-unified \.input-wrap\s*\{[^}]*padding:\s*3px 4px[^}]*border-radius:\s*8px[^}]*box-shadow:\s*none/);
   });
 
   it('desktop Enter sends and stays in draft mode, Shift+Enter stays multiline, and Escape returns', async () => {
