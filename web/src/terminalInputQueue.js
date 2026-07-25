@@ -68,12 +68,7 @@ export function createTerminalInputQueue({
   return {
     enqueue(pane, data) {
       if (disposed || !pane || !data) return;
-      const bytes = typeof data === 'string'
-        ? encoder.encode(data)
-        : data instanceof Uint8Array
-          ? data
-          : new Uint8Array(data);
-      staged.push({ pane, hex: toHex(bytes) });
+      staged.push({ pane, hex: toHex(encoder.encode(data)) });
       if (!scheduled) {
         scheduled = true;
         queueMicrotask(flush);
