@@ -14,6 +14,7 @@ import { previewStartError } from '../previewErrors.js';
 export default function Settings({ open, onClose, termRef, onColAdjust, onColRestore, onOpenChangelog, changelogUnread,
   chatTone = 'ink', onChatTone = () => {}, chatLensEnabled = false, onChatLensEnabled = () => {},
   keyboardMode = 'auto', onKeyboardMode = () => {},
+  terminalTransport = 'live', onTerminalTransport = () => {},
   hooksStatus = null, onEnableHooks = null,
   notifUnread = false, onOpenInbox,
   updateInfo = null, windowId = null,
@@ -195,6 +196,20 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
             ))}
           </div>
           <div className="settings-hint">{t('settings.keyboard_mode_hint')}</div>
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-label">{t('settings.terminal_transport')}</div>
+          <div className="settings-btns" role="group" aria-label={t('settings.terminal_transport')}>
+            {['live', 'snapshot'].map((mode) => (
+              <button key={mode} type="button" className="fontbtn"
+                aria-pressed={terminalTransport === mode}
+                onClick={() => onTerminalTransport(mode)}>
+                {t(`settings.terminal_transport_${mode}`)}
+              </button>
+            ))}
+          </div>
+          <div className="settings-hint">{t('settings.terminal_transport_hint')}</div>
         </div>
 
         <div className="settings-section">

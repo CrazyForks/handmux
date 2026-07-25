@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 const styles = readFileSync(`${process.cwd()}/src/styles.css`, 'utf8');
+const terminalSource = readFileSync(`${process.cwd()}/src/components/Terminal.jsx`, 'utf8');
 
 describe('desktop scrollbar styles', () => {
   it('uses one custom scrollbar skin only for precise pointing devices', () => {
@@ -29,11 +30,15 @@ describe('desktop scrollbar styles', () => {
     expect(styles).toMatch(
       /@media\s*\(hover:\s*none\)\s*and\s*\(pointer:\s*coarse\)\s*\{[\s\S]*\.terminal\.terminal--x-overflow\s*\{[^}]*padding-bottom:\s*4px[\s\S]*\.terminal::\-webkit-scrollbar:horizontal\s*\{[^}]*height:\s*4px[\s\S]*\.terminal::\-webkit-scrollbar-thumb:horizontal\s*\{[^}]*border:\s*0/,
     );
-    expect(styles).toMatch(/\.terminal\.terminal--y-overflow\s*\{[^}]*width:\s*calc\(100%\s*-\s*4px\)/);
-    expect(styles).not.toMatch(/\.terminal\.terminal--y-overflow\s*\{[^}]*padding-right:/);
-    expect(styles).toMatch(/\.terminal \.xterm-viewport::\-webkit-scrollbar:vertical\s*\{[^}]*width:\s*0/);
-    expect(styles).toMatch(/\.terminal-y-scrollbar\s*\{[^}]*width:\s*4px/);
-    expect(styles).toMatch(/\.terminal-y-scrollbar > span\s*\{[^}]*width:\s*4px[^}]*background:/);
-    expect(styles).not.toMatch(/\.terminal-y-scrollbar\s*\{[^}]*background:/);
+  });
+
+  it('uses one visible terminal for history and the live frame', () => {
+    expect(styles).toMatch(
+      /\.terminal__live\s*\{[^}]*width:\s*100%[^}]*min-width:\s*100%[^}]*height:\s*100%/,
+    );
+    expect(terminalSource).not.toMatch(/terminal__history|terminal__stack|terminal--stream-composite/);
+    expect(styles).toMatch(
+      /\.terminal-history-boundary\s*\{[^}]*repeating-linear-gradient/,
+    );
   });
 });

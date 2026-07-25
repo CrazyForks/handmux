@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  fitRows, scrollDecision, topTarget, bottomTarget, cursorBufferLine, bottomPadRows, followTarget,
+  fitRows, scrollDecision, topTarget, bottomTarget, cursorBufferLine,
+  bottomPadRows, followTarget,
 } from '../src/terminalViewport.js';
 
 describe('fitRows', () => {
