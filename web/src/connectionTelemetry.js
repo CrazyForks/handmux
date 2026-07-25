@@ -1,6 +1,6 @@
 const RATE_WINDOW_MS = 3000;
 const DEGRADE_AFTER_MS = 15000;
-const RECOVER_AFTER_MS = 60000;
+const RECOVER_AFTER_MS = 30000;
 
 const QUALITY_RANK = {
   connecting: -1,
@@ -142,6 +142,9 @@ export function createConnectionTelemetry({
     },
     getSnapshot() {
       updateRate();
+      return { ...state };
+    },
+    peek() {
       return { ...state };
     },
     destroy() {

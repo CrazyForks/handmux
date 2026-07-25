@@ -71,4 +71,23 @@ describe('connection telemetry', () => {
     expect(telemetry.getSnapshot().bytesPerSecond).toBe(0);
     telemetry.destroy();
   });
+
+  it('recovers from an unstable connection after thirty seconds of good samples', () => {
+    let now = 0;
+    const telemetry = createConnectionTelemetry({
+      mode: 'snapshot',
+      now: () => now,
+      setIntervalFn: vi.fn(() => 1),
+      clearIntervalFn: vi.fn(),
+    });
+    telemetry.status('error');
+    telemetry.sample({ ok: true, rttMs: 100 });
+    now = 29999;
+    telemetry.sample({ ok: true, rttMs: 100 });
+    expect(telemetry.getSnapshot().quality).toBe('degraded');
+    now = 30000;
+    telemetry.sample({ ok: true, rttMs: 100 });
+    expect(telemetry.getSnapshot().quality).toBe('good');
+    telemetry.destroy();
+  });
 });

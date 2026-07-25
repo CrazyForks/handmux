@@ -9,7 +9,7 @@ export default {
   'settings.terminal_transport': '터미널 업데이트 모드',
   'settings.terminal_transport_live': '실시간 업데이트',
   'settings.terminal_transport_snapshot': '주기적 업데이트',
-  'settings.terminal_transport_hint': '실시간 업데이트는 WebSocket을 사용해 지연이 낮으며, 네트워크가 불안정하면 주기적 업데이트로 임시 전환됩니다.',
+  'settings.terminal_transport_hint': '실시간 업데이트는 WebSocket을 사용하며, 네트워크가 불안정하면 주기적 업데이트로 전환되고 30초 동안 안정되면 자동 복귀합니다.',
   'settings.snapshot_interval': '활성 상태 업데이트 간격',
   'settings.snapshot_interval_hint': '터미널이 유휴 상태가 되면 트래픽과 리소스 사용을 줄이기 위해 업데이트 빈도를 낮춥니다.',
   'terminal.disconnected': '연결이 끊겼습니다. 다시 연결하는 중…',

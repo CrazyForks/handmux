@@ -9,7 +9,7 @@ export default {
   'settings.terminal_transport': 'ターミナル更新モード',
   'settings.terminal_transport_live': 'リアルタイム更新',
   'settings.terminal_transport_snapshot': '定期更新',
-  'settings.terminal_transport_hint': 'リアルタイム更新は WebSocket を使用し、低遅延です。回線が不安定な場合は一時的に定期更新へ切り替わります。',
+  'settings.terminal_transport_hint': 'リアルタイム更新は WebSocket を使用し、回線が不安定な場合は定期更新へ切り替わり、30 秒安定すると自動で戻ります。',
   'settings.snapshot_interval': '操作中の更新間隔',
   'settings.snapshot_interval_hint': 'ターミナルがアイドル状態になると更新頻度を下げ、通信量とリソースを節約します。',
   'terminal.disconnected': '接続が切れました。再接続しています…',

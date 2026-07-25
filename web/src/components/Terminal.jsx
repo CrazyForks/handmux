@@ -276,11 +276,16 @@ const Terminal = forwardRef(function Terminal({
     let scheduleStreamRender = () => {};
     let historyMode = false;
     let seeded = false;
+    let streamRecoveryInProgress = false;
+    let maybeRecoverStream = () => {};
     const telemetry = createConnectionTelemetry({
       mode: stream ? 'live' : 'snapshot',
       onChange: (info) => {
         setConnectionInfo(info);
         if (streamMode && info.quality === 'poor') fallbackToPolling();
+        else if (!streamMode && info.mode === 'snapshot' && info.quality === 'good') {
+          maybeRecoverStream();
+        }
       },
     });
     // Fresh slate per pane: don't carry the previous pane's alt/mouse state (else switching from a
@@ -809,6 +814,7 @@ const Terminal = forwardRef(function Terminal({
 
     const applyStreamSeed = async (frame) => {
       if (disposed || !streamMirror) return;
+      const recoveringInBackground = streamRecoveryInProgress && !streamMode;
       if (streamFallbackTimer) {
         clearTimeout(streamFallbackTimer);
         streamFallbackTimer = null;
@@ -818,18 +824,22 @@ const Terminal = forwardRef(function Terminal({
       streamCursorVisible = false;
       historyMode = false;
       lastHash = null;
-      paneRows = frame.height;
-      altScreenRef.current = !!frame.alt;
-      mouseAwareRef.current = !!frame.mouseAware;
-      setAltScreen((value) => (value === !!frame.alt ? value : !!frame.alt));
       depth = Math.max(liveDepth(), Number(frame.historyLines) || 0);
+      if (!recoveringInBackground) {
+        paneRows = frame.height;
+        altScreenRef.current = !!frame.alt;
+        mouseAwareRef.current = !!frame.mouseAware;
+        setAltScreen((value) => (value === !!frame.alt ? value : !!frame.alt));
+      }
       await streamMirror.seed(frame);
       if (disposed) return;
-      lastAnsi = frame.ansi;
-      lastCur = '';
-      curInfo = null;
-      setPaused(false);
-      scheduleFit();
+      if (!recoveringInBackground) {
+        lastAnsi = frame.ansi;
+        lastCur = '';
+        curInfo = null;
+        setPaused(false);
+        scheduleFit();
+      }
     };
 
     const applyStreamData = async (data) => {
@@ -840,20 +850,26 @@ const Terminal = forwardRef(function Terminal({
 
     const finishStreamSeed = async ({ cur }) => {
       if (disposed || !streamMirror) return;
-      streamCursorVisible = !!cur?.vis;
-      lastCur = cur ? `${cur.row},${cur.col},${cur.vis ? 1 : 0}` : '';
+      const recoveringInBackground = streamRecoveryInProgress && !streamMode;
+      if (!recoveringInBackground) {
+        streamCursorVisible = !!cur?.vis;
+        lastCur = cur ? `${cur.row},${cur.col},${cur.vis ? 1 : 0}` : '';
+      }
       await streamMirror.ready(cur);
       if (disposed) return;
       streamMirrorReady = true;
-      scheduleFit();
-      setTimeout(() => {
-        if (!disposed && streamMirrorReady && !revealed) scheduleStreamRender();
-      }, 400);
+      if (!recoveringInBackground) {
+        scheduleFit();
+        setTimeout(() => {
+          if (!disposed && streamMirrorReady && !revealed) scheduleStreamRender();
+        }, 400);
+      }
     };
 
     const repaint = async (lines, keepPosition, isPull = false) => {
       if (busy || disposed) return;
       busy = true;
+      const startedInStreamMode = streamMode;
       const requestStartedAt = Date.now();
       // Anchor: remember how far the top-visible row sits from the buffer's END, so after the reseed
       // (which prepends history above, on a pull) we restore the same content via scrollToLine below.
@@ -876,6 +892,9 @@ const Terminal = forwardRef(function Terminal({
       try {
         const hist = await getHistory(pane, lines, lastHash);
         if (disposed) return;
+        // A background WebSocket recovery may have completed while this snapshot request was in flight.
+        // Never let the older snapshot overwrite the newly activated live frame.
+        if (!startedInStreamMode && streamMode) return;
         telemetry.sample({
           ok: true,
           rttMs: Date.now() - requestStartedAt,
@@ -1028,6 +1047,7 @@ const Terminal = forwardRef(function Terminal({
     const fallbackToPolling = async () => {
       if (disposed || !streamMode) return;
       streamMode = false;
+      streamRecoveryInProgress = false;
       historyMode = false;
       streamMirrorReady = false;
       streamPaintQueued = false;
@@ -1035,10 +1055,7 @@ const Terminal = forwardRef(function Terminal({
         cancelAnimationFrame(streamPaintRaf);
         streamPaintRaf = null;
       }
-      streamMirror?.dispose();
-      streamMirror = null;
-      const drained = streamClient?.close();
-      streamClient = null;
+      const drained = streamClient?.suspend?.();
       setStreamStatus('off');
       telemetry.setMode('snapshot', { fallback: true });
       setConn(nextConnection(connState, 'reset'));
@@ -1047,33 +1064,85 @@ const Terminal = forwardRef(function Terminal({
       scheduleFit();
       startLoop();
     };
-    if (streamMode) {
-      import('../terminalStreamMirror.js').then(({ createTerminalStreamMirror }) => {
-        if (disposed || !streamMode) return;
+    const handleStreamStatus = (status) => {
+      if (disposed) return;
+      setStreamStatus(status);
+      telemetry.status(status);
+      if (status === 'live') {
+        if (streamFallbackTimer) {
+          clearTimeout(streamFallbackTimer);
+          streamFallbackTimer = null;
+        }
+        if (streamRecoveryInProgress && !streamMode) {
+          if (document.hidden || selActiveRef.current || (seeded && !nearBottom())) {
+            streamRecoveryInProgress = false;
+            streamMirrorReady = false;
+            streamClient?.suspend();
+            setStreamStatus('off');
+            return;
+          }
+          streamRecoveryInProgress = false;
+          streamMode = true;
+          historyMode = false;
+          epoch += 1;
+          if (timer) {
+            clearTimeout(timer);
+            timer = null;
+          }
+          telemetry.setMode('live');
+          setConn(nextConnection(connState, 'reset'));
+          scheduleFit();
+          scheduleStreamRender();
+        }
+        return;
+      }
+      if (status !== 'reconnecting' && status !== 'error') return;
+      if (streamRecoveryInProgress && !streamMode) {
+        streamRecoveryInProgress = false;
+        streamClient?.suspend();
+        setStreamStatus('off');
+        return;
+      }
+      if (streamMode && !streamFallbackTimer) {
+        streamFallbackTimer = setTimeout(fallbackToPolling, 1200);
+      }
+    };
+    const connectStream = async () => {
+      if (!streamMirror) {
+        const { createTerminalStreamMirror } = await import('../terminalStreamMirror.js');
+        if (disposed) return;
         streamMirror = createTerminalStreamMirror({ scrollback: MAX_LINES + 100 });
-        streamClient = openTerminalStream({
-          pane,
-          onSeed: applyStreamSeed,
-          onData: applyStreamData,
-          onReady: finishStreamSeed,
-          onStatus: (status) => {
-            if (disposed) return;
-            setStreamStatus(status);
-            telemetry.status(status);
-            if (status === 'live' && streamFallbackTimer) {
-              clearTimeout(streamFallbackTimer);
-              streamFallbackTimer = null;
-            }
-            if ((status === 'reconnecting' || status === 'error') && !streamFallbackTimer) {
-              streamFallbackTimer = setTimeout(fallbackToPolling, 1200);
-            }
-          },
-          onTraffic: (bytes) => telemetry.traffic(bytes),
-          onProbe: (sample) => telemetry.sample(sample),
-          onAuthFail: () => onAuthFailRef.current?.(),
-        });
-      }).catch(fallbackToPolling);
-    } else startLoop();
+      }
+      if (streamClient) {
+        streamClient.resync();
+        return;
+      }
+      streamClient = openTerminalStream({
+        pane,
+        onSeed: applyStreamSeed,
+        onData: applyStreamData,
+        onReady: finishStreamSeed,
+        onStatus: handleStreamStatus,
+        onTraffic: (bytes) => telemetry.traffic(bytes),
+        onProbe: (sample) => telemetry.sample(sample),
+        onAuthFail: () => onAuthFailRef.current?.(),
+      });
+    };
+    maybeRecoverStream = () => {
+      const currentConnection = telemetry.peek();
+      if (disposed || streamMode || streamRecoveryInProgress || !stream || document.hidden
+        || currentConnection.mode !== 'snapshot' || currentConnection.quality !== 'good'
+        || selActiveRef.current || (seeded && !nearBottom())) return;
+      streamRecoveryInProgress = true;
+      connectStream().catch(() => {
+        if (disposed) return;
+        streamRecoveryInProgress = false;
+        telemetry.status('error');
+        setStreamStatus('off');
+      });
+    };
+    if (streamMode) connectStream().catch(fallbackToPolling);
+    else startLoop();
     const resumeStream = () => {
       if (!streamMode || disposed) return;
       historyMode = false;
@@ -1159,6 +1228,7 @@ const Terminal = forwardRef(function Terminal({
         setPaused(false);
         setScrollInfo('');
         if (historyMode) resumeStream();
+        else maybeRecoverStream();
         return;
       }
       if (streamMode && historyMode && nearBottom()) {
@@ -1279,7 +1349,7 @@ const Terminal = forwardRef(function Terminal({
     <div className="terminal-wrap">
       <div
         ref={elRef}
-        className={`terminal${ready ? '' : ' terminal--loading'}${desktop ? ' desktop-input' : ''}${xOverflow ? ' terminal--x-overflow' : ''}${stream && streamStatus !== 'off' ? ' terminal--stream' : ''}`}
+        className={`terminal${ready ? '' : ' terminal--loading'}${desktop ? ' desktop-input' : ''}${xOverflow ? ' terminal--x-overflow' : ''}${connectionInfo.mode === 'live' ? ' terminal--stream' : ''}`}
       />
       <TerminalOverlays
         ready={ready}

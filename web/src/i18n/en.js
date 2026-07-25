@@ -297,7 +297,7 @@ export default {
   'settings.terminal_transport': 'Terminal refresh mode',
   'settings.terminal_transport_live': 'Live updates',
   'settings.terminal_transport_snapshot': 'Timed refresh',
-  'settings.terminal_transport_hint': 'Live updates use WebSocket for lower latency and temporarily fall back to timed refresh on a poor connection.',
+  'settings.terminal_transport_hint': 'Live updates use WebSocket for lower latency, fall back on a poor connection, and return after 30 stable seconds.',
   'settings.snapshot_interval': 'Active refresh rate',
   'settings.snapshot_interval_hint': 'The terminal refreshes less often while idle to reduce traffic and resource use.',
   'settings.chat_lens': 'Enable chat view (experimental)',

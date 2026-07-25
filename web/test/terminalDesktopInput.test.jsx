@@ -281,10 +281,10 @@ describe('desktop terminal input', () => {
   it('falls back to snapshot polling when the real-time stream cannot recover', async () => {
     vi.useFakeTimers();
     let callbacks;
-    const close = vi.fn(() => Promise.resolve());
+    const suspend = vi.fn(() => Promise.resolve());
     mocks.openTerminalStream.mockImplementation((options) => {
       callbacks = options;
-      return { pause: vi.fn(), resync: vi.fn(), close };
+      return { pause: vi.fn(), suspend, resync: vi.fn(), close: vi.fn(() => Promise.resolve()) };
     });
     mocks.getHistory.mockResolvedValue({
       ansi: 'fallback',
@@ -304,7 +304,7 @@ describe('desktop terminal input', () => {
       await Promise.resolve();
     });
 
-    expect(close).toHaveBeenCalledOnce();
+    expect(suspend).toHaveBeenCalledOnce();
     expect(mocks.getHistory).toHaveBeenCalled();
     expect(view.container.querySelector('.terminal').classList.contains('terminal--stream')).toBe(false);
     expect(view.container.querySelector('.terminal-connection').textContent).toContain('定时刷新');
@@ -314,10 +314,10 @@ describe('desktop terminal input', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-26T00:00:00Z'));
     let callbacks;
-    const close = vi.fn(() => Promise.resolve());
+    const suspend = vi.fn(() => Promise.resolve());
     mocks.openTerminalStream.mockImplementation((options) => {
       callbacks = options;
-      return { pause: vi.fn(), resync: vi.fn(), close };
+      return { pause: vi.fn(), suspend, resync: vi.fn(), close: vi.fn(() => Promise.resolve()) };
     });
     mocks.getHistory.mockResolvedValue({ unchanged: true });
     const view = render(<Terminal pane="%1" desktop stream />);
@@ -333,8 +333,58 @@ describe('desktop terminal input', () => {
       await Promise.resolve();
     });
 
-    expect(close).toHaveBeenCalledOnce();
+    expect(suspend).toHaveBeenCalledOnce();
     expect(view.container.querySelector('.terminal-connection').textContent).toContain('定时刷新');
+  });
+
+  it('returns to live updates only after thirty seconds of healthy snapshot traffic', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-26T00:00:00Z'));
+    let callbacks;
+    const suspend = vi.fn(() => Promise.resolve());
+    const resync = vi.fn();
+    mocks.openTerminalStream.mockImplementation((options) => {
+      callbacks = options;
+      return { pause: vi.fn(), suspend, resync, close: vi.fn(() => Promise.resolve()) };
+    });
+    const view = render(<Terminal pane="%1" desktop stream />);
+    await vi.waitFor(() => expect(callbacks).toBeDefined());
+
+    act(() => callbacks.onStatus('reconnecting'));
+    await act(async () => {
+      vi.advanceTimersByTime(1200);
+      await Promise.resolve();
+    });
+    expect(view.container.querySelector('.terminal-connection').textContent).toContain('定时刷新');
+    act(() => mocks.instances[0].onScrollCallback?.());
+    expect(resync).not.toHaveBeenCalled();
+
+    act(() => callbacks.onProbe({ ok: true, rttMs: 100 }));
+    act(() => {
+      vi.advanceTimersByTime(29999);
+      callbacks.onProbe({ ok: true, rttMs: 100 });
+    });
+    expect(resync).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+      callbacks.onProbe({ ok: true, rttMs: 100 });
+    });
+    expect(resync).toHaveBeenCalledOnce();
+    expect(view.container.querySelector('.terminal-connection').textContent).toContain('定时刷新');
+
+    await act(async () => callbacks.onSeed({
+      ansi: 'recovered\n',
+      width: 80,
+      height: 24,
+      historyLines: 0,
+      alt: false,
+      mouseAware: false,
+    }));
+    await act(async () => callbacks.onReady({ cur: { row: 0, col: 0, vis: true } }));
+    act(() => callbacks.onStatus('live'));
+
+    expect(view.container.querySelector('.terminal-connection').textContent).toContain('实时更新');
   });
 
   it('pauses while hidden and replaces a live stream after ten seconds away', async () => {

@@ -9,7 +9,7 @@ export default {
   'settings.terminal_transport': '終端更新模式',
   'settings.terminal_transport_live': '即時更新',
   'settings.terminal_transport_snapshot': '定時更新',
-  'settings.terminal_transport_hint': '即時更新使用 WebSocket，延遲更低；網路較差時會自動暫時回退到定時更新。',
+  'settings.terminal_transport_hint': '即時更新使用 WebSocket，延遲更低；網路較差時會自動暫時回退，持續穩定 30 秒後切回即時更新。',
   'settings.snapshot_interval': '活躍時更新頻率',
   'settings.snapshot_interval_hint': '終端閒置後會自動降低頻率，減少流量和資源使用。',
   'terminal.disconnected': '連線中斷，正在重新連線…',

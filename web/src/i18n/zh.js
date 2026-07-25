@@ -296,7 +296,7 @@ export default {
   'settings.terminal_transport': '终端刷新模式',
   'settings.terminal_transport_live': '实时更新',
   'settings.terminal_transport_snapshot': '定时刷新',
-  'settings.terminal_transport_hint': '实时更新使用 WebSocket，实时性更好；网络较差时会自动临时回退到定时刷新。',
+  'settings.terminal_transport_hint': '实时更新使用 WebSocket，实时性更好；网络较差时会自动临时回退，持续稳定 30 秒后切回实时更新。',
   'settings.snapshot_interval': '活跃时刷新频率',
   'settings.snapshot_interval_hint': '终端空闲后会自动降低频率，减少流量和资源占用。',
   'settings.chat_lens': '启用对话视图（实验性功能）',
