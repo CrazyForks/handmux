@@ -608,6 +608,7 @@ describe('BottomDock', () => {
     expect(styles).toMatch(/\.desktop-unified \.quick-(?:fix|cmd)[^{]*\{[^}]*border-radius:\s*6px/);
     expect(styles).toMatch(/\.desktop-unified \.input-wrap\s*\{[^}]*padding:\s*3px 4px[^}]*border-radius:\s*8px[^}]*box-shadow:\s*none/);
     expect(styles).toMatch(/\.desktop-unified \.input-text,[\s\S]*\.desktop-unified \.input-mirror\s*\{[^}]*padding:\s*6px 5px 6px 9px/);
+    expect(styles).toMatch(/@media\s*\(hover:\s*hover\)\s*and\s*\(pointer:\s*fine\)\s*\{[\s\S]*\.desktop-unified \.input-text,[\s\S]*font-size:\s*15px[^}]*line-height:\s*21px/);
   });
 
   it('desktop Enter sends and stays in draft mode, Shift+Enter stays multiline, and Escape returns', async () => {

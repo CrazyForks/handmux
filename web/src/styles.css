@@ -718,6 +718,11 @@ div.workspace-restore-errors { padding-left: 10px; }
   box-shadow: none;
 }
 .desktop-unified .dock-page.chat { padding-bottom: 0; }
+@media (hover: hover) and (pointer: fine) {
+  .desktop-unified .input-text,
+  .desktop-unified .input-mirror { font-size: 15px; line-height: 21px; }
+  .desktop-unified .input-wrap.multi.crowd > .input-text { padding-bottom: 27px; }
+}
 /* 上传进度条:浮在输入行上方一条(失败时变红、文案自带原因),沿用 browse-progress 配色。 */
 .dock-upload { padding: 6px 4px 2px; }
 .dock-upload-label { display: block; color: #9fb6d0; font-size: 12px; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
