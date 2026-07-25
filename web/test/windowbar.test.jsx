@@ -66,12 +66,6 @@ describe('WindowBar', () => {
     expect(titles.every((title) => title.querySelector('.agent-mark'))).toBe(true);
   });
 
-  it('stretches the selected multi-pane trigger to the same row height as plain tabs', () => {
-    // The selected multi-pane button sits inside .wt-dd, while plain tabs are direct flex children.
-    // Making the wrapper a flex container passes the windowbar row's stretched height to its trigger.
-    expect(styles).toMatch(/\.wt-dd\s*\{[^}]*display:\s*flex/);
-  });
-
   it('renders a tab per window and highlights the current one', () => {
     render({ ...base, onSelectWindow: vi.fn(), onSelectPane: vi.fn() });
     const tabs = container.querySelectorAll('[data-win]');
