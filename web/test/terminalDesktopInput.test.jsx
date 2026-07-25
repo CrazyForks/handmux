@@ -389,8 +389,14 @@ describe('desktop terminal input', () => {
 
     expect(pause).toHaveBeenCalledOnce();
     expect(term.buffer.active.viewportY).toBeLessThan(term.buffer.active.baseY);
+    expect(term.scrollLines).toHaveBeenCalledWith(-2);
     expect(term.scrollToBottom).not.toHaveBeenCalled();
     expect(resync).not.toHaveBeenCalled();
+
+    act(() => term.scrollLines(-5));
+    expect(resync).not.toHaveBeenCalled();
+    act(() => term.scrollLines(5));
+    expect(resync).toHaveBeenCalledOnce();
     rect.mockRestore();
   });
 

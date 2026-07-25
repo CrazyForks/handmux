@@ -24,6 +24,7 @@ const CHUNK = 100; // how much more history to pull each time the top is reached
 const MAX_LINES = 5000; // backend cap on capture depth
 const LIVE_SCROLL_SLACK = 15; // scrolled up within this many lines of the bottom still counts as "live"
                               // (keep polling + follow new output); scroll up further to browse/pause
+const STREAM_RESUME_SLACK = 3; // touch/momentum can stop a few rendered rows short of the exact bottom
 const STREAM_BACKGROUND_RESET_MS = 10000;
 
 // Pane view backed by capture-pane snapshots (tmux's already-rendered grid — no cursor
@@ -291,6 +292,7 @@ const Terminal = forwardRef(function Terminal({
     let streamCursorEscapeTail = '';
     let historyBoundary = null;
     let liveBoundaryLine = null;
+    let historyResumeArmed = false;
     let previewConfig = null;
     let previewRaf = null;
     // The last seed's RAW (un-padded) content, so fit() can re-pad it for the FINAL row count. The seed's
@@ -410,7 +412,8 @@ const Terminal = forwardRef(function Terminal({
       // you've scrolled (0 at the bottom, baseY at the very top → N/N).
       // Alt-screen never shows the history banner: its scrollback is synthetic (the keyboard-shrunk grid),
       // scrolling it is our internal window pan over a live app — not browsing tmux history.
-      setScrollInfo(seeded && !nearBottom() && !altScreenRef.current
+      const browsingHistory = streamMode ? historyMode : !nearBottom();
+      setScrollInfo(seeded && browsingHistory && !altScreenRef.current
         ? `历史模式 · 距底 ${b.baseY - b.viewportY}/${b.baseY} 行${busy ? ' · 拉取中' : ''}${tag}`
         : '');
     };
@@ -419,6 +422,7 @@ const Terminal = forwardRef(function Terminal({
     // stays fresh — but only a true at-bottom view follows new output (scrollToBottom); scrolled up a
     // little we refresh IN PLACE (keepPosition, no yank to the bottom). Past the zone = browsing → pause.
     const nearBottom = () => buf().baseY - buf().viewportY <= LIVE_SCROLL_SLACK;
+    const nearStreamBottom = () => buf().baseY - buf().viewportY <= STREAM_RESUME_SLACK;
     // A few lines of slack: on mobile, momentum scrolling can stop a line or two short of
     // the very top and never fire another scroll event landing exactly on 0, so pulling
     // more history would never trigger. Treat "within 3 lines of the top" as the top.
@@ -426,6 +430,7 @@ const Terminal = forwardRef(function Terminal({
     const pauseStreamForHistory = () => {
       if (!streamMode || historyMode) return;
       historyMode = true;
+      historyResumeArmed = false;
       streamExact = false;
       clearStreamLayout();
       streamClient?.pause();
@@ -441,14 +446,12 @@ const Terminal = forwardRef(function Terminal({
         vis: streamCursorVisible,
       };
       liveBoundaryLine = buf().baseY;
-      const previewRows = previewConfig?.rows || 0;
       pauseStreamForHistory();
       const screen = liveHost.querySelector('.xterm-screen');
       const rowH = screen && term.rows ? screen.getBoundingClientRect().height / term.rows : 0;
-      // Growing the history viewport consumes the preview rows that were previously a separate layer.
-      // Move past that same count plus the user's drag, otherwise the resize lands exactly at xterm's
-      // new bottom and onScroll immediately resumes live mode before history can be browsed.
-      term.scrollLines(-(previewRows + Math.max(1, Math.ceil(pixels / Math.max(1, rowH)))));
+      // Growing into the taller history viewport already pulls the separately-previewed rows into view.
+      // Subtracting those rows again made only the first drag jump by the whole preview block.
+      term.scrollLines(-Math.max(1, Math.ceil(pixels / Math.max(1, rowH))));
       drawHistoryBoundary();
       scheduleFit();
       return true;
@@ -852,6 +855,7 @@ const Terminal = forwardRef(function Terminal({
       streamCursorVisible = false;
       streamCursorEscapeTail = '';
       historyMode = false;
+      historyResumeArmed = false;
       lastHash = null;
       const wasSeeded = seeded;
       paneRows = frame.height;
@@ -1100,6 +1104,7 @@ const Terminal = forwardRef(function Terminal({
       streamMode = false;
       streamExact = false;
       historyMode = false;
+      historyResumeArmed = false;
       clearStreamLayout();
       const drained = streamClient?.close();
       streamClient = null;
@@ -1129,6 +1134,7 @@ const Terminal = forwardRef(function Terminal({
     const resumeStream = () => {
       if (!streamMode || disposed) return;
       historyMode = false;
+      historyResumeArmed = false;
       streamExact = false;
       liveBoundaryLine = null;
       disposeHistoryBoundary();
@@ -1211,7 +1217,12 @@ const Terminal = forwardRef(function Terminal({
         if (historyMode) resumeStream();
         return;
       }
+      if (historyMode && historyResumeArmed && nearStreamBottom()) {
+        resumeStream();
+        return;
+      }
       if (streamMode && !nearBottom() && !altScreenRef.current) pauseStreamForHistory();
+      if (historyMode && !nearStreamBottom()) historyResumeArmed = true;
       setPaused(true);
       showScrollPos();
       maybePullMore();
