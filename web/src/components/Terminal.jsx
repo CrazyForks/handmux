@@ -16,10 +16,7 @@ import TerminalOverlays from './TerminalOverlays.jsx';
 import { openXterm } from '../terminalXterm.js';
 import { createTerminalSelectionController } from '../terminalSelectionController.js';
 import { createTerminalTouchController } from '../terminalTouchController.js';
-import {
-  createConnectionTelemetry,
-  payloadBytes,
-} from '../connectionTelemetry.js';
+import { createConnectionTelemetry } from '../connectionTelemetry.js';
 
 const LIVE_MARGIN = 20; // capture this many rows beyond the viewport so a small scroll-up has slack
                         // before triggering a deeper history pull (replaces the old fixed 100-line tail)
@@ -100,7 +97,6 @@ const Terminal = forwardRef(function Terminal({
     mode: stream ? 'live' : 'snapshot',
     quality: 'connecting',
     rttMs: null,
-    bytesPerSecond: 0,
   });
   const [inputFailure, setInputFailure] = useState(null);
   // Touch selection: long-press starts a selection on the real grid (xterm draws the highlight
@@ -895,11 +891,7 @@ const Terminal = forwardRef(function Terminal({
         // A background WebSocket recovery may have completed while this snapshot request was in flight.
         // Never let the older snapshot overwrite the newly activated live frame.
         if (!startedInStreamMode && streamMode) return;
-        telemetry.sample({
-          ok: true,
-          rttMs: Date.now() - requestStartedAt,
-          bytes: hist.unchanged ? 0 : payloadBytes(hist),
-        });
+        telemetry.sample({ ok: true, rttMs: Date.now() - requestStartedAt });
         setConn(nextConnection(connState, 'ok')); // a successful poll → connected (clears the banner)
         // A desktop drag may have started while this request was in flight. Never apply that stale
         // snapshot: rewriting xterm would erase the selection before the user can copy it.
@@ -1123,7 +1115,6 @@ const Terminal = forwardRef(function Terminal({
         onData: applyStreamData,
         onReady: finishStreamSeed,
         onStatus: handleStreamStatus,
-        onTraffic: (bytes) => telemetry.traffic(bytes),
         onProbe: (sample) => telemetry.sample(sample),
         onAuthFail: () => onAuthFailRef.current?.(),
       });

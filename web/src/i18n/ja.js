@@ -1,11 +1,11 @@
 // 日本語 strings. Missing keys fall back to English (see ./index.js translate()).
 export default {
-  'terminal.transport_live': 'リアルタイム更新',
-  'terminal.transport_snapshot': '定期更新',
-  'terminal.connection_connecting': '接続中',
-  'terminal.connection_good': '接続良好',
-  'terminal.connection_degraded': '接続が不安定',
-  'terminal.connection_poor': '接続不良',
+  'terminal.transport_live': 'リアル',
+  'terminal.transport_snapshot': '定期',
+  'terminal.connection_connecting': '確認中',
+  'terminal.connection_good': '良好',
+  'terminal.connection_degraded': '普通',
+  'terminal.connection_poor': '不良',
   'settings.terminal_transport': 'ターミナル更新モード',
   'settings.terminal_transport_live': 'リアルタイム更新',
   'settings.terminal_transport_snapshot': '定期更新',

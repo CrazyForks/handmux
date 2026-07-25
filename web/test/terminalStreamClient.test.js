@@ -71,18 +71,16 @@ describe('openTerminalStream', () => {
     stream.close();
   });
 
-  it('measures application RTT and received terminal bytes on the live socket', async () => {
+  it('measures application RTT on the live socket', async () => {
     vi.useFakeTimers();
     let now = 1000;
     const onProbe = vi.fn();
-    const onTraffic = vi.fn();
     const stream = openTerminalStream({
       pane: '%7',
       token: 'secret',
       WebSocketCtor: FakeWebSocket,
       now: () => now,
       onProbe,
-      onTraffic,
     });
     const ws = FakeWebSocket.instances[0];
     ws.open();
@@ -96,9 +94,6 @@ describe('openTerminalStream', () => {
     ws.message(JSON.stringify({ type: 'probe', id: 1 }));
     expect(onProbe).toHaveBeenCalledWith({ ok: true, rttMs: 86 });
 
-    ws.message(new Uint8Array([1, 2, 3]).buffer);
-    expect(onTraffic).toHaveBeenCalledWith(new TextEncoder().encode(ready).byteLength);
-    expect(onTraffic).toHaveBeenCalledWith(3);
     stream.close();
     vi.useRealTimers();
   });

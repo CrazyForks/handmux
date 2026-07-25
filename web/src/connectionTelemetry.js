@@ -1,4 +1,3 @@
-const RATE_WINDOW_MS = 3000;
 const DEGRADE_AFTER_MS = 15000;
 const RECOVER_AFTER_MS = 30000;
 
@@ -12,65 +11,27 @@ const QUALITY_RANK = {
 export function classifyConnectionSample({ ok, rttMs }) {
   if (!ok) return 'poor';
   if (!Number.isFinite(rttMs)) return 'connecting';
-  if (rttMs >= 1500) return 'poor';
-  if (rttMs >= 500) return 'degraded';
+  if (rttMs > 1000) return 'poor';
+  if (rttMs >= 300) return 'degraded';
   return 'good';
-}
-
-export function formatReceiveRate(bytesPerSecond) {
-  const value = Math.max(0, Number(bytesPerSecond) || 0);
-  if (value < 1024) return `${Math.round(value)} B/s`;
-  if (value < 1024 * 1024) {
-    const kb = value / 1024;
-    return `${kb >= 10 ? Math.round(kb) : kb.toFixed(1)} KB/s`;
-  }
-  const mb = value / (1024 * 1024);
-  return `${mb >= 10 ? Math.round(mb) : mb.toFixed(1)} MB/s`;
-}
-
-export function payloadBytes(value) {
-  try {
-    return new TextEncoder().encode(JSON.stringify(value)).byteLength;
-  } catch {
-    return 0;
-  }
 }
 
 export function createConnectionTelemetry({
   mode,
   onChange,
   now = () => Date.now(),
-  setIntervalFn = setInterval,
-  clearIntervalFn = clearInterval,
 }) {
   let disposed = false;
   let pendingQuality = null;
   let pendingSince = 0;
-  let traffic = [];
   let state = {
     mode,
     quality: 'connecting',
     rttMs: null,
-    bytesPerSecond: 0,
   };
 
   const emit = () => {
     if (!disposed) onChange?.({ ...state });
-  };
-  const updateRate = () => {
-    const cutoff = now() - RATE_WINDOW_MS;
-    traffic = traffic.filter((item) => item.at > cutoff);
-    const bytes = traffic.reduce((sum, item) => sum + item.bytes, 0);
-    const bytesPerSecond = Math.round(bytes * 1000 / RATE_WINDOW_MS);
-    if (bytesPerSecond !== state.bytesPerSecond) {
-      state = { ...state, bytesPerSecond };
-      emit();
-    }
-  };
-  const addTraffic = (bytes) => {
-    const amount = Math.max(0, Number(bytes) || 0);
-    if (!amount || disposed) return;
-    traffic.push({ at: now(), bytes: amount });
   };
   const applyQuality = (quality, immediate = false) => {
     if (quality === 'connecting') {
@@ -114,17 +75,13 @@ export function createConnectionTelemetry({
     emit();
   };
 
-  const interval = setIntervalFn(updateRate, 1000);
   emit();
 
   return {
-    traffic: addTraffic,
-    sample({ ok, rttMs, bytes = 0 }) {
+    sample({ ok, rttMs }) {
       if (disposed) return;
-      addTraffic(bytes);
       if (Number.isFinite(rttMs)) state = { ...state, rttMs: Math.max(0, Math.round(rttMs)) };
       applyQuality(classifyConnectionSample({ ok, rttMs }));
-      updateRate();
     },
     status(status) {
       if (disposed) return;
@@ -141,7 +98,6 @@ export function createConnectionTelemetry({
       emit();
     },
     getSnapshot() {
-      updateRate();
       return { ...state };
     },
     peek() {
@@ -149,8 +105,6 @@ export function createConnectionTelemetry({
     },
     destroy() {
       disposed = true;
-      clearIntervalFn(interval);
-      traffic = [];
     },
   };
 }

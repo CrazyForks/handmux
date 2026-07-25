@@ -307,7 +307,7 @@ describe('desktop terminal input', () => {
     expect(suspend).toHaveBeenCalledOnce();
     expect(mocks.getHistory).toHaveBeenCalled();
     expect(view.container.querySelector('.terminal').classList.contains('terminal--stream')).toBe(false);
-    expect(view.container.querySelector('.terminal-connection').textContent).toContain('定时刷新');
+    expect(view.container.querySelector('.terminal-connection').textContent).toContain('定时');
   });
 
   it('falls back after application RTT remains poor', async () => {
@@ -324,7 +324,7 @@ describe('desktop terminal input', () => {
     await vi.waitFor(() => expect(callbacks).toBeDefined());
 
     act(() => callbacks.onProbe({ ok: true, rttMs: 1800 }));
-    expect(view.container.querySelector('.terminal-connection').textContent).toContain('实时更新');
+    expect(view.container.querySelector('.terminal-connection').textContent).toContain('实时');
     act(() => {
       vi.advanceTimersByTime(15000);
       callbacks.onProbe({ ok: true, rttMs: 1800 });
@@ -334,7 +334,7 @@ describe('desktop terminal input', () => {
     });
 
     expect(suspend).toHaveBeenCalledOnce();
-    expect(view.container.querySelector('.terminal-connection').textContent).toContain('定时刷新');
+    expect(view.container.querySelector('.terminal-connection').textContent).toContain('定时');
   });
 
   it('returns to live updates only after thirty seconds of healthy snapshot traffic', async () => {
@@ -355,7 +355,7 @@ describe('desktop terminal input', () => {
       vi.advanceTimersByTime(1200);
       await Promise.resolve();
     });
-    expect(view.container.querySelector('.terminal-connection').textContent).toContain('定时刷新');
+    expect(view.container.querySelector('.terminal-connection').textContent).toContain('定时');
     act(() => mocks.instances[0].onScrollCallback?.());
     expect(resync).not.toHaveBeenCalled();
 
@@ -371,7 +371,7 @@ describe('desktop terminal input', () => {
       callbacks.onProbe({ ok: true, rttMs: 100 });
     });
     expect(resync).toHaveBeenCalledOnce();
-    expect(view.container.querySelector('.terminal-connection').textContent).toContain('定时刷新');
+    expect(view.container.querySelector('.terminal-connection').textContent).toContain('定时');
 
     await act(async () => callbacks.onSeed({
       ansi: 'recovered\n',
@@ -384,7 +384,7 @@ describe('desktop terminal input', () => {
     await act(async () => callbacks.onReady({ cur: { row: 0, col: 0, vis: true } }));
     act(() => callbacks.onStatus('live'));
 
-    expect(view.container.querySelector('.terminal-connection').textContent).toContain('实时更新');
+    expect(view.container.querySelector('.terminal-connection').textContent).toContain('实时');
   });
 
   it('pauses while hidden and replaces a live stream after ten seconds away', async () => {

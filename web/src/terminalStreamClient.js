@@ -12,7 +12,6 @@ export function openTerminalStream({
   onData,
   onReady,
   onStatus,
-  onTraffic,
   onProbe,
   onAuthFail,
   WebSocketCtor = window.WebSocket,
@@ -128,9 +127,6 @@ export function openTerminalStream({
           }
           return;
         }
-        onTraffic?.(new TextEncoder().encode(event.data).byteLength);
-      } else {
-        onTraffic?.(event.data?.byteLength ?? 0);
       }
       const frameEpoch = messageEpoch;
       const queuedAt = Date.now();

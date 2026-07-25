@@ -1,7 +1,6 @@
 import { shouldKeepKeyboard } from '../dockKeyboard.js';
 import { expandToLines, expandToParagraph } from '../terminalSelection.js';
 import { t } from '../i18n';
-import { formatReceiveRate } from '../connectionTelemetry.js';
 import LensBoot from './LensBoot.jsx';
 
 const CALLOUT_W = 200;
@@ -31,13 +30,15 @@ export default function TerminalOverlays({
       {!ready && <LensBoot hint={t('boot.loading')} />}
       {connectionInfo && (
         <div className={`terminal-connection is-${connectionInfo.quality}`}>
-          {t(`terminal.transport_${connectionInfo.mode}`)}
-          {' · '}
-          {t(`terminal.connection_${connectionInfo.quality}`)}
-          {' · '}
-          {connectionInfo.rttMs == null ? '-- ms' : `${connectionInfo.rttMs} ms`}
-          {' · ↓'}
-          {formatReceiveRate(connectionInfo.bytesPerSecond)}
+          <span className="terminal-connection__tag">
+            {t(`terminal.transport_${connectionInfo.mode}`)}
+          </span>
+          <span className="terminal-connection__tag terminal-connection__quality">
+            {t(`terminal.connection_${connectionInfo.quality}`)}
+          </span>
+          <span className="terminal-connection__latency">
+            {connectionInfo.rttMs == null ? '-- ms' : `${connectionInfo.rttMs} ms`}
+          </span>
         </div>
       )}
       {!connected && (
