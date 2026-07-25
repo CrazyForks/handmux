@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ChevronDownIcon,
@@ -57,6 +57,7 @@ export default function BrowserSheet({ browser }) {
   const refreshSequences = useRef(new Map());
   const activeIdRef = useRef(activeId);
   const openRef = useRef(open);
+  const activeTabRef = useRef(null);
   const addressRef = useRef(null);
   const bodyRef = useRef(null);
   const clearTriggerRef = useRef(null);
@@ -78,6 +79,15 @@ export default function BrowserSheet({ browser }) {
     setTimeOpen(false);
     if (!historyActive) setHistoryModeOpen(null);
   }, [activeId, historyActive, open]);
+
+  useLayoutEffect(() => {
+    if (!open || historyActive || !activeId) return;
+    activeTabRef.current?.scrollIntoView?.({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'nearest',
+    });
+  }, [activeId, historyActive, open, tabs.length]);
 
   useEffect(() => {
     if (!accessEnabled) {
@@ -352,7 +362,8 @@ export default function BrowserSheet({ browser }) {
             const selected = !historyActive && tab.id === activeId;
             const label = tabLabel(tab);
             return (
-              <span className={`browser-tab-wrap ${tab.mode} ${selected ? 'active' : ''}`} key={tab.id}>
+              <span ref={selected ? activeTabRef : null}
+                className={`browser-tab-wrap ${tab.mode} ${selected ? 'active' : ''}`} key={tab.id}>
                 <button className="browser-tab" role="tab" aria-selected={selected} title={tab.originalUrl}
                   onClick={() => selectTab(tab)}>
                   {tab.mode === 'proxy' && <span className="browser-mode-badge proxy" aria-label={t('browser.proxyMode')} />}

@@ -142,10 +142,6 @@ async function editPort(a) {
 
 async function editBrowserDomain(a) {
   note(t('setup.browserAbout'));
-  note(t('setup.browserRoute'));
-  note(t('setup.browserHttps'));
-  if (a.tunnel === 'cloudflare-named') note(t('setup.browserTlsCf'));
-  else if (a.tunnel === 'ssh') note(t('setup.browserTlsEdge'));
   const value = await ask(text({
     message: withBack(t('setup.askBrowserDomain')),
     placeholder: 'preview.example.com',

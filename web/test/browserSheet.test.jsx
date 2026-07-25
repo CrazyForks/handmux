@@ -107,6 +107,38 @@ describe('BrowserSheet', () => {
     expect(recent.querySelector('.browser-tab-close')).toBeNull();
   });
 
+  it('scrolls a newly active tab into view', async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    const model = browser();
+    try {
+      await render(model);
+      scrollIntoView.mockClear();
+      await act(async () => {
+        root.render(<BrowserSheet browser={{
+          ...model,
+          tabs: [...tabs, {
+            id: 'c', mode: 'direct', url: 'https://c.example/',
+            originalUrl: 'https://c.example/', title: 'Gamma',
+          }],
+          activeId: 'c',
+        }} />);
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      });
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'nearest',
+      });
+      expect(scrollIntoView.mock.contexts.at(-1).textContent).toContain('Gamma');
+    } finally {
+      delete Element.prototype.scrollIntoView;
+    }
+  });
+
   it('marks proxy tabs orange and lets an existing tab switch modes in place', async () => {
     const model = browser();
     await render(model);

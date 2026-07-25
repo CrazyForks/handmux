@@ -580,6 +580,20 @@ describe('useBrowser device ownership', () => {
     })]);
   });
 
+  it('clears proxy Cookies without closing or releasing matching tabs', async () => {
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await act(async () => { await result.current.openUrl('https://a.example/', { mode: 'proxy' }); });
+    const id = result.current.activeId;
+
+    await act(async () => { await result.current.clearProxyLogin('https://a.example'); });
+
+    expect(api.clearBrowserProxyProfile).toHaveBeenCalledWith('https://a.example');
+    expect(result.current.tabs).toHaveLength(1);
+    expect(result.current.tabs[0].id).toBe(id);
+    expect(result.current.activeId).toBe(id);
+    expect(api.deleteBrowserProxyLease).not.toHaveBeenCalled();
+  });
+
   it('disabling releases proxy tabs, closes them locally, and keeps history', async () => {
     const { result } = renderHook(() => useBrowser({ browserProxy: true }));
     await act(async () => { await result.current.openUrl('https://a.example/', { mode: 'proxy' }); });

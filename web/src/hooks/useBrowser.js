@@ -561,23 +561,12 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const clearProxyLogin = useCallback(async (origin = null) => {
     try {
       await clearBrowserProxyProfile(origin);
-      const removed = tabsRef.current.filter((tab) => tab.mode === 'proxy' && (
-        origin === null || new URL(tab.originalUrl).origin === origin
-      ));
-      removed.forEach(release);
-      const ids = new Set(removed.map((tab) => tab.id));
-      commitTabs((current) => current.filter((tab) => !ids.has(tab.id)));
-      if (ids.has(activeRef.current)) {
-        const next = tabsRef.current[0] || null;
-        commitActive(next?.id || null);
-        commitHistory(!next);
-      }
       return true;
     } catch {
       setError(new Error(t('browser.profileClearFailed')));
       return false;
     }
-  }, [commitActive, commitHistory, commitTabs, release]);
+  }, []);
 
   return {
     open, accessEnabled, consentOpen, tabs, activeId, historyActive, closeAfter,
