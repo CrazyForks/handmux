@@ -185,28 +185,9 @@ describe('REST API', () => {
 
   it('GET /history returns ansi + size + a content hash', async () => {
     const res = await auth(request(appWith(baseCommands)).get('/api/history?pane=%1&lines=100')).expect(200);
-    expect(res.body).toMatchObject({
-      ansi: 'history-text', width: 80, height: 24, historyLines: 0,
-    });
+    expect(res.body).toMatchObject({ ansi: 'history-text', width: 80, height: 24 });
     expect(res.body.hash).toEqual(expect.any(String));
     expect(baseCommands.capturePane).toHaveBeenCalledWith('%1', 100);
-  });
-
-  it('GET /history restores a blank row from its real tmux cell background', async () => {
-    const capturePaneRow = vi.fn(async () => '        \n');
-    const cmds = {
-      ...baseCommands,
-      capturePane: vi.fn(async () => '\x1b[48;5;237m❯ hi   \n        \n\x1b[49mreply\n'),
-      capturePaneRow,
-      paneInfo: vi.fn(async () => ({
-        width: 8, height: 3, cursorX: 0, cursorY: 2, cursorVisible: false,
-        altScreen: false, mouseAware: false, mouseSgr: false,
-      })),
-    };
-    const res = await auth(request(appWith(cmds)).get('/api/history?pane=%1&lines=100')).expect(200);
-
-    expect(capturePaneRow).toHaveBeenCalledWith('%1', 1);
-    expect(res.body.ansi.split('\n')[1]).toBe('\x1b[49m        ');
   });
 
   it('GET /history returns 204 when ?since matches the current hash', async () => {

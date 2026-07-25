@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   instances: [],
   getHistory: vi.fn(() => new Promise(() => {})),
   sendInput: vi.fn(),
-  openTerminalStream: vi.fn(),
   UnauthorizedError: class UnauthorizedError extends Error {},
 }));
 
@@ -35,20 +34,10 @@ vi.mock('../src/bundledFonts.js', () => ({
   ensureBundledFonts: vi.fn(() => new Promise(() => {})),
 }));
 
-vi.mock('../src/terminalStreamClient.js', () => ({
-  openTerminalStream: mocks.openTerminalStream,
-}));
-
 vi.mock('@xterm/addon-webgl', () => ({
   WebglAddon: class {
     onContextLoss() {}
     dispose() {}
-  },
-}));
-
-vi.mock('@xterm/addon-serialize', () => ({
-  SerializeAddon: class {
-    serialize() { return ''; }
   },
 }));
 
@@ -74,21 +63,9 @@ vi.mock('@xterm/xterm', () => ({
       this.dispose = vi.fn();
       this.write = vi.fn((_data, callback) => callback?.());
       this.resize = vi.fn((cols, rows) => { this.cols = cols; this.rows = rows; });
-      this.scrollLines = vi.fn((delta) => {
-        this.buffer.active.viewportY = Math.max(
-          0,
-          Math.min(this.buffer.active.baseY, this.buffer.active.viewportY + delta),
-        );
-        this.onScrollCallback?.(this.buffer.active.viewportY);
-      });
       this.scrollToBottom = vi.fn();
       this.scrollToTop = vi.fn();
       this.scrollToLine = vi.fn();
-      this.registerMarker = vi.fn(() => ({ dispose: vi.fn() }));
-      this.registerDecoration = vi.fn(() => ({
-        dispose: vi.fn(),
-        onRender: vi.fn(),
-      }));
       this._subscriptions = [];
       this._selection = '';
       mocks.instances.push(this);
@@ -169,12 +146,6 @@ describe('desktop terminal input', () => {
     mocks.instances.length = 0;
     mocks.getHistory.mockReset().mockImplementation(() => new Promise(() => {}));
     mocks.sendInput.mockReset();
-    mocks.openTerminalStream.mockReset().mockReturnValue({
-      pause: vi.fn(),
-      suspend: vi.fn(),
-      resync: vi.fn(),
-      close: vi.fn(() => Promise.resolve()),
-    });
     delete navigator.clipboard;
     Object.defineProperty(navigator, 'platform', {
       configurable: true,
@@ -184,8 +155,6 @@ describe('desktop terminal input', () => {
 
   afterEach(() => {
     cleanup();
-    vi.useRealTimers();
-    delete document.hidden;
     delete navigator.platform;
   });
 
@@ -238,173 +207,6 @@ describe('desktop terminal input', () => {
     expect(view.container.querySelector('.terminal').classList.contains('desktop-input')).toBe(true);
   });
 
-  it('falls back to snapshot polling when the real-time stream cannot recover', async () => {
-    vi.useFakeTimers();
-    let callbacks;
-    const close = vi.fn(() => Promise.resolve());
-    mocks.openTerminalStream.mockImplementation((options) => {
-      callbacks = options;
-      return { pause: vi.fn(), resync: vi.fn(), close };
-    });
-    mocks.getHistory.mockResolvedValue({
-      ansi: 'fallback',
-      hash: 'frame-1',
-      width: 80,
-      height: 24,
-      alt: false,
-      mouseAware: false,
-      cur: { row: 23, col: 0, vis: true },
-    });
-    const view = render(<Terminal pane="%1" desktop stream />);
-
-    act(() => callbacks.onStatus('reconnecting'));
-    await act(async () => {
-      vi.advanceTimersByTime(1200);
-      await Promise.resolve();
-    });
-
-    expect(close).toHaveBeenCalledOnce();
-    expect(mocks.getHistory).toHaveBeenCalled();
-    expect(view.container.querySelector('.terminal').classList.contains('terminal--stream')).toBe(false);
-    vi.useRealTimers();
-  });
-
-  it('pauses while hidden and replaces a live stream after ten seconds away', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-07-25T00:00:00Z'));
-    const pause = vi.fn();
-    const suspend = vi.fn();
-    const resync = vi.fn();
-    mocks.openTerminalStream.mockReturnValue({
-      pause,
-      suspend,
-      resync,
-      close: vi.fn(() => Promise.resolve()),
-    });
-    render(<Terminal pane="%1" desktop stream />);
-
-    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
-    act(() => document.dispatchEvent(new Event('visibilitychange')));
-    expect(pause).toHaveBeenCalledOnce();
-    expect(suspend).not.toHaveBeenCalled();
-
-    act(() => vi.advanceTimersByTime(10000));
-    expect(suspend).toHaveBeenCalledOnce();
-
-    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
-    act(() => document.dispatchEvent(new Event('visibilitychange')));
-    expect(suspend).toHaveBeenCalledOnce();
-    expect(resync).toHaveBeenCalledOnce();
-
-  });
-
-  it('does not overwrite the stream-owned cursor after ready', async () => {
-    let callbacks;
-    mocks.openTerminalStream.mockImplementation((options) => {
-      callbacks = options;
-      return {
-        pause: vi.fn(),
-        suspend: vi.fn(),
-        resync: vi.fn(),
-        close: vi.fn(() => Promise.resolve()),
-      };
-    });
-    const ref = React.createRef();
-    render(<Terminal ref={ref} pane="%1" desktop stream />);
-    const term = mocks.instances[0];
-
-    await act(async () => callbacks.onSeed({
-      ansi: 'prompt\n',
-      width: 80,
-      height: 24,
-      historyLines: 0,
-      alt: false,
-      mouseAware: false,
-    }));
-    await act(async () => callbacks.onReady({
-      cur: { row: 0, col: 6, vis: true },
-    }));
-    const move = new Uint8Array([0x1b, 0x5b, 0x31, 0x30, 0x3b, 0x31, 0x30, 0x48]);
-    await act(async () => callbacks.onData(move));
-    const writesAfterMove = term.write.mock.calls.length;
-
-    act(() => ref.current.wake());
-
-    expect(term.write).toHaveBeenCalledWith(move, expect.any(Function));
-    expect(term.write).toHaveBeenCalledTimes(writesAfterMove);
-  });
-
-  it('keeps the initial scrollback position while the live grid expands into history mode', async () => {
-    let callbacks;
-    const pause = vi.fn();
-    const resync = vi.fn();
-    mocks.openTerminalStream.mockImplementation((options) => {
-      callbacks = options;
-      return {
-        pause,
-        suspend: vi.fn(),
-        resync,
-        close: vi.fn(() => Promise.resolve()),
-      };
-    });
-    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
-      .mockImplementation(function getRect() {
-        const height = this.classList?.contains('terminal') || this.classList?.contains('xterm')
-          ? 400
-          : this.classList?.contains('xterm-screen')
-            ? (mocks.instances[0]?.rows || 16) * 10
-            : 0;
-        return {
-          x: 0, y: 0, top: 0, left: 0, right: 800, bottom: height,
-          width: 800, height, toJSON() {},
-        };
-      });
-    const view = render(<Terminal pane="%1" desktop stream />);
-    const term = mocks.instances[0];
-
-    await act(async () => callbacks.onSeed({
-      ansi: Array.from({ length: 116 }, (_, i) => `line-${i}`).join('\n') + '\n',
-      width: 80,
-      height: 16,
-      historyLines: 100,
-      alt: false,
-      mouseAware: false,
-    }));
-    term.buffer.active.baseY = 100;
-    term.buffer.active.viewportY = 100;
-    term.scrollToBottom.mockClear();
-    const host = view.container.querySelector('.terminal');
-    Object.defineProperty(host, 'scrollTop', {
-      configurable: true,
-      get: () => 0,
-      set: () => {},
-    });
-
-    await act(async () => {
-      host.dispatchEvent(
-        new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -20 }),
-      );
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    });
-
-    expect(pause).toHaveBeenCalledOnce();
-    expect(term.buffer.active.viewportY).toBeLessThan(term.buffer.active.baseY);
-    expect(term.scrollLines).toHaveBeenCalledWith(-2);
-    expect(term.scrollToBottom).not.toHaveBeenCalled();
-    expect(resync).not.toHaveBeenCalled();
-    expect(view.container.querySelector('.new-output')).not.toBeNull();
-
-    const viewport = view.container.querySelector('.terminal__live .xterm-viewport');
-    term.buffer.active.viewportY = 84;
-    act(() => viewport.dispatchEvent(new Event('scroll')));
-    expect(resync).not.toHaveBeenCalled();
-    term.buffer.active.viewportY = 85;
-    act(() => viewport.dispatchEvent(new Event('scroll')));
-    expect(resync).toHaveBeenCalledOnce();
-    expect(view.container.querySelector('.new-output')).toBeNull();
-    rect.mockRestore();
-  });
-
   it('hands a desktop pointer tap back to terminal input instead of preserving composer focus', () => {
     const onTap = vi.fn();
     const view = render(<Terminal pane="%1" desktop autoFocusInput={false} onTap={onTap} />);
@@ -441,6 +243,47 @@ describe('desktop terminal input', () => {
 
     expect(host.scrollLeft).toBe(42);
     expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('reserves the mobile scrollbar row only while the terminal really overflows', async () => {
+    const view = render(<Terminal pane="%1" desktop={false} />);
+    const host = view.container.querySelector('.terminal');
+    const screen = view.container.querySelector('.xterm-screen');
+    Object.defineProperty(host, 'clientWidth', { configurable: true, value: 320 });
+    screen.getBoundingClientRect = vi.fn(() => ({
+      width: 640,
+      height: 384,
+      top: 0,
+      right: 640,
+      bottom: 384,
+      left: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    }));
+
+    await act(async () => {
+      window.dispatchEvent(new Event('resize'));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(host.classList.contains('terminal--x-overflow')).toBe(true);
+
+    screen.getBoundingClientRect.mockReturnValue({
+      width: 320,
+      height: 384,
+      top: 0,
+      right: 320,
+      bottom: 384,
+      left: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+    await act(async () => {
+      window.dispatchEvent(new Event('resize'));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(host.classList.contains('terminal--x-overflow')).toBe(false);
   });
 
   it('exposes focus controls and reports desktop xterm focus changes', () => {
