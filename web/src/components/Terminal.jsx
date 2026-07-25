@@ -290,9 +290,29 @@ const Terminal = forwardRef(function Terminal({
       },
     });
     term.open(elRef.current);
-    elRef.current.classList.toggle('desktop-input', desktop);
     termRef.current = term;
     term.attachCustomKeyEventHandler((event) => {
+      const copyKey = desktop && event.key?.toLowerCase() === 'c' && term.hasSelection?.();
+      const nativeCopy = copyKey && event.metaKey && !event.ctrlKey && !event.altKey;
+      const terminalCopy = copyKey && event.ctrlKey && event.shiftKey
+        && !event.metaKey && !event.altKey;
+      if (nativeCopy || terminalCopy) {
+        if (terminalCopy) {
+          event.preventDefault?.();
+          const text = term.getSelection();
+          const fallback = () => {
+            try { document.execCommand('copy'); } catch { /* clipboard unavailable */ }
+          };
+          try {
+            const pendingCopy = navigator.clipboard?.writeText?.(text);
+            if (pendingCopy) Promise.resolve(pendingCopy).catch(fallback);
+            else fallback();
+          } catch { fallback(); }
+        }
+        // Let Cmd+C reach xterm's native `copy` listener. Ctrl+Shift+C was handled above;
+        // returning false also keeps xterm from interpreting it as terminal input.
+        return false;
+      }
       if (desktop && event.key === 'Enter' && event.shiftKey
         && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing) {
         event.preventDefault?.();
@@ -303,6 +323,22 @@ const Terminal = forwardRef(function Terminal({
       return true;
     });
     const dataSub = desktop ? term.onData((data) => onInputDataRef.current?.(pane, data)) : null;
+    let hadDesktopSelection = false;
+    const selectionSub = desktop ? term.onSelectionChange(() => {
+      if (disposed) return;
+      const active = term.hasSelection();
+      if (active) {
+        hadDesktopSelection = true;
+        selActiveRef.current = true;
+        // Desktop uses xterm's native highlight only — no phone handles, banner or callout.
+        setSelUI(null);
+        setSelInfo('');
+      } else if (hadDesktopSelection) {
+        hadDesktopSelection = false;
+        selActiveRef.current = false;
+        wakeRef.current?.();
+      }
+    }) : null;
     const inputHelper = desktop ? elRef.current?.querySelector('.xterm-helper-textarea') : null;
     const onInputFocus = () => {
       if (!disposed) onInputFocusChangeRef.current?.(true);
@@ -1200,6 +1236,9 @@ const Terminal = forwardRef(function Terminal({
         const hist = await getHistory(pane, lines, lastHash);
         if (disposed) return;
         setConn(nextConnection(connState, 'ok')); // a successful poll → connected (clears the banner)
+        // A desktop drag may have started while this request was in flight. Never apply that stale
+        // snapshot: rewriting xterm would erase the selection before the user can copy it.
+        if (selActiveRef.current) return;
         // 204: server says the screen is identical to lastHash — keep what's drawn, transmit nothing.
         if (hist.unchanged) { setPaused(keepPosition); return; }
         lastHash = hist.hash;       // a real frame: remember its hash for the next ?since=
@@ -1379,7 +1418,9 @@ const Terminal = forwardRef(function Terminal({
     // When the user scrolls the xterm viewport (e.g. during an active selection), the handle and
     // callout positions need to be recomputed — their y offsets are viewport-relative.
     const vp = elRef.current.querySelector('.xterm-viewport');
-    const onVpScroll = () => { if (selActiveRef.current) refreshSelUI(); };
+    const onVpScroll = () => {
+      if (!desktop && selActiveRef.current) refreshSelUI();
+    };
     vp?.addEventListener('scroll', onVpScroll, { passive: true });
 
     return () => {
@@ -1408,6 +1449,7 @@ const Terminal = forwardRef(function Terminal({
       wrap.removeEventListener('pointercancel', onHandleUp, { capture: true });
       vp?.removeEventListener('scroll', onVpScroll);
       dataSub?.dispose();
+      selectionSub?.dispose();
       inputHelper?.removeEventListener('focus', onInputFocus);
       inputHelper?.removeEventListener('blur', onInputBlur);
       sub.dispose();
@@ -1487,7 +1529,10 @@ const Terminal = forwardRef(function Terminal({
 
   return (
     <div className="terminal-wrap">
-      <div ref={elRef} className={ready ? 'terminal' : 'terminal terminal--loading'} />
+      <div
+        ref={elRef}
+        className={`terminal${ready ? '' : ' terminal--loading'}${desktop ? ' desktop-input' : ''}`}
+      />
       {!ready && <LensBoot hint={t('boot.loading')} />}
       {!connected && (
         <div className="term-banner term-banner--err">

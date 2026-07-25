@@ -5,7 +5,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Added
-- 电脑浏览器现在可用物理键盘直接操作终端；按 Shift+Enter 或点击草稿框进入草稿模式，Enter 发送后继续编辑，Shift+Enter 换行，Esc 或点击终端回到直通模式；设置中可为当前浏览器自动识别或手动指定手机 / 电脑键盘模式。
+- 电脑浏览器现在可用物理键盘直接操作终端；按 Shift+Enter 或点击草稿框进入草稿模式，Enter 发送后继续编辑，Shift+Enter 换行，Esc 或点击终端回到直通模式；鼠标可原生拖选文字，Mac 用 Cmd+C、Windows / Linux 用 Ctrl+Shift+C 复制；设置中可为当前浏览器自动识别或手动指定手机 / 电脑键盘模式。
 
 ### Fixed
 - Agent 用量现在展示所有设备共享的本机最新状态；新会话尚未产生额度数据时，不再让 Codex / Claude 的已有用量短暂消失。

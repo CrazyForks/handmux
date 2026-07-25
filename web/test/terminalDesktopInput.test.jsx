@@ -62,7 +62,12 @@ vi.mock('@xterm/xterm', () => ({
       this.refresh = vi.fn();
       this.dispose = vi.fn();
       this.write = vi.fn((_data, callback) => callback?.());
+      this.resize = vi.fn((cols, rows) => { this.cols = cols; this.rows = rows; });
+      this.scrollToBottom = vi.fn();
+      this.scrollToTop = vi.fn();
+      this.scrollToLine = vi.fn();
       this._subscriptions = [];
+      this._selection = '';
       mocks.instances.push(this);
     }
 
@@ -93,6 +98,22 @@ vi.mock('@xterm/xterm', () => ({
       const sub = { dispose: vi.fn() };
       this._subscriptions.push(sub);
       return sub;
+    }
+    onSelectionChange(callback) {
+      this.onSelectionChangeCallback = callback;
+      const sub = { dispose: vi.fn() };
+      this._subscriptions.push(sub);
+      return sub;
+    }
+    hasSelection() { return this._selection.length > 0; }
+    getSelection() { return this._selection; }
+    clearSelection() {
+      this._selection = '';
+      this.onSelectionChangeCallback?.();
+    }
+    setSelection(text) {
+      this._selection = text;
+      this.onSelectionChangeCallback?.();
     }
     attachCustomKeyEventHandler(callback) {
       this.customKeyHandler = callback;
@@ -125,6 +146,7 @@ describe('desktop terminal input', () => {
     mocks.instances.length = 0;
     mocks.getHistory.mockReset().mockImplementation(() => new Promise(() => {}));
     mocks.sendInput.mockReset();
+    delete navigator.clipboard;
   });
 
   afterEach(() => cleanup());
@@ -157,6 +179,25 @@ describe('desktop terminal input', () => {
   it('allows pointer focus only for the desktop helper textarea', () => {
     expect(styles).toMatch(/\.terminal \.xterm-helper-textarea\s*\{[^}]*pointer-events:\s*none/);
     expect(styles).toMatch(/\.terminal\.desktop-input \.xterm-helper-textarea\s*\{[^}]*pointer-events:\s*auto/);
+  });
+
+  it('keeps the desktop input class after the first terminal frame is revealed', async () => {
+    mocks.getHistory.mockResolvedValue({
+      ansi: 'ready',
+      hash: 'frame-1',
+      width: 80,
+      height: 24,
+      alt: false,
+      mouseAware: false,
+      cur: { row: 23, col: 0, vis: true },
+    });
+    const view = render(<Terminal pane="%1" desktop />);
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
+    expect(view.container.querySelector('.terminal').classList.contains('terminal--loading')).toBe(false);
+    expect(view.container.querySelector('.terminal').classList.contains('desktop-input')).toBe(true);
   });
 
   it('hands a desktop pointer tap back to terminal input instead of preserving composer focus', () => {
@@ -267,6 +308,62 @@ describe('desktop terminal input', () => {
     await vi.waitFor(() => expect(mocks.sendInput).toHaveBeenCalledWith('%1', '0312091b1b5b41'));
   });
 
+  it('uses native desktop copy shortcuts without turning Ctrl+C into copy', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    render(<Terminal pane="%1" desktop />);
+    const term = mocks.instances[0];
+    term.setSelection('selected text');
+
+    expect(term.customKeyHandler({ key: 'c', metaKey: true })).toBe(false);
+    const preventDefault = vi.fn();
+    expect(term.customKeyHandler({
+      key: 'c',
+      ctrlKey: true,
+      shiftKey: true,
+      preventDefault,
+    })).toBe(false);
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith('selected text'));
+    expect(preventDefault).toHaveBeenCalledOnce();
+
+    expect(term.customKeyHandler({ key: 'c', ctrlKey: true })).toBe(true);
+  });
+
+  it('pauses snapshot polling for a desktop mouse selection and resumes when it clears', async () => {
+    mocks.getHistory.mockResolvedValue({ unchanged: true });
+    const ref = React.createRef();
+    render(<Terminal ref={ref} pane="%1" desktop />);
+    await vi.waitFor(() => expect(mocks.getHistory).toHaveBeenCalledOnce());
+    const term = mocks.instances[0];
+
+    act(() => term.setSelection('keep me'));
+    act(() => ref.current.wake());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mocks.getHistory).toHaveBeenCalledOnce();
+
+    act(() => term.setSelection(''));
+    await vi.waitFor(() => expect(mocks.getHistory.mock.calls.length).toBeGreaterThan(1));
+  });
+
+  it('does not apply an in-flight snapshot after desktop selection begins', async () => {
+    const frame = deferred();
+    mocks.getHistory.mockReturnValue(frame.promise);
+    render(<Terminal pane="%1" desktop />);
+    await vi.waitFor(() => expect(mocks.getHistory).toHaveBeenCalledOnce());
+    const term = mocks.instances[0];
+
+    act(() => term.setSelection('keep me'));
+    await act(async () => {
+      frame.resolve({ unchanged: false, ansi: 'new output' });
+      await frame.promise;
+    });
+
+    expect(term.write).not.toHaveBeenCalled();
+  });
+
   it('uses plain Shift+Enter to enter draft mode without sending it to the terminal', () => {
     const onRequestDraft = vi.fn();
     render(<Terminal pane="%1" desktop onRequestDraft={onRequestDraft} />);
@@ -336,12 +433,14 @@ describe('desktop terminal input', () => {
   it('shows an actionable message when desktop input targets a pane that has closed', () => {
     const ref = React.createRef();
     const view = render(<Terminal ref={ref} pane="%1" desktop />);
+    const term = mocks.instances[0];
 
     act(() => ref.current.inputFailed({ status: 404, serverError: 'pane not found' }));
 
     expect(view.container.textContent).toContain('窗格已关闭');
     expect(view.container.textContent).toContain('切换');
     expect(view.container.textContent).not.toContain('连接断开');
+    expect(term.helper.closest('.terminal').classList.contains('desktop-input')).toBe(true);
   });
 
   it('disposes desktop input subscriptions and the queue on unmount', async () => {
@@ -353,7 +452,7 @@ describe('desktop terminal input', () => {
     term.onDataCallback('late');
     await Promise.resolve();
 
-    expect(term._subscriptions).toHaveLength(2);
+    expect(term._subscriptions).toHaveLength(3);
     for (const sub of term._subscriptions) expect(sub.dispose).toHaveBeenCalledOnce();
     expect(mocks.sendInput).not.toHaveBeenCalled();
   });
