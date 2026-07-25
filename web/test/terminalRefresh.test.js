@@ -1,12 +1,26 @@
 import { describe, it, expect } from 'vitest';
 import xterm from '@xterm/headless';
-import { prepareSeed, cursorSeq } from '../src/terminalSeed.js';
+import { prepareSeed, prepareLiveSeed, cursorSeq } from '../src/terminalSeed.js';
 
 const { Terminal } = xterm;
 const write = (t, d) => new Promise((res) => t.write(d, res));
 const line = (t, row) => t.buffer.active.getLine(row)?.translateToString(true).trimEnd();
 
 describe('prepareSeed alignment', () => {
+  it('keeps live history in scrollback while the latest pane grid stays visible', async () => {
+    const t = new Terminal({ cols: 12, rows: 3, allowProposedApi: true, scrollback: 100 });
+    const seed = prepareLiveSeed('h0\nh1\nr0\nr1\nr2\n', 3);
+    await write(t, '\x1b[2J\x1b[3J\x1b[H' + seed);
+    t.scrollToBottom();
+
+    expect(t.buffer.active.baseY).toBe(2);
+    expect(line(t, 0)).toBe('h0');
+    expect(line(t, 1)).toBe('h1');
+    expect(line(t, t.buffer.active.baseY)).toBe('r0');
+    expect(line(t, t.buffer.active.baseY + 2)).toBe('r2');
+    t.dispose();
+  });
+
   it('aligns the visible screen to the bottom rows (drops the trailing-newline shift)', async () => {
     const t = new Terminal({ cols: 12, rows: 3, allowProposedApi: true, scrollback: 100 });
     // 1 scrollback line + a 3-row screen + capture-pane's trailing newline.
