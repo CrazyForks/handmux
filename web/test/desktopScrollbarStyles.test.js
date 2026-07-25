@@ -15,15 +15,15 @@ describe('desktop scrollbar styles', () => {
     expect(styles).toMatch(/\*::\-webkit-scrollbar-thumb:active\s*\{[^}]*var\(--scroll-thumb-active\)/);
   });
 
-  it('shows the same reserved horizontal scrollbar on desktop and touch devices', () => {
+  it('shows an arrowless horizontal scrollbar only when the terminal overflows', () => {
+    expect(styles).toMatch(/\.terminal\s*\{[^}]*overflow-x:\s*auto/);
+    expect(styles).toMatch(/\*::\-webkit-scrollbar:horizontal\s*\{[^}]*height:\s*0/);
     expect(styles).toMatch(
-      /\*::\-webkit-scrollbar:horizontal\s*\{[^}]*height:\s*10px/,
+      /\.terminal::\-webkit-scrollbar:horizontal\s*\{[^}]*height:\s*10px/,
     );
     expect(styles).toMatch(
-      /\.windowbar-scroll,[\s\S]*\.es-diff,[\s\S]*\.cc-quick\s*\{[^}]*overflow-x:\s*scroll/,
+      /\.terminal::\-webkit-scrollbar-button\s*\{[^}]*display:\s*none[^}]*width:\s*0[^}]*height:\s*0/,
     );
-    expect(styles).not.toMatch(/scrollbar-width:\s*none/);
-    expect(styles).not.toMatch(/::\-webkit-scrollbar(?::horizontal)?\s*\{[^}]*display:\s*none/);
-    expect(styles).not.toMatch(/::\-webkit-scrollbar:horizontal\s*\{[^}]*height:\s*0/);
+    expect(styles).not.toMatch(/overflow-x:\s*scroll/);
   });
 });

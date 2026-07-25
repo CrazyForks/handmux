@@ -2294,56 +2294,8 @@ button.cmd-text { background: none; border: none; text-align: left; }
 
 .push-inbox-detail-del { display: block; margin-top: 24px; }
 
-/* Horizontal scrolling uses the same visible 10px strip on mouse and touch devices. overflow-x:scroll
-   reserves that strip below the content instead of letting an overlay thumb cover tabs, terminal rows or
-   code; it also prevents a panel from changing height when a long item first arrives. */
-.windowbar-scroll,
-.terminal,
-.quick-scroll,
-.file-tabs-scroll,
-.preview-body.pc,
-.preview-tabs,
-.git-tabs-scroll,
-.git-diff,
-.doc-md pre,
-.doc-md table,
-.push-script-cmd,
-.chat-md pre,
-.chat-md table,
-.chat-tool-body,
-.chat-diff,
-.tool-sheet-cmd,
-.es-diff,
-.cc-quick {
-  overflow-x: scroll;
-  scrollbar-width: thin;
-  scrollbar-color: var(--scroll-thumb) transparent;
-}
-*::-webkit-scrollbar:horizontal {
-  height: 10px;
-}
-*::-webkit-scrollbar-track:horizontal {
-  background: transparent;
-}
-*::-webkit-scrollbar-thumb:horizontal {
-  min-width: 32px;
-  border: 3px solid transparent;
-  border-radius: 999px;
-  background-color: var(--scroll-thumb);
-  background-clip: padding-box;
-}
-*::-webkit-scrollbar-thumb:horizontal:active {
-  background-color: var(--scroll-thumb-active);
-}
-*::-webkit-scrollbar-button:horizontal {
-  display: none;
-  width: 0;
-  height: 0;
-}
-
 /* Desktop scrollbars: keep the browser's reliable wheel, trackpad, drag and keyboard behaviour while
-   replacing each platform's native chrome with one quiet app-wide skin. Touch-first devices keep their
-   existing vertical indicator while sharing the persistent horizontal treatment above. */
+   replacing each platform's native chrome with one quiet app-wide skin. */
 @media (hover: hover) and (pointer: fine) {
   * {
     scrollbar-width: thin;
@@ -2396,4 +2348,49 @@ button.cmd-text { background: none; border: none; text-align: left; }
     background-color: var(--scroll-thumb-active);
   }
 
+}
+
+/* Only an actually-overflowing terminal gets a horizontal scrollbar. Every other horizontal scroller
+   stays gesture/wheel-scrollable without adding a second bar to the interface. This rule comes after the
+   desktop skin so its zero height wins there too. */
+.windowbar-scroll,
+.quick-scroll,
+.file-tabs-scroll,
+.preview-tabs,
+.git-tabs-scroll,
+.cc-quick {
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar:horizontal {
+  height: 0;
+}
+*::-webkit-scrollbar-button:horizontal {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.terminal {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+.terminal::-webkit-scrollbar:horizontal {
+  height: 10px;
+}
+.terminal::-webkit-scrollbar-track:horizontal {
+  background: transparent;
+}
+.terminal::-webkit-scrollbar-thumb:horizontal {
+  min-width: 32px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-color: var(--scroll-thumb);
+  background-clip: padding-box;
+}
+.terminal::-webkit-scrollbar-thumb:horizontal:active {
+  background-color: var(--scroll-thumb-active);
+}
+.terminal::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
