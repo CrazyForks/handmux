@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 
-// True while the on-screen keyboard is up. Reads the visual-viewport HEIGHT only
-// (innerHeight − vv.height) — offsetTop-immune, unlike the layout inset, which iOS cancels to ~0
-// mid-focus (see useKeyboardInset's caveat and BottomDock's reconcile). The >120px threshold filters
-// Safari's toolbar chrome. Safe false when visualViewport is unsupported (jsdom, old browsers).
-export function softKeyboardUp() {
+// True while the on-screen keyboard is up. `fullHeight` is the last keyboard-down viewport height:
+// some mobile browsers shrink window.innerHeight together with visualViewport.height, so comparing only
+// those two CURRENT values can incorrectly produce zero. offsetTop stays deliberately excluded because
+// iOS focus scrolling changes it while the keyboard remains open.
+export function softKeyboardUp(fullHeight = window.innerHeight) {
   const vv = window.visualViewport;
   if (!vv) return false;
-  return window.innerHeight - vv.height > 120;
+  return Math.max(fullHeight, window.innerHeight) - vv.height > 120;
 }
 
 // Pixels the on-screen keyboard overlaps the layout viewport's bottom. iOS Safari shrinks the

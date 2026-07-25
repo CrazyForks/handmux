@@ -935,6 +935,31 @@ describe('BottomDock', () => {
       expect(activePage('command')).toBe(true);
     });
 
+    it('keeps a physically-open keyboard through a horizontal swipe after focus drifts', () => {
+      const originalInnerHeight = Object.getOwnPropertyDescriptor(window, 'innerHeight');
+      Object.defineProperty(window, 'innerHeight', { value: kbdDown, configurable: true });
+      const vv = installVV(kbdDown);
+      try {
+        render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() }); // command
+        act(() => cap().focus());
+        // Model a browser that resizes BOTH layout and visual viewports: the old absolute
+        // innerHeight-vv.height test reads 0 even though the keyboard is physically open.
+        Object.defineProperty(window, 'innerHeight', { value: kbdUp, configurable: true });
+        vv.resize(kbdUp);
+        const driftTarget = document.createElement('button');
+        document.body.appendChild(driftTarget);
+        act(() => driftTarget.focus()); // OS keyboard remains open, but the dock field lost DOM focus
+        expect(document.activeElement).toBe(driftTarget);
+
+        swipe(-100); // → chat; must carry focus instead of running the "keyboard was down" blur path
+        expect(activePage('chat')).toBe(true);
+        expect(document.activeElement).toBe(container.querySelector('.input-text'));
+        driftTarget.remove();
+      } finally {
+        if (originalInnerHeight) Object.defineProperty(window, 'innerHeight', originalInnerHeight);
+      }
+    });
+
     it('a drag shorter than the commit threshold snaps back (harder to trigger)', () => {
       render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() }); // command by default
       swipe(-80); // 80px == commit threshold, strict < → does NOT switch, stays on command

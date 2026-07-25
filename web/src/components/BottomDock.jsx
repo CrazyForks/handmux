@@ -140,6 +140,26 @@ function BottomDock({
     .filter((item) => !visibleGlobalCommandIds.has(shortcutIdentity(item)));
   const [modeOverride, setModeOverride] = useState({}); // pane → 'command' | 'agent'
   const mode = desktopUnified ? 'agent' : modeOverride[pane] || (agent ? 'agent' : 'command');
+  // Remember the keyboard-DOWN viewport height. Some mobile browsers resize window.innerHeight together
+  // with visualViewport.height, so comparing their current values reads zero even while the keyboard is up.
+  // The baseline only grows in one orientation; a real width/orientation change starts a fresh baseline.
+  const initialViewport = window.visualViewport;
+  const keyboardViewportRef = useRef({
+    width: initialViewport?.width ?? window.innerWidth,
+    fullHeight: Math.max(window.innerHeight, initialViewport?.height ?? 0),
+  });
+  const physicalKeyboardUp = () => {
+    const vv = window.visualViewport;
+    if (!vv) return false;
+    const viewport = keyboardViewportRef.current;
+    if (Math.abs(vv.width - viewport.width) > 40) {
+      viewport.width = vv.width;
+      viewport.fullHeight = Math.max(window.innerHeight, vv.height);
+    } else {
+      viewport.fullHeight = Math.max(viewport.fullHeight, window.innerHeight, vv.height);
+    }
+    return softKeyboardUp(viewport.fullHeight);
+  };
   const setMode = (next) => {
     // Carry the keyboard across a mode switch. The soft keyboard is held up by whichever field has focus
     // (command capture ⇄ chat composer); a switch used to leave focus on the OLD page's field, so the new
@@ -147,7 +167,9 @@ function BottomDock({
     // field off-screen could let the OS blur it and drop the keyboard. If a dock field currently holds it
     // up, hand focus to the new page's field synchronously — input→input keeps the keyboard on iOS and
     // re-activates the right box. Only ever when it was already up; never pops it unbidden.
-    const kbUp = softKeyboardUp() || document.activeElement === cmdRef.current || document.activeElement === ref.current;
+    const kbUp = physicalKeyboardUp()
+      || document.activeElement === cmdRef.current
+      || document.activeElement === ref.current;
     setModeOverride((m) => ({ ...m, [pane]: next }));
     // preventScroll: the field is already lifted above the keyboard by translateY(-inset), so DON'T let
     // iOS scroll the page to reveal it — that programmatic scroll-to-focus is the transient "jumps taller
@@ -303,15 +325,11 @@ function BottomDock({
       // Did the drag begin inside the chat composer's textarea? A vertical drag there scrolls the draft
       // first and only "falls off" into a keyboard toggle at the textarea's top/bottom edge (see onMove).
       const cmp = e.target?.closest?.('.input-text') || null;
-      // Was the keyboard genuinely up as the gesture BEGAN? Captured here, before the drag can graze the
-      // composer. Trust the ACTUAL keyboard height first (softKeyboardUp, offsetTop-immune) — iOS can leave
-      // the keyboard up while focus has drifted OFF the dock field (an aborted app-switch, a stray blur), and
-      // the pure activeElement check then reads "down", so a horizontal page-swipe would blur/collapse a
-      // keyboard that's really up (you had to nudge vertically first to re-focus a field and dodge it). The
-      // activeElement fallback still catches the keyboard mid-open, before its height has grown. Conversely a
-      // swipe that merely brushes the textarea focuses it (green) WITHOUT popping the keyboard — softKeyboardUp
-      // is false there, so kbUp stays false and we undo that stray focus on release (below).
-      const kbUp = softKeyboardUp() || document.activeElement === cmdRef.current || document.activeElement === ref.current;
+      // Was the keyboard genuinely up as the gesture BEGAN? The keyboard-down viewport baseline survives
+      // focus drift and browsers that resize both viewports; activeElement covers the first opening frame.
+      const kbUp = physicalKeyboardUp()
+        || document.activeElement === cmdRef.current
+        || document.activeElement === ref.current;
       d = e.touches.length === 1
         ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, dy: 0, decided: false, horiz: false, vert: false, strip, cmp, kbUp }
         : null;
@@ -502,22 +520,15 @@ function BottomDock({
   useBackButton(panelOpen, () => closeOverlay(setPanelOpen));
 
   // The system can drop the soft keyboard WITHOUT blurring the focused field — e.g. an app-switch gesture
-  // aborted mid-way, or Android's Back. Focus (hence keyboardUp) then lies "up" while the keyboard is really
-  // down, and the ⌨ toggle sticks showing 收起 with no way to re-raise it. Reconcile against the visualViewport
-  // HEIGHT: overlap = innerHeight − vv.height is the keyboard's real height, immune to page scroll. We do NOT
-  // use the layout `inset` here — it also subtracts vv.offsetTop, which iOS pushes up during the focus scroll
-  // until the inset cancels to ~0 (see usePageScrollLock), so an inset edge would false-fire mid-open and
-  // slam the keyboard shut the instant you tapped the field. Height only falls when the keyboard truly goes,
-  // and only 'resize' (not 'scroll') is watched, so offsetTop churn is ignored. Latch on the up→down edge:
-  // drop the stale focus so the next tap cleanly re-opens. The rising (opening) edge is a no-op.
+  // aborted mid-way, or Android's Back. Reconcile against the baseline-aware physical height while still
+  // ignoring iOS offsetTop churn. Only a real height recovery clears stale focus.
   const kbdWasUpRef = useRef(false);
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return undefined;
     const reconcile = () => {
-      const overlap = window.innerHeight - vv.height; // keyboard height (offsetTop-immune), 0 when down
-      if (overlap > 120) { kbdWasUpRef.current = true; return; }
-      if (!kbdWasUpRef.current) return; // opening, or already down — nothing to reconcile
+      if (physicalKeyboardUp()) { kbdWasUpRef.current = true; return; }
+      if (!kbdWasUpRef.current) return;
       kbdWasUpRef.current = false;
       const active = document.activeElement;
       if (active === cmdRef.current || active === ref.current) active.blur();
