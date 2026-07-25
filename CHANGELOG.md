@@ -8,7 +8,6 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 - 电脑浏览器现在可用物理键盘直接操作终端；按 Shift+Enter 或点击草稿框进入草稿模式，Enter 发送后继续编辑，Shift+Enter 换行，Esc 或点击终端回到直通模式；设置中可为当前浏览器自动识别或手动指定手机 / 电脑键盘模式。
 
 ### Fixed
-- 修复电脑浏览器打开终端时因调用了 xterm 未公开的焦点事件 API 而白屏崩溃的问题。
 - Agent 用量现在展示所有设备共享的本机最新状态；新会话尚未产生额度数据时，不再让 Codex / Claude 的已有用量短暂消失。
 - Codex 用量改为读取本机快照，历史会话较多时不再频繁遍历全部记录；未安装 hook 时仍会低频校准。
 - Codex 主额度现在读取 Codex CLI 的本机账号状态，不再被 Spark 会话的独立周额度覆盖。

@@ -13,6 +13,7 @@ import { claudeStatePath } from './cli/state.js';
 import * as commands from './tmux/commands.js';
 import * as push from './push.js';
 import { cacheControlFor } from './staticCache.js';
+import { compressStaticAssets } from './staticCompression.js';
 import { applyAppName, applyManifestName } from './appName.js';
 import { homedir } from 'node:os';
 import { createPreviews } from './previews.js';
@@ -126,6 +127,7 @@ if (appName) {
 }
 
 // index:false so the renamed shell below owns "/" too (otherwise static would serve the generic one).
+app.use(compressStaticAssets);
 app.use(express.static(staticDir, {
   index: false,
   // Cache-Control policy lives in staticCache.js (unit-tested): index.html + sw.js are never cached
