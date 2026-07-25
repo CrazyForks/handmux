@@ -49,6 +49,7 @@ describe('tmux commands (integration)', () => {
     expect(panes.length).toBeGreaterThan(0);
     expect(isPaneId(panes[0].id)).toBe(true);
     expect(panes[0].width).toBe(80);
+    expect(windows[0].activePaneId).toBe(panes.find((pane) => pane.active).id);
   });
 
   it('listPanes includes an absolute cwd for each pane', async () => {

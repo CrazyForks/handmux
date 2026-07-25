@@ -295,6 +295,47 @@ describe('App management dimensions', () => {
   });
 });
 
+describe('App window switching', () => {
+  it('opens the target terminal immediately and ignores a slower stale pane response', async () => {
+    const session = { id: '$7', name: 'current' };
+    const first = { id: '@1', name: 'one', active: true, panes: 1, activePaneId: '%1' };
+    const second = { id: '@2', name: 'two', active: false, panes: 1, activePaneId: '%2' };
+    const third = { id: '@3', name: 'three', active: false, panes: 1, activePaneId: '%3' };
+    const secondPanes = deferred();
+    const thirdPanes = deferred();
+    localStorage.setItem('tw_bound', JSON.stringify([session.name]));
+    api.getSessions.mockResolvedValue([session]);
+    api.getWindows.mockResolvedValue([first, second, third]);
+    api.getPanes
+      .mockResolvedValueOnce([{ id: '%1', active: true, width: 80 }])
+      .mockReturnValueOnce(secondPanes.promise)
+      .mockReturnValueOnce(thirdPanes.promise);
+    await renderApp();
+
+    let secondSwitch;
+    act(() => { secondSwitch = windowBar.props.onSelectWindow(second); });
+    expect(windowBar.props.currentWindowId).toBe('@2');
+    expect(screen.getByTestId('terminal-pane').textContent).toBe('%2');
+
+    let thirdSwitch;
+    act(() => { thirdSwitch = windowBar.props.onSelectWindow(third); });
+    expect(windowBar.props.currentWindowId).toBe('@3');
+    expect(screen.getByTestId('terminal-pane').textContent).toBe('%3');
+
+    await act(async () => {
+      thirdPanes.resolve([{ id: '%3', active: true, width: 120 }]);
+      await thirdSwitch;
+    });
+    await act(async () => {
+      secondPanes.resolve([{ id: '%2', active: true, width: 90 }]);
+      await secondSwitch;
+    });
+
+    expect(windowBar.props.currentWindowId).toBe('@3');
+    expect(screen.getByTestId('terminal-pane').textContent).toBe('%3');
+  });
+});
+
 describe('App workspace recovery', () => {
   it('shows only a Drawer card when tmux already has a live session', async () => {
     api.getSessions.mockResolvedValue([{ id: '$7', name: 'current' }]);

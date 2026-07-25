@@ -53,7 +53,7 @@ async function req(path, opts = {}) {
 export const getSessions = () => req('/api/sessions');
 export const getUsage = () => req('/api/usage');
 export const getWindows = (session) => req(`/api/windows?session=${encodeURIComponent(session)}`);
-export const getPanes = (window) => req(`/api/panes?window=${encodeURIComponent(window)}`);
+export const getPanes = (window) => req(`/api/panes?window=${encodeURIComponent(window)}`, { timeoutMs: 8000 });
 export const getHistory = (pane, lines = 1500, since) =>
   req(`/api/history?pane=${encodeURIComponent(pane)}&lines=${lines}${since ? `&since=${since}` : ''}`, { timeoutMs: 8000 });
 // The 对话 lens's transcript: same req()-based conditional-poll convention as getHistory (8s timeout),

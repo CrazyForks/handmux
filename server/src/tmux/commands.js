@@ -45,10 +45,10 @@ export async function listSessions() {
 
 export async function listWindows(sessionId) {
   const out = await runTmux(['list-windows', '-t', sessionId, '-F', tmuxFormat([
-    'window_id', 'window_name', 'window_active', 'window_panes', 'window_width', 'window_height',
+    'window_id', 'window_name', 'window_active', 'window_panes', 'window_width', 'window_height', 'pane_id',
   ])]);
-  return parseTmuxRows(out, 6, 'window').map(([id, name, active, panes, width, height]) => {
-    return { id, name, active: active === '1', panes: Number(panes), width: Number(width), height: Number(height) };
+  return parseTmuxRows(out, 7, 'window').map(([id, name, active, panes, width, height, activePaneId]) => {
+    return { id, name, active: active === '1', panes: Number(panes), width: Number(width), height: Number(height), activePaneId };
   });
 }
 

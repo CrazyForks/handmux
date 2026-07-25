@@ -131,6 +131,7 @@ export default function App() {
   const [favorites, setFavorites] = useState(getFavorites); // global favorite commands
   const [recent, setRecent] = useState([]); // current session's recent commands (keyed by session name)
   const [current, setCurrent] = useState(null); // { session, windows, window, panes, paneId }
+  const windowSwitchRef = useRef(0); // only the newest async pane lookup may finish a window switch
   const [booting, setBooting] = useState(true);
   const [recoveryPlan, setRecoveryPlan] = useState(null);
   const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false);
@@ -516,14 +517,15 @@ export default function App() {
   // panes (prefer remembered → active → first). Writes the session name into the URL hash so
   // the location deep-links back here. Returns false if the session has no windows/panes.
   const openSession = useCallback(async (session, target = null, { isCancelled = () => false } = {}) => {
+    const switchEpoch = ++windowSwitchRef.current;
     if (isCancelled()) return false;
     const windows = await getWindows(session.id);
-    if (isCancelled()) return false;
+    if (isCancelled() || switchEpoch !== windowSwitchRef.current) return false;
     if (!windows.length) return false;
     const window = (target?.window && windows.find((w) => w.id === target.window))
       || windows.find((w) => w.id === pickId(windows, getLastWindow(session.id)));
     const panes = await getPanes(window.id);
-    if (isCancelled()) return false;
+    if (isCancelled() || switchEpoch !== windowSwitchRef.current) return false;
     if (!panes.length) return false;
     const paneId = (target?.pane && panes.some((p) => p.id === target.pane))
       ? target.pane
@@ -709,11 +711,21 @@ export default function App() {
 
   // Switch to another window within the current session (its active pane). Session/hash unchanged.
   const selectWindow = useCallback(async (window) => {
+    const switchEpoch = ++windowSwitchRef.current;
+    const rememberedPaneId = getLastPane(window.id);
+    const immediatePaneId = rememberedPaneId || window.activePaneId || null;
+    // Commit the user's choice before touching the network. With activePaneId supplied by the existing
+    // window listing, Terminal mounts now and shows its own loading surface while pane metadata catches up.
+    setCurrent((c) => (c ? { ...c, window, panes: [], paneId: immediatePaneId } : c));
+    remember({ sessionId: current.session.id, windowId: window.id, paneId: immediatePaneId });
+    tmuxColsRef.current = window.width ?? null;
+    savedLayoutRef.current = null;
     try {
       const panes = await getPanes(window.id);
+      if (switchEpoch !== windowSwitchRef.current) return null;
       if (!panes.length) return;
       const paneId = pickId(panes, getLastPane(window.id));
-      setCurrent((c) => (c ? { ...c, window, panes, paneId } : c));
+      setCurrent((c) => (c && c.window.id === window.id ? { ...c, window, panes, paneId } : c));
       remember({ sessionId: current.session.id, windowId: window.id, paneId });
       tmuxColsRef.current = panes.find((p) => p.id === paneId)?.width ?? null;
       savedLayoutRef.current = null;

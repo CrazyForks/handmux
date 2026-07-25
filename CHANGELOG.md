@@ -9,6 +9,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ### Changed
 - 内容区域、终端、代码和 Diff 现在使用统一的细滚动条；终端内容超出宽度时，电脑和手机会显示独立横向滚动条。
+- 网络较慢时，切换 Window 会立即进入目标终端的加载页面，不再等待窗格列表返回后才响应。
 
 ### Fixed
 - Agent 用量现在展示所有设备共享的本机最新状态；新会话尚未产生额度数据时，不再让 Codex / Claude 的已有用量短暂消失。
