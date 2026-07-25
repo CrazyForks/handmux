@@ -57,8 +57,8 @@ vi.mock('@xterm/xterm', () => ({
           getLine: () => undefined,
         },
       };
-      this.focus = vi.fn(() => this.onFocusCallback?.());
-      this.blur = vi.fn(() => this.onBlurCallback?.());
+      this.focus = vi.fn(() => this.helper?.dispatchEvent(new FocusEvent('focus')));
+      this.blur = vi.fn(() => this.helper?.dispatchEvent(new FocusEvent('blur')));
       this.refresh = vi.fn();
       this.dispose = vi.fn();
       this.write = vi.fn((_data, callback) => callback?.());
@@ -90,18 +90,6 @@ vi.mock('@xterm/xterm', () => ({
     }
     onData(callback) {
       this.onDataCallback = callback;
-      const sub = { dispose: vi.fn() };
-      this._subscriptions.push(sub);
-      return sub;
-    }
-    onFocus(callback) {
-      this.onFocusCallback = callback;
-      const sub = { dispose: vi.fn() };
-      this._subscriptions.push(sub);
-      return sub;
-    }
-    onBlur(callback) {
-      this.onBlurCallback = callback;
       const sub = { dispose: vi.fn() };
       this._subscriptions.push(sub);
       return sub;
@@ -228,7 +216,7 @@ describe('desktop terminal input', () => {
         onInputFocusChange={latestFocusChange}
       />,
     );
-    term.onBlurCallback();
+    term.helper.dispatchEvent(new FocusEvent('blur'));
     await act(async () => {
       input.reject(new mocks.UnauthorizedError());
       await input.promise.catch(() => {});
@@ -325,9 +313,25 @@ describe('desktop terminal input', () => {
     term.onDataCallback('late');
     await Promise.resolve();
 
-    expect(term._subscriptions).toHaveLength(4);
+    expect(term._subscriptions).toHaveLength(2);
     for (const sub of term._subscriptions) expect(sub.dispose).toHaveBeenCalledOnce();
     expect(mocks.sendInput).not.toHaveBeenCalled();
+  });
+
+  it('removes helper textarea focus listeners on unmount', () => {
+    const onInputFocusChange = vi.fn();
+    const view = render(
+      <Terminal pane="%1" desktop autoFocusInput={false} onInputFocusChange={onInputFocusChange} />,
+    );
+    const helper = mocks.instances[0].helper;
+
+    helper.dispatchEvent(new FocusEvent('focus'));
+    expect(onInputFocusChange).toHaveBeenCalledWith(true);
+    onInputFocusChange.mockClear();
+
+    view.unmount();
+    helper.dispatchEvent(new FocusEvent('blur'));
+    expect(onInputFocusChange).not.toHaveBeenCalled();
   });
 
   it('ignores an in-flight input error that settles after unmount', async () => {

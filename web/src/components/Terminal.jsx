@@ -294,12 +294,15 @@ const Terminal = forwardRef(function Terminal({
       return true;
     });
     const dataSub = desktop ? term.onData((data) => onInputDataRef.current?.(pane, data)) : null;
-    const focusSub = desktop ? term.onFocus(() => {
+    const inputHelper = desktop ? elRef.current?.querySelector('.xterm-helper-textarea') : null;
+    const onInputFocus = () => {
       if (!disposed) onInputFocusChangeRef.current?.(true);
-    }) : null;
-    const blurSub = desktop ? term.onBlur(() => {
+    };
+    const onInputBlur = () => {
       if (!disposed) onInputFocusChangeRef.current?.(false);
-    }) : null;
+    };
+    inputHelper?.addEventListener('focus', onInputFocus);
+    inputHelper?.addEventListener('blur', onInputBlur);
     // Subscribe first so desktop's mount focus is observable. Mobile has no focus subscriptions and stays
     // on the atomic neuter-then-prime path, preserving its focus/blur cursor-prime behavior exactly.
     prepareTerminalInput(term, elRef.current, desktop, autoFocusInput);
@@ -1390,8 +1393,8 @@ const Terminal = forwardRef(function Terminal({
       wrap.removeEventListener('pointercancel', onHandleUp, { capture: true });
       vp?.removeEventListener('scroll', onVpScroll);
       dataSub?.dispose();
-      focusSub?.dispose();
-      blurSub?.dispose();
+      inputHelper?.removeEventListener('focus', onInputFocus);
+      inputHelper?.removeEventListener('blur', onInputBlur);
       sub.dispose();
       linkProvider.dispose();
       for (const { deco, marker } of decosRef.current) { deco.dispose(); marker.dispose(); }
