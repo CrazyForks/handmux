@@ -39,6 +39,7 @@ class PaneControlStream {
     this.response = null;
     this.phase = 'attach';
     this.pendingOutput = [];
+    this.resyncing = null;
     this.attached = new Promise((resolve, reject) => {
       this.resolveAttached = resolve;
       this.rejectAttached = reject;
@@ -112,6 +113,7 @@ class PaneControlStream {
   }
 
   sendOutput(output) {
+    if (this.ws.readyState !== 1) return;
     if (this.ws.bufferedAmount > MAX_BUFFERED_BYTES) {
       this.ws.close(1013, 'stream fell behind');
       return;
@@ -121,17 +123,45 @@ class PaneControlStream {
 
   async start() {
     await this.attached;
+    await this.resync();
+  }
+
+  pause() {
+    if (this.phase !== 'closed') {
+      this.phase = 'paused';
+      this.pendingOutput = [];
+    }
+  }
+
+  resync() {
+    if (this.resyncing) return this.resyncing;
+    this.resyncing = this.runResync().finally(() => { this.resyncing = null; });
+    return this.resyncing;
+  }
+
+  async runResync() {
+    await this.attached;
+    this.phase = 'capture';
+    this.pendingOutput = [];
     const captureLines = await this.request(
       `capture-pane -p -e -N -t ${this.pane}`,
       () => { this.phase = 'buffer'; },
     );
     const infoLines = await this.request(
-      `display-message -p -t ${this.pane} "#{pane_width}\\t#{pane_height}\\t#{cursor_x}\\t#{cursor_y}\\t#{cursor_flag}\\t#{alternate_on}"`,
+      `display-message -p -t ${this.pane} "#{pane_width}\\t#{pane_height}\\t#{cursor_x}\\t#{cursor_y}\\t#{cursor_flag}\\t#{alternate_on}\\t#{mouse_any_flag}\\t#{mouse_sgr_flag}"`,
     );
-    const [width, height, cursorX, cursorY, cursorFlag, alternateOn] = Buffer.concat(infoLines)
+    const [width, height, cursorX, cursorY, cursorFlag, alternateOn, mouseAny, mouseSgr] = Buffer.concat(infoLines)
       .toString('utf8').split('\t').map(Number);
     const ansi = Buffer.concat(captureLines.flatMap((line) => [line, Buffer.from('\n')])).toString('utf8');
-    this.ws.send(JSON.stringify({ type: 'seed', ansi, width, height, alt: alternateOn === 1 }));
+    this.ws.send(JSON.stringify({
+      type: 'seed',
+      ansi,
+      width,
+      height,
+      alt: alternateOn === 1,
+      mouseAware: mouseAny === 1,
+      mouseSgr: mouseSgr === 1,
+    }));
     for (const output of this.pendingOutput) this.sendOutput(output);
     this.ws.send(JSON.stringify({
       type: 'ready',
@@ -163,9 +193,19 @@ export function createTerminalStream({ token, commands, spawnControl } = {}) {
     let authenticating = false;
     let stream = null;
     ws.on('message', async (raw, binary) => {
-      if (binary || authenticating || stream) return;
+      if (binary) return;
       let message;
       try { message = JSON.parse(raw.toString()); } catch { ws.close(1003, 'bad message'); return; }
+      if (stream) {
+        if (message.type === 'pause') stream.pause();
+        else if (message.type === 'resync') {
+          try { await stream.resync(); } catch {
+            if (ws.readyState < 2) ws.close(1011, 'stream resync failed');
+          }
+        }
+        return;
+      }
+      if (authenticating) return;
       if (message.type !== 'subscribe'
         || !tokenEquals(message.token ?? '', token)
         || !isPaneId(message.pane)) {

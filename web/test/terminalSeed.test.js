@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  normalizeSeedNewlines, prepareSeed, trimTrailingShadow, cursorSeq,
+  normalizeSeedNewlines, prepareSeed, prepareLiveSeed, trimTrailingShadow, cursorSeq,
 } from '../src/terminalSeed.js';
 
 describe('normalizeSeedNewlines', () => {
@@ -35,6 +35,13 @@ describe('prepareSeed', () => {
     // capture-pane -e -N: bg set, padding preserved, background closed by the pane's own reset.
     expect(prepareSeed('\x1b[48;5;237mmsg   \x1b[49m\nnext\n'))
       .toBe('\x1b[48;5;237mmsg   \x1b[49m\r\nnext');
+  });
+});
+
+describe('prepareLiveSeed', () => {
+  it('restores the exact pane height after snapshot cleanup drops trailing padding', () => {
+    const seed = prepareLiveSeed('one\n\n', 3);
+    expect(seed.split('\r\n')).toEqual(['one', '', '']);
   });
 });
 
