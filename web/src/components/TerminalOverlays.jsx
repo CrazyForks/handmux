@@ -30,13 +30,13 @@ export default function TerminalOverlays({
       {!ready && <LensBoot hint={t('boot.loading')} />}
       {ready && connected && !scrollInfo && !selInfo && connectionInfo && (
         <div className={`terminal-connection is-${connectionInfo.quality}`}>
-          <span className={`terminal-connection__tag terminal-connection__mode is-${connectionInfo.mode}`}>
-            {t(`terminal.transport_${connectionInfo.mode}`)}
-          </span>
           <span className="terminal-connection__tag terminal-connection__quality">
             {t(`terminal.connection_${connectionInfo.quality}`)}
             {' '}
             {connectionInfo.rttMs == null ? '-- ms' : `${connectionInfo.rttMs} ms`}
+          </span>
+          <span className={`terminal-connection__tag terminal-connection__mode is-${connectionInfo.mode}`}>
+            {t(`terminal.transport_${connectionInfo.mode}`)}
           </span>
         </div>
       )}

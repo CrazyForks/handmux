@@ -275,6 +275,18 @@ describe('desktop terminal input', () => {
     expect(styles).toMatch(/\.terminal\.desktop-input \.xterm-helper-textarea\s*\{[^}]*pointer-events:\s*auto/);
   });
 
+  it('anchors the top banner and connection labels to one stable visible-top line', () => {
+    expect(styles).toMatch(
+      /\.term-banner\s*\{[^}]*top:\s*var\(--terminal-overlay-top,\s*1px\)[^}]*height:\s*25px/,
+    );
+    expect(styles).toMatch(
+      /\.terminal-connection\s*\{[^}]*top:\s*calc\(var\(--terminal-overlay-top,\s*1px\)\s*\+\s*1px\)/,
+    );
+    expect(styles).toMatch(
+      /\.terminal-connection__tag\s*\{[^}]*height:\s*23px/,
+    );
+  });
+
   it('keeps the desktop input class after the first terminal frame is revealed', async () => {
     mocks.getHistory.mockResolvedValue({
       ansi: 'ready',
@@ -346,6 +358,8 @@ describe('desktop terminal input', () => {
     expect(status.querySelectorAll('.terminal-connection__tag')).toHaveLength(2);
     expect(status.querySelector('.terminal-connection__mode').classList.contains('is-live')).toBe(true);
     expect(status.querySelector('.terminal-connection__quality').textContent).toContain('较差 1800 ms');
+    expect(status.firstElementChild.classList.contains('terminal-connection__quality')).toBe(true);
+    expect(status.lastElementChild.classList.contains('terminal-connection__mode')).toBe(true);
     expect(status.textContent).toContain('实时');
     act(() => {
       vi.advanceTimersByTime(15000);

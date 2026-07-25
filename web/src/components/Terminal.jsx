@@ -557,6 +557,14 @@ const Terminal = forwardRef(function Terminal({
 
     const fit = (pass = 0) => {
       if (disposed || !elRef.current || !term.rows) return;
+      const overlayHost = elRef.current.parentElement;
+      const hostRect = overlayHost?.getBoundingClientRect();
+      if (overlayHost && hostRect) {
+        // Anchor overlays from the wrap's real clipped top instead of inferring it from visible height.
+        // Ceil + 1px keeps the first border/text row inside the viewport during fractional keyboard motion.
+        const overlayTop = Math.ceil(Math.max(0, -hostRect.top)) + 1;
+        overlayHost.style.setProperty('--terminal-overlay-top', `${overlayTop}px`);
+      }
       // Fit to the grid's ACTUAL on-screen height, not clientHeight. When horizontal overflow exists on a
       // phone, .terminal--x-overflow gives the scrollbar its own 4px row and .xterm is the content above it.
       // App translateY(-inset) lifts the whole column, so the grid's top can be clipped above the screen
@@ -580,7 +588,7 @@ const Terminal = forwardRef(function Terminal({
       if (!avail || !curH) return;
       // Publish the visible height so absolutely-positioned overlays (pager, top banner) anchor to the
       // on-screen slice instead of the full container (whose top is clipped off-screen with the keyboard up).
-      elRef.current.parentElement?.style.setProperty('--vis-h', `${avail}px`);
+      overlayHost?.style.setProperty('--vis-h', `${avail}px`);
       if (insetRef.current === 0) fullAvailRef.current = avail; // remember the real keyboard-down usable height
       const cellH = curH / term.rows;
 
