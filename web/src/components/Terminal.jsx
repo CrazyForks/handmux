@@ -65,6 +65,11 @@ function prepareTerminalInput(term, hostEl, desktop, autoFocusInput) {
   primeCursorRenderer(term, hostEl);
 }
 
+function usesAppleCommandKey() {
+  const platform = navigator.userAgentData?.platform || navigator.platform || '';
+  return /mac|iphone|ipad|ipod/i.test(platform);
+}
+
 // Pane view backed by capture-pane snapshots (tmux's already-rendered grid — no cursor
 // seam). While at the bottom we cheaply repaint a short tail every second. Scrolling up
 // pauses the refresh; reaching the top pulls a deeper history slice and keeps the content
@@ -292,6 +297,15 @@ const Terminal = forwardRef(function Terminal({
     term.open(elRef.current);
     termRef.current = term;
     term.attachCustomKeyEventHandler((event) => {
+      const pasteKey = desktop && event.key?.toLowerCase() === 'v' && !event.altKey;
+      const nativePaste = pasteKey && (usesAppleCommandKey()
+        ? event.metaKey && !event.ctrlKey
+        : event.ctrlKey && !event.metaKey);
+      if (nativePaste) {
+        // Skip xterm's Ctrl+V control-character mapping and let its native paste listener
+        // receive the browser paste event (including bracketed-paste handling).
+        return false;
+      }
       const copyKey = desktop && event.key?.toLowerCase() === 'c' && term.hasSelection?.();
       const nativeCopy = copyKey && event.metaKey && !event.ctrlKey && !event.altKey;
       const terminalCopy = copyKey && event.ctrlKey && event.shiftKey

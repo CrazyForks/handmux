@@ -147,9 +147,16 @@ describe('desktop terminal input', () => {
     mocks.getHistory.mockReset().mockImplementation(() => new Promise(() => {}));
     mocks.sendInput.mockReset();
     delete navigator.clipboard;
+    Object.defineProperty(navigator, 'platform', {
+      configurable: true,
+      value: 'Win32',
+    });
   });
 
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    delete navigator.platform;
+  });
 
   it('keeps mobile xterm read-only and never exposes its helper textarea', () => {
     render(<Terminal pane="%1" desktop={false} />);
@@ -330,6 +337,26 @@ describe('desktop terminal input', () => {
     expect(preventDefault).toHaveBeenCalledOnce();
 
     expect(term.customKeyHandler({ key: 'c', ctrlKey: true })).toBe(true);
+  });
+
+  it('lets Windows and Linux paste shortcuts reach the browser paste event', () => {
+    render(<Terminal pane="%1" desktop />);
+    const term = mocks.instances[0];
+
+    expect(term.customKeyHandler({ key: 'v', ctrlKey: true })).toBe(false);
+    expect(term.customKeyHandler({ key: 'V', ctrlKey: true, shiftKey: true })).toBe(false);
+  });
+
+  it('lets Cmd+V paste on Apple platforms while preserving terminal Ctrl+V', () => {
+    Object.defineProperty(navigator, 'platform', {
+      configurable: true,
+      value: 'MacIntel',
+    });
+    render(<Terminal pane="%1" desktop />);
+    const term = mocks.instances[0];
+
+    expect(term.customKeyHandler({ key: 'v', metaKey: true })).toBe(false);
+    expect(term.customKeyHandler({ key: 'v', ctrlKey: true })).toBe(true);
   });
 
   it('pauses snapshot polling for a desktop mouse selection and resumes when it clears', async () => {

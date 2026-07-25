@@ -5,7 +5,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Added
-- 电脑浏览器现在可用物理键盘直接操作终端；按 Shift+Enter 或点击草稿框进入草稿模式，Enter 发送后继续编辑，Shift+Enter 换行，Esc 或点击终端回到直通模式；鼠标可原生拖选文字，Mac 用 Cmd+C、Windows / Linux 用 Ctrl+Shift+C 复制；设置中可为当前浏览器自动识别或手动指定手机 / 电脑键盘模式。
+- 电脑浏览器现在可用物理键盘直接操作终端；按 Shift+Enter 或点击草稿框进入草稿模式，Enter 发送后继续编辑，Shift+Enter 换行，Esc 或点击终端回到直通模式；鼠标可原生拖选文字，Mac 用 Cmd+C / Cmd+V、Windows / Linux 用 Ctrl+Shift+C / Ctrl+V（或 Ctrl+Shift+V）复制粘贴；设置中可为当前浏览器自动识别或手动指定手机 / 电脑键盘模式。
 
 ### Changed
 - 内容区域、终端、代码和 Diff 现在使用统一的细滚动条；终端内容超出宽度时，电脑和手机会显示独立横向滚动条。
