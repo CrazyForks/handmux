@@ -416,7 +416,7 @@ export default function BrowserSheet({ browser }) {
               <div className="browser-options-section">
                 <button className="browser-close-trigger" aria-expanded={timeOpen}
                   onClick={() => setTimeOpen((value) => !value)}>
-                  <span>{t('browser.closeTiming')}</span>
+                  <strong>{t('browser.closeTiming')}</strong>
                   <span>{t('browser.minutes', { value: closeAfter })} ▾</span>
                 </button>
                 {timeOpen && (
@@ -431,11 +431,22 @@ export default function BrowserSheet({ browser }) {
 
               {proxyAvailable && (historyActive || !active) && (
                 <div className="browser-options-section browser-profile-options">
-                  <div className="browser-profile-persist-row">
-                    <label className="browser-options-row browser-profile-persist">
-                      <span>{t('settings.browserPersistLogin')}</span>
+                  <div className="browser-options-row browser-profile-persist">
+                    <span className="browser-options-title">
+                      <label htmlFor="browser-profile-persist-toggle">
+                        <strong>{t('settings.browserPersistLogin')}</strong>
+                      </label>
+                      <button type="button" className="settings-close browser-title-help"
+                        aria-label={t('browser.proxyLoginHelpLabel')}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          clearTriggerRef.current = event.currentTarget;
+                          setClearConfirmation({ type: 'help-profile' });
+                        }}>?</button>
+                    </span>
+                    <span className="browser-options-control">
                       <span className="cmd-switch">
-                        <input type="checkbox" checked={!!persistProxyLogin}
+                        <input id="browser-profile-persist-toggle" type="checkbox" checked={!!persistProxyLogin}
                           onChange={(event) => setProxyLoginPolicy({
                             persist: event.target.checked,
                             retentionDays: null,
@@ -443,12 +454,7 @@ export default function BrowserSheet({ browser }) {
                         <span className="cmd-switch-track" aria-hidden="true" />
                         <span className="cmd-switch-knob" aria-hidden="true" />
                       </span>
-                    </label>
-                    <button className="browser-options-help" aria-label={t('browser.proxyLoginHelpLabel')}
-                      onClick={() => {
-                        clearTriggerRef.current = document.activeElement;
-                        setClearConfirmation({ type: 'help-profile' });
-                      }}>?</button>
+                    </span>
                   </div>
                   <button className="browser-options-danger" onClick={() => {
                     clearTriggerRef.current = document.activeElement;
@@ -460,14 +466,18 @@ export default function BrowserSheet({ browser }) {
               {proxyAvailable && active?.mode === 'proxy' && !historyActive && (
                 <div className="browser-options-section">
                   <div className="browser-site-cookie-row">
+                    <div className="browser-options-title">
+                      <strong>{t('browser.siteProxyCookie')}</strong>
+                      <button className="settings-close browser-title-help"
+                        aria-label={t('browser.siteCookieHelpLabel')}
+                        onClick={(event) => {
+                          clearTriggerRef.current = event.currentTarget;
+                          setClearConfirmation({ type: 'help-site' });
+                        }}>?</button>
+                    </div>
                     <button className="browser-options-danger" onClick={requestActiveSiteClear}>
                       {t('browser.clearSiteLogin')}
                     </button>
-                    <button className="browser-options-help" aria-label={t('browser.siteCookieHelpLabel')}
-                      onClick={() => {
-                        clearTriggerRef.current = document.activeElement;
-                        setClearConfirmation({ type: 'help-site' });
-                      }}>?</button>
                   </div>
                 </div>
               )}

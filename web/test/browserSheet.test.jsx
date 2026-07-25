@@ -585,9 +585,11 @@ describe('BrowserSheet', () => {
     expect(card.textContent).not.toContain('关闭内置浏览器');
     const cookieRow = card.querySelector('.browser-site-cookie-row');
     expect(cookieRow).not.toBeNull();
-    expect(cookieRow.querySelector('strong')).toBeNull();
+    const cookieTitle = cookieRow.querySelector('.browser-options-title');
+    expect(cookieTitle.querySelector('strong').textContent).toBe('本站代理 Cookie');
+    expect(cookieTitle.querySelector('.settings-close').textContent).toBe('?');
     expect([...cookieRow.querySelectorAll('button')].map((node) => node.textContent)).toEqual([
-      '清理本站代理 Cookie', '?',
+      '?', '清理本站代理 Cookie',
     ]);
 
     const modeButtons = [...card.querySelectorAll('.browser-mode-segment button')];
@@ -608,7 +610,7 @@ describe('BrowserSheet', () => {
     click(closeChoices[1]);
     expect(model.setCloseAfter).toHaveBeenCalledWith(30);
 
-    click(card.querySelector('.browser-options-help'));
+    click(card.querySelector('.browser-title-help'));
     expect(document.querySelector('.browser-profile-confirm').textContent).toContain('手机直连 Cookie 不受影响');
     click(document.querySelector('.browser-profile-confirm button'));
     click([...card.querySelectorAll('button')].find((node) => node.textContent === '清理本站代理 Cookie'));
@@ -646,12 +648,16 @@ describe('BrowserSheet', () => {
     const persistence = card.querySelector('.browser-profile-persist');
     expect(persistence).not.toBeNull();
     expect(persistence.textContent).toContain('在电脑上持久化保存代理 Cookie');
+    const persistenceTitle = persistence.querySelector('.browser-options-title');
+    expect(persistenceTitle.querySelector('strong').textContent).toBe('在电脑上持久化保存代理 Cookie');
+    expect(persistenceTitle.querySelector('.settings-close').textContent).toBe('?');
+    expect(persistenceTitle.querySelector('.settings-close').parentElement).toBe(persistenceTitle);
     expect(card.querySelector('.browser-retention')).toBeNull();
     expect(card.querySelector('.browser-profile-retention-trigger')).toBeNull();
     click(persistence.querySelector('input'));
     expect(model.setProxyLoginPolicy).toHaveBeenCalledWith({ persist: true, retentionDays: null });
 
-    click(card.querySelector('.browser-options-help'));
+    click(card.querySelector('.browser-title-help'));
     expect(document.querySelector('.browser-profile-confirm p').textContent).toBe(
       '是否将代理 Cookie 加密保存在运行 Handmux 的电脑上，以便重启后保持登录状态。',
     );
