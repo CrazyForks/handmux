@@ -83,6 +83,10 @@ describe('BrowserSheet', () => {
     const consent = document.querySelector('.browser-consent').textContent;
     expect(consent).toContain('手机直连');
     expect(consent).toContain('经电脑代理');
+    expect(consent).toContain('代理访问通常更慢');
+    expect(consent).toContain('iframe 或 CSP');
+    expect(consent).toContain('支持 WebSocket');
+    expect(consent).toContain('不保证所有网站都能正常使用');
     expect(consent).not.toContain('关闭并销毁登录状态');
     const acknowledge = document.querySelector('.browser-consent-enable');
     expect(acknowledge.textContent).toBe('好的');
@@ -113,6 +117,8 @@ describe('BrowserSheet', () => {
     const modeButtons = [...document.querySelectorAll('.browser-mode-segment button')];
     expect(modeButtons.map((node) => node.textContent)).toEqual(['手机直连', '经电脑代理']);
     expect(modeButtons.map((node) => node.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+    expect(document.querySelector('.browser-proxy-limit').textContent)
+      .toBe('代理访问通常更慢，且不保证所有网站都能正常使用。');
     click(modeButtons[0]);
     expect(model.navigateTab).toHaveBeenCalledWith('a', 'https://a.example/', 'direct');
   });
@@ -271,7 +277,7 @@ describe('BrowserSheet', () => {
     const proxy = [...document.querySelectorAll('.browser-history-mode-option')].find((node) => node.textContent === '经电脑代理');
     expect(proxy.disabled).toBe(true);
     const reason = document.querySelector('.browser-history-mode-menu p');
-    expect(reason.textContent).toContain('当前服务器未开启浏览器代理');
+    expect(reason.textContent).toBe('请先在电脑端配置 previewDomain；配置前只能使用手机直连。');
     expect(proxy.getAttribute('aria-describedby')).toBe(reason.id);
   });
 
@@ -285,7 +291,8 @@ describe('BrowserSheet', () => {
     click(document.querySelector('.browser-history-main'));
 
     expect(model.openUrl).not.toHaveBeenCalled();
-    expect(document.querySelector('.browser-error').textContent).toContain('当前服务器未开启浏览器代理');
+    expect(document.querySelector('.browser-error').textContent)
+      .toContain('请先在电脑端配置 previewDomain；配置前只能使用手机直连。');
   });
 
   it('clears stale history errors when switching tabs or starting a valid address operation', async () => {

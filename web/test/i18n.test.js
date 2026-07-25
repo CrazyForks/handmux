@@ -81,10 +81,18 @@ describe('browser dual-mode copy', () => {
     ['ja', ja, 'スマホ', 'プロキシ', '破棄'],
     ['ko', ko, '휴대폰', '프록시', '삭제'],
   ])('%s consent covers both paths without claiming direct sign-in is destroyed', (_code, dict, directWord, proxyWord, destroyedWord) => {
-    const consent = [dict['browser.consentTitle'], dict['browser.consentBody'], dict['browser.consentComputer'], dict['browser.consentIdle']].join(' ');
+    const consent = [
+      dict['browser.consentTitle'],
+      dict['browser.consentBody'],
+      dict['browser.consentComputer'],
+      dict['browser.consentLimits'],
+      dict['browser.consentIdle'],
+    ].join(' ');
     expect(consent).toContain(directWord);
     expect(consent).toContain(proxyWord);
     expect(dict['browser.consentIdle']).not.toContain(destroyedWord);
+    expect(dict['browser.proxyLimitHint']).toBeTruthy();
+    expect(dict['browser.proxyUnavailable']).toContain('previewDomain');
   });
 
   it.each([

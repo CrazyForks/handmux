@@ -326,6 +326,7 @@ export default function BrowserSheet({ browser }) {
         <ul>
           <li>{t('browser.consentComputer')}</li>
           <li>{t('browser.consentPrivate')}</li>
+          <li>{t('browser.consentLimits')}</li>
           <li>{t('browser.consentIdle')}</li>
         </ul>
         <div className="browser-consent-actions">
@@ -399,8 +400,10 @@ export default function BrowserSheet({ browser }) {
                     aria-describedby={!proxyAvailable ? 'browser-options-proxy-unavailable' : undefined}
                     onClick={() => chooseMode('proxy')}>{t('browser.proxyMode')}</button>
                 </div>
-                {!proxyAvailable && <p id="browser-options-proxy-unavailable"
-                  className="browser-options-hint">{t('browser.proxyUnavailable')}</p>}
+                {proxyAvailable
+                  ? <p className="browser-options-hint browser-proxy-limit">{t('browser.proxyLimitHint')}</p>
+                  : <p id="browser-options-proxy-unavailable"
+                    className="browser-options-hint">{t('browser.proxyUnavailable')}</p>}
               </div>
 
               <div className="browser-options-row">
@@ -603,6 +606,7 @@ export default function BrowserSheet({ browser }) {
                 <ul>
                   <li>{t('browser.consentComputer')}</li>
                   <li>{t('browser.consentPrivate')}</li>
+                  <li>{t('browser.consentLimits')}</li>
                   <li>{t('browser.consentIdle')}</li>
                 </ul>
               </>
