@@ -91,6 +91,11 @@ const typeInto = (node, text) => act(() => {
 });
 
 describe('BottomDock', () => {
+  it('keeps the mobile composer placeholder conversational', () => {
+    render({ pane: '%1' });
+    expect(container.querySelector('.input-text').placeholder).toBe('说点什么…');
+  });
+
   it('renders the device-local command order across shared and local global items', () => {
     localStorage.setItem('hm_favs7_command', JSON.stringify([
       { kind: 'cmd', text: 'local', enter: false },

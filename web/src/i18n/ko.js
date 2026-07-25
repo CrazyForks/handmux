@@ -138,7 +138,7 @@ export default {
   'dock.history': '기록',
   'history.empty': '기록이 아직 없습니다',
   'history.scope': '현재 창의 기록만',
-  'dock.input.placeholder': '초안 영역',
+  'dock.input.placeholder': '메시지를 입력하세요…',
   'dock.input.enterDraft': 'Shift + Enter로 초안 모드 열기',
   'dock.input.exitDraft': 'Esc로 터미널 모드 돌아가기 · Shift + Enter로 줄바꿈',
   'dock.command.placeholder': '명령 입력 · Enter로 실행',

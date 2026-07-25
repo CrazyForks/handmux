@@ -138,7 +138,7 @@ export default {
   'dock.history': '履歴',
   'history.empty': '履歴はまだありません',
   'history.scope': 'このウィンドウの記録のみ',
-  'dock.input.placeholder': '下書き欄',
+  'dock.input.placeholder': 'メッセージを入力…',
   'dock.input.enterDraft': 'Shift + Enter で下書きモードへ',
   'dock.input.exitDraft': 'Esc でターミナルモードへ戻る · Shift + Enter で改行',
   'dock.command.placeholder': 'コマンドを入力 · Enterで実行',

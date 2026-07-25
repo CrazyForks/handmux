@@ -138,7 +138,7 @@ export default {
   'dock.history': '歷史',
   'history.empty': '還沒有發送記錄',
   'history.scope': '僅目前視窗的記錄',
-  'dock.input.placeholder': '草稿區',
+  'dock.input.placeholder': '說點什麼…',
   'dock.input.enterDraft': '按 Shift + Enter 進入草稿模式',
   'dock.input.exitDraft': '按 Esc 回到終端模式 · Shift + Enter 換行',
   'dock.command.placeholder': '輸入指令 · Enter 執行',
