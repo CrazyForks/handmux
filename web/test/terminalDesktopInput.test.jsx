@@ -286,6 +286,32 @@ describe('desktop terminal input', () => {
     expect(host.classList.contains('terminal--x-overflow')).toBe(false);
   });
 
+  it('shows and reserves the mobile vertical scrollbar only with real scrollback', async () => {
+    const view = render(<Terminal pane="%1" desktop={false} />);
+    const term = mocks.instances[0];
+    const host = view.container.querySelector('.terminal');
+    const viewport = view.container.querySelector('.xterm-viewport');
+    Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 384 });
+    Object.assign(term.buffer.active, { baseY: 100, viewportY: 50, length: 124 });
+
+    await act(async () => {
+      term.onScrollCallback();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(host.classList.contains('terminal--y-overflow')).toBe(true);
+    const thumb = view.container.querySelector('.terminal-y-scrollbar > span');
+    expect(thumb.style.top).toBe('155px');
+    expect(thumb.style.height).toBe('74px');
+
+    Object.assign(term.buffer.active, { baseY: 0, viewportY: 0, length: 24 });
+    await act(async () => {
+      term.onScrollCallback();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(host.classList.contains('terminal--y-overflow')).toBe(false);
+    expect(view.container.querySelector('.terminal-y-scrollbar')).toBeNull();
+  });
+
   it('exposes focus controls and reports desktop xterm focus changes', () => {
     const ref = React.createRef();
     const onInputFocusChange = vi.fn();

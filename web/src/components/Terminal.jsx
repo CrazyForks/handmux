@@ -163,6 +163,10 @@ const Terminal = forwardRef(function Terminal({
   // Mobile overlay scrollbars reserve no layout space. Only when the rendered grid is actually wider than
   // its host do we add the exact scrollbar-height class; a fitting grid keeps zero gutter.
   const [xOverflow, setXOverflow] = useState(false);
+  // iOS auto-hides the native vertical indicator and overlays it on the final text column. Keep the
+  // geometry for a small, persistent mobile-only thumb; null means there is no vertical scrollback.
+  const [yScrollbar, setYScrollbar] = useState(null); // { top, height } in px
+  const yOverflow = yScrollbar != null;
   // The effect's scheduleFit, surfaced so the font controls (below) can re-fit the row count
   // after changing the size from outside the effect scope.
   const fitRef = useRef(null);
@@ -251,8 +255,8 @@ const Terminal = forwardRef(function Terminal({
     if (inset === 0) followArmedRef.current = false; // keyboard closed → stop following
   }, [inset]);
 
-  // Adding/removing the conditional horizontal-scrollbar row changes the grid's usable height.
-  useEffect(() => { fitRef.current?.(); }, [xOverflow]);
+  // Adding/removing either conditional scrollbar gutter changes the grid's usable box.
+  useEffect(() => { fitRef.current?.(); }, [xOverflow, yOverflow]);
 
   useEffect(() => {
     let disposed = false;
@@ -413,6 +417,7 @@ const Terminal = forwardRef(function Terminal({
     selActiveRef.current = false;
     setSelUI(null);
     setSelInfo('');
+    setYScrollbar(null);
     // Live capture depth tracks the viewport (+margin) instead of a fixed 100, so we transmit and hash
     // only what's shown plus a little scroll-up slack. Floor 24 covers a not-yet-fit grid; cap at MAX_LINES.
     const liveDepth = () => Math.min(MAX_LINES, Math.max(24, term.rows + LIVE_MARGIN));
@@ -465,6 +470,22 @@ const Terminal = forwardRef(function Terminal({
     });
 
     const buf = () => term.buffer.active;
+    const syncYScrollbar = () => {
+      const vp = elRef.current?.querySelector('.xterm-viewport');
+      const b = buf();
+      const trackHeight = vp?.clientHeight || 0;
+      const maxTop = b.baseY || 0;
+      if (!trackHeight || maxTop <= 0) {
+        setYScrollbar((current) => (current == null ? current : null));
+        return;
+      }
+      const totalRows = Math.max(b.length || 0, maxTop + term.rows);
+      const height = Math.min(trackHeight, Math.max(18, Math.round(trackHeight * term.rows / totalRows)));
+      const top = Math.round((trackHeight - height) * Math.max(0, Math.min(maxTop, b.viewportY)) / maxTop);
+      setYScrollbar((current) => (
+        current?.top === top && current?.height === height ? current : { top, height }
+      ));
+    };
     // History-mode banner text. Shown ONLY while browsing outside the live zone (scrolled up far
     // enough that live refresh is paused) — inside the live zone, or at the bottom, it's still live so
     // there's nothing to show. Non-empty scrollInfo ⇔ history mode. `tag` marks a deeper-history pull.
@@ -612,8 +633,12 @@ const Terminal = forwardRef(function Terminal({
       const screen = elRef.current.querySelector('.xterm-screen');
       const screenRect = screen?.getBoundingClientRect();
       const curH = screenRect?.height || 0;
-      const hasXOverflow = !!screenRect && screenRect.width > elRef.current.clientWidth + 1;
+      const hasXOverflow = (
+        elRef.current.scrollWidth > elRef.current.clientWidth + 1
+        || (!!screenRect && screenRect.width > elRef.current.clientWidth + 1)
+      );
       setXOverflow((current) => (current === hasXOverflow ? current : hasXOverflow));
+      syncYScrollbar();
       if (!avail || !curH) return;
       // Publish the visible height so absolutely-positioned overlays (pager, top banner) anchor to the
       // on-screen slice instead of the full container (whose top is clipped off-screen with the keyboard up).
@@ -674,6 +699,7 @@ const Terminal = forwardRef(function Terminal({
         term.write(`\x1b[?25l\x1b[${term.rows};1H`, () => {
           if (disposed) return;
           term.resize(term.cols, want);
+          syncYScrollbar();
           // Full-screen app scroll after a resize:
           //  • keyboard UP → first-line reference, then bottom-align the cursor if it fell below the fold
           //    (opening the keyboard shows the first line, scrolling only if it must to keep the caret shown);
@@ -1354,6 +1380,7 @@ const Terminal = forwardRef(function Terminal({
             if (t != null) term.scrollToLine(t);
           }
         }
+        syncYScrollbar();
         seeded = true;
         // success path only — a failed/unchanged poll keeps the last decorations.
         try { refreshDocDecorations(term); } catch { /* decorations are cosmetic; never fail the poll */ }
@@ -1446,6 +1473,7 @@ const Terminal = forwardRef(function Terminal({
 
     const sub = term.onScroll(() => {
       if (disposed) return;
+      syncYScrollbar();
       if (atBottom()) { setPaused(false); setScrollInfo(''); return; }
       setPaused(true);
       showScrollPos();
@@ -1568,8 +1596,13 @@ const Terminal = forwardRef(function Terminal({
     <div className="terminal-wrap">
       <div
         ref={elRef}
-        className={`terminal${ready ? '' : ' terminal--loading'}${desktop ? ' desktop-input' : ''}${xOverflow ? ' terminal--x-overflow' : ''}`}
+        className={`terminal${ready ? '' : ' terminal--loading'}${desktop ? ' desktop-input' : ''}${xOverflow ? ' terminal--x-overflow' : ''}${yOverflow ? ' terminal--y-overflow' : ''}`}
       />
+      {yScrollbar && (
+        <div className={`terminal-y-scrollbar${xOverflow ? ' has-x' : ''}`} aria-hidden="true">
+          <span style={{ top: `${yScrollbar.top}px`, height: `${yScrollbar.height}px` }} />
+        </div>
+      )}
       {!ready && <LensBoot hint={t('boot.loading')} />}
       {!connected && (
         <div className="term-banner term-banner--err">
