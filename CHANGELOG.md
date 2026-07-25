@@ -12,9 +12,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 - 网络较慢时，切换 Window 会立即进入目标终端的加载页面，不再等待窗格列表返回后才响应。
 
 ### Fixed
-- Agent 用量现在展示所有设备共享的本机最新状态；新会话尚未产生额度数据时，不再让 Codex / Claude 的已有用量短暂消失。
-- Codex 用量改为读取本机快照，历史会话较多时不再频繁遍历全部记录；未安装 hook 时仍会低频校准。
-- Codex 主额度现在读取 Codex CLI 的本机账号状态，不再被 Spark 会话的独立周额度覆盖。
+- Agent 用量现在稳定展示所有设备共享的本机最新状态，Codex 主额度与 CLI `/status` 保持一致。
 
 ## [0.18.0] - 2026-07-22
 

@@ -11,6 +11,26 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.19.0',
+    date: '2026-07-25',
+    highlight: {
+      zh: '电脑物理键盘直输 · Window 切换更流畅',
+      en: 'Desktop keyboard input · faster window switching',
+    },
+    items: {
+      zh: [
+        '电脑浏览器现在可以用物理键盘直接操作终端,并支持常用终端快捷键、输入法和复制粘贴;Shift+Enter 可进入保留快捷用语、上传、历史和语音的草稿模式,设置中也可手动指定手机或电脑键盘模式。',
+        '全站滚动条现在更统一;终端内容超宽时会显示独立横向滚动条,网络较慢时切换 Window 也会立即进入目标终端的加载页面。',
+        'Agent 用量现在稳定展示所有设备共享的本机最新状态,Codex 主额度与 CLI /status 保持一致。',
+      ],
+      en: [
+        'Desktop browsers can now drive the terminal directly from a physical keyboard, with common terminal shortcuts, IME, and copy/paste; Shift+Enter opens draft mode with shortcuts, uploads, history, and voice intact, and Settings can force Mobile or Desktop keyboard mode.',
+        'Scrollbars are now consistent across the app; wide terminal content gets its own horizontal scrollbar, and switching Windows on a slow network enters the target terminal loading view immediately.',
+        'Agent usage now keeps the latest machine state stable and shared across devices, while the main Codex quota matches CLI /status.',
+      ],
+    },
+  },
+  {
     version: '0.18.0',
     date: '2026-07-22',
     highlight: {
