@@ -168,7 +168,7 @@ export default {
   'dock.kbdHide': 'Hide keyboard',
   'history.empty': 'No history yet',
   'history.scope': 'This window only',
-  'dock.input.placeholder': 'Say something…',
+  'dock.input.placeholder': 'Draft area',
   'dock.command.placeholder': 'Type a command · Enter runs it',
   'dock.mode.agent': 'Chat',
   'dock.mode.toggle': 'Switch input mode',

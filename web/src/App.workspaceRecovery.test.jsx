@@ -261,6 +261,14 @@ describe('App management dimensions', () => {
     await flush(20);
     expect(terminal.focusInput).toHaveBeenCalledOnce();
   });
+
+  it('returns desktop keyboard ownership to the terminal when the terminal is tapped', async () => {
+    await renderManagedSession();
+
+    act(() => terminal.props.onTap());
+
+    expect(terminal.focusInput).toHaveBeenCalledOnce();
+  });
 });
 
 describe('App workspace recovery', () => {

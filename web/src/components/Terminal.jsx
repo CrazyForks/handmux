@@ -1038,7 +1038,13 @@ const Terminal = forwardRef(function Terminal({
     // holds focus, preventDefault the pointerdown to keep it (the same keepFocus trick the dock buttons use):
     // onClick/taps and the custom touch gestures still fire, the keyboard just no longer drops on every touch.
     // Only pins a genuine input — never xterm's own hidden helper textarea.
-    const onKeepKbdDown = (e) => { if (shouldKeepKeyboard(document.activeElement) && e.cancelable) e.preventDefault(); };
+    const onKeepKbdDown = (e) => {
+      if (desktop) {
+        onTapRef.current?.();
+        return;
+      }
+      if (shouldKeepKeyboard(document.activeElement) && e.cancelable) e.preventDefault();
+    };
     host.addEventListener('pointerdown', onKeepKbdDown, { capture: true });
     host.addEventListener('wheel', onWheel, { capture: true, passive: false });
     host.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });

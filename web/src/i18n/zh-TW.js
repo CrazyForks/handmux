@@ -138,7 +138,7 @@ export default {
   'dock.history': '歷史',
   'history.empty': '還沒有發送記錄',
   'history.scope': '僅目前視窗的記錄',
-  'dock.input.placeholder': '說點什麼…',
+  'dock.input.placeholder': '草稿區',
   'dock.command.placeholder': '輸入指令 · Enter 執行',
   'dock.mode.agent': '對話',
   'dock.mode.toggle': '切換輸入模式',

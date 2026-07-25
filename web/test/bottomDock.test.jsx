@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { readFileSync } from 'node:fs';
 
 const api = vi.hoisted(() => ({
   uploadFile: vi.fn(async () => ({ path: '/uploads/picked.txt' })),
@@ -23,6 +24,8 @@ import BottomDock from '../src/components/BottomDock.jsx';
 import { sendText } from '../src/api.js';
 import { t } from '../src/i18n';
 import { cmdScope, saveFavs } from '../src/favStore.js';
+
+const styles = readFileSync(`${process.cwd()}/src/styles.css`, 'utf8');
 
 let container;
 let root;
@@ -583,6 +586,7 @@ describe('BottomDock', () => {
     expect(container.querySelector(`[aria-label="${t('dock.attach')}"]`)).not.toBeNull();
     expect(container.querySelector('.input-history')).not.toBeNull();
     expect(container.querySelector('.input-send')).not.toBeNull();
+    expect(container.querySelector('.input-text').placeholder).toBe('草稿区');
     expect(container.querySelector('.dock-page.command')).toBeNull();
     expect(container.querySelector('.keybar-grid')).toBeNull();
     expect(container.querySelector('.dock-handle')).toBeNull();
@@ -593,6 +597,7 @@ describe('BottomDock', () => {
     const state = container.querySelector('.desktop-terminal-input');
     expect(state.textContent).toBe('键盘直通终端');
     expect(state.querySelector('.desktop-terminal-input-dot')).not.toBeNull();
+    expect(styles).toMatch(/\.desktop-dock-state\s*\{[^}]*justify-content:\s*flex-start/);
     render({ pane: '%1', desktopUnified: true, terminalFocused: false });
     expect(container.querySelector('.desktop-terminal-input')).toBeNull();
   });

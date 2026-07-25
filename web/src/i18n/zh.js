@@ -167,7 +167,7 @@ export default {
   'dock.kbdHide': '收起键盘',
   'history.empty': '还没有发送记录',
   'history.scope': '仅当前窗口的记录',
-  'dock.input.placeholder': '说点什么…',
+  'dock.input.placeholder': '草稿区',
   'dock.command.placeholder': '输入命令 · 回车执行',
   'dock.mode.agent': '对话',
   'dock.mode.toggle': '切换输入模式',

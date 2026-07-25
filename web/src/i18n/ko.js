@@ -138,7 +138,7 @@ export default {
   'dock.history': '기록',
   'history.empty': '기록이 아직 없습니다',
   'history.scope': '현재 창의 기록만',
-  'dock.input.placeholder': '메시지를 입력하세요…',
+  'dock.input.placeholder': '초안 영역',
   'dock.command.placeholder': '명령 입력 · Enter로 실행',
   'dock.mode.agent': '대화',
   'dock.mode.toggle': '입력 모드 전환',

@@ -1830,7 +1830,10 @@ export default function App() {
                 onDocLinkTap={onDocLinkTap}
                 onInputFocusChange={setTerminalFocused}
                 onInputData={enqueueDesktopInput}
-                onTap={() => dockRef.current?.hideKeyboard()}
+                onTap={() => {
+                  if (desktopInput) focusTerminal();
+                  else dockRef.current?.hideKeyboard();
+                }}
               />
             )
           )}

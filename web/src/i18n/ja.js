@@ -138,7 +138,7 @@ export default {
   'dock.history': '履歴',
   'history.empty': '履歴はまだありません',
   'history.scope': 'このウィンドウの記録のみ',
-  'dock.input.placeholder': 'メッセージを入力…',
+  'dock.input.placeholder': '下書き欄',
   'dock.command.placeholder': 'コマンドを入力 · Enterで実行',
   'dock.mode.agent': '会話',
   'dock.mode.toggle': '入力モードを切替',

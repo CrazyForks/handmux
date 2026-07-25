@@ -586,7 +586,7 @@ div.workspace-restore-errors { padding-left: 10px; }
 .dock-track > .dock-page { flex: 0 0 50%; width: 50%; min-width: 0; }
 .bottom-dock.desktop-unified .dock-track { width: 100%; transform: none; transition: none; }
 .bottom-dock.desktop-unified .dock-track > .dock-page.chat { flex-basis: 100%; width: 100%; }
-.desktop-dock-state { min-height: 16px; display: flex; justify-content: flex-end; align-items: center; padding: 0 2px; }
+.desktop-dock-state { min-height: 16px; display: flex; justify-content: flex-start; align-items: center; padding: 0 2px; }
 .desktop-terminal-input { display: inline-flex; align-items: center; gap: 5px; color: #aeb5c0;
   font-size: 10px; line-height: 1; }
 .desktop-terminal-input-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--blue); }

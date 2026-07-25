@@ -159,6 +159,20 @@ describe('desktop terminal input', () => {
     expect(styles).toMatch(/\.terminal\.desktop-input \.xterm-helper-textarea\s*\{[^}]*pointer-events:\s*auto/);
   });
 
+  it('hands a desktop pointer tap back to terminal input instead of preserving composer focus', () => {
+    const onTap = vi.fn();
+    const view = render(<Terminal pane="%1" desktop autoFocusInput={false} onTap={onTap} />);
+    const composer = document.createElement('textarea');
+    view.container.append(composer);
+    composer.focus();
+
+    const event = new MouseEvent('pointerdown', { bubbles: true, cancelable: true });
+    mocks.instances[0].helper.closest('.terminal').dispatchEvent(event);
+
+    expect(onTap).toHaveBeenCalledOnce();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   it('exposes focus controls and reports desktop xterm focus changes', () => {
     const ref = React.createRef();
     const onInputFocusChange = vi.fn();

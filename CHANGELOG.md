@@ -5,7 +5,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Added
-- 电脑浏览器现在可用物理键盘直接操作终端；底部完整保留快捷用语和聊天输入框，点击输入框可先整理多行文字，Enter 发送、Shift+Enter 换行。
+- 电脑浏览器现在可用物理键盘直接操作终端；底部完整保留快捷用语和「草稿区」，点击后可整理多行文字，点击终端回到直通模式，Enter 发送、Shift+Enter 换行。
 
 ### Fixed
 - 修复电脑浏览器打开终端时因调用了 xterm 未公开的焦点事件 API 而白屏崩溃的问题。
