@@ -585,11 +585,10 @@ describe('BrowserSheet', () => {
     expect(card.textContent).not.toContain('关闭内置浏览器');
     const cookieRow = card.querySelector('.browser-site-cookie-row');
     expect(cookieRow).not.toBeNull();
-    const cookieTitle = cookieRow.querySelector('.browser-options-title');
-    expect(cookieTitle.querySelector('strong').textContent).toBe('本站代理 Cookie');
-    expect(cookieTitle.querySelector('.settings-close').textContent).toBe('?');
+    expect(cookieRow.querySelector('strong')).toBeNull();
+    expect(cookieRow.querySelector('.settings-close').textContent).toBe('?');
     expect([...cookieRow.querySelectorAll('button')].map((node) => node.textContent)).toEqual([
-      '?', '清理本站代理 Cookie',
+      '清理本站代理 Cookie', '?',
     ]);
 
     const modeButtons = [...card.querySelectorAll('.browser-mode-segment button')];

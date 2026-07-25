@@ -1261,7 +1261,8 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-options-title { min-width: 0; display: inline-flex; align-items: center; gap: 7px; color: #eef1f4; }
 .browser-title-help { flex: none; font-size: 14px; font-weight: 600; }
 .browser-options-control { flex: none; display: flex; align-items: center; }
-.browser-site-cookie-row { min-height: 44px; display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
+.browser-site-cookie-row { min-height: 44px; display: flex; align-items: center; gap: 7px; }
+.browser-site-cookie-row .browser-options-danger { width: auto; }
 .browser-profile-persist { min-width: 0; padding: 2px 0 5px; }
 .browser-options-danger {
   width: 100%; min-height: 42px; padding: 0; border: 0; background: transparent; color: #ff6961; text-align: left; font-size: 14px;

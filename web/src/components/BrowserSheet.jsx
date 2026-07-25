@@ -466,18 +466,15 @@ export default function BrowserSheet({ browser }) {
               {proxyAvailable && active?.mode === 'proxy' && !historyActive && (
                 <div className="browser-options-section">
                   <div className="browser-site-cookie-row">
-                    <div className="browser-options-title">
-                      <strong>{t('browser.siteProxyCookie')}</strong>
-                      <button className="settings-close browser-title-help"
-                        aria-label={t('browser.siteCookieHelpLabel')}
-                        onClick={(event) => {
-                          clearTriggerRef.current = event.currentTarget;
-                          setClearConfirmation({ type: 'help-site' });
-                        }}>?</button>
-                    </div>
                     <button className="browser-options-danger" onClick={requestActiveSiteClear}>
                       {t('browser.clearSiteLogin')}
                     </button>
+                    <button className="settings-close browser-title-help"
+                      aria-label={t('browser.siteCookieHelpLabel')}
+                      onClick={(event) => {
+                        clearTriggerRef.current = event.currentTarget;
+                        setClearConfirmation({ type: 'help-site' });
+                      }}>?</button>
                   </div>
                 </div>
               )}
