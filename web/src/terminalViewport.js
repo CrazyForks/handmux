@@ -9,6 +9,16 @@ export function fitRows(availPx, cellH) {
   return Math.max(1, Math.floor(availPx / cellH));
 }
 
+// Rows of scrollback that can fill the spare space above an exact pane-sized live grid.
+// Alternate-screen apps own a fixed screen and have no compatible history to place above it.
+export function historyFillRows(visibleRows, paneRows, historyRows, alternate = false) {
+  if (alternate) return 0;
+  return Math.max(0, Math.min(
+    Math.max(0, visibleRows - paneRows),
+    Math.max(0, historyRows),
+  ));
+}
+
 // Should a vertical drag scroll the terminal INTERNALLY (xterm viewport) or FORWARD to the app as keys?
 // dir: -1 = drag content up (reveal earlier rows), +1 = drag content down (reveal later rows).
 export function scrollDecision(viewportY, baseY, dir) {
