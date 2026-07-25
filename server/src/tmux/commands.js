@@ -94,6 +94,16 @@ export async function capturePane(paneId, linesBack) {
   return runTmux(['capture-pane', '-p', '-e', '-N', '-S', String(-Math.abs(linesBack)), '-t', paneId]);
 }
 
+// A single row capture re-emits that row's real starting attributes. The combined capture above
+// intentionally compresses SGR state across newlines, which makes an inherited background ambiguous.
+export async function capturePaneRow(paneId, row) {
+  return runTmux([
+    'capture-pane', '-p', '-e', '-N',
+    '-S', String(row), '-E', String(row),
+    '-t', paneId,
+  ]);
+}
+
 // Plain visible-screen capture — NO SGR escapes (unlike capturePane's `-e`), so the text parses cleanly.
 // Used to scrape a pending prompt/menu off the screen (see pendingPrompt.js).
 export async function capturePlain(paneId) {

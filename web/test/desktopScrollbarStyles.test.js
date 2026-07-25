@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 const styles = readFileSync(`${process.cwd()}/src/styles.css`, 'utf8');
-const terminalSource = readFileSync(`${process.cwd()}/src/components/Terminal.jsx`, 'utf8');
 
 describe('desktop scrollbar styles', () => {
   it('uses one custom scrollbar skin only for precise pointing devices', () => {
@@ -28,12 +27,10 @@ describe('desktop scrollbar styles', () => {
     expect(styles).not.toMatch(/overflow-x:\s*scroll/);
   });
 
-  it('reserves a mobile gutter below the terminal grid instead of overlaying its last row', () => {
+  it('uses one intrinsic-width stack for the live grid and its history preview', () => {
+    expect(styles).toMatch(/\.terminal__stack\s*\{[^}]*width:\s*max-content[^}]*min-width:\s*100%/);
     expect(styles).toMatch(
-      /@media\s*\(hover:\s*none\)\s*and\s*\(pointer:\s*coarse\)\s*\{[\s\S]*\.terminal\s*\{[^}]*padding-bottom:\s*6px[\s\S]*\.terminal::\-webkit-scrollbar:horizontal\s*\{[^}]*height:\s*6px[\s\S]*\.terminal::\-webkit-scrollbar-thumb:horizontal\s*\{[^}]*border:\s*1px\s+solid\s+transparent/,
-    );
-    expect(terminalSource).toMatch(
-      /const grid = elRef\.current\.querySelector\('\.xterm'\);\s*const rect = \(grid \|\| elRef\.current\)\.getBoundingClientRect\(\)/,
+      /\.terminal--stream-exact \.terminal__stack\s*\{[^}]*align-items:\s*stretch/,
     );
   });
 });
