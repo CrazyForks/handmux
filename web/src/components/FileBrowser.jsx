@@ -7,7 +7,7 @@ import { joinPath } from '../docPath.js';
 import { FolderIcon, FileIcon, ImageIcon, ArrowUpIcon, DownloadIcon, LocateIcon, FolderPlusIcon, UploadIcon, CopyIcon } from './icons.jsx';
 import ActionSheet from './ActionSheet.jsx';
 import { t } from '../i18n';
-import { useEscapeLayer } from '../hooks/useEscapeLayer.js';
+import { useBackButton } from '../hooks/useBackButton.js';
 
 const DOC_EXT_RE = /\.(?:md|markdown|html|htm|txt|log|sh)$/i;
 
@@ -114,9 +114,9 @@ export default function FileBrowser({ path, onNavigate, onOpenDoc, onJumpToCwd, 
     document.addEventListener('pointerdown', onDown, true);
     return () => document.removeEventListener('pointerdown', onDown, true);
   }, [rootMenuOpen]);
-  useEscapeLayer(overlayActive && rootMenuOpen, () => setRootMenuOpen(false));
-  useEscapeLayer(overlayActive && !!confirmName, () => setConfirmName(null));
-  useEscapeLayer(overlayActive && mkdirOpen, () => { setMkdirOpen(false); setMkdirName(''); });
+  useBackButton(overlayActive && rootMenuOpen, () => setRootMenuOpen(false));
+  useBackButton(overlayActive && !!confirmName, () => setConfirmName(null));
+  useBackButton(overlayActive && mkdirOpen, () => { setMkdirOpen(false); setMkdirName(''); });
 
   // Friendly transient hint (e.g. unsupported preview) — distinct from the red error, fades on its own.
   const showNotice = (msg) => {

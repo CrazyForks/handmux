@@ -5,9 +5,8 @@ import { setPreviewDir } from '../storage.js';
 
 // The in-app preview subsystem: the registry state (previews/domain/dynamic flag), the visible-sheet flag,
 // the current window's previews as switchable TABS, and every start/stop/renew/switch/open handler.
-// `current` is App's { session, window, … } (for the per-window preview name); `settingsOpen` +
-// `setSettingsOpen` let the open/start handlers coordinate with the Settings sheet's history entry (see
-// the back-popstate sequencing in startDynamicPreview).
+// `current` is App's { session, window, … } (for the per-window preview name). PreviewSheet is a normal
+// child overlay when launched from Settings, so Settings stays mounted underneath it.
 //
 // Tabs: a window can have several live previews at once — its window-default (static dir or a dynamic
 // port started from Settings, named `<window>`) plus any number of loopback-URL previews tapped from the
@@ -15,7 +14,7 @@ import { setPreviewDir } from '../storage.js';
 // at a time and a tab strip switches between them (their iframes stay mounted, so switching keeps state).
 // `activeTabName` picks which; `pathByName` remembers each tab's deep-link path (URL previews land on the
 // tapped path, others on '/').
-export function usePreviews(current, { settingsOpen, setSettingsOpen }) {
+export function usePreviews(current) {
   const [previews, setPreviews] = useState([]);
   const [previewDomain, setPreviewDomain] = useState(null);
   const [dynamicEnabled, setDynamicEnabled] = useState(false);
@@ -70,20 +69,12 @@ export function usePreviews(current, { settingsOpen, setSettingsOpen }) {
     return () => clearTimeout(id);
   }, [activeExpiresAt, refreshPreviews]);
 
-  // Open the preview sheet. If Settings is open (launching/opening from there), close Settings FIRST
-  // and open the sheet on the NEXT frame — never in the same commit. Both overlays balance the Back
-  // button via useBackButton (each pushes one history entry); swapping them in one commit makes the
-  // closing Settings' cleanup `history.back()` pop the sheet's just-pushed entry, whose fresh popstate
-  // listener then fires → the sheet flashes open and immediately closes back to the main page.
+  // Open as a child layer. The shared history registry ensures Back/Escape returns to Settings when
+  // launched there, while opening from the top bar still returns directly to the main screen.
   const openPreviewSheet = useCallback(() => {
     setActiveTabName(curPreviewName); // opening the window default → focus its tab
-    if (settingsOpen) {
-      setSettingsOpen(false);
-      requestAnimationFrame(() => setPreviewSheetOpen(true));
-    } else {
-      setPreviewSheetOpen(true);
-    }
-  }, [settingsOpen, setSettingsOpen, curPreviewName]);
+    setPreviewSheetOpen(true);
+  }, [curPreviewName]);
 
   const startPreview = useCallback(async (dir) => {
     if (!curPreviewName) return;
@@ -103,27 +94,8 @@ export function usePreviews(current, { settingsOpen, setSettingsOpen }) {
     setPathByName((m) => ({ ...m, [curPreviewName]: '/' }));
     setActiveTabName(curPreviewName);
     await refreshPreviews();
-    // Auto-open the sheet — but NOT in the same frame we close Settings. Settings' useBackButton pops its
-    // history entry on close (history.back() → an async popstate); if the sheet opened immediately its
-    // freshly-mounted popstate listener would catch THAT back and close itself — the preview flashed open
-    // then shut (the exact dynamic-preview symptom). The static path dodges this only by luck: its caller
-    // closes Settings seconds earlier (before the network), so the back-popstate has long dissipated by the
-    // time the sheet opens. Here we make the gap explicit — open the sheet only AFTER Settings' back-popstate,
-    // so the sheet's listener mounts on a clean history stack. Fallback timer covers the (rare) case where
-    // Settings wasn't back-tracked and no popstate fires.
-    let opened = false;
-    const openSheet = () => {
-      if (opened) return;
-      opened = true;
-      window.removeEventListener('popstate', onPop);
-      clearTimeout(fallback);
-      setPreviewSheetOpen(true);
-    };
-    const onPop = () => openSheet();
-    window.addEventListener('popstate', onPop);
-    const fallback = setTimeout(openSheet, 300);
-    setSettingsOpen(false); // → Settings' useBackButton cleanup → history.back() → popstate → openSheet()
-  }, [curPreviewName, refreshPreviews, setSettingsOpen]);
+    setPreviewSheetOpen(true);
+  }, [curPreviewName, refreshPreviews]);
 
   // Open a tapped loopback URL through a dynamic-preview reverse-proxy: register `<window>-<port>` (so
   // several ports coexist as tabs), remember its deep-link path, focus its tab. Throws on failure (e.g.

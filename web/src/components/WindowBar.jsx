@@ -12,7 +12,7 @@ import { AgentMark } from './icons.jsx';
 import { paneLayout, hasGeometry, cellFit, MAP_W, MAP_H, MAP_PAD } from '../paneLayout.js';
 import { t } from '../i18n';
 import LensSwitch from './LensSwitch.jsx';
-import { useEscapeLayer } from '../hooks/useEscapeLayer.js';
+import { useBackButton } from '../hooks/useBackButton.js';
 
 const CIRCLED = '①②③④⑤⑥⑦⑧⑨';
 const seq = (i) => (i < CIRCLED.length ? CIRCLED[i] : String(i + 1));
@@ -84,7 +84,7 @@ function PaneMapCell({ cell, cur, releasing, picking, agent, onChoose, onManage 
 
 function PaneTab({ window: win, panes, paneAgents = {}, currentPaneId, agent, onManage, onManagePane, onSelectPane, onBeforePaneMapOpen, paneSheetOpen = false, openMapFor = null, onMapOpened, onPaneMapOpenChange }) {
   const [open, setOpen] = useState(false);
-  useEscapeLayer(open, () => setOpen(false));
+  useBackButton(open, () => setOpen(false));
   const openRef = useRef(open);
   const onPaneMapOpenChangeRef = useRef(onPaneMapOpenChange);
   openRef.current = open;

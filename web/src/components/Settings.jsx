@@ -8,7 +8,7 @@ import { getDocHighlight, setDocHighlight } from '../storage.js';
 import { t, getLangCode, setLang, AVAILABLE } from '../i18n';
 import { previewStartError } from '../previewErrors.js';
 import { SNAPSHOT_INTERVALS } from '../terminalTransport.js';
-import { useEscapeLayer } from '../hooks/useEscapeLayer.js';
+import { useBackButton } from '../hooks/useBackButton.js';
 
 // Settings modal: the screen-column controls (⊟/⊞/↺, previously in the topbar) plus an explicit
 // font-size control. Font reads/writes the live terminal through termRef — the same persisted
@@ -61,9 +61,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
     const p = Number(port);
     if (!p) return;
     setStartErr(''); setStarting(true);
-    // On success, onStartDynamicPreview (in App) closes Settings ITSELF and opens the preview sheet,
-    // sequenced on Settings' back-popstate so the sheet doesn't catch Settings' own Back — so we must NOT
-    // call onClose() here (App owns the close). On failure it throws and we keep Settings open to show the
+    // On success the preview sheet stacks above Settings. On failure Settings stays visible and shows the
     // inline error below.
     try { await onStartDynamicPreview?.(p); }
     catch (e) { setStartErr(previewStartError(e, { port: p })); }
@@ -105,9 +103,9 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
     return () => { active = false; };
   }, [open, termRef, getColCount, windowId, pane]);
 
-  useEscapeLayer(open && langOpen, () => setLangOpen(false));
-  useEscapeLayer(open && dirOpen, () => setDirOpen(false));
-  useEscapeLayer(open && scriptPushOpen, () => setScriptPushOpen(false));
+  useBackButton(open && langOpen, () => setLangOpen(false));
+  useBackButton(open && dirOpen, () => setDirOpen(false));
+  useBackButton(open && scriptPushOpen, () => setScriptPushOpen(false));
 
   const toggleNotify = async () => {
     setNotifyBusy(true); setNotifyMsg('');
@@ -411,7 +409,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
                 <span className="preview-remain-s" title={t('settings.preview_remain_title')}>{t('settings.preview_remain', { time: fmtRemainMin(remainMs) })}</span>
               </div>
               <div className="settings-btns">
-                <button className="fontbtn" onClick={() => { onOpenPreview?.(); onClose?.(); }}>{t('common.open')}</button>
+                <button className="fontbtn" onClick={() => onOpenPreview?.()}>{t('common.open')}</button>
                 <button className="fontbtn" onClick={() => onRenew?.()}>{t('settings.preview_renew')}</button>
                 {confirmStop ? (
                   <>
@@ -475,7 +473,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
         seedCwd={seedCwd}
         pane={pane}
         hint={t('settings.dir_picker_hint')}
-        onPick={(dir) => { setDirOpen(false); onStartPreview?.(dir); onClose?.(); }}
+        onPick={(dir) => { setDirOpen(false); onStartPreview?.(dir); }}
         onClose={() => setDirOpen(false)}
       />
       <PushScriptSheet

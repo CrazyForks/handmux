@@ -12,7 +12,7 @@ import PromptGate from './PromptGate.jsx';
 import LensBoot from './LensBoot.jsx';
 import { sendKeys } from '../api.js';
 import { t } from '../i18n';
-import { useEscapeLayer } from '../hooks/useEscapeLayer.js';
+import { useBackButton, useHistoryLayer, unwindHistory } from '../hooks/useBackButton.js';
 import {
   CommandIcon, FileIcon, FilePenIcon, SearchIcon, GlobeIcon, ListChecksIcon, PuzzleIcon, BotIcon, WrenchIcon,
   CheckIcon, XIcon,
@@ -455,22 +455,19 @@ export default function ChatView({ pane, kind, msg, onAuthFail, slashEcho, onSla
   // (some Android WebViews drop it, unbalancing the stack).
   const sheetOpen = sheetMsg != null;
   const sheetDepthRef = useRef(0);
+  useHistoryLayer(sheetOpen, () => { sheetDepthRef.current = 0; setSheetKey(null); });
   useEffect(() => {
     if (!sheetOpen) return undefined;
     window.history.pushState({ chatToolSheet: true }, '');
     sheetDepthRef.current = 1;
-    const onPop = () => { sheetDepthRef.current = 0; setSheetKey(null); };
-    window.addEventListener('popstate', onPop);
     return () => {
-      window.removeEventListener('popstate', onPop);
-      if (sheetDepthRef.current > 0) { window.history.go(-sheetDepthRef.current); sheetDepthRef.current = 0; }
+      if (sheetDepthRef.current > 0) { unwindHistory(sheetDepthRef.current); sheetDepthRef.current = 0; }
     };
   }, [sheetOpen]);
 
   const clearHighlight = () => { if (hlRef.current) { hlRef.current.classList.remove('chat-copy-hl'); hlRef.current = null; } };
   const dismissCopy = () => { clearHighlight(); setCopyUI(null); };
-  useEscapeLayer(!!copyUI, dismissCopy);
-  useEscapeLayer(sheetOpen, () => window.history.back());
+  useBackButton(!!copyUI, dismissCopy);
   const cancelLongPress = () => { const lp = lpRef.current; if (lp.timer) { clearTimeout(lp.timer); lp.timer = null; } };
 
   const fireLongPress = (x, y, target) => {

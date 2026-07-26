@@ -17,7 +17,7 @@ import { openXterm } from '../terminalXterm.js';
 import { createTerminalSelectionController } from '../terminalSelectionController.js';
 import { createTerminalTouchController } from '../terminalTouchController.js';
 import { createConnectionTelemetry } from '../connectionTelemetry.js';
-import { useEscapeLayer } from '../hooks/useEscapeLayer.js';
+import { useBackButton } from '../hooks/useBackButton.js';
 
 const LIVE_MARGIN = 20; // capture this many rows beyond the viewport so a small scroll-up has slack
                         // before triggering a deeper history pull (replaces the old fixed 100-line tail)
@@ -1364,7 +1364,7 @@ const Terminal = forwardRef(function Terminal({
     setSelUI(null);
     setSelInfo('');
   };
-  useEscapeLayer(!!selUI, clearSelectionUI);
+  useBackButton(!!selUI, clearSelectionUI);
 
   const doCopy = async () => {
     const term = termRef.current;

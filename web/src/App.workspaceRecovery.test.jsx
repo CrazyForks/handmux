@@ -61,7 +61,11 @@ vi.mock('./hooks/usePreviews.js', () => ({
   }),
 }));
 vi.mock('./useClaudeHooks.js', () => ({ useClaudeHooks: () => ({ status: 'installed', enable: vi.fn() }) }));
-vi.mock('./hooks/useBackButton.js', () => ({ useBackButton: () => {} }));
+vi.mock('./hooks/useBackButton.js', () => ({
+  useBackButton: () => {},
+  useHistoryLayer: () => {},
+  unwindHistory: () => {},
+}));
 vi.mock('./hooks/useExitConfirm.js', () => ({ useExitConfirm: () => {} }));
 vi.mock('./hooks/useKeyboardInset.js', () => ({ useKeyboardInset: () => 0 }));
 vi.mock('./hooks/usePageScrollLock.js', () => ({ usePageScrollLock: () => {} }));

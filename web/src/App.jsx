@@ -71,8 +71,7 @@ import { useKeyboardInset } from './hooks/useKeyboardInset.js';
 import { useAsrAvailable } from './voice/useAsrAvailable.js';
 import { usePageScrollLock } from './hooks/usePageScrollLock.js';
 import { useLongPress } from './hooks/useLongPress.js';
-import { useBackButton } from './hooks/useBackButton.js';
-import { useEscapeLayer } from './hooks/useEscapeLayer.js';
+import { useBackButton, useHistoryLayer, unwindHistory } from './hooks/useBackButton.js';
 import { useExitConfirm } from './hooks/useExitConfirm.js';
 import { readRoute, writeSessionHash } from './hashRoute.js';
 import { hasShareFlag, takeSharedFile, clearShareFlag } from './shareIntake.js';
@@ -179,28 +178,9 @@ export default function App() {
   const [pendingNotifDetail, setPendingNotifDetail] = useState(null); // deep-link: drill here once the list is open
   const [notifSeenTs, setNotifSeenTsState] = useState(getNotifSeenTs); // newest ts seen by opening the inbox (top-dot high-water)
   // Manual-push inbox open/close/detail/delete — declared this early (ahead of the SW-message and
-  // boot deep-link effects further down, and the useBackButton group right below) so nothing references
-  // them before their const initializer runs (TDZ).
-  // Open the inbox AFTER Settings' back-popstate, not in the same frame. Settings' useBackButton pops its
-  // history entry on close (history.back() → an async popstate); opening the inbox immediately, its freshly
-  // mounted useBackButton listener would catch THAT back and close itself — the page flashed open then shut
-  // (Settings vanished, nothing showed). Same trap and same fix as usePreviews' startDynamicPreview. Changelog
-  // dodges it by sharing Settings' guard; the inbox has its own, so it must sequence. Fallback timer covers
-  // the rare case where Settings wasn't back-tracked and no popstate fires.
-  const openNotifInbox = () => {
-    let opened = false;
-    const open = () => {
-      if (opened) return;
-      opened = true;
-      window.removeEventListener('popstate', onPop);
-      clearTimeout(fallback);
-      setNotifInboxOpen(true);
-    };
-    const onPop = () => open();
-    window.addEventListener('popstate', onPop);
-    const fallback = setTimeout(open, 300);
-    setSettingsOpen(false); // → Settings' useBackButton cleanup → history.back() → popstate → open()
-  };
+  // boot deep-link effects further down) so nothing references them before their const initializer runs.
+  // Settings remains mounted underneath: the inbox is a real child history layer, not a swap to root.
+  const openNotifInbox = () => setNotifInboxOpen(true);
   // Multi-level Back for the inbox, mirroring GitPanel/FileManager (see the comment on their useBackButton
   // group): we MIRROR the nav depth into browser history — one entry for the open list, one more for a drill
   // into a message detail. Back pops one entry → the popstate handler (below) pops one level; at the base
@@ -327,13 +307,12 @@ export default function App() {
     setRecoveryPlan(null);
   }, [clearRecoveryOperation]);
 
-  // The in-app preview subsystem (registry state, active-preview derivation, start/stop/renew/open),
-  // extracted verbatim into a hook — it coordinates with Settings' history entry via settingsOpen.
+  // The in-app preview subsystem (registry state, active-preview derivation, start/stop/renew/open).
   const {
     previewDomain, dynamicEnabled, previewSheetOpen, setPreviewSheetOpen,
     activePreview, shownPreview, tabs: previewTabs, activeName: previewActiveName, openPreviewSheet,
     startPreview, startDynamicPreview, startUrlPreview, switchTab, closeTab, stopPreview, renewPreview,
-  } = usePreviews(current, { settingsOpen, setSettingsOpen });
+  } = usePreviews(current);
   const terminalOverlayOpen = !!(
     drawerOpen || settingsOpen || usageOpen || bindOpen || newWinOpen || renameTarget
     || manageWindow || managePane || fileManagerOpen || gitOpen || basePrompt || docLinkPrompt
@@ -426,33 +405,28 @@ export default function App() {
   useBackButton(!!docLinkPrompt || !!localUrlPrompt, () => {
     if (localUrlPrompt) closeLocalUrl(); else setDocLinkPrompt(null);
   });
-  // Settings → 更新日志 is a *swap* (opening the changelog closes settings in the same commit). One
-  // combined guard keeps history at a single entry across the swap — Back closes whichever is on top.
-  useBackButton(settingsOpen || changelogOpen, () => {
-    if (changelogOpen) setChangelogOpen(false); else setSettingsOpen(false);
-  });
+  useBackButton(settingsOpen, () => setSettingsOpen(false));
+  useBackButton(changelogOpen, () => setChangelogOpen(false));
   // Same for 长按窗口管理 → 重命名 (and the topbar long-press rename, which opens the modal alone).
   useBackButton(!!manageWindow || !!renameTarget, () => {
     if (renameTarget) setRenameTarget(null); else setManageWindow(null);
   });
   useBackButton(!!managePane, () => setManagePane(null));
-  // This page owns a multi-level history stack, so Escape pops that stack instead of bypassing it.
-  useEscapeLayer(notifInboxOpen, () => window.history.back());
+  // This page owns a multi-level history stack. Register it in the shared layer order so it can sit
+  // above Settings and consume Back/Escape before the parent.
+  useHistoryLayer(notifInboxOpen, () => {
+    notifDepthRef.current = Math.max(0, notifDepthRef.current - 1);
+    if (notifDetailRef.current) { setNotifDetailId(null); return; }
+    setNotifInboxOpen(false);
+  });
   // Inbox multi-level Back (GitPanel pattern — see notifDepthRef above): push the base entry on open, pop one
   // level per Back, close at the base. The handler NEVER pushState()s (Android-WebView-safe). Close-by-button
   // (⌄) sets notifInboxOpen=false → the cleanup unwinds any entries we still own so history stays balanced.
   useEffect(() => {
     if (!notifInboxOpen) return undefined;
     pushNotifHist();                          // base entry for the open list
-    const onPop = () => {
-      notifDepthRef.current = Math.max(0, notifDepthRef.current - 1); // the Back already consumed one entry
-      if (notifDetailRef.current) { setNotifDetailId(null); return; } // drill → back to the list
-      setNotifInboxOpen(false);               // base consumed at the list → leave the panel
-    };
-    window.addEventListener('popstate', onPop);
     return () => {
-      window.removeEventListener('popstate', onPop);
-      if (notifDepthRef.current > 0) { window.history.go(-notifDepthRef.current); notifDepthRef.current = 0; }
+      if (notifDepthRef.current > 0) { unwindHistory(notifDepthRef.current); notifDepthRef.current = 0; }
     };
   }, [notifInboxOpen]); // eslint-disable-line react-hooks/exhaustive-deps -- refs/handlers are stable-by-ref
   // Deep-link (SW postMessage / cold boot) targets a specific message: once the list is open (base entry
@@ -1225,7 +1199,13 @@ export default function App() {
         setReadIds(pruneReadInboxIds(list.map((n) => n.id)));
         setNotifError('');
       } catch (e) {
-        if (alive && !handledAuth(e)) setNotifError(t('pushInbox.loadFailed'));
+        if (alive && !handledAuth(e)) {
+          // Preserve known client stages (SW/config timeouts) and HTTP status instead of collapsing
+          // every real failure into the same generic text. Unknown network errors stay user-friendly.
+          const detail = e?.code?.startsWith('push.') ? e.message
+            : (e?.status ? `HTTP ${e.status}` : '');
+          setNotifError(detail ? `${t('pushInbox.loadFailed')} (${detail})` : t('pushInbox.loadFailed'));
+        }
       }
     };
     refresh();
@@ -1545,7 +1525,6 @@ export default function App() {
     if (updateInfo?.latest) { setVersionSeen(updateInfo.latest); setVerSeen(updateInfo.latest); } // acknowledge → clears updateDot
   };
   const openChangelog = () => {
-    setSettingsOpen(false);
     setChangelogOpen(true);
     setChangelogSeen(LATEST_RELEASE); setClSeen(LATEST_RELEASE); // opening clears the unread dot
   };
