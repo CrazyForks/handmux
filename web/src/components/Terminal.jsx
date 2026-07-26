@@ -17,6 +17,7 @@ import { openXterm } from '../terminalXterm.js';
 import { createTerminalSelectionController } from '../terminalSelectionController.js';
 import { createTerminalTouchController } from '../terminalTouchController.js';
 import { createConnectionTelemetry } from '../connectionTelemetry.js';
+import { useEscapeLayer } from '../hooks/useEscapeLayer.js';
 
 const LIVE_MARGIN = 20; // capture this many rows beyond the viewport so a small scroll-up has slack
                         // before triggering a deeper history pull (replaces the old fixed 100-line tail)
@@ -1357,6 +1358,14 @@ const Terminal = forwardRef(function Terminal({
   // Copy the live selection, then drop the highlight + bubble. navigator.clipboard only exists in
   // a secure context (https/localhost); over plain http we fall back to a throwaway textarea +
   // execCommand so copy still works on the LAN.
+  const clearSelectionUI = () => {
+    termRef.current?.clearSelection();
+    selActiveRef.current = false;
+    setSelUI(null);
+    setSelInfo('');
+  };
+  useEscapeLayer(!!selUI, clearSelectionUI);
+
   const doCopy = async () => {
     const term = termRef.current;
     const text = trimCopy(term?.getSelection() ?? '');
@@ -1376,10 +1385,7 @@ const Terminal = forwardRef(function Terminal({
         document.body.removeChild(ta);
       }
     }
-    term?.clearSelection();
-    selActiveRef.current = false;
-    setSelUI(null);
-    setSelInfo('');
+    clearSelectionUI();
   };
 
   return (

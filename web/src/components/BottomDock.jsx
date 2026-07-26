@@ -518,6 +518,10 @@ function BottomDock({
   // Hardware Back closes the history panel and follows the same desktop focus restoration as its close
   // button; mobile still takes the identical setPanelOpen(false) path inside closeOverlay.
   useBackButton(panelOpen, () => closeOverlay(setPanelOpen));
+  useBackButton(cmdEditOpen || chatEditOpen, () => {
+    if (cmdEditOpen) closeOverlay(setCmdEditOpen);
+    else closeOverlay(setChatEditOpen);
+  });
 
   // The system can drop the soft keyboard WITHOUT blurring the focused field — e.g. an app-switch gesture
   // aborted mid-way, or Android's Back. Reconcile against the baseline-aware physical height while still

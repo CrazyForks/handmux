@@ -15,7 +15,7 @@ describe('useBackButton', () => {
   it('pushes one history entry when activated', () => {
     const push = vi.spyOn(window.history, 'pushState');
     render({ active: true, onClose: vi.fn() });
-    expect(push).toHaveBeenCalledWith({ overlay: true }, '');
+    expect(push).toHaveBeenCalledWith(expect.objectContaining({ overlay: true, overlayId: expect.any(Number) }), '');
   });
 
   it('does not touch history when inactive', () => {
@@ -29,6 +29,15 @@ describe('useBackButton', () => {
     render({ active: true, onClose });
     act(() => window.dispatchEvent(new PopStateEvent('popstate')));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('routes Escape through history Back', () => {
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+    render({ active: true, onClose: vi.fn() });
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Escape', bubbles: true, cancelable: true,
+    })));
+    expect(back).toHaveBeenCalledTimes(1);
   });
 
   it('consumes its pushed entry when closed by other means (history stays balanced)', () => {
@@ -64,5 +73,19 @@ describe('useBackButton', () => {
     render({ active: false, onClose });
     act(() => window.dispatchEvent(new PopStateEvent('popstate')));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('closes only the top history-backed layer on one popstate', () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const Nested = ({ child }) => {
+      useBackButton(true, first);
+      useBackButton(child, second);
+      return null;
+    };
+    act(() => root.render(<Nested child />));
+    act(() => window.dispatchEvent(new PopStateEvent('popstate')));
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(first).not.toHaveBeenCalled();
   });
 });

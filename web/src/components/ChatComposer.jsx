@@ -14,6 +14,7 @@ import { useScreenWakeLock } from '../hooks/useScreenWakeLock.js';
 import { DEFAULT_SERVER_SHORTCUTS, mergeShortcuts, shortcutIdentity } from '../shortcutMerge.js';
 import { applyShortcutLayout, loadShortcutLayout } from '../shortcutLayout.js';
 import { t } from '../i18n';
+import { useBackButton } from '../hooks/useBackButton.js';
 
 // The 对话-lens composer — a single modern AI-agent input CARD (textarea on top, an action row beneath),
 // shown INSTEAD of the terminal BottomDock while the chat lens is active. It rides above the soft keyboard
@@ -62,6 +63,7 @@ export default function ChatComposer({
     setLayout(loadShortcutLayout('chat'));
   };
   useEffect(() => { if (!editOpen) refreshShortcuts(); }, [editOpen]);
+  useBackButton(editOpen, () => setEditOpen(false));
   const quickFavs = applyShortcutLayout(
     mergeShortcuts(serverShortcuts.chat, favs, 'chat'), layout,
   );

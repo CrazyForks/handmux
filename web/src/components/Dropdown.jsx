@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useEscapeLayer } from '../hooks/useEscapeLayer.js';
 
 // Our own themed dropdown — a native <select> can't be styled consistently across iOS/Android, and
 // its wheel picker clashes with the app's dark modal. A field-styled trigger opens a themed menu;
@@ -16,6 +17,7 @@ export default function Dropdown({ value, options, onChange, ariaLabel }) {
     document.addEventListener('pointerdown', onDocDown, true);
     return () => document.removeEventListener('pointerdown', onDocDown, true);
   }, [open]);
+  useEscapeLayer(open, () => setOpen(false));
 
   return (
     <div className="dd" ref={rootRef}>

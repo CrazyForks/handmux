@@ -4,6 +4,7 @@ import { fetchPaneCwd } from '../api.js';
 import { getLastStartupCmd, setLastStartupCmd } from '../storage.js';
 import DirPicker from './DirPicker.jsx';
 import StartupCmdPicker from './StartupCmdPicker.jsx';
+import { useEscapeLayer } from '../hooks/useEscapeLayer.js';
 
 const NAME_RE = /^[A-Za-z0-9-]{1,16}$/; // mirrors the server (optional — blank = auto-name)
 
@@ -27,6 +28,7 @@ export default function NewWindowModal({ open, onClose, onCreate, paneId, inset 
     setTimeout(() => inputRef.current?.focus(), 0);
     if (paneId) fetchPaneCwd(paneId).then(({ cwd: c }) => setDefaultCwd(c || '')).catch(() => {});
   }, [open, paneId]);
+  useEscapeLayer(open && pickerOpen, () => setPickerOpen(false));
 
   if (!open) return null;
 

@@ -8,6 +8,7 @@ import { getDocHighlight, setDocHighlight } from '../storage.js';
 import { t, getLangCode, setLang, AVAILABLE } from '../i18n';
 import { previewStartError } from '../previewErrors.js';
 import { SNAPSHOT_INTERVALS } from '../terminalTransport.js';
+import { useEscapeLayer } from '../hooks/useEscapeLayer.js';
 
 // Settings modal: the screen-column controls (⊟/⊞/↺, previously in the topbar) plus an explicit
 // font-size control. Font reads/writes the live terminal through termRef — the same persisted
@@ -103,6 +104,10 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
     }
     return () => { active = false; };
   }, [open, termRef, getColCount, windowId, pane]);
+
+  useEscapeLayer(open && langOpen, () => setLangOpen(false));
+  useEscapeLayer(open && dirOpen, () => setDirOpen(false));
+  useEscapeLayer(open && scriptPushOpen, () => setScriptPushOpen(false));
 
   const toggleNotify = async () => {
     setNotifyBusy(true); setNotifyMsg('');

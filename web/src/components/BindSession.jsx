@@ -4,6 +4,7 @@ import { getLastStartupCmd, setLastStartupCmd } from '../storage.js';
 import { t } from '../i18n';
 import DirPicker from './DirPicker.jsx';
 import StartupCmdPicker from './StartupCmdPicker.jsx';
+import { useEscapeLayer } from '../hooks/useEscapeLayer.js';
 
 // Mirrors the server's isValidSessionName: letters, digits, hyphens, 1-16 chars. Applied only when
 // CREATING a session — binding picks from a list of existing names (which may contain spaces), so no
@@ -42,6 +43,7 @@ export default function BindSession({ open, onClose, onBound, bound, onAuthFail,
 
   // Focus the name field the moment we enter create mode so the soft keyboard pops right up.
   useEffect(() => { if (target === 'new') setTimeout(() => inputRef.current?.focus(), 0); }, [target]);
+  useEscapeLayer(open && pickerOpen, () => setPickerOpen(false));
 
   if (!open) return null;
 

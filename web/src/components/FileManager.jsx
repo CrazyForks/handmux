@@ -8,6 +8,7 @@ import FileBrowser from './FileBrowser.jsx';
 import DocView from './DocView.jsx';
 import { FolderIcon, ClockIcon, ChevronDownIcon } from './icons.jsx';
 import { t as tr } from '../i18n';
+import { useEscapeLayer } from '../hooks/useEscapeLayer.js';
 
 // Bottom-sheet shell for the file viewer. Rendered through a portal on <body> — NOT inside .app —
 // so the app's keyboard-inset transform (which makes .app the containing block for fixed children)
@@ -53,6 +54,7 @@ export default function FileManager({ open, pane, windowId, tabs, active, onActi
   const depthRef = useRef(0);           // # of our live history entries (base + recorded actions)
   const histRef = useRef([]);           // action stack: { type:'nav', prev } dir move | { type:'doc' } preview opened
   const pushHist = () => { window.history.pushState({ fileOverlay: true }, ''); depthRef.current += 1; };
+  useEscapeLayer(open, () => window.history.back());
 
   // Persist every directory the browser lands on, keyed by window → next open returns here. A real
   // move (new path) also records where we came from and mirrors one history entry so Back retraces.
@@ -170,7 +172,7 @@ export default function FileManager({ open, pane, windowId, tabs, active, onActi
               ? <HomeView onOpenDoc={onOpenDoc} refreshKey={refreshKey} />
               : <FileBrowser path={browsePath} onNavigate={onNavigate} onOpenDoc={onOpenDoc}
                   onJumpToCwd={pane ? jumpToCwd : null} refreshKey={refreshKey}
-                  pendingFile={pendingShare} onPendingConsumed={onPendingConsumed} />}
+                  pendingFile={pendingShare} onPendingConsumed={onPendingConsumed} overlayActive={open} />}
           </div>
         ) : <DocView type={cur.type} name={cur.name} content={cur.content} />}
       </div>

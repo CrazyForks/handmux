@@ -12,6 +12,7 @@ import {
 } from '../shortcutLayout.js';
 import { XIcon, ChevronDownIcon, PlusIcon, CheckIcon } from './icons.jsx';
 import { t } from '../i18n';
+import { useEscapeLayer } from '../hooks/useEscapeLayer.js';
 
 // Two list sections — GLOBAL (grey) then THIS WINDOW (green). Add / edit both happen in ONE centred card
 // (opened by the header ＋, or by TAPPING a row to edit it), so the panel itself is just a clean, scannable
@@ -63,6 +64,7 @@ function parseKeyFav(fav) {
 function Dropdown({ value, options, onChange, placeholder }) {
   const [open, setOpen] = useState(false);
   const cur = options.find((o) => o.value === value);
+  useEscapeLayer(open, () => setOpen(false));
   return (
     <div className="cmd-dd">
       <button type="button" className={`cmd-dd-btn${open ? ' open' : ''}`} onClick={() => setOpen((o) => !o)}
@@ -305,6 +307,7 @@ export default function CmdFavEditor({
     const timer = setTimeout(() => setAddedNotice(0), 2000);
     return () => clearTimeout(timer);
   }, [addedNotice]);
+  useEscapeLayer(!!card, () => setCard(null));
   const finishAdd = () => {
     reloadAll();
     setUndo(null);

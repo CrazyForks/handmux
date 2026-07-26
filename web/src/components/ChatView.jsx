@@ -12,6 +12,7 @@ import PromptGate from './PromptGate.jsx';
 import LensBoot from './LensBoot.jsx';
 import { sendKeys } from '../api.js';
 import { t } from '../i18n';
+import { useEscapeLayer } from '../hooks/useEscapeLayer.js';
 import {
   CommandIcon, FileIcon, FilePenIcon, SearchIcon, GlobeIcon, ListChecksIcon, PuzzleIcon, BotIcon, WrenchIcon,
   CheckIcon, XIcon,
@@ -243,11 +244,6 @@ function EditSheetBody({ tool, running }) {
 // (EditSheetBody); every other tool gets the generic 执行模式 / 执行的命令 / 输出结果 sections. Both reuse
 // the same shell (backdrop / grip / close / Esc) and the warm-dusk tokens so they match the lens.
 function ToolSheet({ tool, running, onClose }) {
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
   if (!tool) return null;
   const isEdit = !!(tool.diff && ((tool.diff.hunks && tool.diff.hunks.length) || tool.diff.created));
   const cmd = toolCommandText(tool);
@@ -473,6 +469,8 @@ export default function ChatView({ pane, kind, msg, onAuthFail, slashEcho, onSla
 
   const clearHighlight = () => { if (hlRef.current) { hlRef.current.classList.remove('chat-copy-hl'); hlRef.current = null; } };
   const dismissCopy = () => { clearHighlight(); setCopyUI(null); };
+  useEscapeLayer(!!copyUI, dismissCopy);
+  useEscapeLayer(sheetOpen, () => window.history.back());
   const cancelLongPress = () => { const lp = lpRef.current; if (lp.timer) { clearTimeout(lp.timer); lp.timer = null; } };
 
   const fireLongPress = (x, y, target) => {

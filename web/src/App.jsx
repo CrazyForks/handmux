@@ -72,6 +72,7 @@ import { useAsrAvailable } from './voice/useAsrAvailable.js';
 import { usePageScrollLock } from './hooks/usePageScrollLock.js';
 import { useLongPress } from './hooks/useLongPress.js';
 import { useBackButton } from './hooks/useBackButton.js';
+import { useEscapeLayer } from './hooks/useEscapeLayer.js';
 import { useExitConfirm } from './hooks/useExitConfirm.js';
 import { readRoute, writeSessionHash } from './hashRoute.js';
 import { hasShareFlag, takeSharedFile, clearShareFlag } from './shareIntake.js';
@@ -411,7 +412,7 @@ export default function App() {
   // FileManager and GitPanel own their OWN multi-level Back handling (each Back pops one level —
   // preview→dir→close for files, drill→home→close for git — so Back never blows the whole sheet away
   // mid-navigation).
-  useBackButton(previewSheetOpen, () => setPreviewSheetOpen(false));
+  useBackButton(previewSheetOpen && !!shownPreview, () => setPreviewSheetOpen(false));
   useBackButton(drawerOpen || recoveryDialogOpen, () => {
     if (recoveryDialogOpen) closeRecovery(); else setDrawerOpen(false);
   });
@@ -421,6 +422,10 @@ export default function App() {
   useBackButton(newWinOpen, () => setNewWinOpen(false));
   useBackButton(ideaOpen, () => setIdeaOpen(false));
   useBackButton(!!basePrompt, () => setBasePrompt(null));
+  useBackButton(!!takeoverTarget, () => setTakeoverTarget(null));
+  useBackButton(!!docLinkPrompt || !!localUrlPrompt, () => {
+    if (localUrlPrompt) closeLocalUrl(); else setDocLinkPrompt(null);
+  });
   // Settings → 更新日志 is a *swap* (opening the changelog closes settings in the same commit). One
   // combined guard keeps history at a single entry across the swap — Back closes whichever is on top.
   useBackButton(settingsOpen || changelogOpen, () => {
@@ -431,6 +436,8 @@ export default function App() {
     if (renameTarget) setRenameTarget(null); else setManageWindow(null);
   });
   useBackButton(!!managePane, () => setManagePane(null));
+  // This page owns a multi-level history stack, so Escape pops that stack instead of bypassing it.
+  useEscapeLayer(notifInboxOpen, () => window.history.back());
   // Inbox multi-level Back (GitPanel pattern — see notifDepthRef above): push the base entry on open, pop one
   // level per Back, close at the base. The handler NEVER pushState()s (Android-WebView-safe). Close-by-button
   // (⌄) sets notifInboxOpen=false → the cleanup unwinds any entries we still own so history stays balanced.

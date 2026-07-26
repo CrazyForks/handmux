@@ -42,7 +42,7 @@ export default function DirPicker({ open, seedCwd = null, hint = null, pane = nu
         <FileBrowser
           path={path} onNavigate={setPath} onOpenDoc={noop}
           onJumpToCwd={jumpToCwd}
-          pickMode allowMkdir={allowMkdir} onPick={onPick}
+          pickMode allowMkdir={allowMkdir} onPick={onPick} overlayActive={open}
         />
       </div>
     </>

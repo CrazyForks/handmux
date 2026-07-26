@@ -7,6 +7,7 @@ import { parseDiff } from '../gitDiff.js';
 import DirPicker from './DirPicker.jsx';
 import { ChevronDownIcon, GitIcon } from './icons.jsx';
 import { t } from '../i18n';
+import { useEscapeLayer } from '../hooks/useEscapeLayer.js';
 
 // basename of an absolute path (the repo-tab label). Exported for the unit test.
 export const basename = (p) => String(p || '').replace(/\/+$/, '').split('/').pop() || p;
@@ -77,6 +78,8 @@ export default function GitPanel({ open, pane, windowId, inset = 0, onClose }) {
   const pushHist = () => { window.history.pushState({ gitOverlay: true }, ''); depthRef.current += 1; };
   const pushDrill = (frame) => { pushHist(); setStack((s) => [...s, frame]); };
   const openPicker = () => { pushHist(); setPickOpen(true); };
+  useEscapeLayer(open && branchMenuOpen, () => setBranchMenuOpen(false));
+  useEscapeLayer(open, () => window.history.back());
   useEffect(() => {
     if (!open) return undefined;
     pushHist();                       // base entry for the open panel
