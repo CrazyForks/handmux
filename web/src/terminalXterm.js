@@ -4,6 +4,7 @@ import '@xterm/xterm/css/xterm.css';
 import { docLinksOnLine } from './docDecorations.js';
 import { findLocalUrls } from './localUrl.js';
 import { ensureBundledFonts } from './bundledFonts.js';
+import { isBrowserFunctionKey } from './terminalPageKeyboard.js';
 
 export const TERMINAL_FONT_FAMILY = "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, 'Cascadia Mono', 'Roboto Mono', 'Noto Sans Mono', 'DejaVu Sans Mono', 'Courier New', 'JetBrainsMono Nerd Font', 'TW Unifont', monospace";
 export const TERMINAL_THEME = {
@@ -45,6 +46,48 @@ function prepareInput(term, host, desktop, autoFocusInput) {
 function usesAppleCommandKey() {
   const platform = navigator.userAgentData?.platform || navigator.platform || '';
   return /mac|iphone|ipad|ipod/i.test(platform);
+}
+
+function cloneKeyboardEvent(event, type = 'keydown') {
+  const KeyboardEventCtor = event.view?.KeyboardEvent
+    || event.target?.ownerDocument?.defaultView?.KeyboardEvent
+    || window.KeyboardEvent;
+  const forwarded = new KeyboardEventCtor(type, {
+    key: event.key,
+    code: event.code,
+    location: event.location,
+    ctrlKey: event.ctrlKey,
+    shiftKey: event.shiftKey,
+    altKey: event.altKey,
+    metaKey: event.metaKey,
+    repeat: event.repeat,
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+  });
+  // xterm's terminal-key mapping intentionally still uses these legacy fields.
+  for (const name of ['keyCode', 'which', 'charCode']) {
+    if (event[name] == null) continue;
+    try { Object.defineProperty(forwarded, name, { value: event[name] }); } catch { /* read-only */ }
+  }
+  return forwarded;
+}
+
+function forwardPageKey(term, helper, event) {
+  if (!helper || isBrowserFunctionKey(event)) return false;
+  term.focus();
+  const forwarded = cloneKeyboardEvent(event);
+  const handled = !helper.dispatchEvent(forwarded);
+  if (handled) return true;
+
+  // xterm defers some printable keys (notably uppercase letters) to keypress for IME
+  // compatibility. A synthetic keydown has no browser-generated keypress, so feed only
+  // that plain printable remainder through xterm's public user-input path.
+  if (!event.ctrlKey && !event.metaKey && event.key && Array.from(event.key).length === 1) {
+    term.input(event.key, true);
+    return true;
+  }
+  return false;
 }
 
 export function openXterm({
@@ -91,6 +134,7 @@ export function openXterm({
   term.open(host);
 
   term.attachCustomKeyEventHandler((event) => {
+    if (isBrowserFunctionKey(event)) return false;
     const pasteKey = desktop && event.key?.toLowerCase() === 'v' && !event.altKey;
     const nativePaste = pasteKey && (usesAppleCommandKey()
       ? event.metaKey && !event.ctrlKey
@@ -179,6 +223,7 @@ export function openXterm({
 
   return {
     term,
+    forwardPageKey: (event) => forwardPageKey(term, helper, event),
     dispose() {
       disposed = true;
       dataSub?.dispose();

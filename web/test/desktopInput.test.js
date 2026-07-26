@@ -5,6 +5,11 @@ import {
   keyboardModeUsesDesktop,
   setKeyboardMode,
 } from '../src/desktopInput.js';
+import {
+  isBrowserFunctionKey,
+  isDraftShortcut,
+  shouldRouteTerminalPageKey,
+} from '../src/terminalPageKeyboard.js';
 
 const base = {
   ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
@@ -57,5 +62,28 @@ describe('keyboard mode preference', () => {
     expect(keyboardModeUsesDesktop('desktop', false)).toBe(true);
     expect(keyboardModeUsesDesktop('auto', true)).toBe(true);
     expect(keyboardModeUsesDesktop('auto', false)).toBe(false);
+  });
+});
+
+describe('desktop terminal page keyboard routing', () => {
+  it('routes toolbar and blank-page keys but leaves real editors and xterm input alone', () => {
+    const toolbar = document.createElement('button');
+    const editor = document.createElement('textarea');
+    const helper = document.createElement('textarea');
+    helper.className = 'xterm-helper-textarea';
+
+    expect(shouldRouteTerminalPageKey({ target: toolbar })).toBe(true);
+    expect(shouldRouteTerminalPageKey({ target: document.body })).toBe(true);
+    expect(shouldRouteTerminalPageKey({ target: editor })).toBe(false);
+    expect(shouldRouteTerminalPageKey({ target: helper })).toBe(false);
+  });
+
+  it('recognizes the draft shortcut and reserves browser function keys', () => {
+    expect(isDraftShortcut({ key: 'Enter', shiftKey: true })).toBe(true);
+    expect(isDraftShortcut({ key: 'Enter', shiftKey: true, ctrlKey: true })).toBe(false);
+    expect(isBrowserFunctionKey({ key: 'F5' })).toBe(true);
+    expect(isBrowserFunctionKey({ key: 'F12' })).toBe(true);
+    expect(shouldRouteTerminalPageKey({ key: 'F5', target: document.body })).toBe(false);
+    expect(shouldRouteTerminalPageKey({ key: 'F12', target: document.body })).toBe(false);
   });
 });

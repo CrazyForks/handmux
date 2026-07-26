@@ -119,6 +119,7 @@ vi.mock('@xterm/xterm', () => ({
       this.refresh = vi.fn();
       this.dispose = vi.fn();
       this.write = vi.fn((_data, callback) => callback?.());
+      this.input = vi.fn();
       this.resize = vi.fn((cols, rows) => { this.cols = cols; this.rows = rows; });
       this.scrollLines = vi.fn((delta) => {
         this.buffer.active.viewportY = Math.max(
@@ -859,6 +860,8 @@ describe('desktop terminal input', () => {
     for (const key of ['w', 'T', 'l', 'R']) {
       expect(term.customKeyHandler({ key, metaKey: true })).toBe(false);
     }
+    expect(term.customKeyHandler({ key: 'F5' })).toBe(false);
+    expect(term.customKeyHandler({ key: 'F12' })).toBe(false);
 
     const terminalKeys = [
       [{ key: 'c', ctrlKey: true }, '\u0003'],
@@ -873,6 +876,26 @@ describe('desktop terminal input', () => {
     }
 
     await vi.waitFor(() => expect(mocks.sendInput).toHaveBeenCalledWith('%1', '0312091b1b5b41'));
+  });
+
+  it('forwards a page-level key through xterm after toolbar focus', () => {
+    const ref = React.createRef();
+    render(<Terminal ref={ref} pane="%1" desktop />);
+    const term = mocks.instances[0];
+    const listener = vi.fn((event) => event.preventDefault());
+    term.helper.addEventListener('keydown', listener);
+    const source = new KeyboardEvent('keydown', {
+      key: 'ArrowUp',
+      code: 'ArrowUp',
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(source, 'keyCode', { value: 38 });
+
+    expect(ref.current.forwardPageKey(source)).toBe(true);
+    expect(listener).toHaveBeenCalledOnce();
+    expect(listener.mock.calls[0][0].keyCode).toBe(38);
+    expect(term.focus).toHaveBeenCalled();
   });
 
   it('uses native desktop copy shortcuts without turning Ctrl+C into copy', async () => {

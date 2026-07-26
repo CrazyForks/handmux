@@ -20,6 +20,7 @@ const terminal = vi.hoisted(() => ({
   props: null,
   focusInput: vi.fn(),
   blurInput: vi.fn(),
+  forwardPageKey: vi.fn(),
 }));
 const bottomDock = vi.hoisted(() => ({ focusComposer: vi.fn() }));
 
@@ -106,6 +107,7 @@ vi.mock('./components/Terminal.jsx', async () => {
           terminal.blurInput();
           props.onInputFocusChange?.(false);
         },
+        forwardPageKey: terminal.forwardPageKey,
       }), [props.onInputFocusChange]);
       return <div data-testid="terminal-pane">{props.pane}</div>;
     }),
@@ -180,6 +182,7 @@ beforeEach(() => {
   terminal.props = null;
   terminal.focusInput.mockReset();
   terminal.blurInput.mockReset();
+  terminal.forwardPageKey.mockReset();
   bottomDock.focusComposer.mockReset();
   localStorage.clear();
   localStorage.setItem('tw_lang', 'zh');
@@ -296,6 +299,35 @@ describe('App management dimensions', () => {
 
     expect(terminal.blurInput).toHaveBeenCalledOnce();
     expect(bottomDock.focusComposer).toHaveBeenCalledOnce();
+  });
+
+  it('keeps page-level physical keys connected to the terminal after toolbar focus', async () => {
+    const view = await renderManagedSession();
+    terminal.forwardPageKey.mockReturnValue(true);
+    const toolbarButton = document.createElement('button');
+    view.container.append(toolbarButton);
+    toolbarButton.focus();
+
+    fireEvent.keyDown(toolbarButton, { key: 'a', code: 'KeyA', keyCode: 65 });
+
+    expect(terminal.forwardPageKey).toHaveBeenCalledOnce();
+    expect(terminal.forwardPageKey.mock.calls[0][0]).toMatchObject({ key: 'a', code: 'KeyA' });
+  });
+
+  it('opens the draft page-wide while leaving editors, F5, and F12 alone', async () => {
+    const view = await renderManagedSession();
+    const toolbarButton = document.createElement('button');
+    const editor = document.createElement('textarea');
+    view.container.append(toolbarButton, editor);
+
+    fireEvent.keyDown(toolbarButton, { key: 'Enter', shiftKey: true });
+    expect(bottomDock.focusComposer).toHaveBeenCalledOnce();
+    expect(terminal.forwardPageKey).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(toolbarButton, { key: 'F5' });
+    fireEvent.keyDown(toolbarButton, { key: 'F12' });
+    fireEvent.keyDown(editor, { key: 'x', code: 'KeyX', keyCode: 88 });
+    expect(terminal.forwardPageKey).not.toHaveBeenCalled();
   });
 });
 

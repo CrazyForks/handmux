@@ -85,6 +85,7 @@ import {
   setKeyboardMode,
 } from './desktopInput.js';
 import { useDesktopTerminalInput } from './hooks/useDesktopTerminalInput.js';
+import { isDraftShortcut, shouldRouteTerminalPageKey } from './terminalPageKeyboard.js';
 import {
   getSnapshotInterval,
   getTerminalTransport,
@@ -360,6 +361,24 @@ export default function App() {
     terminalOverlayWasOpenRef.current = terminalOverlayOpen;
     return undefined;
   }, [desktopInput, terminalOverlayOpen, current?.paneId, lens, focusTerminal]);
+  useEffect(() => {
+    if (!desktopInput || terminalOverlayOpen || lens !== 'terminal' || !current?.paneId) return undefined;
+    const onPageKeyDown = (event) => {
+      if (!shouldRouteTerminalPageKey(event)) return;
+      if (isDraftShortcut(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        focusDraft();
+        return;
+      }
+      if (termRef.current?.forwardPageKey?.(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    window.addEventListener('keydown', onPageKeyDown, true);
+    return () => window.removeEventListener('keydown', onPageKeyDown, true);
+  }, [desktopInput, terminalOverlayOpen, lens, current?.paneId, focusDraft]);
   const startDynamicPreviewFromSettings = useCallback(async (port) => {
     try { await startDynamicPreview(port); }
     catch (e) { if (!handledAuth(e)) throw e; }

@@ -56,6 +56,7 @@ const Terminal = forwardRef(function Terminal({
 }, ref) {
   const elRef = useRef(null);
   const termRef = useRef(null);
+  const forwardPageKeyRef = useRef(null);
   const insetRef = useRef(0); // keyboard overlap (px) — fit() subtracts it so the grid == visible height
   const userScrolledRef = useRef(false); // manual vertical scroll → disarms alt-screen cursor-follow
   const followArmedRef = useRef(false);  // alt-screen cursor-follow armed? (keyboard-focus)
@@ -213,6 +214,7 @@ const Terminal = forwardRef(function Terminal({
     },
     focusInput: () => termRef.current?.focus(),
     blurInput: () => termRef.current?.blur(),
+    forwardPageKey: (event) => forwardPageKeyRef.current?.(event) ?? false,
     // Settings' doc-path-highlight switch: flip the flag and re-scan now (default off, so no wash until on).
     setDocHighlight: (on) => { docHighlightRef.current = !!on; refreshDecosRef.current?.(); },
   }), []);
@@ -247,7 +249,7 @@ const Terminal = forwardRef(function Terminal({
     const liveHost = document.createElement('div');
     liveHost.className = 'terminal__live';
     elRef.current.replaceChildren(liveHost);
-    const { term, dispose: disposeXterm } = openXterm({
+    const { term, forwardPageKey, dispose: disposeXterm } = openXterm({
       host: liveHost,
       desktop,
       autoFocusInput,
@@ -275,6 +277,7 @@ const Terminal = forwardRef(function Terminal({
       getDocLinkHandler: () => onDocLinkTapRef.current,
     });
     termRef.current = term;
+    forwardPageKeyRef.current = forwardPageKey;
     let timer = null;
     let busy = false;
     let wakeAgain = false; // a wake() landed mid-poll — re-poll right after the in-flight one finishes
@@ -1343,6 +1346,7 @@ const Terminal = forwardRef(function Terminal({
       locateRef.current = null;
       disposeXterm();
       termRef.current = null;
+      forwardPageKeyRef.current = null;
     };
   }, [pane, desktop, stream]);
 
