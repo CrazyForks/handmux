@@ -5,7 +5,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### Fixed
-- 修复实时终端长时间打开或电脑同时显示多个 PWA 时，终端累计历史导致整个页面逐渐卡顿的问题。
+- 修复实时终端长时间打开、瞬间输出大量内容或电脑同时显示多个 PWA 时，终端渲染导致整个页面卡顿的问题。
 
 ## [0.20.1] - 2026-07-26
 

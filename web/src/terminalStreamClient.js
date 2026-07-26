@@ -2,7 +2,8 @@ import { getToken } from './storage.js';
 
 const RECONNECT_MS = 1000;
 const CONNECT_TIMEOUT_MS = 3000;
-const MAX_FRAME_LAG_MS = 10000;
+const MAX_FRAME_LAG_MS = 300;
+const MAX_PENDING_DATA_BYTES = 256 * 1024;
 const PROBE_INTERVAL_MS = 10000;
 const PROBE_TIMEOUT_MS = 5000;
 
@@ -19,6 +20,7 @@ export function openTerminalStream({
   reconnectMs = RECONNECT_MS,
   connectTimeoutMs = CONNECT_TIMEOUT_MS,
   maxFrameLagMs = MAX_FRAME_LAG_MS,
+  maxPendingDataBytes = MAX_PENDING_DATA_BYTES,
   probeIntervalMs = PROBE_INTERVAL_MS,
   probeTimeoutMs = PROBE_TIMEOUT_MS,
   now = () => Date.now(),
@@ -35,6 +37,8 @@ export function openTerminalStream({
   let probeTimeout = null;
   let probeId = 0;
   let pendingProbe = null;
+  let pendingDataBytes = 0;
+  let awaitingSeed = true;
 
   const clearProbe = () => {
     if (probeTimer) clearInterval(probeTimer);
@@ -89,9 +93,28 @@ export function openTerminalStream({
     const target = socket;
     socket = null;
     if (subscribedSocket === target) subscribedSocket = null;
+    pendingDataBytes = 0;
+    awaitingSeed = true;
     clearConnectTimer();
     clearProbe();
     try { target?.close(); } catch { /* already closed */ }
+  };
+
+  const requestFreshSeed = () => {
+    if (closed || paused || awaitingSeed) return;
+    messageEpoch += 1;
+    pendingDataBytes = 0;
+    awaitingSeed = true;
+    if (socket?.readyState === WebSocketCtor.OPEN) {
+      onStatus?.('connecting');
+      armConnectTimer(socket);
+      clearProbe();
+      if (subscribedSocket === socket) send({ type: 'resync' });
+      else {
+        subscribedSocket = socket;
+        send({ type: 'subscribe', token, pane });
+      }
+    } else connect();
   };
 
   const connect = () => {
@@ -102,6 +125,8 @@ export function openTerminalStream({
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const nextSocket = new WebSocketCtor(`${protocol}//${window.location.host}/api/terminal-stream`);
     socket = nextSocket;
+    pendingDataBytes = 0;
+    awaitingSeed = true;
     armConnectTimer(nextSocket);
     nextSocket.binaryType = 'arraybuffer';
     nextSocket.onopen = () => {
@@ -127,15 +152,24 @@ export function openTerminalStream({
           }
           return;
         }
+        if (awaitingSeed && message.type !== 'seed') return;
+        if (message.type === 'seed') awaitingSeed = false;
+      } else {
+        if (awaitingSeed) return;
+        pendingDataBytes += event.data.byteLength;
+        if (pendingDataBytes > maxPendingDataBytes) {
+          requestFreshSeed();
+          return;
+        }
       }
       const frameEpoch = messageEpoch;
       const queuedAt = Date.now();
+      const dataBytes = typeof event.data === 'string' ? 0 : event.data.byteLength;
       writes = writes.then(async () => {
+        pendingDataBytes = Math.max(0, pendingDataBytes - dataBytes);
         if (closed || paused || frameEpoch !== messageEpoch) return;
-        if (Date.now() - queuedAt > maxFrameLagMs) {
-          messageEpoch += 1;
-          detachSocket();
-          connect();
+        if (dataBytes > 0 && Date.now() - queuedAt > maxFrameLagMs) {
+          requestFreshSeed();
           return;
         }
         if (typeof event.data !== 'string') {
@@ -179,6 +213,8 @@ export function openTerminalStream({
       if (closed || paused) return;
       paused = true;
       messageEpoch += 1;
+      pendingDataBytes = 0;
+      awaitingSeed = true;
       clearReconnectTimer();
       clearConnectTimer();
       clearProbe();
@@ -198,6 +234,8 @@ export function openTerminalStream({
       if (closed) return;
       paused = false;
       messageEpoch += 1;
+      pendingDataBytes = 0;
+      awaitingSeed = true;
       if (socket?.readyState === WebSocketCtor.OPEN) {
         onStatus?.('connecting');
         armConnectTimer(socket);
@@ -212,6 +250,7 @@ export function openTerminalStream({
     close() {
       closed = true;
       messageEpoch += 1;
+      pendingDataBytes = 0;
       clearReconnectTimer();
       detachSocket();
       return writes;

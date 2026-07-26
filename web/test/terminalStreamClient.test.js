@@ -84,10 +84,10 @@ describe('openTerminalStream', () => {
     });
     const ws = FakeWebSocket.instances[0];
     ws.open();
+    ws.message(JSON.stringify({ type: 'seed' }));
     const ready = JSON.stringify({ type: 'ready' });
     ws.message(ready);
-    await Promise.resolve();
-    await Promise.resolve();
+    for (let i = 0; i < 6; i += 1) await Promise.resolve();
     expect(ws.sent.at(-1)).toEqual({ type: 'probe', id: 1 });
 
     now = 1086;
@@ -110,9 +110,9 @@ describe('openTerminalStream', () => {
     });
     const ws = FakeWebSocket.instances[0];
     ws.open();
+    ws.message(JSON.stringify({ type: 'seed' }));
     ws.message(JSON.stringify({ type: 'ready' }));
-    await Promise.resolve();
-    await Promise.resolve();
+    for (let i = 0; i < 6; i += 1) await Promise.resolve();
     vi.advanceTimersByTime(20);
     expect(onProbe).toHaveBeenCalledWith({ ok: false });
     expect(ws.readyState).toBe(FakeWebSocket.OPEN);
@@ -210,18 +210,22 @@ describe('openTerminalStream', () => {
     expect(events).toEqual(['seed']);
   });
 
-  it('replaces the connection instead of painting a frame queued for over ten seconds', async () => {
+  it('resyncs on the same socket instead of painting frames queued for over 300ms', async () => {
     vi.useFakeTimers();
     const seed = {};
     seed.promise = new Promise((resolve) => { seed.resolve = resolve; });
+    let seedCount = 0;
     const onData = vi.fn();
     const stream = openTerminalStream({
       pane: '%7',
       token: 'secret',
       WebSocketCtor: FakeWebSocket,
       connectTimeoutMs: 30000,
-      maxFrameLagMs: 10000,
-      onSeed: () => seed.promise,
+      maxFrameLagMs: 300,
+      onSeed: () => {
+        seedCount += 1;
+        return seedCount === 1 ? seed.promise : undefined;
+      },
       onData,
     });
     const first = FakeWebSocket.instances[0];
@@ -230,13 +234,81 @@ describe('openTerminalStream', () => {
     first.message(new Uint8Array([1]).buffer);
     await Promise.resolve();
 
-    vi.advanceTimersByTime(10001);
+    vi.advanceTimersByTime(301);
     seed.resolve();
     for (let i = 0; i < 6; i += 1) await Promise.resolve();
 
     expect(onData).not.toHaveBeenCalled();
-    expect(first.readyState).toBe(3);
-    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(first.readyState).toBe(FakeWebSocket.OPEN);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(first.sent.at(-1)).toEqual({ type: 'resync' });
+
+    first.message(new Uint8Array([2]).buffer);
+    first.message(JSON.stringify({ type: 'ready' }));
+    await Promise.resolve();
+    expect(onData).not.toHaveBeenCalled();
+
+    first.message(JSON.stringify({ type: 'seed' }));
+    first.message(new Uint8Array([3]).buffer);
+    first.message(JSON.stringify({ type: 'ready' }));
+    await vi.waitFor(() => expect(onData).toHaveBeenCalledTimes(1));
+    expect([...onData.mock.calls[0][0]]).toEqual([3]);
+    stream.close();
+    vi.useRealTimers();
+  });
+
+  it('resyncs on the same socket when queued output exceeds the byte limit', async () => {
+    const seed = {};
+    seed.promise = new Promise((resolve) => { seed.resolve = resolve; });
+    const onData = vi.fn();
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+      maxPendingDataBytes: 3,
+      onSeed: () => seed.promise,
+      onData,
+    });
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    ws.message(JSON.stringify({ type: 'seed' }));
+    ws.message(new Uint8Array([1, 2]).buffer);
+    ws.message(new Uint8Array([3, 4]).buffer);
+
+    expect(ws.readyState).toBe(FakeWebSocket.OPEN);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(ws.sent.at(-1)).toEqual({ type: 'resync' });
+
+    seed.resolve();
+    for (let i = 0; i < 6; i += 1) await Promise.resolve();
+    expect(onData).not.toHaveBeenCalled();
+    stream.close();
+  });
+
+  it('does not treat a slow initial seed as an overloaded output queue', async () => {
+    vi.useFakeTimers();
+    const seed = {};
+    seed.promise = new Promise((resolve) => { seed.resolve = resolve; });
+    const onReady = vi.fn();
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+      maxFrameLagMs: 300,
+      onSeed: () => seed.promise,
+      onReady,
+    });
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    ws.message(JSON.stringify({ type: 'seed' }));
+    ws.message(JSON.stringify({ type: 'ready' }));
+
+    vi.advanceTimersByTime(301);
+    seed.resolve();
+    for (let i = 0; i < 6; i += 1) await Promise.resolve();
+
+    expect(onReady).toHaveBeenCalledOnce();
+    expect(ws.sent).not.toContainEqual({ type: 'resync' });
     stream.close();
     vi.useRealTimers();
   });
