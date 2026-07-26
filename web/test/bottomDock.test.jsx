@@ -59,9 +59,21 @@ const deferred = () => {
   return { promise, resolve, reject };
 };
 const chooseFile = (picker, name = 'picked.txt') => {
+  const files = [new File(['picked'], name, { type: 'text/plain' })];
+  let value = 'picked';
   Object.defineProperty(picker, 'files', {
     configurable: true,
-    value: [new File(['picked'], name, { type: 'text/plain' })],
+    get: () => files,
+  });
+  // Match a real browser's live FileList: resetting the picker empties the same list object
+  // previously returned by `input.files`.
+  Object.defineProperty(picker, 'value', {
+    configurable: true,
+    get: () => value,
+    set: (next) => {
+      value = next;
+      if (next === '') files.length = 0;
+    },
   });
   act(() => picker.dispatchEvent(new Event('change', { bubbles: true })));
 };

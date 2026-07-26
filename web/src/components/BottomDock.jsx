@@ -1046,7 +1046,10 @@ function BottomDock({
                 accept={UPLOAD_ACCEPT}
                 onChange={async (e) => {
                   const session = filePickerSessionRef.current;
-                  const files = e.target.files;
+                  // FileList is live: clearing the picker also empties references already read from
+                  // `input.files` in real browsers. Snapshot it before clearing so the upload keeps
+                  // the user's selection while still allowing the same file to be picked again.
+                  const files = Array.from(e.target.files || []);
                   e.target.value = '';
                   filePickerPendingRef.current = false;
                   overlayOwnerRef.current = null;

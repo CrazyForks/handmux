@@ -214,7 +214,11 @@ export default function ChatComposer({
       </div>
       {/* Offscreen (not display:none) so a programmatic .click() reliably opens the picker on iOS Safari. */}
       <input ref={uploadRef} className="browse-file-input" type="file" multiple accept={UPLOAD_ACCEPT}
-        onChange={(e) => { uploadFiles(e.target.files); e.target.value = ''; }} />
+        onChange={(e) => {
+          const files = Array.from(e.target.files || []);
+          e.target.value = '';
+          uploadFiles(files);
+        }} />
       <div className={`cc-card${recording ? ' recording' : ''}`}
         onPointerDown={cardDown} onPointerMove={cardMove} onPointerUp={cardTapFocus}>
         <textarea
