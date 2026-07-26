@@ -48,12 +48,14 @@ export default function TerminalOverlays({
       )}
       {dbgVisible && <div className="dbg">{dbg}</div>}
       {ready && connected && historyPull && (
-        <div className={`history-pull-indicator is-${historyPull.phase}`} role="status">
+        <div
+          className={`history-pull-indicator is-${historyPull.phase}`}
+          role="status"
+          aria-label={t('terminal.historyPull_loading')}
+        >
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 4v11m-4-4 4 4 4-4" />
-            <path d="M5.5 18.5h13" />
+            <path d="M19 7V3.5l-2.2 2.2A7.5 7.5 0 1 0 19.5 12" />
           </svg>
-          <span>{t(`terminal.historyPull_${historyPull.phase}`)}</span>
         </div>
       )}
       {connected && scrollInfo && !historyPull && !selInfo && <div className="term-banner term-banner--hist">{scrollInfo}</div>}

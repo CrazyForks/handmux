@@ -364,23 +364,20 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .history-pull-indicator {
   position: absolute; z-index: 8;
   top: calc(var(--terminal-overlay-top, 1px) + 5px); left: 50%;
-  display: inline-flex; align-items: center; gap: 5px;
-  height: 24px; padding: 0 9px;
-  border: 1px solid rgba(255,255,255,.13); border-radius: 12px;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  border: 1px solid rgba(255,255,255,.13); border-radius: 50%;
   background: rgba(24,26,31,.82); color: rgba(235,235,245,.68);
-  font: 500 11.5px/1 -apple-system, system-ui, sans-serif;
-  white-space: nowrap; pointer-events: none;
+  pointer-events: none;
   transform: translateX(-50%);
   box-shadow: 0 2px 7px rgba(0,0,0,.24);
 }
 .history-pull-indicator svg {
-  width: 15px; height: 15px; fill: none; stroke: currentColor;
+  width: 17px; height: 17px; fill: none; stroke: currentColor;
   stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
-  transition: transform 140ms ease;
+  animation: history-pull-spin .8s linear infinite;
 }
 .history-pull-indicator.is-armed { color: rgba(117,184,255,.96); }
-.history-pull-indicator.is-armed svg { transform: rotate(180deg); }
-.history-pull-indicator.is-loading svg { animation: history-pull-spin .75s linear infinite; }
 @keyframes history-pull-spin { to { transform: rotate(360deg); } }
 .terminal-history-boundary {
   background: repeating-linear-gradient(

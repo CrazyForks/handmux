@@ -44,16 +44,15 @@ describe('terminal history pull controller', () => {
     expect(changes.some((next) => next?.phase === 'loading')).toBe(true);
   });
 
-  it('waits for wheel idle and treats one burst as one page', async () => {
+  it('loads immediately at the wheel threshold and treats one burst as one page', async () => {
     vi.useFakeTimers();
     let resolveLoad;
     const onLoad = vi.fn(() => new Promise((resolve) => { resolveLoad = resolve; }));
     const { controller } = setup({ onLoad });
 
     expect(controller.wheel(HISTORY_PULL_THRESHOLD_PX / 2)).toBe(true);
-    expect(controller.wheel(HISTORY_PULL_THRESHOLD_PX / 2)).toBe(true);
     expect(onLoad).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(HISTORY_WHEEL_IDLE_MS);
+    expect(controller.wheel(HISTORY_PULL_THRESHOLD_PX / 2)).toBe(true);
     expect(onLoad).toHaveBeenCalledOnce();
 
     expect(controller.wheel(HISTORY_PULL_THRESHOLD_PX)).toBe(true);
@@ -61,6 +60,31 @@ describe('terminal history pull controller', () => {
     expect(onLoad).toHaveBeenCalledOnce();
     resolveLoad();
     await vi.runAllTimersAsync();
+  });
+
+  it('drops a short wheel pull after the burst ends', async () => {
+    vi.useFakeTimers();
+    const { controller, changes, onLoad } = setup();
+    controller.wheel(HISTORY_PULL_THRESHOLD_PX - 1);
+    expect(changes.at(-1)?.phase).toBe('pulling');
+    await vi.advanceTimersByTimeAsync(HISTORY_WHEEL_IDLE_MS);
+    expect(changes.at(-1)).toBeNull();
+    expect(onLoad).not.toHaveBeenCalled();
+  });
+
+  it('absorbs the rest of a wheel burst after a fast load completes', async () => {
+    vi.useFakeTimers();
+    const { controller, onLoad } = setup();
+    controller.wheel(HISTORY_PULL_THRESHOLD_PX);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    controller.wheel(HISTORY_PULL_THRESHOLD_PX);
+    expect(onLoad).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(HISTORY_WHEEL_IDLE_MS);
+
+    controller.wheel(HISTORY_PULL_THRESHOLD_PX);
+    expect(onLoad).toHaveBeenCalledTimes(2);
   });
 
   it('cancels an active pull when direction reverses', () => {

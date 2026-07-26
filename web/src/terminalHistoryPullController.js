@@ -12,6 +12,7 @@ export function createTerminalHistoryPullController({
   let source = null;
   let pull = 0;
   let loading = false;
+  let wheelLocked = false;
   let wheelTimer = null;
   let disposed = false;
 
@@ -27,9 +28,19 @@ export function createTerminalHistoryPullController({
 
   const reset = () => {
     clearWheelTimer();
+    wheelLocked = false;
     source = null;
     pull = 0;
     emit(null);
+  };
+
+  const armWheelRelease = () => {
+    clearWheelTimer();
+    wheelTimer = setTimeout(() => {
+      wheelTimer = null;
+      wheelLocked = false;
+      if (!loading) reset();
+    }, HISTORY_WHEEL_IDLE_MS);
   };
 
   const commit = () => {
@@ -38,9 +49,12 @@ export function createTerminalHistoryPullController({
       reset();
       return;
     }
+    const wheelLoad = source === 'wheel';
     loading = true;
+    wheelLocked = wheelLoad;
     source = null;
     emit('loading', rubberBand(pull));
+    if (wheelLoad) armWheelRelease();
     let load;
     try {
       load = onLoad?.();
@@ -52,12 +66,14 @@ export function createTerminalHistoryPullController({
       .finally(() => {
         if (disposed) return;
         loading = false;
-        reset();
+        pull = 0;
+        emit(null);
+        if (!wheelLocked) reset();
       });
   };
 
   const move = (nextSource, delta) => {
-    if (loading) return true;
+    if (loading || wheelLocked) return true;
     if (source && source !== nextSource) reset();
     if (delta <= 0) {
       if (!source) return false;
@@ -91,9 +107,13 @@ export function createTerminalHistoryPullController({
     },
     wheel(delta) {
       const consumed = move('wheel', delta);
-      if (!consumed || loading) return consumed;
-      clearWheelTimer();
-      wheelTimer = setTimeout(commit, HISTORY_WHEEL_IDLE_MS);
+      if (!consumed) return false;
+      if (loading || wheelLocked) {
+        armWheelRelease();
+        return true;
+      }
+      if (pull >= HISTORY_PULL_THRESHOLD_PX) commit();
+      else armWheelRelease();
       return true;
     },
     cancel() {

@@ -587,7 +587,5 @@ export default {
   'workspace.warning.live-reconcile-failed': '实时工作区状态核对失败；请检查 handmux 日志',
   'workspace.warning.workspace-unavailable': '工作区存储暂时不可用；请检查磁盘空间和权限',
   'workspace.warning.restore-warning': '恢复时出现了可继续处理的提醒；请检查恢复结果',
-  'terminal.historyPull_pulling': '继续下拉加载更早内容',
-  'terminal.historyPull_armed': '松开加载更早 100 行',
   'terminal.historyPull_loading': '正在加载更早内容…',
 };

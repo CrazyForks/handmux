@@ -588,7 +588,5 @@ export default {
   'workspace.warning.live-reconcile-failed': 'live workspace reconciliation failed; check the handmux log',
   'workspace.warning.workspace-unavailable': 'workspace storage is temporarily unavailable; check disk space and permissions',
   'workspace.warning.restore-warning': 'the restore completed with a warning that may need attention',
-  'terminal.historyPull_pulling': 'Keep pulling for earlier output',
-  'terminal.historyPull_armed': 'Release to load 100 earlier lines',
   'terminal.historyPull_loading': 'Loading earlier output…',
 };
