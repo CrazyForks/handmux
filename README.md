@@ -23,7 +23,7 @@ handmux is more than a terminal on your phone. It puts the *same* live **tmux** 
   <em>Real phone browser, real panes — say what you need and Claude Code writes it, then tap a filename to preview (left); a push pings you when needed, and you review the git repo &amp; each agent's usage (right).</em>
 </p>
 
-**[📖 Docs](https://handmux.com/docs)** · **[📝 Changelog](CHANGELOG.md)** · **[📦 npm](https://www.npmjs.com/package/handmux)**
+**[📖 Docs](https://handmux.com/docs)** · **[🧭 Roadmap](ROADMAP.md)** · **[📝 Changelog](CHANGELOG.md)** · **[📦 npm](https://www.npmjs.com/package/handmux)**
 
 ## Quick start · about a minute
 
@@ -154,6 +154,6 @@ Hit a bug, or wish handmux did something? [**Open an issue**](https://github.com
 
 ## More
 
-**[📖 Docs](https://handmux.com/docs)** · **[📝 Changelog](CHANGELOG.md)** · **[🔒 Security](SECURITY.md)** · License **AGPL-3.0**
+**[📖 Docs](https://handmux.com/docs)** · **[🧭 Roadmap](ROADMAP.md)** · **[📝 Changelog](CHANGELOG.md)** · **[🔒 Security](SECURITY.md)** · License **AGPL-3.0**
 
 Found a security issue? Please report it privately (see [SECURITY.md](SECURITY.md)), not via a public issue.

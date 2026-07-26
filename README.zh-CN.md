@@ -23,7 +23,7 @@ handmux 不只是把终端搬上手机。它把你电脑上**正跑着的 tmux �
   <em>真实手机浏览器、真实 pane——左:说出需求,Claude Code 直接写好,点文件名即可预览;右:需要你时推送提醒,查看 git 仓库与各 agent 用量。</em>
 </p>
 
-**[📖 文档](https://handmux.com/docs)** · **[📝 更新日志](CHANGELOG.md)** · **[📦 npm](https://www.npmjs.com/package/handmux)**
+**[📖 文档](https://handmux.com/docs)** · **[🧭 路线图](ROADMAP.md#中文)** · **[📝 更新日志](CHANGELOG.md)** · **[📦 npm](https://www.npmjs.com/package/handmux)**
 
 ## 快速上手 · 约一分钟
 
@@ -156,6 +156,6 @@ handmux push <title> <body> [选项]
 
 ## 更多
 
-**[📖 文档](https://handmux.com/docs)** · **[📝 更新日志](CHANGELOG.md)** · **[🔒 安全](SECURITY.md)** · 许可证 **AGPL-3.0**
+**[📖 文档](https://handmux.com/docs)** · **[🧭 路线图](ROADMAP.md#中文)** · **[📝 更新日志](CHANGELOG.md)** · **[🔒 安全](SECURITY.md)** · 许可证 **AGPL-3.0**
 
 发现安全问题请私下报告(见 [SECURITY.md](SECURITY.md)),别开公开 issue。
