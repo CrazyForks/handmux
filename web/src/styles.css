@@ -431,14 +431,14 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .terminal-transport-popover__connection.is-connecting { color: rgba(235,235,245,.52); }
 .terminal-transport-popover p { margin: 8px 0 0; }
 .terminal-transport-popover__recovery { color: rgba(100,174,255,.9); }
-.terminal-connection__quality { color: rgba(235,235,245,.52); }
-.terminal-connection.is-good .terminal-connection__quality {
+.terminal-connection__latency { color: rgba(235,235,245,.52); }
+.terminal-connection.is-good .terminal-connection__latency {
   color: rgba(100,174,255,.84);
 }
-.terminal-connection.is-degraded .terminal-connection__quality {
+.terminal-connection.is-degraded .terminal-connection__latency {
   color: rgba(255,190,92,.86);
 }
-.terminal-connection.is-poor .terminal-connection__quality {
+.terminal-connection.is-poor .terminal-connection__latency {
   color: rgba(255,120,112,.9);
 }
 .new-output { position: absolute; right: 12px; bottom: 12px; z-index: 5; touch-action: manipulation; padding: 8px 14px; border: none; border-radius: 16px; background: var(--blue); color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.4); }

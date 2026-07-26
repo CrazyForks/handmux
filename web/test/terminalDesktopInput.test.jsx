@@ -379,9 +379,8 @@ describe('desktop terminal input', () => {
     expect(status.querySelector('.terminal-connection__summary').classList.contains('is-live')).toBe(true);
     expect(status.querySelector('.terminal-connection__summary').tagName).toBe('BUTTON');
     expect(status.querySelector('.terminal-connection__mode').classList.contains('is-live')).toBe(true);
-    expect(status.querySelector('.terminal-connection__quality').textContent).toBe('较差');
-    expect(status.textContent).toBe('实时·较差');
-    expect(status.textContent).not.toContain('1800 ms');
+    expect(status.querySelector('.terminal-connection__latency').textContent).toBe('1800 ms');
+    expect(status.textContent).toBe('实时·1800 ms');
     act(() => {
       vi.advanceTimersByTime(15000);
       callbacks.onProbe({ ok: true, rttMs: 1800 });
@@ -432,7 +431,7 @@ describe('desktop terminal input', () => {
     expect(detail.querySelector('.terminal-transport-popover__connection').textContent)
       .toBe('良好 · 100 ms');
     expect(view.container.querySelector('.terminal-transport-scrim')).toBeNull();
-    act(() => view.container.querySelector('.terminal-connection__summary').click());
+    act(() => view.container.querySelector('.terminal').click());
     expect(view.container.querySelector('.terminal-transport-popover')).toBeNull();
     act(() => view.container.querySelector('.terminal-connection__summary').click());
     expect(view.container.querySelector('.terminal-transport-popover')).not.toBeNull();

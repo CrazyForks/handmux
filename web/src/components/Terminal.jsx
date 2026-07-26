@@ -1427,6 +1427,7 @@ const Terminal = forwardRef(function Terminal({
       <div
         ref={elRef}
         className={`terminal${ready ? '' : ' terminal--loading'}${desktop ? ' desktop-input' : ''}${xOverflow ? ' terminal--x-overflow' : ''}${yOverflow ? ' terminal--y-overflow' : ''}${connectionInfo.mode === 'live' ? ' terminal--stream' : ''}`}
+        onClick={() => setTransportOpen(false)}
       />
       {yScrollbar && (
         <div className={`terminal-y-scrollbar${xOverflow ? ' has-x' : ''}`} aria-hidden="true">

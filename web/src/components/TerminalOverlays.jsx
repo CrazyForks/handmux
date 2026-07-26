@@ -54,8 +54,8 @@ export default function TerminalOverlays({
               {t(`terminal.transport_${connectionInfo.mode}`)}
             </span>
             <span className="terminal-connection__separator" aria-hidden="true">·</span>
-            <span className="terminal-connection__quality">
-              {t(`terminal.connection_${connectionInfo.quality}`)}
+            <span className="terminal-connection__latency">
+              {connectionInfo.rttMs == null ? '-- ms' : `${connectionInfo.rttMs} ms`}
             </span>
           </button>
         </div>
