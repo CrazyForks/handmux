@@ -283,6 +283,11 @@ describe('desktop terminal input', () => {
     expect(styles).toMatch(/\.terminal\.desktop-input \.xterm-helper-textarea\s*\{[^}]*pointer-events:\s*auto/);
   });
 
+  it('keeps both terminal touch axes in the JavaScript gesture path', () => {
+    expect(styles).toMatch(/\.terminal\s*\{[^}]*touch-action:\s*none/);
+    expect(styles).toMatch(/\.terminal \.xterm-viewport\s*\{[^}]*touch-action:\s*none/);
+  });
+
   it('anchors the top banner and connection labels to one stable visible-top line', () => {
     expect(styles).toMatch(
       /\.term-banner\s*\{[^}]*top:\s*var\(--terminal-overlay-top,\s*1px\)[^}]*height:\s*25px/,

@@ -318,10 +318,11 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .terminal-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 /* Width follows the real pane: the terminal renders at its natural cols width and the
    container scrolls horizontally when that exceeds the screen. overscroll-behavior: contain
-   keeps swipes from chaining out to the page (and triggering pull-to-refresh). touch-action
-   pan-x pan-y allows one-finger pan/scroll; the two-finger pinch is handled in JS as a font
-   zoom (see Terminal.jsx), not a native page zoom. */
-.terminal { height: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
+   keeps swipes from chaining out to the page (and triggering pull-to-refresh). Both axes are
+   driven in JS: Handmux owns horizontal pane panning and xterm owns vertical scrollback.
+   Declaring touch-action:none prevents the browser from claiming a horizontal native-scroll
+   gesture before our touchmove handler can cancel it (which can dismiss the soft keyboard). */
+.terminal { height: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: none; }
 /* First-paint gate (Terminal.jsx `ready`): hide the grid while a freshly-switched pane seeds and fit()
    grows/re-fits it, so the finished full-height frame appears in one go instead of filling bottom-half
    first. opacity (not display:none/visibility) keeps the geometry measurable for fit() and lets WebGL
@@ -337,11 +338,9 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 /* flex:none keeps the grid at its natural (font-driven) height — never let flex-shrink squash a
    tall grid back into the container, which would re-clip the bottom row. */
 .terminal .xterm-screen { flex: none; }
-/* The viewport must allow BOTH pan axes (per the touch-action intersection rule a horizontal
-   swipe only pans the ancestor if every element up to it permits pan-x). Vertical swipes
-   scroll the scrollback; horizontal swipes fall through to the container. (Inertia for the
-   scrollback is added in JS — xterm tracks touch 1:1 with none; see Terminal.jsx startFling.) */
-.terminal .xterm-viewport { touch-action: pan-x pan-y; overscroll-behavior: contain; }
+/* Touch movement stays entirely in the two JS handlers above. Inertia for the scrollback is
+   also added in JS — xterm itself tracks touch 1:1 with none; see Terminal.jsx startFling. */
+.terminal .xterm-viewport { touch-action: none; overscroll-behavior: contain; }
 /* Thin, low-key scrollbar on BOTH platforms: the desktop default bar is too heavy and mobile's
    overlay bar auto-hides entirely, so neither signals "there's more above" the way we want. A faint
    rounded thumb over a transparent track defers to the terminal content (HIG) while still marking the
