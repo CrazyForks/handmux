@@ -2,6 +2,7 @@ import { scrollPane, sendKeys } from './api.js';
 import { shouldKeepKeyboard } from './dockKeyboard.js';
 import { drainWheel, notchDir } from './wheelScroll.js';
 import { flingStep, shouldFling } from './momentum.js';
+import { createTerminalHistoryPullController } from './terminalHistoryPullController.js';
 import { scrollDecision } from './terminalViewport.js';
 import { setFont } from './storage.js';
 
@@ -22,9 +23,10 @@ export function createTerminalTouchController({
   getMouseAware,
   onActivity,
   onUserScroll,
-  armHistoryPull,
+  canPullHistory,
+  loadMoreHistory,
+  onHistoryPullChange,
   showScrollPosition,
-  maybePullMore,
   enterStreamHistory,
   scheduleFit,
   wake,
@@ -47,14 +49,17 @@ export function createTerminalTouchController({
   let lastMoveTime = 0;
   let scrollVelocityX = 0;
   let scrollVelocityY = 0;
-  let touchActive = false;
-  let historyPullFrozen = false;
   let flingRAF = null;
   let wheelAccum = 0;
   let wheelPreviousY = 0;
   let wheelPending = 0;
   let wheelBusy = false;
-  let lastWheelTime = 0;
+  const historyPull = createTerminalHistoryPullController({
+    atTop: () => buffer().viewportY === 0,
+    canLoad: canPullHistory,
+    onChange: onHistoryPullChange,
+    onLoad: loadMoreHistory,
+  });
   const liveViewport = () => (
     host.querySelector('.terminal__live .xterm-viewport')
       || host.querySelector('.xterm-viewport')
@@ -96,7 +101,6 @@ export function createTerminalTouchController({
       const hitEdge = Math.abs(step.delta) >= 1 && element[property] === before;
       if (property === 'scrollTop') {
         showScrollPosition();
-        maybePullMore();
       }
       if (step.done || hitEdge || flingRAF == null) {
         flingRAF = null;
@@ -129,9 +133,7 @@ export function createTerminalTouchController({
     onActivity();
     cancelLongPress();
     stopFling();
-    armHistoryPull();
-    touchActive = event.touches.length > 0;
-    historyPullFrozen = false;
+    historyPull.cancel();
     selectionOnDown = selectionActiveRef.current;
     selecting = false;
     if (event.touches.length === 2) {
@@ -160,6 +162,7 @@ export function createTerminalTouchController({
     lastMoveTime = event.timeStamp;
     scrollVelocityX = 0;
     scrollVelocityY = 0;
+    historyPull.beginTouch();
     wheelPreviousY = startY;
     wheelAccum = 0;
     longPressTimer = setTimeout(() => {
@@ -214,24 +217,6 @@ export function createTerminalTouchController({
       return;
     }
 
-    // A history pull rewrites xterm's buffer and then restores the old content anchor. If the same
-    // finger remains down, xterm's next touchmove can immediately overwrite that restored scrollTop
-    // against the expanded buffer, occasionally landing at the new page's far edge. Once this gesture
-    // starts a pull, hold it still until touchend; the next deliberate gesture continues normally.
-    if (historyPullFrozen) {
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
-    showScrollPosition();
-    maybePullMore();
-    if (historyPullFrozen) {
-      scrollVelocityY = 0;
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
-
     const y = event.touches[0].clientY;
     const stepY = y - wheelPreviousY;
     wheelPreviousY = y;
@@ -271,6 +256,13 @@ export function createTerminalTouchController({
       }
       return;
     }
+    if (historyPull.moveTouch(stepY)) {
+      scrollVelocityY = 0;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    showScrollPosition();
     const elapsed = event.timeStamp - lastMoveTime;
     if (elapsed > 0) scrollVelocityY = (lastMoveY - y) / elapsed;
     lastMoveY = y;
@@ -280,23 +272,21 @@ export function createTerminalTouchController({
   const onTouchEnd = (event) => {
     cancelLongPress();
     const ended = event.touches.length === 0;
-    if (ended) touchActive = false;
+    const historyPullEnded = ended && historyPull.endTouch();
     if (selecting && event.touches.length === 0) {
       selecting = false;
       const text = term.getSelection();
       if (text && text.trim()) selection.refresh();
       else selection.clear();
-      historyPullFrozen = false;
       return;
     }
     if (pinching && event.touches.length < 2) {
       pinching = false;
       setFont(term.options.fontSize || 14);
       scheduleFit();
-      if (ended) historyPullFrozen = false;
       return;
     }
-    if (ended && !historyPullFrozen && shouldFling(
+    if (ended && !historyPullEnded && shouldFling(
       axis === 1 ? scrollVelocityX : scrollVelocityY,
       event.timeStamp - lastMoveTime,
     )) {
@@ -309,7 +299,6 @@ export function createTerminalTouchController({
       if (selectionOnDown) selection.clear();
       else onTap();
     }
-    if (ended) historyPullFrozen = false;
   };
 
   const onWheel = (event) => {
@@ -363,10 +352,17 @@ export function createTerminalTouchController({
       }
       return;
     }
-    if (event.timeStamp - lastWheelTime > 200) armHistoryPull();
-    lastWheelTime = event.timeStamp;
+    const pixels = event.deltaMode === 1
+      ? event.deltaY * WHEEL_PX
+      : event.deltaMode === 2
+        ? event.deltaY * term.rows * WHEEL_PX
+        : event.deltaY;
+    if (historyPull.wheel(-pixels)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     showScrollPosition();
-    maybePullMore();
   };
 
   const onPointerDown = (event) => {
@@ -393,15 +389,10 @@ export function createTerminalTouchController({
   host.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
 
   return {
-    freezeHistoryGesture() {
-      if (!touchActive || axis !== -1) return;
-      historyPullFrozen = true;
-      scrollVelocityY = 0;
-      stopFling();
-    },
     dispose() {
       cancelLongPress();
       stopFling();
+      historyPull.dispose();
       host.removeEventListener('pointerdown', onPointerDown, { capture: true });
       host.removeEventListener('wheel', onWheel, { capture: true });
       host.removeEventListener('touchstart', onTouchStart, { capture: true });

@@ -464,4 +464,7 @@ export default {
   'workspace.warning.live-reconcile-failed': '現在のワークスペース状態を照合できませんでした。handmux ログを確認してください',
   'workspace.warning.workspace-unavailable': 'ワークスペースストレージを一時的に利用できません。空き容量と権限を確認してください',
   'workspace.warning.restore-warning': '復元は完了しましたが、確認が必要な警告があります',
+  'terminal.historyPull_pulling': 'さらに引いて以前の内容を読み込む',
+  'terminal.historyPull_armed': '離して以前の 100 行を読み込む',
+  'terminal.historyPull_loading': '以前の内容を読み込み中…',
 };

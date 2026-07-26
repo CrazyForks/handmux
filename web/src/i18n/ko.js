@@ -464,4 +464,7 @@ export default {
   'workspace.warning.live-reconcile-failed': '현재 작업 공간 상태를 대조하지 못했습니다. handmux 로그를 확인하세요',
   'workspace.warning.workspace-unavailable': '작업 공간 저장소를 일시적으로 사용할 수 없습니다. 디스크 공간과 권한을 확인하세요',
   'workspace.warning.restore-warning': '복원 중 확인이 필요한 경고가 발생했습니다',
+  'terminal.historyPull_pulling': '계속 당겨 이전 내용 불러오기',
+  'terminal.historyPull_armed': '놓아서 이전 100줄 불러오기',
+  'terminal.historyPull_loading': '이전 내용 불러오는 중…',
 };

@@ -26,9 +26,8 @@ function setup() {
     buffer: { active: { viewportY: 0, baseY: 300 } },
     getSelection: () => '',
   };
-  let controller;
-  const maybePullMore = vi.fn(() => controller.freezeHistoryGesture());
-  controller = createTerminalTouchController({
+  const loadMoreHistory = vi.fn();
+  const controller = createTerminalTouchController({
     term,
     host,
     desktop: false,
@@ -47,16 +46,17 @@ function setup() {
     getMouseAware: () => false,
     onActivity: vi.fn(),
     onUserScroll: vi.fn(),
-    armHistoryPull: vi.fn(),
+    canPullHistory: () => true,
+    loadMoreHistory,
+    onHistoryPullChange: vi.fn(),
     showScrollPosition: vi.fn(),
-    maybePullMore,
     enterStreamHistory: vi.fn(),
     scheduleFit: vi.fn(),
     wake: vi.fn(),
     onTap: vi.fn(),
     onKeepKeyboard: vi.fn(),
   });
-  return { controller, host, screen, maybePullMore };
+  return { controller, host, screen, loadMoreHistory };
 }
 
 afterEach(() => {
@@ -64,26 +64,21 @@ afterEach(() => {
 });
 
 describe('terminal touch history pull', () => {
-  it('freezes the triggering drag until touchend so xterm cannot overwrite the restored anchor', () => {
-    const { controller, screen, maybePullMore } = setup();
+  it('isolates the top pull and loads only after touchend', () => {
+    const { controller, screen, loadMoreHistory } = setup();
     const reachedXterm = vi.fn();
     screen.addEventListener('touchmove', reachedXterm);
 
     screen.dispatchEvent(touchEvent('touchstart', 100));
-    const triggeringMove = touchEvent('touchmove', 130);
-    screen.dispatchEvent(triggeringMove);
+    screen.dispatchEvent(touchEvent('touchmove', 140));
     screen.dispatchEvent(touchEvent('touchmove', 170));
+    screen.dispatchEvent(touchEvent('touchmove', 180));
 
-    expect(maybePullMore).toHaveBeenCalledOnce();
-    expect(triggeringMove.defaultPrevented).toBe(true);
+    expect(loadMoreHistory).not.toHaveBeenCalled();
     expect(reachedXterm).not.toHaveBeenCalled();
 
-    screen.dispatchEvent(touchEvent('touchend', 170, 0));
-    maybePullMore.mockImplementation(() => {});
-    screen.dispatchEvent(touchEvent('touchstart', 170));
-    screen.dispatchEvent(touchEvent('touchmove', 200));
-
-    expect(reachedXterm).toHaveBeenCalledOnce();
+    screen.dispatchEvent(touchEvent('touchend', 180, 0));
+    expect(loadMoreHistory).toHaveBeenCalledOnce();
     controller.dispose();
   });
 });
