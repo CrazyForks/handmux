@@ -8,6 +8,7 @@ export default {
   'terminal.transport_detail_title': 'Terminal delivery',
   'terminal.transport_detail_configured': 'Configured',
   'terminal.transport_detail_current': 'Current',
+  'terminal.transport_detail_connection': 'Connection',
   'terminal.transport_detail_manual': 'Snapshot pulling was selected manually and will not switch automatically.',
   'terminal.transport_detail_live': 'The terminal is receiving live pushes normally.',
   'terminal.transport_detail_fallback': 'Live pushing became unstable, so Handmux fell back to snapshot pulling.',

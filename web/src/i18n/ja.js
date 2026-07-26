@@ -5,6 +5,7 @@ export default {
   'terminal.transport_detail_title': 'ターミナル配信状態',
   'terminal.transport_detail_configured': '設定モード',
   'terminal.transport_detail_current': '現在のモード',
+  'terminal.transport_detail_connection': '接続状態',
   'terminal.transport_detail_manual': 'スナップショット取得が手動で選択されているため、自動では切り替わりません。',
   'terminal.transport_detail_live': 'ターミナルはリアルタイム配信を正常に受信しています。',
   'terminal.transport_detail_fallback': 'リアルタイム配信が不安定なため、スナップショット取得へ切り替えました。',

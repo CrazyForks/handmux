@@ -382,22 +382,23 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
   border-radius: 4px;
   background: rgba(26,28,34,.62);
 }
-.terminal-connection__mode.is-live {
+.terminal-connection__summary.is-live {
   color: rgba(235,247,255,.96);
   border-color: rgba(100,174,255,.32);
   background: rgba(63,139,224,.38);
 }
-.terminal-connection__mode.is-snapshot {
+.terminal-connection__summary.is-snapshot {
   color: rgba(240,240,245,.88);
   border-color: rgba(205,208,218,.18);
   background: rgba(105,109,120,.38);
 }
-.terminal-connection__mode,
-.terminal-connection__quality {
+.terminal-connection__summary {
+  gap: 4px;
   font: inherit;
   cursor: pointer;
   pointer-events: auto;
 }
+.terminal-connection__separator { color: rgba(235,235,245,.34); }
 .terminal-transport-scrim {
   position: absolute; inset: 0; z-index: 7;
   margin: 0; padding: 0; border: 0; background: transparent;
@@ -421,19 +422,19 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
   color: rgba(235,235,245,.55);
 }
 .terminal-transport-popover__value {
-  padding: 2px 6px; border: 1px solid transparent; border-radius: 4px;
   font-weight: 550;
 }
 .terminal-transport-popover__value.is-live {
-  color: rgba(235,247,255,.96);
-  border-color: rgba(100,174,255,.3);
-  background: rgba(63,139,224,.32);
+  color: rgba(100,174,255,.96);
 }
 .terminal-transport-popover__value.is-snapshot {
-  color: rgba(240,240,245,.84);
-  border-color: rgba(205,208,218,.16);
-  background: rgba(105,109,120,.3);
+  color: rgba(190,193,202,.86);
 }
+.terminal-transport-popover__connection { font-weight: 550; }
+.terminal-transport-popover__connection.is-good { color: rgba(100,174,255,.9); }
+.terminal-transport-popover__connection.is-degraded { color: rgba(245,190,83,.88); }
+.terminal-transport-popover__connection.is-poor { color: rgba(255,116,108,.9); }
+.terminal-transport-popover__connection.is-connecting { color: rgba(235,235,245,.52); }
 .terminal-transport-popover p { margin: 8px 0 0; }
 .terminal-transport-popover__recovery { color: rgba(100,174,255,.9); }
 .terminal-connection__quality { color: rgba(235,235,245,.52); }

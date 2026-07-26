@@ -353,7 +353,7 @@ describe('desktop terminal input', () => {
       vi.advanceTimersByTime(450);
       await Promise.resolve();
     });
-    act(() => view.container.querySelector('.terminal-connection__mode').click());
+    act(() => view.container.querySelector('.terminal-connection__summary').click());
     expect(view.container.querySelector('.terminal-transport-popover').textContent)
       .toContain('请检查反向代理是否支持 WebSocket');
   });
@@ -375,13 +375,12 @@ describe('desktop terminal input', () => {
 
     act(() => callbacks.onProbe({ ok: true, rttMs: 1800 }));
     const status = view.container.querySelector('.terminal-connection');
-    expect(status.querySelectorAll('.terminal-connection__tag')).toHaveLength(2);
-    expect(status.querySelector('.terminal-connection__mode').classList.contains('is-live')).toBe(true);
-    expect(status.querySelector('.terminal-connection__quality').textContent).toContain('较差 1800 ms');
-    expect(status.querySelector('.terminal-connection__quality').tagName).toBe('BUTTON');
-    expect(status.firstElementChild.classList.contains('terminal-connection__quality')).toBe(true);
-    expect(status.lastElementChild.classList.contains('terminal-connection__mode')).toBe(true);
-    expect(status.textContent).toContain('实时');
+    expect(status.querySelectorAll('.terminal-connection__tag')).toHaveLength(1);
+    expect(status.querySelector('.terminal-connection__summary').classList.contains('is-live')).toBe(true);
+    expect(status.querySelector('.terminal-connection__summary').tagName).toBe('BUTTON');
+    expect(status.querySelector('.terminal-connection__quality').textContent).toBe('较差');
+    expect(status.textContent).toBe('实时·较差');
+    expect(status.textContent).not.toContain('1800 ms');
     act(() => {
       vi.advanceTimersByTime(15000);
       callbacks.onProbe({ ok: true, rttMs: 1800 });
@@ -391,7 +390,7 @@ describe('desktop terminal input', () => {
     });
 
     expect(suspend).toHaveBeenCalledOnce();
-    expect(status.querySelector('.terminal-connection__mode').classList.contains('is-snapshot')).toBe(true);
+    expect(status.querySelector('.terminal-connection__summary').classList.contains('is-snapshot')).toBe(true);
     expect(status.textContent).toContain('快照');
   });
 
@@ -420,7 +419,7 @@ describe('desktop terminal input', () => {
     expect(resync).not.toHaveBeenCalled();
 
     act(() => callbacks.onProbe({ ok: true, rttMs: 100 }));
-    act(() => view.container.querySelector('.terminal-connection__mode').click());
+    act(() => view.container.querySelector('.terminal-connection__summary').click());
     const detail = view.container.querySelector('.terminal-transport-popover');
     expect(detail.textContent).toContain('设置模式实时推送');
     expect(detail.textContent).toContain('当前模式快照拉取');
@@ -429,8 +428,10 @@ describe('desktop terminal input', () => {
       .toBe('实时推送');
     expect(detail.querySelector('.terminal-transport-popover__value.is-snapshot').textContent)
       .toBe('快照拉取');
+    expect(detail.querySelector('.terminal-transport-popover__connection').textContent)
+      .toBe('良好 · 100 ms');
     act(() => view.container.querySelector('.terminal-transport-scrim').click());
-    act(() => view.container.querySelector('.terminal-connection__quality').click());
+    act(() => view.container.querySelector('.terminal-connection__summary').click());
     expect(view.container.querySelector('.terminal-transport-popover')).not.toBeNull();
     act(() => {
       vi.advanceTimersByTime(29999);

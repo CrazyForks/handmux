@@ -7,6 +7,7 @@ export default {
   'terminal.transport_detail_title': '终端传输状态',
   'terminal.transport_detail_configured': '设置模式',
   'terminal.transport_detail_current': '当前模式',
+  'terminal.transport_detail_connection': '连接状态',
   'terminal.transport_detail_manual': '你已手动选择快照拉取，不会自动切换。',
   'terminal.transport_detail_live': '终端正在正常接收实时推送。',
   'terminal.transport_detail_fallback': '实时推送不稳定，已自动降级为快照拉取。',

@@ -49,20 +49,15 @@ export default function TerminalOverlays({
       {ready && connected && !scrollInfo && !selInfo && connectionInfo && (
         <div className={`terminal-connection is-${connectionInfo.quality}`}>
           <button type="button"
-            className="terminal-connection__tag terminal-connection__quality"
+            className={`terminal-connection__tag terminal-connection__summary is-${connectionInfo.mode}`}
             aria-expanded={transportOpen}
             aria-haspopup="dialog"
             onClick={onTransportToggle}>
-            {t(`terminal.connection_${connectionInfo.quality}`)}
-            {' '}
-            {connectionInfo.rttMs == null ? '-- ms' : `${connectionInfo.rttMs} ms`}
-          </button>
-          <button type="button"
-            className={`terminal-connection__tag terminal-connection__mode is-${connectionInfo.mode}`}
-            aria-expanded={transportOpen}
-            aria-haspopup="dialog"
-            onClick={onTransportToggle}>
-            {t(`terminal.transport_${connectionInfo.mode}`)}
+            <span>{t(`terminal.transport_${connectionInfo.mode}`)}</span>
+            <span className="terminal-connection__separator" aria-hidden="true">·</span>
+            <span className="terminal-connection__quality">
+              {t(`terminal.connection_${connectionInfo.quality}`)}
+            </span>
           </button>
         </div>
       )}
@@ -80,6 +75,14 @@ export default function TerminalOverlays({
             <span>{t('terminal.transport_detail_current')}</span>
             <b className={`terminal-transport-popover__value is-${connectionInfo.mode}`}>
               {t(`settings.terminal_transport_${connectionInfo.mode}`)}
+            </b>
+          </div>
+          <div className="terminal-transport-popover__row">
+            <span>{t('terminal.transport_detail_connection')}</span>
+            <b className={`terminal-transport-popover__connection is-${connectionInfo.quality}`}>
+              {t(`terminal.connection_${connectionInfo.quality}`)}
+              {' · '}
+              {connectionInfo.rttMs == null ? '-- ms' : `${connectionInfo.rttMs} ms`}
             </b>
           </div>
           <p>{transportMessage}</p>

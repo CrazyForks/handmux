@@ -5,6 +5,7 @@ export default {
   'terminal.transport_detail_title': '터미널 전송 상태',
   'terminal.transport_detail_configured': '설정 모드',
   'terminal.transport_detail_current': '현재 모드',
+  'terminal.transport_detail_connection': '연결 상태',
   'terminal.transport_detail_manual': '스냅샷 가져오기를 직접 선택했으므로 자동으로 전환되지 않습니다.',
   'terminal.transport_detail_live': '터미널이 실시간 푸시를 정상적으로 받고 있습니다.',
   'terminal.transport_detail_fallback': '실시간 푸시가 불안정하여 스냅샷 가져오기로 전환했습니다.',
