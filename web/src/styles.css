@@ -847,8 +847,8 @@ div.workspace-restore-errors { padding-left: 10px; }
   box-shadow: 0 1px 4px rgba(var(--blue-rgb),.45);
   touch-action: manipulation; -webkit-user-select: none; user-select: none; }
 .input-send:active { background: var(--blue-press); }
-/* 空框:仍不可发送,但别用扎眼的禁用灰——沿用麦克风的待命外观(暗底+柔和图标),不给人"点不了/坏了"的感觉。 */
-.input-send:disabled { background: rgba(0,0,0,.25); color: #b6c0cc; box-shadow: none; }
+/* 空框仍可发送裸 Enter，但视觉沿用原来的待命状态；提交中也保持同一外观。 */
+.input-send.is-empty, .input-send:disabled { background: rgba(0,0,0,.25); color: #b6c0cc; box-shadow: none; }
 .input-send svg { width: 20px; height: 20px; display: block; }
 /* 历史:麦克风左侧的图标按钮,只在空框时出现(打字即整体隐藏)。仅一个图标。 */
 .input-history { flex: none; width: 34px; height: 34px;

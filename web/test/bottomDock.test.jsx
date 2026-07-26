@@ -260,6 +260,7 @@ describe('BottomDock', () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
     const button = container.querySelector('.input-send');
     expect(button.disabled).toBe(false);
+    expect(button.classList.contains('is-empty')).toBe(true);
     await act(async () => {
       button.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
       await Promise.resolve();
@@ -333,8 +334,10 @@ describe('BottomDock', () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
     expect(container.querySelector('.input-send')).not.toBe(null);
     expect(container.querySelector('.input-send').disabled).toBe(false);
+    expect(container.querySelector('.input-send').classList.contains('is-empty')).toBe(true);
     typeInto(container.querySelector('.input-text'), 'ls');
     expect(container.querySelector('.input-send').disabled).toBe(false);
+    expect(container.querySelector('.input-send').classList.contains('is-empty')).toBe(false);
   });
 
   it('快捷栏:固定的上传(带图标)+ 一排自定义命令 chip;历史在药丸里', () => {

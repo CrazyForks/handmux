@@ -1118,7 +1118,7 @@ function BottomDock({
                 )}
                 {micAvailable && <MicButton active={recording} disabled={voice.state === 'requesting'} onToggle={toggleMic} />}
                 {/* 发送 ↑ 常驻:点 = 发送组合文本（空框发送裸 Enter）,长按 = 填入。 */}
-                <button type="button" className="input-send" aria-label={t('dock.send')} title={t('dock.send.hint')}
+                <button type="button" className={`input-send${value ? '' : ' is-empty'}`} aria-label={t('dock.send')} title={t('dock.send.hint')}
                   disabled={submitting}
                   onPointerDown={sendDown} onPointerMove={sendMove} onPointerUp={sendUp} onPointerCancel={sendCancel} onPointerLeave={sendCancel}>
                   <ArrowUpIcon />
