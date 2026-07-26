@@ -4,6 +4,7 @@ import {
   decodeControlData,
   echoTerminalProbe,
   PaneControlStream,
+  startSubscribeDeadline,
 } from '../src/terminalStream.js';
 
 class FakeChild extends EventEmitter {
@@ -74,6 +75,18 @@ describe('terminal stream probe', () => {
     expect(ws.messages).toEqual([{ type: 'probe', id: 7 }]);
     expect(echoTerminalProbe(ws, { type: 'probe', id: '7' })).toBe(false);
     expect(echoTerminalProbe(ws, { type: 'pause' })).toBe(false);
+  });
+
+  it('closes connections that never subscribe', () => {
+    vi.useFakeTimers();
+    const ws = fakeSocket();
+    const cancel = startSubscribeDeadline(ws, 50);
+    vi.advanceTimersByTime(49);
+    expect(ws.close).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(ws.close).toHaveBeenCalledWith(4001, 'authentication timeout');
+    cancel();
+    vi.useRealTimers();
   });
 });
 
@@ -283,6 +296,25 @@ describe('PaneControlStream', () => {
     await finishResync(child, { info: 'not-pane-info' });
     await rejected;
     expect(ws.messages).toEqual([]);
+    stream.close();
+  });
+
+  it('stops an unbounded output backlog while a resync is running', () => {
+    const child = new FakeChild();
+    const ws = fakeSocket();
+    const stream = new PaneControlStream({
+      ws,
+      pane: '%7',
+      session: 'work',
+      spawnControl: () => child,
+    });
+    stream.phase = 'buffer';
+    const chunk = 'x'.repeat(256 * 1024);
+    for (let i = 0; i < 5; i += 1) child.lines(`%output %7 ${chunk}`);
+
+    expect(ws.close).toHaveBeenCalledWith(1013, 'stream fell behind');
+    expect(stream.phase).toBe('paused');
+    expect(stream.pendingOutput).toEqual([]);
     stream.close();
   });
 });

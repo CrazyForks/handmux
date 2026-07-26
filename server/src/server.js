@@ -153,8 +153,8 @@ const server = app.listen(cfg.port, cfg.host, () => {
   console.log(`[handmux] listening on http://${cfg.host}:${cfg.port} (serving ${staticDir})`);
 });
 const terminalStream = createTerminalStream({ token, commands });
-// The opt-in terminal-stream experiment owns one exact path. Every other Upgrade keeps using the
-// existing dynamic-preview router unchanged.
+// The terminal stream owns one exact path. Every other Upgrade keeps using the existing
+// dynamic-preview router unchanged.
 server.on('upgrade', (req, socket, head) => {
   if (!terminalStream.onUpgrade(req, socket, head)) preview.onUpgrade(req, socket, head);
 });

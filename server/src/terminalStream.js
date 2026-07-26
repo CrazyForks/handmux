@@ -5,7 +5,9 @@ import { isPaneId } from './tmux/commands.js';
 import { restoreCaptureBackgrounds } from './captureBackground.js';
 
 const MAX_BUFFERED_BYTES = 1024 * 1024;
+const MAX_CLIENT_MESSAGE_BYTES = 16 * 1024;
 const START_TIMEOUT_MS = 5000;
+const SUBSCRIBE_TIMEOUT_MS = 5000;
 const HEARTBEAT_MS = 30000;
 const INITIAL_HISTORY_LINES = 100;
 const PANE_INFO = '"#{pane_width}\\t#{pane_height}\\t#{cursor_x}\\t#{cursor_y}\\t#{cursor_flag}\\t#{alternate_on}\\t#{mouse_any_flag}\\t#{mouse_sgr_flag}"';
@@ -14,6 +16,14 @@ export function echoTerminalProbe(ws, message) {
   if (message?.type !== 'probe' || !Number.isSafeInteger(message.id) || message.id < 0) return false;
   if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'probe', id: message.id }));
   return true;
+}
+
+export function startSubscribeDeadline(ws, timeoutMs = SUBSCRIBE_TIMEOUT_MS) {
+  const timer = setTimeout(() => {
+    if (ws.readyState < 2) ws.close(4001, 'authentication timeout');
+  }, timeoutMs);
+  timer.unref?.();
+  return () => clearTimeout(timer);
 }
 
 function parsePaneInfo(infoLines) {
@@ -58,6 +68,7 @@ export class PaneControlStream {
     this.phase = 'attach';
     this.wantLive = true;
     this.pendingOutput = [];
+    this.pendingOutputBytes = 0;
     this.resyncing = null;
     this.attached = new Promise((resolve, reject) => {
       this.resolveAttached = resolve;
@@ -94,7 +105,18 @@ export class PaneControlStream {
       const split = line.indexOf(0x20, 8);
       if (split < 0 || line.subarray(8, split).toString('ascii') !== this.pane) return;
       const output = decodeControlData(line.subarray(split + 1));
-      if (this.phase === 'buffer') this.pendingOutput.push(output);
+      if (this.phase === 'buffer') {
+        if (this.pendingOutputBytes + output.length > MAX_BUFFERED_BYTES) {
+          this.wantLive = false;
+          this.phase = 'paused';
+          this.pendingOutput = [];
+          this.pendingOutputBytes = 0;
+          if (this.ws.readyState < 2) this.ws.close(1013, 'stream fell behind');
+        } else {
+          this.pendingOutput.push(output);
+          this.pendingOutputBytes += output.length;
+        }
+      }
       else if (this.phase === 'live') this.sendOutput(output);
       return;
     }
@@ -174,6 +196,7 @@ export class PaneControlStream {
       this.wantLive = false;
       this.phase = 'paused';
       this.pendingOutput = [];
+      this.pendingOutputBytes = 0;
     }
   }
 
@@ -188,6 +211,7 @@ export class PaneControlStream {
     await this.attached;
     this.phase = 'capture';
     this.pendingOutput = [];
+    this.pendingOutputBytes = 0;
     const captureLines = await this.request(
       `capture-pane -p -e -N -S -${INITIAL_HISTORY_LINES} -t ${this.pane}`,
       () => { this.phase = this.wantLive ? 'buffer' : 'paused'; },
@@ -198,6 +222,7 @@ export class PaneControlStream {
     const [, height, , , , alternateOn] = parsePaneInfo(preliminaryInfo);
     if (!this.wantLive || this.phase === 'closed') {
       this.pendingOutput = [];
+      this.pendingOutputBytes = 0;
       if (this.phase !== 'closed') this.phase = 'paused';
       return;
     }
@@ -227,6 +252,7 @@ export class PaneControlStream {
       parsePaneInfo(infoLines);
     if (!this.wantLive || this.phase === 'closed') {
       this.pendingOutput = [];
+      this.pendingOutputBytes = 0;
       if (this.phase !== 'closed') this.phase = 'paused';
       return;
     }
@@ -251,6 +277,7 @@ export class PaneControlStream {
       cur: { row: height - 1 - cursorY, col: cursorX, vis: cursorFlag === 1 },
     })) return;
     this.pendingOutput = [];
+    this.pendingOutputBytes = 0;
     this.phase = this.wantLive ? 'live' : 'paused';
   }
 
@@ -272,12 +299,13 @@ export class PaneControlStream {
     this.response = null;
     for (const waiter of this.waiters.splice(0)) waiter.reject(error);
     this.pendingOutput = [];
+    this.pendingOutputBytes = 0;
     try { this.child.kill(); } catch { /* already gone */ }
   }
 }
 
 export function createTerminalStream({ token, commands, spawnControl } = {}) {
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_CLIENT_MESSAGE_BYTES });
   const streams = new Set();
   const heartbeat = setInterval(() => {
     for (const ws of wss.clients) {
@@ -295,6 +323,7 @@ export function createTerminalStream({ token, commands, spawnControl } = {}) {
   wss.on('connection', (ws) => {
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
+    const cancelSubscribeDeadline = startSubscribeDeadline(ws);
     let authenticating = false;
     let stream = null;
     ws.on('message', async (raw, binary) => {
@@ -319,6 +348,7 @@ export function createTerminalStream({ token, commands, spawnControl } = {}) {
         return;
       }
       authenticating = true;
+      cancelSubscribeDeadline();
       try {
         const session = await commands.paneSession(message.pane);
         if (ws.readyState !== 1) return;
@@ -330,6 +360,7 @@ export function createTerminalStream({ token, commands, spawnControl } = {}) {
       }
     });
     ws.on('close', () => {
+      cancelSubscribeDeadline();
       if (stream) {
         stream.close();
         streams.delete(stream);
