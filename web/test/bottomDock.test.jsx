@@ -256,6 +256,55 @@ describe('BottomDock', () => {
     expect(sendText).toHaveBeenCalledWith('%1', 'ls -la', true);
   });
 
+  it('locks editing and ignores repeated send taps until the request finishes', async () => {
+    const request = deferred();
+    sendText.mockReturnValueOnce(request.promise);
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    const input = container.querySelector('.input-text');
+    const button = container.querySelector('.input-send');
+    typeInto(input, '只发一次');
+
+    act(() => {
+      button.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+      button.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+    });
+
+    expect(sendText).toHaveBeenCalledTimes(1);
+    expect(button.disabled).toBe(true);
+    expect(input.getAttribute('aria-readonly')).toBe('true');
+    typeInto(input, '发送中不应改写');
+    expect(input.value).toBe('只发一次');
+
+    await act(async () => {
+      request.resolve({ ok: true });
+      await request.promise;
+      await Promise.resolve();
+    });
+    expect(input.value).toBe('');
+    expect(input.getAttribute('aria-readonly')).toBe('false');
+  });
+
+  it('unlocks the original draft after a send failure', async () => {
+    const request = deferred();
+    sendText.mockReturnValueOnce(request.promise);
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    const input = container.querySelector('.input-text');
+    const button = container.querySelector('.input-send');
+    typeInto(input, '失败后保留');
+    fire(button, 'pointerup');
+
+    await act(async () => {
+      request.reject(new Error('offline'));
+      await request.promise.catch(() => {});
+      await Promise.resolve();
+    });
+
+    expect(input.value).toBe('失败后保留');
+    expect(button.disabled).toBe(false);
+    typeInto(input, '可以继续编辑');
+    expect(input.value).toBe('可以继续编辑');
+  });
+
   it('long-pressing the 发送 ↑ types the box text into the pane WITHOUT Enter', async () => {
     vi.useFakeTimers();
     const onSent = vi.fn();

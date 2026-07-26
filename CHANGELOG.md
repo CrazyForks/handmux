@@ -7,6 +7,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 ### Fixed
 - 电脑端停留在终端页面时，即使焦点落在 Window 工具栏，物理键盘输入和 `Shift+Enter` 仍会作用于当前终端；`F5`、`F12` 保留给浏览器。
 - 修复聊天模式选择文件后没有开始上传的问题。
+- 聊天发送过程中会暂时锁定输入和发送键，避免快速连按重复发送同一条内容。
 
 ## [0.20.0] - 2026-07-26
 

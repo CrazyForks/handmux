@@ -20,6 +20,12 @@ afterEach(cleanup);
 beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); voice.state = 'idle'; });
 
 const typeInto = (el, text) => fireEvent.change(el, { target: { value: text } });
+const deferred = () => {
+  let resolve;
+  let reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+};
 
 describe('ChatComposer', () => {
   it('renders the same device-local merged order as the editor', () => {
@@ -55,6 +61,27 @@ describe('ChatComposer', () => {
     await waitFor(() => expect(ta.value).toBe(''));
     expect(sendText).toHaveBeenCalledWith('%1', '继续实现', true);
     expect(onSent).toHaveBeenCalledWith('继续实现');
+  });
+
+  it('locks editing and ignores repeated Enter while a send is in flight', async () => {
+    const request = deferred();
+    sendText.mockReturnValueOnce(request.promise);
+    render(<ChatComposer pane="%1" kind="idle" desktop />);
+    const input = screen.getByPlaceholderText('和 Claude 对话…');
+    typeInto(input, '只发一次');
+
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(sendText).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: '发送' }).disabled).toBe(true);
+    expect(input.getAttribute('aria-readonly')).toBe('true');
+    typeInto(input, '发送中不应改写');
+    expect(input.value).toBe('只发一次');
+
+    request.resolve({ ok: true });
+    await waitFor(() => expect(input.value).toBe(''));
+    expect(input.getAttribute('aria-readonly')).toBe('false');
   });
 
   it('sending a bare non-one-shot slash command hands off to the terminal lens — incl. unrecognized ones', async () => {

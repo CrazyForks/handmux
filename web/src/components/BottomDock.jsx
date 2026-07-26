@@ -96,6 +96,8 @@ function BottomDock({
   // every change (send/fill set '' → the stored draft clears with it). The mount-time autoGrow +
   // pager ResizeObserver below already size a restored multi-line draft correctly.
   const [value, setValue] = useState(() => getChatDraft());
+  const [submitting, setSubmitting] = useState(false);
+  const submitInFlightRef = useRef(false);
   useEffect(() => { setChatDraft(value); }, [value]);
   const [multi, setMulti] = useState(false); // composer grew past one line → full-width text, mic/send overlay bottom-right
   const [crowd, setCrowd] = useState(false); // last text line would run under the overlaid buttons → reserve a bottom strip
@@ -653,23 +655,31 @@ function BottomDock({
     if (recording) { suppressVoiceRef.current = true; voice.stop(); }
   };
 
-  // Type the text then Enter (the server pauses between them so a TUI registers Enter as "send"
-  // rather than a newline).
-  const send = async () => {
-    if (!pane) return;
+  // Type the draft, optionally followed by Enter. Lock synchronously before the request: /send waits
+  // for tmux's text→Enter pacing, so leaving the editor active let rapid taps launch the same request
+  // several times before the first one returned.
+  const submitDraft = async (enter) => {
+    if (!pane || !value || submitInFlightRef.current) return;
+    const text = value;
+    submitInFlightRef.current = true;
+    setSubmitting(true);
     stopVoiceIfRecording();
     try {
-      await sendText(pane, value, true);
-      onSent?.(value); // record the sent command (App pushes it into the session's recent list)
+      await sendText(pane, text, enter);
+      onSent?.(text); // record the sent command (App pushes it into the session's recent list)
       setValue('');
       requestAnimationFrame(() => {
         autoGrow(ref.current); // shrink back to one line once cleared
-        if (desktopUnified) ref.current?.focus({ preventScroll: true });
+        if (enter && desktopUnified) ref.current?.focus({ preventScroll: true });
       });
     } catch (err) {
       if (err instanceof UnauthorizedError) onAuthFail?.();
+    } finally {
+      submitInFlightRef.current = false;
+      setSubmitting(false);
     }
   };
+  const send = () => submitDraft(true);
 
   // Command mode types STRAIGHT into the terminal: every keystroke is streamed to tmux as it's typed
   // (onText → send-keys + wake), and the field is wiped back to empty — so your text appears in the
@@ -827,18 +837,7 @@ function BottomDock({
 
   // 填入: type the box text into the pane WITHOUT Enter (no submit), then clear — the secondary to
   // 发送 (which types + Enter). Mirrors send() with enter=false; a filled command is still recorded.
-  const fill = async () => {
-    if (!pane || !value) return;
-    stopVoiceIfRecording();
-    try {
-      await sendText(pane, value, false);
-      onSent?.(value);
-      setValue('');
-      requestAnimationFrame(() => autoGrow(ref.current));
-    } catch (err) {
-      if (err instanceof UnauthorizedError) onAuthFail?.();
-    }
-  };
+  const fill = () => submitDraft(false);
 
   // 发送 carries both submit actions on one button via pointer (tap vs hold), so they never collide:
   //   tap        → send() (type + Enter)
@@ -855,7 +854,7 @@ function BottomDock({
     if (e.cancelable) e.preventDefault();
     sendLongRef.current = false;
     sendPtRef.current = { x: e.clientX, y: e.clientY, moved: false };
-    if (!value) return; // empty box → no long-press; releasing just sends a bare Enter
+    if (!value || submitInFlightRef.current) return;
     sendTimer.current = setTimeout(() => {
       sendLongRef.current = true;
       navigator.vibrate?.(12);
@@ -1086,7 +1085,18 @@ function BottomDock({
                     stopVoiceIfRecording();
                     e.currentTarget.focus(); // 同步夺焦,确保这一下就弹出键盘
                   }}
-                  onChange={(e) => { setValue(e.target.value); autoGrow(e.target); }}
+                  aria-readonly={submitting}
+                  onBeforeInput={(e) => {
+                    if (submitInFlightRef.current) e.preventDefault();
+                  }}
+                  onChange={(e) => {
+                    if (submitInFlightRef.current) {
+                      e.target.value = value;
+                      return;
+                    }
+                    setValue(e.target.value);
+                    autoGrow(e.target);
+                  }}
                   onKeyDown={onComposerKeyDown}
                   onFocus={() => setKeyboardUp(true)}
                   onBlur={() => setKeyboardUp(false)}
@@ -1109,7 +1119,7 @@ function BottomDock({
                 {micAvailable && <MicButton active={recording} disabled={voice.state === 'requesting'} onToggle={toggleMic} />}
                 {/* 发送 ↑ 常驻,空框禁用:点 = 发送组合文本,长按 = 填入。 */}
                 <button type="button" className="input-send" aria-label={t('dock.send')} title={t('dock.send.hint')}
-                  disabled={!value}
+                  disabled={!value || submitting}
                   onPointerDown={sendDown} onPointerMove={sendMove} onPointerUp={sendUp} onPointerCancel={sendCancel} onPointerLeave={sendCancel}>
                   <ArrowUpIcon />
                 </button>
