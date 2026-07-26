@@ -4,6 +4,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Fixed
+- 修复实时推送连续输出时，历史与实时区域之间暂时缺少中间内容、输出结束后才恢复的问题。
+
 ## [0.20.2] - 2026-07-27
 
 ### Fixed

@@ -39,6 +39,7 @@ export function openTerminalStream({
   let pendingProbe = null;
   let pendingDataBytes = 0;
   let awaitingSeed = true;
+  let streamReady = false;
 
   const clearProbe = () => {
     if (probeTimer) clearInterval(probeTimer);
@@ -95,6 +96,7 @@ export function openTerminalStream({
     if (subscribedSocket === target) subscribedSocket = null;
     pendingDataBytes = 0;
     awaitingSeed = true;
+    streamReady = false;
     clearConnectTimer();
     clearProbe();
     try { target?.close(); } catch { /* already closed */ }
@@ -105,6 +107,7 @@ export function openTerminalStream({
     messageEpoch += 1;
     pendingDataBytes = 0;
     awaitingSeed = true;
+    streamReady = false;
     if (socket?.readyState === WebSocketCtor.OPEN) {
       onStatus?.('connecting');
       armConnectTimer(socket);
@@ -127,6 +130,7 @@ export function openTerminalStream({
     socket = nextSocket;
     pendingDataBytes = 0;
     awaitingSeed = true;
+    streamReady = false;
     armConnectTimer(nextSocket);
     nextSocket.binaryType = 'arraybuffer';
     nextSocket.onopen = () => {
@@ -153,7 +157,10 @@ export function openTerminalStream({
           return;
         }
         if (awaitingSeed && message.type !== 'seed') return;
-        if (message.type === 'seed') awaitingSeed = false;
+        if (message.type === 'seed') {
+          awaitingSeed = false;
+          streamReady = false;
+        }
       } else {
         if (awaitingSeed) return;
         pendingDataBytes += event.data.byteLength;
@@ -168,7 +175,7 @@ export function openTerminalStream({
       writes = writes.then(async () => {
         if (closed || paused || frameEpoch !== messageEpoch) return;
         pendingDataBytes = Math.max(0, pendingDataBytes - dataBytes);
-        if (dataBytes > 0 && Date.now() - queuedAt > maxFrameLagMs) {
+        if (streamReady && dataBytes > 0 && Date.now() - queuedAt > maxFrameLagMs) {
           requestFreshSeed();
           return;
         }
@@ -179,6 +186,7 @@ export function openTerminalStream({
         if (message.type === 'seed') await onSeed?.(message);
         else if (message.type === 'ready') {
           await onReady?.(message);
+          streamReady = true;
           clearConnectTimer();
           onStatus?.('live');
           startProbes();
@@ -215,6 +223,7 @@ export function openTerminalStream({
       messageEpoch += 1;
       pendingDataBytes = 0;
       awaitingSeed = true;
+      streamReady = false;
       clearReconnectTimer();
       clearConnectTimer();
       clearProbe();
@@ -236,6 +245,7 @@ export function openTerminalStream({
       messageEpoch += 1;
       pendingDataBytes = 0;
       awaitingSeed = true;
+      streamReady = false;
       if (socket?.readyState === WebSocketCtor.OPEN) {
         onStatus?.('connecting');
         armConnectTimer(socket);
@@ -251,6 +261,7 @@ export function openTerminalStream({
       closed = true;
       messageEpoch += 1;
       pendingDataBytes = 0;
+      streamReady = false;
       clearReconnectTimer();
       detachSocket();
       return writes;

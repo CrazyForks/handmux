@@ -212,47 +212,52 @@ describe('openTerminalStream', () => {
 
   it('resyncs on the same socket instead of painting frames queued for over 300ms', async () => {
     vi.useFakeTimers();
-    const seed = {};
-    seed.promise = new Promise((resolve) => { seed.resolve = resolve; });
-    let seedCount = 0;
-    const onData = vi.fn();
+    const blockedData = {};
+    blockedData.promise = new Promise((resolve) => { blockedData.resolve = resolve; });
+    let dataCount = 0;
+    const onData = vi.fn(() => {
+      dataCount += 1;
+      return dataCount === 1 ? blockedData.promise : undefined;
+    });
     const stream = openTerminalStream({
       pane: '%7',
       token: 'secret',
       WebSocketCtor: FakeWebSocket,
       connectTimeoutMs: 30000,
       maxFrameLagMs: 300,
-      onSeed: () => {
-        seedCount += 1;
-        return seedCount === 1 ? seed.promise : undefined;
-      },
       onData,
     });
     const first = FakeWebSocket.instances[0];
     first.open();
     first.message(JSON.stringify({ type: 'seed' }));
-    first.message(new Uint8Array([1]).buffer);
-    await Promise.resolve();
-
-    vi.advanceTimersByTime(301);
-    seed.resolve();
+    first.message(JSON.stringify({ type: 'ready' }));
     for (let i = 0; i < 6; i += 1) await Promise.resolve();
 
-    expect(onData).not.toHaveBeenCalled();
+    first.message(new Uint8Array([1]).buffer);
+    for (let i = 0; i < 4; i += 1) await Promise.resolve();
+    expect(onData).toHaveBeenCalledTimes(1);
+    first.message(new Uint8Array([2]).buffer);
+
+    vi.advanceTimersByTime(301);
+    blockedData.resolve();
+    for (let i = 0; i < 6; i += 1) await Promise.resolve();
+
+    expect(onData).toHaveBeenCalledTimes(1);
     expect(first.readyState).toBe(FakeWebSocket.OPEN);
     expect(FakeWebSocket.instances).toHaveLength(1);
     expect(first.sent.at(-1)).toEqual({ type: 'resync' });
 
-    first.message(new Uint8Array([2]).buffer);
+    first.message(new Uint8Array([9]).buffer);
     first.message(JSON.stringify({ type: 'ready' }));
     await Promise.resolve();
-    expect(onData).not.toHaveBeenCalled();
+    expect(onData).toHaveBeenCalledTimes(1);
 
     first.message(JSON.stringify({ type: 'seed' }));
     first.message(new Uint8Array([3]).buffer);
     first.message(JSON.stringify({ type: 'ready' }));
-    await vi.waitFor(() => expect(onData).toHaveBeenCalledTimes(1));
-    expect([...onData.mock.calls[0][0]]).toEqual([3]);
+    for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    expect(onData).toHaveBeenCalledTimes(2);
+    expect([...onData.mock.calls[1][0]]).toEqual([3]);
     stream.close();
     vi.useRealTimers();
   });
@@ -343,6 +348,42 @@ describe('openTerminalStream', () => {
     seed.resolve();
     for (let i = 0; i < 6; i += 1) await Promise.resolve();
 
+    expect(onReady).toHaveBeenCalledOnce();
+    expect(ws.sent).not.toContainEqual({ type: 'resync' });
+    stream.close();
+    vi.useRealTimers();
+  });
+
+  it('keeps resync catch-up output queued behind a slow seed', async () => {
+    vi.useFakeTimers();
+    const seed = {};
+    seed.promise = new Promise((resolve) => { seed.resolve = resolve; });
+    const onSeed = vi.fn(() => seed.promise);
+    const onData = vi.fn();
+    const onReady = vi.fn();
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+      maxFrameLagMs: 300,
+      onSeed,
+      onData,
+      onReady,
+    });
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    ws.message(JSON.stringify({ type: 'seed' }));
+    await Promise.resolve();
+    expect(onSeed).toHaveBeenCalledOnce();
+
+    ws.message(new Uint8Array([1, 2, 3]).buffer);
+    ws.message(JSON.stringify({ type: 'ready' }));
+    vi.advanceTimersByTime(301);
+    seed.resolve();
+    for (let i = 0; i < 12; i += 1) await Promise.resolve();
+
+    expect(onData).toHaveBeenCalledOnce();
+    expect([...onData.mock.calls[0][0]]).toEqual([1, 2, 3]);
     expect(onReady).toHaveBeenCalledOnce();
     expect(ws.sent).not.toContainEqual({ type: 'resync' });
     stream.close();
