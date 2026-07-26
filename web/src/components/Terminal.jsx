@@ -12,6 +12,7 @@ import {
 import { trimCopy } from '../terminalSelection.js';
 import { useFlash } from '../hooks/useFlash.js';
 import { openTerminalStream } from '../terminalStreamClient.js';
+import { createTerminalStreamMirror } from '../terminalStreamMirror.js';
 import TerminalOverlays from './TerminalOverlays.jsx';
 import { openXterm } from '../terminalXterm.js';
 import { createTerminalSelectionController } from '../terminalSelectionController.js';
@@ -141,6 +142,7 @@ const Terminal = forwardRef(function Terminal({
   // The effect's scheduleFit, surfaced so the font controls (below) can re-fit the row count
   // after changing the size from outside the effect scope.
   const fitRef = useRef(null);
+  const settleKeyboardFitRef = useRef(null);
   // One-shot flag for the pager's "适配高度" button: the next fit() sizes the font so the whole pane fills
   // the screen (see the fit-to-fill block in fit()). Set here, consumed in effect scope.
   const fitScreenPendingRef = useRef(false);
@@ -221,9 +223,14 @@ const Terminal = forwardRef(function Terminal({
     // Keyboard just opened on a full-screen app → arm cursor-follow so a later cursor move keeps the caret
     // in view; the refit itself bottom-aligns the cursor now (see the alt-screen branch in fit()).
     if (inset > 0 && prev === 0) followArmedRef.current = true;
-    // Keyboard just collapsed → the refit keeps the cursor in view instead of jumping to the first line.
-    if (inset === 0 && prev > 0) collapseKeepCursorRef.current = true;
-    fitRef.current?.();
+    // Keyboard just collapsed → keep the cursor in view and remeasure through the end of iOS's viewport
+    // animation. inset can reach zero one frame before the terminal has regained its final height.
+    if (inset === 0 && prev > 0) {
+      collapseKeepCursorRef.current = true;
+      (settleKeyboardFitRef.current ?? fitRef.current)?.();
+    } else {
+      fitRef.current?.();
+    }
     if (inset === 0) followArmedRef.current = false; // keyboard closed → stop following
   }, [inset]);
 
@@ -688,6 +695,13 @@ const Terminal = forwardRef(function Terminal({
     };
     const scheduleFit = () => requestAnimationFrame(() => fit(0));
     fitRef.current = scheduleFit; // let the imperative font controls trigger a re-fit
+    let keyboardSettleTimer = null;
+    settleKeyboardFitRef.current = () => {
+      scheduleFit();
+      requestAnimationFrame(() => requestAnimationFrame(scheduleFit));
+      if (keyboardSettleTimer) clearTimeout(keyboardSettleTimer);
+      keyboardSettleTimer = setTimeout(scheduleFit, 350);
+    };
     const onResize = () => scheduleFit();
     window.addEventListener('resize', onResize);
     window.addEventListener('orientationchange', onResize);
@@ -1146,8 +1160,6 @@ const Terminal = forwardRef(function Terminal({
     };
     const connectStream = async () => {
       if (!streamMirror) {
-        const { createTerminalStreamMirror } = await import('../terminalStreamMirror.js');
-        if (disposed) return;
         streamMirror = createTerminalStreamMirror({ scrollback: MAX_LINES + 100 });
       }
       if (streamClient) {
@@ -1288,6 +1300,7 @@ const Terminal = forwardRef(function Terminal({
     return () => {
       disposed = true;
       fitRef.current = null;
+      settleKeyboardFitRef.current = null;
       wakeRef.current = null;
       resyncRef.current = null;
       refreshDecosRef.current = null;
@@ -1295,6 +1308,7 @@ const Terminal = forwardRef(function Terminal({
       stopFlingRef.current = null;
       selection.dispose();
       if (timer) clearTimeout(timer);
+      if (keyboardSettleTimer) clearTimeout(keyboardSettleTimer);
       if (streamFallbackTimer) clearTimeout(streamFallbackTimer);
       if (streamBackgroundTimer) clearTimeout(streamBackgroundTimer);
       streamClient?.close();
