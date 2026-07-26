@@ -166,8 +166,8 @@ export function openTerminalStream({
       const queuedAt = Date.now();
       const dataBytes = typeof event.data === 'string' ? 0 : event.data.byteLength;
       writes = writes.then(async () => {
-        pendingDataBytes = Math.max(0, pendingDataBytes - dataBytes);
         if (closed || paused || frameEpoch !== messageEpoch) return;
+        pendingDataBytes = Math.max(0, pendingDataBytes - dataBytes);
         if (dataBytes > 0 && Date.now() - queuedAt > maxFrameLagMs) {
           requestFreshSeed();
           return;

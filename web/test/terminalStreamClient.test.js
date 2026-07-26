@@ -285,6 +285,42 @@ describe('openTerminalStream', () => {
     stream.close();
   });
 
+  it('does not let stale queued frames reduce the next resync generation byte count', async () => {
+    const firstSeed = {};
+    firstSeed.promise = new Promise((resolve) => { firstSeed.resolve = resolve; });
+    const freshSeed = {};
+    freshSeed.promise = new Promise((resolve) => { freshSeed.resolve = resolve; });
+    let seedCount = 0;
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+      maxPendingDataBytes: 3,
+      onSeed: () => {
+        seedCount += 1;
+        return seedCount === 1 ? firstSeed.promise : freshSeed.promise;
+      },
+    });
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    ws.message(JSON.stringify({ type: 'seed' }));
+    await vi.waitFor(() => expect(seedCount).toBe(1));
+    ws.message(new Uint8Array([1, 2]).buffer);
+    ws.message(new Uint8Array([3, 4]).buffer);
+    expect(ws.sent.filter(({ type }) => type === 'resync')).toHaveLength(1);
+
+    ws.message(JSON.stringify({ type: 'seed' }));
+    ws.message(new Uint8Array([5, 6]).buffer);
+    firstSeed.resolve();
+    await vi.waitFor(() => expect(seedCount).toBe(2));
+
+    ws.message(new Uint8Array([7, 8]).buffer);
+    expect(ws.sent.filter(({ type }) => type === 'resync')).toHaveLength(2);
+
+    freshSeed.resolve();
+    await stream.close();
+  });
+
   it('does not treat a slow initial seed as an overloaded output queue', async () => {
     vi.useFakeTimers();
     const seed = {};
