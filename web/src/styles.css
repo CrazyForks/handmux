@@ -392,7 +392,8 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
   border-color: rgba(205,208,218,.18);
   background: rgba(105,109,120,.38);
 }
-.terminal-connection__mode {
+.terminal-connection__mode,
+.terminal-connection__quality {
   font: inherit;
   cursor: pointer;
   pointer-events: auto;
@@ -416,9 +417,23 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .terminal-transport-popover__title { margin-bottom: 8px; color: #fff; font-weight: 650; }
 .terminal-transport-popover__row {
   display: flex; justify-content: space-between; gap: 12px;
-  padding: 2px 0; color: rgba(235,235,245,.55);
+  align-items: center; min-height: 24px; padding: 2px 0;
+  color: rgba(235,235,245,.55);
 }
-.terminal-transport-popover__row b { color: rgba(235,235,245,.9); font-weight: 550; }
+.terminal-transport-popover__value {
+  padding: 2px 6px; border: 1px solid transparent; border-radius: 4px;
+  font-weight: 550;
+}
+.terminal-transport-popover__value.is-live {
+  color: rgba(235,247,255,.96);
+  border-color: rgba(100,174,255,.3);
+  background: rgba(63,139,224,.32);
+}
+.terminal-transport-popover__value.is-snapshot {
+  color: rgba(240,240,245,.84);
+  border-color: rgba(205,208,218,.16);
+  background: rgba(105,109,120,.3);
+}
 .terminal-transport-popover p { margin: 8px 0 0; }
 .terminal-transport-popover__recovery { color: rgba(100,174,255,.9); }
 .terminal-connection__quality { color: rgba(235,235,245,.52); }

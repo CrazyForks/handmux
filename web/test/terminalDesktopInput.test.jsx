@@ -378,6 +378,7 @@ describe('desktop terminal input', () => {
     expect(status.querySelectorAll('.terminal-connection__tag')).toHaveLength(2);
     expect(status.querySelector('.terminal-connection__mode').classList.contains('is-live')).toBe(true);
     expect(status.querySelector('.terminal-connection__quality').textContent).toContain('较差 1800 ms');
+    expect(status.querySelector('.terminal-connection__quality').tagName).toBe('BUTTON');
     expect(status.firstElementChild.classList.contains('terminal-connection__quality')).toBe(true);
     expect(status.lastElementChild.classList.contains('terminal-connection__mode')).toBe(true);
     expect(status.textContent).toContain('实时');
@@ -424,6 +425,13 @@ describe('desktop terminal input', () => {
     expect(detail.textContent).toContain('设置模式实时推送');
     expect(detail.textContent).toContain('当前模式快照拉取');
     expect(detail.textContent).toContain('预计 30 秒后尝试恢复实时推送');
+    expect(detail.querySelector('.terminal-transport-popover__value.is-live').textContent)
+      .toBe('实时推送');
+    expect(detail.querySelector('.terminal-transport-popover__value.is-snapshot').textContent)
+      .toBe('快照拉取');
+    act(() => view.container.querySelector('.terminal-transport-scrim').click());
+    act(() => view.container.querySelector('.terminal-connection__quality').click());
+    expect(view.container.querySelector('.terminal-transport-popover')).not.toBeNull();
     act(() => {
       vi.advanceTimersByTime(29999);
       callbacks.onProbe({ ok: true, rttMs: 100 });

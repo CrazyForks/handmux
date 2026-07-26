@@ -48,14 +48,19 @@ export default function TerminalOverlays({
         aria-label={t('common.close')} onClick={onTransportClose} />}
       {ready && connected && !scrollInfo && !selInfo && connectionInfo && (
         <div className={`terminal-connection is-${connectionInfo.quality}`}>
-          <span className="terminal-connection__tag terminal-connection__quality">
+          <button type="button"
+            className="terminal-connection__tag terminal-connection__quality"
+            aria-expanded={transportOpen}
+            aria-haspopup="dialog"
+            onClick={onTransportToggle}>
             {t(`terminal.connection_${connectionInfo.quality}`)}
             {' '}
             {connectionInfo.rttMs == null ? '-- ms' : `${connectionInfo.rttMs} ms`}
-          </span>
+          </button>
           <button type="button"
             className={`terminal-connection__tag terminal-connection__mode is-${connectionInfo.mode}`}
             aria-expanded={transportOpen}
+            aria-haspopup="dialog"
             onClick={onTransportToggle}>
             {t(`terminal.transport_${connectionInfo.mode}`)}
           </button>
@@ -67,11 +72,15 @@ export default function TerminalOverlays({
           <div className="terminal-transport-popover__title">{t('terminal.transport_detail_title')}</div>
           <div className="terminal-transport-popover__row">
             <span>{t('terminal.transport_detail_configured')}</span>
-            <b>{t(`settings.terminal_transport_${configuredTransport}`)}</b>
+            <b className={`terminal-transport-popover__value is-${configuredTransport}`}>
+              {t(`settings.terminal_transport_${configuredTransport}`)}
+            </b>
           </div>
           <div className="terminal-transport-popover__row">
             <span>{t('terminal.transport_detail_current')}</span>
-            <b>{t(`settings.terminal_transport_${connectionInfo.mode}`)}</b>
+            <b className={`terminal-transport-popover__value is-${connectionInfo.mode}`}>
+              {t(`settings.terminal_transport_${connectionInfo.mode}`)}
+            </b>
           </div>
           <p>{transportMessage}</p>
           {configuredTransport === 'live' && connectionInfo.mode === 'snapshot' && (
