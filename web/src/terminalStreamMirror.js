@@ -2,6 +2,8 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { cursorSeq, prepareLiveSeed } from './terminalSeed.js';
 
+const DEFAULT_RENDER_SCROLLBACK = 100;
+
 const write = (term, data) => new Promise((resolve) => term.write(data, resolve));
 
 function cursorVisibility(data, previous) {
@@ -27,6 +29,7 @@ function mouseTracking(data, previous) {
 // and can therefore use one independently-sized visible xterm for both history and the live pane.
 export function createTerminalStreamMirror({
   scrollback,
+  renderScrollback = DEFAULT_RENDER_SCROLLBACK,
   TerminalCtor = XTerm,
   SerializeAddonCtor = SerializeAddon,
 } = {}) {
@@ -100,15 +103,27 @@ export function createTerminalStreamMirror({
       ensureOpen();
       if (!seeded || !ready) return null;
       const active = term.buffer.active;
+      // The hidden core remains the complete, pane-sized terminal state. The visible terminal is only a
+      // projection, so repainting its entire accumulated scrollback on every output revision is wasted
+      // work (and eventually blocks the browser for tens of milliseconds per frame). Keep one history
+      // page beside the live grid; deeper scrolling already switches to the snapshot history loader.
+      const visibleBufferRows = active.type === 'alternate'
+        ? active.length
+        : Math.min(active.length, term.rows + renderScrollback);
+      const visibleBufferStart = active.type === 'alternate'
+        ? 0
+        : active.length - visibleBufferRows;
       const mouseMode = term.modes?.mouseTrackingMode;
       return {
         revision,
-        ansi: serializer.serialize({ excludeModes: true }),
+        ansi: serializer.serialize({ excludeModes: true, scrollback: renderScrollback }),
         cursorVisible: cursor.visible,
         alt: active.type === 'alternate',
         mouseAware: mouse.active || (!!mouseMode && mouseMode !== 'none'),
-        boundaryLine: active.type === 'alternate' ? null : term.buffer.normal.baseY,
-        bufferRows: active.length,
+        boundaryLine: active.type === 'alternate'
+          ? null
+          : Math.max(0, term.buffer.normal.baseY - visibleBufferStart),
+        bufferRows: visibleBufferRows,
         paneRows: term.rows,
         paneCols: term.cols,
       };

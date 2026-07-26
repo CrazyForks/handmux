@@ -74,6 +74,32 @@ describe('terminal stream mirror', () => {
     mirror.dispose();
   });
 
+  it('keeps the full parser state but bounds each visible repaint to one recent history page', async () => {
+    const mirror = createTerminalStreamMirror({
+      scrollback: 500,
+      renderScrollback: 100,
+      TerminalCtor: Terminal,
+      SerializeAddonCtor: SerializeAddon,
+    });
+    const history = Array.from({ length: 250 }, (_, i) => `history-${String(i).padStart(3, '0')}`);
+    await mirror.seed({
+      ansi: [...history, 'live-0', 'live-1', 'live-2'].join('\n') + '\n',
+      width: 20,
+      height: 3,
+      alt: false,
+      mouseAware: false,
+    });
+    await mirror.ready({ row: 0, col: 6, vis: true });
+
+    const frame = mirror.snapshot();
+    expect(frame.bufferRows).toBe(103);
+    expect(frame.boundaryLine).toBe(100);
+    expect(frame.ansi).not.toContain('history-000');
+    expect(frame.ansi).toContain('history-249');
+    expect(frame.ansi).toContain('live-2');
+    mirror.dispose();
+  });
+
   it('publishes cursor visibility, mouse mode and alternate-screen state from the same revision', async () => {
     const mirror = create();
     await mirror.seed({
