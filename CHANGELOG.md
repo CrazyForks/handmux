@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.20.2] - 2026-07-27
+
 ### Fixed
 - 修复实时终端长时间打开、瞬间输出大量内容或电脑同时显示多个 PWA 时，终端渲染导致整个页面卡顿的问题。
 
