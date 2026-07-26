@@ -11,6 +11,26 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.20.0',
+    date: '2026-07-26',
+    highlight: {
+      zh: '终端实时推送 · 弱网自动回退',
+      en: 'Live terminal pushing · automatic network fallback',
+    },
+    items: {
+      zh: [
+        '手机和电脑的终端输出现在通过 WebSocket 实时推送;首次打开即可上滑浏览最近的 tmux 历史,继续上滑会加载更早内容,回到底部后重新同步最新画面。',
+        '实时连接不可用或持续较差时会自动回退到快照拉取,稳定 30 秒后尝试恢复;右上角显示当前模式与延迟,设置中也可固定使用快照拉取并选择刷新频率。',
+        '设置中新增「重新加载应用」,服务端更新后无需退出主屏应用即可载入新版客户端;设置二级页面和弹窗现在会按层返回。',
+      ],
+      en: [
+        'Terminal output now uses WebSocket live pushing on phone and desktop; scroll up immediately for recent tmux history, keep scrolling for older content, and return to the bottom to resynchronize the latest screen.',
+        'An unavailable or persistently poor live connection automatically falls back to snapshot pulling and retries after 30 stable seconds; the top-right status shows the current mode and latency, while Settings can pin snapshot pulling and choose its refresh rate.',
+        'Settings now includes Reload app, so an updated server can load the new client without quitting the home-screen app; nested Settings pages and dialogs also return one layer at a time.',
+      ],
+    },
+  },
+  {
     version: '0.19.0',
     date: '2026-07-25',
     highlight: {
