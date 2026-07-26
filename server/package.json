@@ -1,6 +1,6 @@
 {
   "name": "handmux",
-  "version": "0.20.0",
+  "version": "0.20.1",
   "description": "A mobile vibe-coding cockpit — built on tmux: drive your live session, Claude Code / Codex — anything a terminal can run — from your phone.",
   "type": "module",
   "license": "AGPL-3.0-only",
@@ -60,13 +60,13 @@
     "vitest": "^2.0.0"
   },
   "whatsNew": [
+    {"version":"0.20.1","date":"2026-07-26","zh":"聊天发送修复 · 电脑键盘不中断","en":"Reliable chat sending · uninterrupted desktop input"},
     {"version":"0.20.0","date":"2026-07-26","zh":"终端实时推送 · 弱网自动回退","en":"Live terminal pushing · automatic network fallback"},
     {"version":"0.19.0","date":"2026-07-25","zh":"电脑物理键盘直输 · Window 切换更流畅","en":"Desktop keyboard input · faster window switching"},
     {"version":"0.18.0","date":"2026-07-22","zh":"Tmux 工作区恢复 · 快捷栏自由定制","en":"Tmux workspace recovery · customizable shortcuts"},
     {"version":"0.17.8","date":"2026-07-20","zh":"分屏地图显示尺寸 · iPhone 交互修复","en":"Pane dimensions in the map · iPhone interaction fixes"},
     {"version":"0.17.7","date":"2026-07-20","zh":"单实例启动兜底 · WSL 状态命令修复","en":"Single-instance startup guard · WSL status fix"},
     {"version":"0.17.6","date":"2026-07-20","zh":"推送结果可追踪 · 对话与权限操作更可靠","en":"Traceable push results · safer chats and permissions"},
-    {"version":"0.17.5","date":"2026-07-20","zh":"通知开启修复 · 长会话与设置可靠性提升","en":"Notification setup fixed · stronger chat and settings reliability"},
-    {"version":"0.17.4","date":"2026-07-19","zh":"HTTPS 本机预览修复 · 通知链接安全加固","en":"HTTPS localhost previews fixed · safer notification links"}
+    {"version":"0.17.5","date":"2026-07-20","zh":"通知开启修复 · 长会话与设置可靠性提升","en":"Notification setup fixed · stronger chat and settings reliability"}
   ]
 }
