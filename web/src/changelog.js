@@ -11,6 +11,22 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.20.2',
+    date: '2026-07-27',
+    highlight: {
+      zh: '实时终端长时间运行更流畅',
+      en: 'Smoother long-running live terminals',
+    },
+    items: {
+      zh: [
+        '实时终端长时间打开、连续输出大量内容或电脑同时显示多个 PWA 时保持流畅;输出积压时会跳过过期画面并同步最新终端状态,tmux 历史仍可继续查看。',
+      ],
+      en: [
+        'Live terminals stay responsive during long sessions, heavy output, and multiple visible PWAs; stale intermediate frames are skipped when output falls behind, while the latest tmux state and scrollback remain available.',
+      ],
+    },
+  },
+  {
     version: '0.20.1',
     date: '2026-07-26',
     highlight: {
