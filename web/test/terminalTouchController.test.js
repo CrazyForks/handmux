@@ -25,6 +25,7 @@ function setup() {
     options: { fontSize: 14 },
     buffer: { active: { viewportY: 0, baseY: 300 } },
     getSelection: () => '',
+    scrollToLine: vi.fn(),
   };
   let controller;
   const maybePullMore = vi.fn(() => controller.freezeHistoryGesture());
@@ -110,6 +111,37 @@ describe('terminal touch history pull', () => {
 
     expect(maybePullMore).toHaveBeenCalledTimes(3);
     expect(reachedXterm).toHaveBeenCalledTimes(3);
+    controller.dispose();
+  });
+
+  it('blocks only the two-frame DOM sync boundary after restoring a history anchor', () => {
+    const frames = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+    const { controller, screen } = setup();
+    const reachedXterm = vi.fn();
+    screen.addEventListener('wheel', reachedXterm);
+
+    controller.settleHistoryAnchor(100);
+    const dispatchWheel = () => {
+      const event = new WheelEvent('wheel', {
+        deltaY: -1, bubbles: true, cancelable: true,
+      });
+      screen.dispatchEvent(event);
+      return event;
+    };
+
+    expect(dispatchWheel().defaultPrevented).toBe(true);
+    expect(reachedXterm).not.toHaveBeenCalled();
+    frames.shift()(0);
+    expect(dispatchWheel().defaultPrevented).toBe(true);
+    expect(reachedXterm).not.toHaveBeenCalled();
+    frames.shift()(16);
+    expect(dispatchWheel().defaultPrevented).toBe(false);
+    expect(reachedXterm).toHaveBeenCalledOnce();
     controller.dispose();
   });
 });

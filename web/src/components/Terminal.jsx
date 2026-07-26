@@ -310,6 +310,7 @@ const Terminal = forwardRef(function Terminal({
     let depth = liveDepth();
     let historyPullRetryAfter = 0;
     let freezeTouchForHistoryPull = () => {};
+    let settleHistoryAnchor = (target) => term.scrollToLine(target);
     let lastAnsi = null;
     let lastCur = ''; // last frame's cursor key (row,col,vis) — a cursor-only move must still repaint
     let curInfo = null; // last frame's cursor {row,col,vis}, placed by placeCursor() after sizing settles
@@ -741,6 +742,7 @@ const Terminal = forwardRef(function Terminal({
       onKeepKeyboard: () => onKeepKeyboardRef.current?.() ?? false,
     });
     freezeTouchForHistoryPull = touch.freezeHistoryGesture;
+    settleHistoryAnchor = touch.settleHistoryAnchor;
 
     // Rebuild the persistent doc-path UNDERLINE after each full repaint (the visual cue; the actual
     // tap is handled by the link provider above). Underline-only (no bg) so it can't trigger the
@@ -991,7 +993,11 @@ const Terminal = forwardRef(function Terminal({
         // the cursor (Claude working). The moment the app shows its OWN cursor again (cur.vis=1 → back to
         // idle/accepting input), drop the force so a LATER app-driven hide can hide it normally.
         if (hist.cur && hist.cur.vis) forceCursorRef.current = false;
-        if (keepPosition) term.scrollToLine(Math.max(0, buf().length - anchorFromBottom));
+        if (keepPosition) {
+          const target = Math.max(0, buf().length - anchorFromBottom);
+          if (preserveLatestPosition) settleHistoryAnchor(target);
+          else term.scrollToLine(target);
+        }
         // A full-screen app opens on its FIRST line (firstSeed only); after that, reaching the bottom follows
         // new output like any live pane — NOT a yank back to the top on every at-bottom repaint.
         else if (altScreenRef.current && firstSeed) term.scrollToTop();

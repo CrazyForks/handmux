@@ -53,6 +53,8 @@ export function createTerminalTouchController({
   let wheelPreviousY = 0;
   let wheelPending = 0;
   let wheelBusy = false;
+  let historyAnchorSettling = false;
+  let historyAnchorRAF = null;
   const liveViewport = () => (
     host.querySelector('.terminal__live .xterm-viewport')
       || host.querySelector('.xterm-viewport')
@@ -359,6 +361,13 @@ export function createTerminalTouchController({
       }
       return;
     }
+    // xterm expands its logical buffer before its DOM viewport synchronizes scrollTop on the next frame.
+    // A wheel event in that gap writes the old scrollTop=0 back and jumps exactly one loaded page.
+    if (historyAnchorSettling) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     showScrollPosition();
     maybePullMore();
   };
@@ -394,9 +403,23 @@ export function createTerminalTouchController({
       }
       stopFling();
     },
+    settleHistoryAnchor(target) {
+      historyAnchorSettling = true;
+      if (historyAnchorRAF != null) cancelAnimationFrame(historyAnchorRAF);
+      term.scrollToLine(target);
+      historyAnchorRAF = requestAnimationFrame(() => {
+        // xterm's buffer-size sync runs first. Reassert the anchor and keep the guard through its DOM event.
+        term.scrollToLine(target);
+        historyAnchorRAF = requestAnimationFrame(() => {
+          historyAnchorRAF = null;
+          historyAnchorSettling = false;
+        });
+      });
+    },
     dispose() {
       cancelLongPress();
       stopFling();
+      if (historyAnchorRAF != null) cancelAnimationFrame(historyAnchorRAF);
       host.removeEventListener('pointerdown', onPointerDown, { capture: true });
       host.removeEventListener('wheel', onWheel, { capture: true });
       host.removeEventListener('touchstart', onTouchStart, { capture: true });
