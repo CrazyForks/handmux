@@ -308,11 +308,7 @@ const Terminal = forwardRef(function Terminal({
     // only what's shown plus a little scroll-up slack. Floor 24 covers a not-yet-fit grid; cap at MAX_LINES.
     const liveDepth = () => Math.min(MAX_LINES, Math.max(24, term.rows + LIVE_MARGIN));
     let depth = liveDepth();
-    // One deeper-history pull per touch/wheel gesture. A hard flick's momentum — the custom fling AND iOS's
-    // OWN native momentum, which stopFling can't reach — keeps re-hitting the top after each pull's anchor
-    // shoves the view down, stacking 3-4 pulls off a single flick (400→700). Disarm on pull; a fresh
-    // touchstart / new wheel gesture re-arms, so momentum on its own can never pull again.
-    let pullArmed = true;
+    let historyPullRetryAfter = 0;
     let freezeTouchForHistoryPull = () => {};
     let lastAnsi = null;
     let lastCur = ''; // last frame's cursor key (row,col,vis) — a cursor-only move must still repaint
@@ -420,18 +416,18 @@ const Terminal = forwardRef(function Terminal({
     };
     // Pull a deeper history slice when sitting at the top. Driven from term.onScroll, the touch handler AND
     // the fling coast: xterm owns the 1:1 drag and its onScroll can miss the very top on mobile during a fast
-    // glide, so the touch/fling paths are the dependable triggers. Idempotent while a pull is in flight
-    // (!busy), until a fresh gesture re-arms (pullArmed), and once the deepest slice is loaded.
+    // glide, so the touch/fling paths are the dependable triggers. `busy` serializes requests, while
+    // `depth` advances only after success: continuous scrolling can load page after page without issuing
+    // the same page concurrently or skipping a failed page.
     const maybePullMore = () => {
-      if (!seeded || busy || !pullArmed || depth >= MAX_LINES || !atTop()) return;
+      if (!seeded || busy || Date.now() < historyPullRetryAfter
+        || depth >= MAX_LINES || !atTop()) return;
       if (streamMode && !historyMode) return;
       pauseStreamForHistory();
-      pullArmed = false; // one pull per gesture — a coast re-hitting the top after the anchor won't stack
       freezeTouchForHistoryPull();
 
-      // Freeze OUR coast before pulling: repaint() snapshots the scroll anchor at its START, so a coasting
-      // fling that keeps driving scrollTop mid-fetch would invalidate it (re-hitting the top → stacking
-      // pulls). stopFling holds the view still for the fetch → one clean page per top-reach, re-flick for more.
+      // Stop only Handmux's synthetic mobile coast. Native desktop wheel input remains untouched and can
+      // continue through successive pages; repaint preserves its latest position when the response arrives.
       stopFlingRef.current?.();
       // Snap the pull target to the NEXT whole CHUNK boundary (100, 200, 300 …) rather than liveDepth+k·CHUNK.
       // The first pull leaves from the small liveDepth (e.g. 47), so plain +CHUNK would load 147/247/… — the
@@ -439,7 +435,7 @@ const Terminal = forwardRef(function Terminal({
       // faked round at the display layer. floor()·CHUNK+CHUNK is always strictly > depth, so it never stalls.
       const previousDepth = depth;
       const requestedDepth = Math.min(Math.floor(depth / CHUNK) * CHUNK + CHUNK, MAX_LINES);
-      const request = repaint(requestedDepth, true);
+      const request = repaint(requestedDepth, true, true);
       // repaint sets busy synchronously before its first await, so this immediately exposes the existing
       // “拉取中” state in the history banner while the snapshot is in flight.
       showScrollPos();
@@ -447,6 +443,7 @@ const Terminal = forwardRef(function Terminal({
         // Commit pagination only after a successful response was accepted. A timeout, auth failure,
         // pane switch, or stale snapshot retries this same page instead of silently skipping 100 rows.
         if (applied && !disposed && depth === previousDepth) depth = requestedDepth;
+        else if (!applied && !disposed) historyPullRetryAfter = Date.now() + 500;
       });
     };
 
@@ -736,7 +733,6 @@ const Terminal = forwardRef(function Terminal({
       getMouseAware: () => mouseAwareRef.current,
       onActivity: () => { idleSince = Date.now(); },
       onUserScroll: () => { userScrolledRef.current = true; },
-      armHistoryPull: () => { pullArmed = true; },
       showScrollPosition: showScrollPos,
       maybePullMore,
       scheduleFit,
@@ -911,16 +907,14 @@ const Terminal = forwardRef(function Terminal({
       }
     };
 
-    const repaint = async (lines, keepPosition) => {
+    const repaint = async (lines, keepPosition, preserveLatestPosition = false) => {
       if (busy || disposed) return false;
       busy = true;
       const startedInStreamMode = streamMode;
       const requestStartedAt = Date.now();
-      // xterm's integer line is the anchor. Deeper history is requested only at exact viewportY=0,
-      // after the current gesture is frozen, so there is no fractional/moving pixel position to infer.
-      // Keeping this in row space avoids the off-by-one drift caused by fractional DOM row heights.
-      const anchorTop = buf().viewportY;
-      const anchorFromBottom = keepPosition ? buf().length - anchorTop : 0;
+      // Keep anchors in xterm's integer row space to avoid fractional DOM-row drift. Normal refreshes use
+      // the request-start position; deeper history refreshes replace it with the latest position on arrival.
+      let anchorFromBottom = keepPosition ? buf().length - buf().viewportY : 0;
       try {
         const hist = await getHistory(pane, lines, lastHash);
         if (disposed) return false;
@@ -934,6 +928,11 @@ const Terminal = forwardRef(function Terminal({
         if (selActiveRef.current) return false;
         // 204: server says the screen is identical to lastHash — keep what's drawn, transmit nothing.
         if (hist.unchanged) { setPaused(keepPosition); return true; }
+        // A desktop wheel stream remains live while the request is in flight. Preserve the position the
+        // user has reached NOW, not the stale position from request start (notably after reversing direction).
+        if (keepPosition && preserveLatestPosition) {
+          anchorFromBottom = buf().length - buf().viewportY;
+        }
         lastHash = hist.hash;       // a real frame: remember its hash for the next ?since=
         altScreenRef.current = !!hist.alt; // pane on the alternate screen? → no scrollback to swipe
         mouseAwareRef.current = !!hist.mouseAware; // …but if the app reports mouse, a swipe can wheel-scroll it

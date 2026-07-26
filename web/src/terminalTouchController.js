@@ -7,7 +7,6 @@ import { setFont } from './storage.js';
 
 const WHEEL_PX = 22;
 const FORWARDED_WHEEL_PX = 12;
-const WHEEL_GESTURE_GAP_MS = 160;
 
 export function createTerminalTouchController({
   term,
@@ -23,7 +22,6 @@ export function createTerminalTouchController({
   getMouseAware,
   onActivity,
   onUserScroll,
-  armHistoryPull,
   showScrollPosition,
   maybePullMore,
   enterStreamHistory,
@@ -55,8 +53,6 @@ export function createTerminalTouchController({
   let wheelPreviousY = 0;
   let wheelPending = 0;
   let wheelBusy = false;
-  let wheelGestureActive = false;
-  let wheelGestureTimer = null;
   const liveViewport = () => (
     host.querySelector('.terminal__live .xterm-viewport')
       || host.querySelector('.xterm-viewport')
@@ -79,16 +75,6 @@ export function createTerminalTouchController({
     }
   };
   stopFlingRef.current = stopFling;
-  const finishWheelGesture = () => {
-    if (wheelGestureTimer) clearTimeout(wheelGestureTimer);
-    wheelGestureTimer = null;
-    wheelGestureActive = false;
-  };
-  const keepWheelGestureAlive = () => {
-    if (wheelGestureTimer) clearTimeout(wheelGestureTimer);
-    wheelGestureTimer = setTimeout(finishWheelGesture, WHEEL_GESTURE_GAP_MS);
-  };
-
   const startFling = (element, property, initialVelocity) => {
     if (!element) return;
     let velocity = initialVelocity;
@@ -140,7 +126,6 @@ export function createTerminalTouchController({
     onActivity();
     cancelLongPress();
     stopFling();
-    armHistoryPull();
     touchActive = event.touches.length > 0;
     historyPullFrozen = false;
     selectionOnDown = selectionActiveRef.current;
@@ -374,11 +359,6 @@ export function createTerminalTouchController({
       }
       return;
     }
-    if (!wheelGestureActive) {
-      wheelGestureActive = true;
-      armHistoryPull();
-    }
-    keepWheelGestureAlive();
     showScrollPosition();
     maybePullMore();
   };
@@ -417,7 +397,6 @@ export function createTerminalTouchController({
     dispose() {
       cancelLongPress();
       stopFling();
-      finishWheelGesture();
       host.removeEventListener('pointerdown', onPointerDown, { capture: true });
       host.removeEventListener('wheel', onWheel, { capture: true });
       host.removeEventListener('touchstart', onTouchStart, { capture: true });

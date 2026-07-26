@@ -28,7 +28,6 @@ function setup() {
   };
   let controller;
   const maybePullMore = vi.fn(() => controller.freezeHistoryGesture());
-  const armHistoryPull = vi.fn();
   controller = createTerminalTouchController({
     term,
     host,
@@ -48,7 +47,6 @@ function setup() {
     getMouseAware: () => false,
     onActivity: vi.fn(),
     onUserScroll: vi.fn(),
-    armHistoryPull,
     showScrollPosition: vi.fn(),
     maybePullMore,
     enterStreamHistory: vi.fn(),
@@ -57,7 +55,7 @@ function setup() {
     onTap: vi.fn(),
     onKeepKeyboard: vi.fn(),
   });
-  return { controller, host, screen, maybePullMore, armHistoryPull };
+  return { controller, host, screen, maybePullMore };
 }
 
 afterEach(() => {
@@ -89,11 +87,8 @@ describe('terminal touch history pull', () => {
     controller.dispose();
   });
 
-  it('never blocks wheel scrolling and rearms history only for a new burst', () => {
-    vi.useFakeTimers();
-    const {
-      controller, screen, maybePullMore, armHistoryPull,
-    } = setup();
+  it('never blocks continuous wheel scrolling', () => {
+    const { controller, screen, maybePullMore } = setup();
     const reachedXterm = vi.fn();
     screen.addEventListener('wheel', reachedXterm);
 
@@ -106,18 +101,14 @@ describe('terminal touch history pull', () => {
     }));
 
     expect(maybePullMore).toHaveBeenCalledTimes(2);
-    expect(armHistoryPull).toHaveBeenCalledOnce();
     expect(first.defaultPrevented).toBe(false);
     expect(reachedXterm).toHaveBeenCalledTimes(2);
-    expect(armHistoryPull).toHaveBeenCalledOnce();
 
-    vi.advanceTimersByTime(200);
     screen.dispatchEvent(new WheelEvent('wheel', {
       deltaY: -40, bubbles: true, cancelable: true,
     }));
 
     expect(maybePullMore).toHaveBeenCalledTimes(3);
-    expect(armHistoryPull).toHaveBeenCalledTimes(2);
     expect(reachedXterm).toHaveBeenCalledTimes(3);
     controller.dispose();
   });
