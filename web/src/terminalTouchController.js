@@ -429,6 +429,11 @@ export function createTerminalTouchController({
       if (wheelGestureActive) wheelHistoryFrozen = true;
       stopFling();
     },
+    releaseWheelHistoryGesture() {
+      // The expanded buffer is now anchored. Let the still-active trackpad gesture scroll through
+      // those newly loaded rows; Terminal's pullArmed guard still prevents a second page in this burst.
+      wheelHistoryFrozen = false;
+    },
     dispose() {
       cancelLongPress();
       stopFling();

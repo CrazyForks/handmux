@@ -314,6 +314,7 @@ const Terminal = forwardRef(function Terminal({
     // touchstart / new wheel gesture re-arms, so momentum on its own can never pull again.
     let pullArmed = true;
     let freezeTouchForHistoryPull = () => {};
+    let releaseWheelAfterHistoryPull = () => {};
     let lastAnsi = null;
     let lastCur = ''; // last frame's cursor key (row,col,vis) — a cursor-only move must still repaint
     let curInfo = null; // last frame's cursor {row,col,vis}, placed by placeCursor() after sizing settles
@@ -441,7 +442,7 @@ const Terminal = forwardRef(function Terminal({
         // Commit pagination only after a successful response was accepted. A timeout, auth failure,
         // pane switch, or stale snapshot retries this same page instead of silently skipping 100 rows.
         if (applied && !disposed && depth === previousDepth) depth = requestedDepth;
-      });
+      }).finally(releaseWheelAfterHistoryPull);
     };
 
     let paneRows = 0; // the real pane's row count (drives auto-shrink, below)
@@ -739,6 +740,7 @@ const Terminal = forwardRef(function Terminal({
       onKeepKeyboard: () => onKeepKeyboardRef.current?.() ?? false,
     });
     freezeTouchForHistoryPull = touch.freezeHistoryGesture;
+    releaseWheelAfterHistoryPull = touch.releaseWheelHistoryGesture;
 
     // Rebuild the persistent doc-path UNDERLINE after each full repaint (the visual cue; the actual
     // tap is handled by the link provider above). Underline-only (no bg) so it can't trigger the

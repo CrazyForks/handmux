@@ -89,7 +89,7 @@ describe('terminal touch history pull', () => {
     controller.dispose();
   });
 
-  it('loads immediately but absorbs the rest of the same wheel burst', () => {
+  it('absorbs wheel input only until the expanded history buffer is ready', () => {
     vi.useFakeTimers();
     const {
       controller, screen, maybePullMore, armHistoryPull,
@@ -110,12 +110,22 @@ describe('terminal touch history pull', () => {
     expect(first.defaultPrevented).toBe(true);
     expect(reachedXterm).not.toHaveBeenCalled();
 
-    vi.advanceTimersByTime(200);
+    controller.releaseWheelHistoryGesture();
+    maybePullMore.mockImplementation(() => {});
     screen.dispatchEvent(new WheelEvent('wheel', {
       deltaY: -40, bubbles: true, cancelable: true,
     }));
 
-    expect(maybePullMore).toHaveBeenCalledTimes(2);
+    expect(reachedXterm).toHaveBeenCalledOnce();
+    expect(armHistoryPull).toHaveBeenCalledOnce();
+
+    vi.advanceTimersByTime(200);
+    maybePullMore.mockImplementation(() => controller.freezeHistoryGesture());
+    screen.dispatchEvent(new WheelEvent('wheel', {
+      deltaY: -40, bubbles: true, cancelable: true,
+    }));
+
+    expect(maybePullMore).toHaveBeenCalledTimes(3);
     expect(armHistoryPull).toHaveBeenCalledTimes(2);
     controller.dispose();
   });
