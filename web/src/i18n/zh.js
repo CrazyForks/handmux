@@ -317,6 +317,7 @@ export default {
   'settings.path_highlight_hint': '给终端里可点开的文件路径加底色。无论开关与否，路径都可点开。',
   'settings.whats_new': '新功能',
   'settings.view_changelog': '查看更新日志',
+  'settings.reload_app': '重新加载应用',
   'settings.has_update': '有更新',
   'settings.version': '版本',
   'settings.feedback': '反馈与交流',

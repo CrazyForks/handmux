@@ -318,6 +318,7 @@ export default {
   'settings.path_highlight_hint': 'Tint tappable file paths in the terminal. Paths stay tappable either way.',
   'settings.whats_new': "What's new",
   'settings.view_changelog': 'View changelog',
+  'settings.reload_app': 'Reload app',
   'settings.has_update': 'Has update',
   'settings.version': 'Version',
   'settings.feedback': 'Feedback',

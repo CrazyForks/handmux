@@ -13,6 +13,7 @@ import { SNAPSHOT_INTERVALS } from '../terminalTransport.js';
 // font-size control. Font reads/writes the live terminal through termRef — the same persisted
 // size the two-finger pinch drives — so the modal and the gesture stay in sync.
 export default function Settings({ open, onClose, termRef, onColAdjust, onColRestore, onOpenChangelog, changelogUnread,
+  onReloadApp = () => window.location.reload(),
   chatTone = 'ink', onChatTone = () => {}, chatLensEnabled = false, onChatLensEnabled = () => {},
   keyboardMode = 'auto', onKeyboardMode = () => {},
   terminalTransport = 'live', onTerminalTransport = () => {},
@@ -299,8 +300,10 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
             <button className="fontbtn" onClick={onOpenChangelog}>
               {t('settings.view_changelog')}{changelogUnread && <span className="settings-dot" aria-label={t('settings.has_update')} />}
             </button>
+            <button className="fontbtn" onClick={onReloadApp}>{t('settings.reload_app')}</button>
           </div>
-          {/* The upgrade is a computer-side `handmux update`; the phone can only show the notice, so no button.
+          {/* The upgrade is a computer-side `handmux update`; the reload button above only refreshes the client,
+              so the phone still has no upgrade button.
               `whatsNew` (concise per-version highlights the newer package carries) tells the user what the trip
               to the computer buys them — pulled in by the update check, so it may lag a bit. zh dicts (incl.
               zh-TW) map to the highlight's `zh`; everything else falls back to `en`. */}

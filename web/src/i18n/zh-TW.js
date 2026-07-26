@@ -228,6 +228,7 @@ export default {
   'settings.path_highlight_hint': '為終端機裡可點開的檔案路徑加底色。無論開關與否，路徑都可點開。',
   'settings.whats_new': '新功能',
   'settings.view_changelog': '查看更新日誌',
+  'settings.reload_app': '重新載入應用程式',
   'settings.has_update': '有更新',
   'settings.version': '版本',
   'settings.feedback': '意見回饋',

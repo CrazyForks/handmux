@@ -219,6 +219,7 @@ export default {
   'settings.path_highlight_hint': 'ターミナル内のタップ可能なファイルパスに色を付けます。オフでもパスはタップできます。',
   'settings.whats_new': '新機能',
   'settings.view_changelog': '変更履歴を表示',
+  'settings.reload_app': 'アプリを再読み込み',
   'settings.has_update': '更新あり',
   'settings.version': 'バージョン',
   'settings.feedback': 'フィードバック',
