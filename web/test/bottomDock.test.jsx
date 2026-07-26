@@ -256,6 +256,17 @@ describe('BottomDock', () => {
     expect(sendText).toHaveBeenCalledWith('%1', 'ls -la', true);
   });
 
+  it('keeps the empty send button available for a bare Enter', async () => {
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    const button = container.querySelector('.input-send');
+    expect(button.disabled).toBe(false);
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(sendText).toHaveBeenCalledWith('%1', '', true);
+  });
+
   it('locks editing and ignores repeated send taps until the request finishes', async () => {
     const request = deferred();
     sendText.mockReturnValueOnce(request.promise);
@@ -318,12 +329,12 @@ describe('BottomDock', () => {
     vi.useRealTimers();
   });
 
-  it('发送 ↑ 常驻但空框禁用,有字时启用', () => {
+  it('发送 ↑ 常驻且空框也可发送裸 Enter', () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-    expect(container.querySelector('.input-send')).not.toBe(null);     // 常驻:空框也在
-    expect(container.querySelector('.input-send').disabled).toBe(true); // …但禁用
+    expect(container.querySelector('.input-send')).not.toBe(null);
+    expect(container.querySelector('.input-send').disabled).toBe(false);
     typeInto(container.querySelector('.input-text'), 'ls');
-    expect(container.querySelector('.input-send').disabled).toBe(false); // 有字 → 启用
+    expect(container.querySelector('.input-send').disabled).toBe(false);
   });
 
   it('快捷栏:固定的上传(带图标)+ 一排自定义命令 chip;历史在药丸里', () => {

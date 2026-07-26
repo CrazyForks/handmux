@@ -659,7 +659,7 @@ function BottomDock({
   // for tmux's text→Enter pacing, so leaving the editor active let rapid taps launch the same request
   // several times before the first one returned.
   const submitDraft = async (enter) => {
-    if (!pane || !value || submitInFlightRef.current) return;
+    if (!pane || (!enter && !value) || submitInFlightRef.current) return;
     const text = value;
     submitInFlightRef.current = true;
     setSubmitting(true);
@@ -729,7 +729,7 @@ function BottomDock({
     }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (value) void send();
+      void send();
     }
   };
 
@@ -921,7 +921,7 @@ function BottomDock({
     const g = ghostRef.current;
     ghostRef.current = null;
     if (!g) return;
-    if (g === 'send') { if (value) sendUp(); else sendCancel(); return; } // 原按钮空框时 disabled,对齐
+    if (g === 'send') { sendUp(); return; }
     if (!micPtRef.current.moved && voice.state !== 'requesting') toggleMic();
   };
   const ghostCancel = () => {
@@ -1117,9 +1117,9 @@ function BottomDock({
                       : openOverlay(setPanelOpen))}><ClockIcon /></button>
                 )}
                 {micAvailable && <MicButton active={recording} disabled={voice.state === 'requesting'} onToggle={toggleMic} />}
-                {/* 发送 ↑ 常驻,空框禁用:点 = 发送组合文本,长按 = 填入。 */}
+                {/* 发送 ↑ 常驻:点 = 发送组合文本（空框发送裸 Enter）,长按 = 填入。 */}
                 <button type="button" className="input-send" aria-label={t('dock.send')} title={t('dock.send.hint')}
-                  disabled={!value || submitting}
+                  disabled={submitting}
                   onPointerDown={sendDown} onPointerMove={sendMove} onPointerUp={sendUp} onPointerCancel={sendCancel} onPointerLeave={sendCancel}>
                   <ArrowUpIcon />
                 </button>
