@@ -355,30 +355,7 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
    mobile soft keyboard and steal taps near the cursor, e.g. the back-to-bottom button). */
 .terminal .xterm-helper-textarea { pointer-events: none; opacity: 0; }
 .terminal.desktop-input .xterm-helper-textarea { pointer-events: auto; }
-.terminal__live {
-  position: relative; width: 100%; min-width: 100%; height: 100%;
-  transform: translateY(var(--history-pull-y, 0));
-  transition: transform 180ms cubic-bezier(.2,.75,.25,1);
-}
-.terminal__live.is-history-pulling { transition: none; }
-.history-pull-indicator {
-  position: absolute; z-index: 8;
-  top: calc(var(--terminal-overlay-top, 1px) + 5px); left: 50%;
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px;
-  border: 1px solid rgba(255,255,255,.13); border-radius: 50%;
-  background: rgba(24,26,31,.82); color: rgba(235,235,245,.68);
-  pointer-events: none;
-  transform: translateX(-50%);
-  box-shadow: 0 2px 7px rgba(0,0,0,.24);
-}
-.history-pull-indicator svg {
-  width: 17px; height: 17px; fill: none; stroke: currentColor;
-  stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
-  animation: history-pull-spin .8s linear infinite;
-}
-.history-pull-indicator.is-armed { color: rgba(117,184,255,.96); }
-@keyframes history-pull-spin { to { transform: rotate(360deg); } }
+.terminal__live { position: relative; width: 100%; min-width: 100%; height: 100%; }
 .terminal-history-boundary {
   background: repeating-linear-gradient(
     to right,

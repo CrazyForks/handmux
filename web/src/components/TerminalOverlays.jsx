@@ -13,7 +13,6 @@ export default function TerminalOverlays({
   dbgVisible,
   dbg,
   scrollInfo,
-  historyPull,
   selInfo,
   onResume,
   altScreen,
@@ -29,7 +28,7 @@ export default function TerminalOverlays({
   return (
     <>
       {!ready && <LensBoot hint={t('boot.loading')} />}
-      {ready && connected && !scrollInfo && !historyPull && !selInfo && connectionInfo && (
+      {ready && connected && !scrollInfo && !selInfo && connectionInfo && (
         <div className={`terminal-connection is-${connectionInfo.quality}`}>
           <span className="terminal-connection__tag terminal-connection__quality">
             {t(`terminal.connection_${connectionInfo.quality}`)}
@@ -47,18 +46,7 @@ export default function TerminalOverlays({
         </div>
       )}
       {dbgVisible && <div className="dbg">{dbg}</div>}
-      {ready && connected && historyPull && (
-        <div
-          className={`history-pull-indicator is-${historyPull.phase}`}
-          role="status"
-          aria-label={t('terminal.historyPull_loading')}
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M19 7V3.5l-2.2 2.2A7.5 7.5 0 1 0 19.5 12" />
-          </svg>
-        </div>
-      )}
-      {connected && scrollInfo && !historyPull && !selInfo && <div className="term-banner term-banner--hist">{scrollInfo}</div>}
+      {connected && scrollInfo && !selInfo && <div className="term-banner term-banner--hist">{scrollInfo}</div>}
       {selInfo && <div className="term-banner term-banner--sel">{selInfo}</div>}
       {scrollInfo && <button className="new-output" onClick={onResume}>↓ 回到底部</button>}
       {altScreen && (

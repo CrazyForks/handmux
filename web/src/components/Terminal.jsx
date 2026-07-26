@@ -124,7 +124,6 @@ const Terminal = forwardRef(function Terminal({
   // History-mode banner text (历史模式 · 行 viewportY/baseY): non-empty only while browsing outside
   // the live zone; '' (hidden) when at/near the bottom and still live. Set by showScrollPos.
   const [scrollInfo, setScrollInfo] = useState('');
-  const [historyPull, setHistoryPull] = useState(null);
   // First-paint gate. A freshly-switched pane seeds into a default-size grid, then fit() grows/re-fits
   // it over a few RAF passes (and may shrink the font). Showing that means the screen appears
   // bottom-half-first and fills upward (the grid is bottom-anchored, see .terminal .xterm flex-end).
@@ -236,7 +235,6 @@ const Terminal = forwardRef(function Terminal({
     const liveHost = document.createElement('div');
     liveHost.className = 'terminal__live';
     elRef.current.replaceChildren(liveHost);
-    setHistoryPull(null);
     const { term, dispose: disposeXterm } = openXterm({
       host: liveHost,
       desktop,
@@ -310,6 +308,12 @@ const Terminal = forwardRef(function Terminal({
     // only what's shown plus a little scroll-up slack. Floor 24 covers a not-yet-fit grid; cap at MAX_LINES.
     const liveDepth = () => Math.min(MAX_LINES, Math.max(24, term.rows + LIVE_MARGIN));
     let depth = liveDepth();
+    // One deeper-history pull per touch/wheel gesture. A hard flick's momentum — the custom fling AND iOS's
+    // OWN native momentum, which stopFling can't reach — keeps re-hitting the top after each pull's anchor
+    // shoves the view down, stacking 3-4 pulls off a single flick (400→700). Disarm on pull; a fresh
+    // touchstart / new wheel gesture re-arms, so momentum on its own can never pull again.
+    let pullArmed = true;
+    let freezeTouchForHistoryPull = () => {};
     let lastAnsi = null;
     let lastCur = ''; // last frame's cursor key (row,col,vis) — a cursor-only move must still repaint
     let curInfo = null; // last frame's cursor {row,col,vis}, placed by placeCursor() after sizing settles
@@ -388,7 +392,7 @@ const Terminal = forwardRef(function Terminal({
       const b = buf();
       // Real buffer state, no display-layer rounding — what you see IS what's loaded. b.baseY = the
       // scrollable history rows, and it EQUALS the pull depth: capture returns `depth` history lines + the
-      // visible screen, so baseY = length − rows = depth. loadMoreHistory snaps depth to whole CHUNK pages, so
+      // visible screen, so baseY = length − rows = depth. maybePullMore snaps depth to whole CHUNK pages, so
       // baseY is already a clean 100/200/300 with no faking. Numerator = how far up from the live bottom
       // you've scrolled (0 at the bottom, baseY at the very top → N/N).
       // Alt-screen never shows the history banner: its scrollback is synthetic (the keyboard-shrunk grid),
@@ -411,18 +415,33 @@ const Terminal = forwardRef(function Terminal({
       streamClient?.pause();
       setStreamStatus('paused');
     };
-    const canPullHistory = () => (
-      seeded && !busy && depth < MAX_LINES && atTop() && (!streamMode || historyMode)
-    );
-    // Loading is deliberately separated from xterm's scrolling. The old gesture is already over when
-    // this runs, so no pending touchmove/wheel event can act on the newly expanded buffer and skip a page.
-    const loadMoreHistory = async () => {
-      if (!canPullHistory()) return;
+    // Pull a deeper history slice when sitting at the top. Driven from term.onScroll, the touch handler AND
+    // the fling coast: xterm owns the 1:1 drag and its onScroll can miss the very top on mobile during a fast
+    // glide, so the touch/fling paths are the dependable triggers. Idempotent while a pull is in flight
+    // (!busy), until a fresh gesture re-arms (pullArmed), and once the deepest slice is loaded.
+    const maybePullMore = () => {
+      if (!seeded || busy || !pullArmed || depth >= MAX_LINES || !atTop()) return;
+      if (streamMode && !historyMode) return;
       pauseStreamForHistory();
+      pullArmed = false; // one pull per gesture — a coast re-hitting the top after the anchor won't stack
+      freezeTouchForHistoryPull();
+
+      // Freeze OUR coast before pulling: repaint() snapshots the scroll anchor at its START, so a coasting
+      // fling that keeps driving scrollTop mid-fetch would invalidate it (re-hitting the top → stacking
+      // pulls). stopFling holds the view still for the fetch → one clean page per top-reach, re-flick for more.
       stopFlingRef.current?.();
-      depth = Math.min(Math.floor(depth / CHUNK) * CHUNK + CHUNK, MAX_LINES);
+      // Snap the pull target to the NEXT whole CHUNK boundary (100, 200, 300 …) rather than liveDepth+k·CHUNK.
+      // The first pull leaves from the small liveDepth (e.g. 47), so plain +CHUNK would load 147/247/… — the
+      // loaded depth (and the count the readout shows) is then a genuine multiple of 100, not a mid-number
+      // faked round at the display layer. floor()·CHUNK+CHUNK is always strictly > depth, so it never stalls.
+      const previousDepth = depth;
+      const requestedDepth = Math.min(Math.floor(depth / CHUNK) * CHUNK + CHUNK, MAX_LINES);
       showScrollPos();
-      await repaint(depth, true, true);
+      repaint(requestedDepth, true).then((applied) => {
+        // Commit pagination only after a successful response was accepted. A timeout, auth failure,
+        // pane switch, or stale snapshot retries this same page instead of silently skipping 100 rows.
+        if (applied && !disposed && depth === previousDepth) depth = requestedDepth;
+      });
     };
 
     let paneRows = 0; // the real pane's row count (drives auto-shrink, below)
@@ -711,21 +730,15 @@ const Terminal = forwardRef(function Terminal({
       getMouseAware: () => mouseAwareRef.current,
       onActivity: () => { idleSince = Date.now(); },
       onUserScroll: () => { userScrolledRef.current = true; },
-      canPullHistory,
-      loadMoreHistory,
-      onHistoryPullChange: (next) => {
-        liveHost.style.setProperty('--history-pull-y', `${next?.offset || 0}px`);
-        liveHost.classList.toggle('is-history-pulling', next?.phase === 'pulling' || next?.phase === 'armed');
-        setHistoryPull((current) => (
-          current?.phase === next?.phase ? current : next ? { phase: next.phase } : null
-        ));
-      },
+      armHistoryPull: () => { pullArmed = true; },
       showScrollPosition: showScrollPos,
+      maybePullMore,
       scheduleFit,
       wake: () => wakeRef.current?.(),
       onTap: () => onTapRef.current?.(),
       onKeepKeyboard: () => onKeepKeyboardRef.current?.() ?? false,
     });
+    freezeTouchForHistoryPull = touch.freezeHistoryGesture;
 
     // Rebuild the persistent doc-path UNDERLINE after each full repaint (the visual cue; the actual
     // tap is handled by the link provider above). Underline-only (no bg) so it can't trigger the
@@ -892,42 +905,29 @@ const Terminal = forwardRef(function Terminal({
       }
     };
 
-    const repaint = async (lines, keepPosition, isPull = false) => {
-      if (busy || disposed) return;
+    const repaint = async (lines, keepPosition) => {
+      if (busy || disposed) return false;
       busy = true;
       const startedInStreamMode = streamMode;
       const requestStartedAt = Date.now();
-      // Anchor: remember how far the top-visible row sits from the buffer's END, so after the reseed
-      // (which prepends history above, on a pull) we restore the same content via scrollToLine below.
-      // TWO anchor modes, because the two callers need different things:
-      //  • Live in-place refresh (pollOnce, isPull=false): the view is STATIONARY and the buffer length is
-      //    unchanged — we're just restoring the exact same top row every frame. Use xterm's own INTEGER
-      //    line index (viewportY). Re-deriving it from pixels here is fatal: rowHeight is fractional and the
-      //    browser stores scrollTop as an integer, so floor(round(K·rowHeight)/rowHeight) occasionally yields
-      //    K-1 → the view creeps up one line PER FRAME on any actively-updating pane ("自己往上滚"). Integer
-      //    anchoring can't drift (scrollToLine set it, so viewportY is already exact).
-      //  • History pull (loadMoreHistory, isPull=true): a fling coast may stop MID-ROW. xterm derives viewportY
-      //    as round(scrollTop/rowHeight) but draws the FLOORED row, so a coast stopping at fractional ≥ .5
-      //    leaves viewportY one row ABOVE what's on screen → the pull lands one row too low ("拉取后高一行").
-      //    Here we DO want the pixel-floored row so the anchor matches what's rendered. Verified line-exact
-      //    against real captures in headless xterm. Fall back to viewportY with no live viewport (headless).
-      const anchorVp = (keepPosition && isPull) ? liveHost.querySelector('.xterm-viewport') : null;
-      const anchorRowH = anchorVp && buf().length ? anchorVp.scrollHeight / buf().length : 0;
-      const anchorTop = anchorRowH ? Math.floor(anchorVp.scrollTop / anchorRowH) : buf().viewportY;
+      // xterm's integer line is the anchor. Deeper history is requested only at exact viewportY=0,
+      // after the current gesture is frozen, so there is no fractional/moving pixel position to infer.
+      // Keeping this in row space avoids the off-by-one drift caused by fractional DOM row heights.
+      const anchorTop = buf().viewportY;
       const anchorFromBottom = keepPosition ? buf().length - anchorTop : 0;
       try {
         const hist = await getHistory(pane, lines, lastHash);
-        if (disposed) return;
+        if (disposed) return false;
         // A background WebSocket recovery may have completed while this snapshot request was in flight.
         // Never let the older snapshot overwrite the newly activated live frame.
-        if (!startedInStreamMode && streamMode) return;
+        if (!startedInStreamMode && streamMode) return false;
         telemetry.sample({ ok: true, rttMs: Date.now() - requestStartedAt });
         setConn(nextConnection(connState, 'ok')); // a successful poll → connected (clears the banner)
         // A desktop drag may have started while this request was in flight. Never apply that stale
         // snapshot: rewriting xterm would erase the selection before the user can copy it.
-        if (selActiveRef.current) return;
+        if (selActiveRef.current) return false;
         // 204: server says the screen is identical to lastHash — keep what's drawn, transmit nothing.
-        if (hist.unchanged) { setPaused(keepPosition); return; }
+        if (hist.unchanged) { setPaused(keepPosition); return true; }
         lastHash = hist.hash;       // a real frame: remember its hash for the next ?since=
         altScreenRef.current = !!hist.alt; // pane on the alternate screen? → no scrollback to swipe
         mouseAwareRef.current = !!hist.mouseAware; // …but if the app reports mouse, a swipe can wheel-scroll it
@@ -950,7 +950,7 @@ const Terminal = forwardRef(function Terminal({
         const curKey = hist.cur ? `${hist.cur.row},${hist.cur.col},${hist.cur.vis ? 1 : 0}` : '';
         if (!resized && !firstSeed && hist.ansi === lastAnsi && curKey === lastCur) {
           setPaused(keepPosition);
-          return;
+          return true;
         }
         // prepareSeed resets attributes at every line end so an unreset background can't leak
         // between rows. The leading \x1b[0m guards the seam between frames: prepareSeed drops the
@@ -974,7 +974,7 @@ const Terminal = forwardRef(function Terminal({
         // cur.row up from the bottom of this, so padding shifts the cursor to the grid bottom correctly.
         seedRows = framed ? framed.split('\n').length : 0;
         await new Promise((res) => term.write('\x1b[?25l\x1b[0m\x1b[2J\x1b[3J\x1b[H' + framed, res));
-        if (disposed) return;
+        if (disposed) return false;
         if (historyMode && Number.isFinite(hist.historyLines)) {
           liveBoundaryLine = hist.historyLines;
           drawHistoryBoundary();
@@ -1020,10 +1020,12 @@ const Terminal = forwardRef(function Terminal({
         // Backstop: if that fit's RAF chain ever early-returns before settling (grid not yet
         // measurable), reveal anyway so a switched pane can't get stuck hidden. Idempotent with fit's.
         if (firstSeed) setTimeout(reveal, 400);
+        return true;
       } catch (e) {
         telemetry.sample({ ok: false, rttMs: Date.now() - requestStartedAt });
         if (e instanceof UnauthorizedError) onAuthFailRef.current?.();
         else if (!disposed) setConn(nextConnection(connState, 'fail')); // network/500/timeout → maybe disconnect
+        return false;
       } finally {
         busy = false;
         // Refresh the history readout now that busy cleared (drop the "· 拉取中" tag; the coast is stopped so
@@ -1262,6 +1264,7 @@ const Terminal = forwardRef(function Terminal({
       if (streamMode && !nearBottom() && !altScreenRef.current) pauseStreamForHistory();
       setPaused(streamMode ? historyMode : !nearBottom());
       showScrollPos();
+      maybePullMore();
     };
     const sub = term.onScroll(handleBufferScroll);
     // Native touch/trackpad scrolling is translated by xterm's viewport with suppressScrollEvent=true:
@@ -1387,7 +1390,6 @@ const Terminal = forwardRef(function Terminal({
         dbgVisible={dbgVisible}
         dbg={dbg}
         scrollInfo={scrollInfo}
-        historyPull={historyPull}
         selInfo={selInfo}
         onResume={resume}
         altScreen={altScreen}
