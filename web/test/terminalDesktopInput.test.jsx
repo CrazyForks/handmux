@@ -378,6 +378,7 @@ describe('desktop terminal input', () => {
     expect(status.querySelectorAll('.terminal-connection__tag')).toHaveLength(1);
     expect(status.querySelector('.terminal-connection__summary').classList.contains('is-live')).toBe(true);
     expect(status.querySelector('.terminal-connection__summary').tagName).toBe('BUTTON');
+    expect(status.querySelector('.terminal-connection__mode').classList.contains('is-live')).toBe(true);
     expect(status.querySelector('.terminal-connection__quality').textContent).toBe('较差');
     expect(status.textContent).toBe('实时·较差');
     expect(status.textContent).not.toContain('1800 ms');
@@ -430,7 +431,9 @@ describe('desktop terminal input', () => {
       .toBe('快照拉取');
     expect(detail.querySelector('.terminal-transport-popover__connection').textContent)
       .toBe('良好 · 100 ms');
-    act(() => view.container.querySelector('.terminal-transport-scrim').click());
+    expect(view.container.querySelector('.terminal-transport-scrim')).toBeNull();
+    act(() => view.container.querySelector('.terminal-connection__summary').click());
+    expect(view.container.querySelector('.terminal-transport-popover')).toBeNull();
     act(() => view.container.querySelector('.terminal-connection__summary').click());
     expect(view.container.querySelector('.terminal-transport-popover')).not.toBeNull();
     act(() => {

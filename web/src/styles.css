@@ -382,11 +382,7 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
   border-radius: 4px;
   background: rgba(26,28,34,.62);
 }
-.terminal-connection__summary.is-live {
-  color: rgba(235,247,255,.96);
-  border-color: rgba(100,174,255,.32);
-  background: rgba(63,139,224,.38);
-}
+.terminal-connection__summary.is-live,
 .terminal-connection__summary.is-snapshot {
   color: rgba(240,240,245,.88);
   border-color: rgba(205,208,218,.18);
@@ -398,11 +394,8 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
   cursor: pointer;
   pointer-events: auto;
 }
+.terminal-connection__mode.is-live { color: rgba(100,174,255,.96); }
 .terminal-connection__separator { color: rgba(235,235,245,.34); }
-.terminal-transport-scrim {
-  position: absolute; inset: 0; z-index: 7;
-  margin: 0; padding: 0; border: 0; background: transparent;
-}
 .terminal-transport-popover {
   position: absolute; z-index: 8;
   top: calc(var(--terminal-overlay-top, 1px) + 30px); right: 9px;
@@ -414,6 +407,7 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
   color: rgba(235,235,245,.86);
   box-shadow: 0 7px 24px rgba(0,0,0,.42);
   font: 12px/1.45 -apple-system, system-ui, sans-serif;
+  pointer-events: none;
 }
 .terminal-transport-popover__title { margin-bottom: 8px; color: #fff; font-weight: 650; }
 .terminal-transport-popover__row {

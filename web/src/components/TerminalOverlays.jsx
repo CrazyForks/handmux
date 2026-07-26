@@ -13,7 +13,6 @@ export default function TerminalOverlays({
   transportOpen,
   transportNow,
   onTransportToggle,
-  onTransportClose,
   connected,
   inputFailure,
   dbgVisible,
@@ -44,8 +43,6 @@ export default function TerminalOverlays({
   return (
     <>
       {!ready && <LensBoot hint={t('boot.loading')} />}
-      {transportOpen && <button type="button" className="terminal-transport-scrim"
-        aria-label={t('common.close')} onClick={onTransportClose} />}
       {ready && connected && !scrollInfo && !selInfo && connectionInfo && (
         <div className={`terminal-connection is-${connectionInfo.quality}`}>
           <button type="button"
@@ -53,7 +50,9 @@ export default function TerminalOverlays({
             aria-expanded={transportOpen}
             aria-haspopup="dialog"
             onClick={onTransportToggle}>
-            <span>{t(`terminal.transport_${connectionInfo.mode}`)}</span>
+            <span className={`terminal-connection__mode is-${connectionInfo.mode}`}>
+              {t(`terminal.transport_${connectionInfo.mode}`)}
+            </span>
             <span className="terminal-connection__separator" aria-hidden="true">·</span>
             <span className="terminal-connection__quality">
               {t(`terminal.connection_${connectionInfo.quality}`)}

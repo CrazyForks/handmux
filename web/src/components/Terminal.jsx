@@ -1444,7 +1444,6 @@ const Terminal = forwardRef(function Terminal({
           setTransportNow(Date.now());
           setTransportOpen((value) => !value);
         }}
-        onTransportClose={() => setTransportOpen(false)}
         connected={connected}
         inputFailure={inputFailure}
         dbgVisible={dbgVisible}
