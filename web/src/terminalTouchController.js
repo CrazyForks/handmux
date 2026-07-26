@@ -208,9 +208,9 @@ export function createTerminalTouchController({
       lastMoveX = x;
       lastMoveTime = event.timeStamp;
       event.preventDefault();
-      // Keep the same xterm touch chain as a vertical drag. We already own scrollLeft in capture phase,
-      // while xterm ignores horizontal movement; allowing the event through avoids making horizontal
-      // terminal gestures a browser-distinct path (notably one that can collapse the mobile keyboard).
+      // Axis-locked horizontal gesture: Handmux owns scrollLeft, so xterm must not also consume the
+      // gesture's small vertical noise. Browser gesture takeover is blocked up front by touch-action:none.
+      event.stopPropagation();
       return;
     }
 

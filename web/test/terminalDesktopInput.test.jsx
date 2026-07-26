@@ -597,7 +597,7 @@ describe('desktop terminal input', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
-  it('keeps horizontal mobile drags in the same xterm touch chain as vertical drags', () => {
+  it('locks horizontal mobile drags to the outer terminal scroller', () => {
     const view = render(<Terminal pane="%1" desktop={false} />);
     const host = view.container.querySelector('.terminal');
     const screen = view.container.querySelector('.xterm-screen');
@@ -613,7 +613,7 @@ describe('desktop terminal input', () => {
 
     expect(host.scrollLeft).toBe(120);
     expect(move.defaultPrevented).toBe(true);
-    expect(reachedXterm).toHaveBeenCalledOnce();
+    expect(reachedXterm).not.toHaveBeenCalled();
   });
 
   it('routes a horizontal trackpad gesture past xterm to the outer terminal scroller', () => {
