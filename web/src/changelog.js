@@ -11,6 +11,24 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.20.1',
+    date: '2026-07-26',
+    highlight: {
+      zh: '聊天发送修复 · 电脑键盘不中断',
+      en: 'Reliable chat sending · uninterrupted desktop input',
+    },
+    items: {
+      zh: [
+        '电脑端焦点落在 Window 工具栏后,物理键盘输入和 Shift+Enter 仍会作用于当前终端;F5、F12 保留给浏览器。',
+        '修复了聊天模式选择文件后没有开始上传、快速连按重复发送同一条内容的问题;空内容发送 Enter 的能力保持不变。',
+      ],
+      en: [
+        'Physical keyboard input and Shift+Enter keep working after focus lands on the Window toolbar; F5 and F12 remain available to the browser.',
+        'Fixed chat uploads not starting after file selection and rapid taps sending the same content more than once; sending Enter with an empty composer remains available.',
+      ],
+    },
+  },
+  {
     version: '0.20.0',
     date: '2026-07-26',
     highlight: {
