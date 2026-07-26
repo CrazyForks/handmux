@@ -47,6 +47,8 @@ export function createTerminalTouchController({
   let lastMoveTime = 0;
   let scrollVelocityX = 0;
   let scrollVelocityY = 0;
+  let touchActive = false;
+  let historyPullFrozen = false;
   let flingRAF = null;
   let wheelAccum = 0;
   let wheelPreviousY = 0;
@@ -128,6 +130,8 @@ export function createTerminalTouchController({
     cancelLongPress();
     stopFling();
     armHistoryPull();
+    touchActive = event.touches.length > 0;
+    historyPullFrozen = false;
     selectionOnDown = selectionActiveRef.current;
     selecting = false;
     if (event.touches.length === 2) {
@@ -188,10 +192,6 @@ export function createTerminalTouchController({
       event.stopPropagation();
       return;
     }
-    if (event.touches.length === 1) {
-      showScrollPosition();
-      maybePullMore();
-    }
     if (event.touches.length !== 1) return;
     const dx = event.touches[0].clientX - startX;
     const dy = event.touches[0].clientY - startY;
@@ -210,6 +210,24 @@ export function createTerminalTouchController({
       event.preventDefault();
       // Axis-locked horizontal gesture: Handmux owns scrollLeft, so xterm must not also consume the
       // gesture's small vertical noise. Browser gesture takeover is blocked up front by touch-action:none.
+      event.stopPropagation();
+      return;
+    }
+
+    // A history pull rewrites xterm's buffer and then restores the old content anchor. If the same
+    // finger remains down, xterm's next touchmove can immediately overwrite that restored scrollTop
+    // against the expanded buffer, occasionally landing at the new page's far edge. Once this gesture
+    // starts a pull, hold it still until touchend; the next deliberate gesture continues normally.
+    if (historyPullFrozen) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    showScrollPosition();
+    maybePullMore();
+    if (historyPullFrozen) {
+      scrollVelocityY = 0;
+      event.preventDefault();
       event.stopPropagation();
       return;
     }
@@ -261,20 +279,24 @@ export function createTerminalTouchController({
 
   const onTouchEnd = (event) => {
     cancelLongPress();
+    const ended = event.touches.length === 0;
+    if (ended) touchActive = false;
     if (selecting && event.touches.length === 0) {
       selecting = false;
       const text = term.getSelection();
       if (text && text.trim()) selection.refresh();
       else selection.clear();
+      historyPullFrozen = false;
       return;
     }
     if (pinching && event.touches.length < 2) {
       pinching = false;
       setFont(term.options.fontSize || 14);
       scheduleFit();
+      if (ended) historyPullFrozen = false;
       return;
     }
-    if (event.touches.length === 0 && shouldFling(
+    if (ended && !historyPullFrozen && shouldFling(
       axis === 1 ? scrollVelocityX : scrollVelocityY,
       event.timeStamp - lastMoveTime,
     )) {
@@ -287,6 +309,7 @@ export function createTerminalTouchController({
       if (selectionOnDown) selection.clear();
       else onTap();
     }
+    if (ended) historyPullFrozen = false;
   };
 
   const onWheel = (event) => {
@@ -370,6 +393,12 @@ export function createTerminalTouchController({
   host.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
 
   return {
+    freezeHistoryGesture() {
+      if (!touchActive || axis !== -1) return;
+      historyPullFrozen = true;
+      scrollVelocityY = 0;
+      stopFling();
+    },
     dispose() {
       cancelLongPress();
       stopFling();
