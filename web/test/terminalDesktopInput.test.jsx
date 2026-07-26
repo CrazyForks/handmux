@@ -349,6 +349,13 @@ describe('desktop terminal input', () => {
     expect(suspend).toHaveBeenCalledOnce();
     expect(mocks.getHistory).toHaveBeenCalled();
     expect(view.container.querySelector('.terminal').classList.contains('terminal--stream')).toBe(false);
+    await act(async () => {
+      vi.advanceTimersByTime(450);
+      await Promise.resolve();
+    });
+    act(() => view.container.querySelector('.terminal-connection__mode').click());
+    expect(view.container.querySelector('.terminal-transport-popover').textContent)
+      .toContain('请检查反向代理是否支持 WebSocket');
   });
 
   it('falls back after application RTT remains poor', async () => {
@@ -384,10 +391,10 @@ describe('desktop terminal input', () => {
 
     expect(suspend).toHaveBeenCalledOnce();
     expect(status.querySelector('.terminal-connection__mode').classList.contains('is-snapshot')).toBe(true);
-    expect(status.textContent).toContain('定时');
+    expect(status.textContent).toContain('快照');
   });
 
-  it('returns to live updates only after thirty seconds of healthy snapshot traffic', async () => {
+  it('returns to live pushing only after thirty seconds of healthy snapshot traffic', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-26T00:00:00Z'));
     let callbacks;
@@ -407,11 +414,16 @@ describe('desktop terminal input', () => {
       vi.advanceTimersByTime(1200);
       await Promise.resolve();
     });
-    expect(view.container.querySelector('.terminal-connection').textContent).toContain('定时');
+    expect(view.container.querySelector('.terminal-connection').textContent).toContain('快照');
     act(() => mocks.instances[0].onScrollCallback?.());
     expect(resync).not.toHaveBeenCalled();
 
     act(() => callbacks.onProbe({ ok: true, rttMs: 100 }));
+    act(() => view.container.querySelector('.terminal-connection__mode').click());
+    const detail = view.container.querySelector('.terminal-transport-popover');
+    expect(detail.textContent).toContain('设置模式实时推送');
+    expect(detail.textContent).toContain('当前模式快照拉取');
+    expect(detail.textContent).toContain('预计 30 秒后尝试恢复实时推送');
     act(() => {
       vi.advanceTimersByTime(29999);
       callbacks.onProbe({ ok: true, rttMs: 100 });
@@ -423,7 +435,7 @@ describe('desktop terminal input', () => {
       callbacks.onProbe({ ok: true, rttMs: 100 });
     });
     expect(resync).toHaveBeenCalledOnce();
-    expect(view.container.querySelector('.terminal-connection').textContent).toContain('定时');
+    expect(view.container.querySelector('.terminal-connection').textContent).toContain('快照');
 
     await act(async () => callbacks.onSeed({
       ansi: 'recovered\n',

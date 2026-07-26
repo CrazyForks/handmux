@@ -103,7 +103,11 @@ const Terminal = forwardRef(function Terminal({
     quality: 'connecting',
     stableQuality: 'connecting',
     rttMs: null,
+    recoveryAt: null,
   });
+  const [transportFallback, setTransportFallback] = useState(null);
+  const [transportOpen, setTransportOpen] = useState(false);
+  const [transportNow, setTransportNow] = useState(() => Date.now());
   const [inputFailure, setInputFailure] = useState(null);
   // Touch selection: long-press starts a selection on the real grid (xterm draws the highlight
   // on its own layer, WebGL included), drag extends it, then a "复制" bubble copies it. selActive
@@ -289,6 +293,7 @@ const Terminal = forwardRef(function Terminal({
     let historyMode = false;
     let seeded = false;
     let streamRecoveryInProgress = false;
+    let streamHasBeenLive = false;
     let maybeRecoverStream = () => {};
     const telemetry = createConnectionTelemetry({
       mode: stream ? 'live' : 'snapshot',
@@ -336,6 +341,8 @@ const Terminal = forwardRef(function Terminal({
     let idleSince = Date.now(); // timestamp of the last change/activity → drives the adaptive cadence
     setPaused(false);
     setStreamStatus(stream ? 'connecting' : 'off');
+    setTransportFallback(null);
+    setTransportOpen(false);
     setReady(false); // hide until the first seed+fit settles (see `ready` state above)
     let revealed = false;
     const reveal = () => {
@@ -1095,7 +1102,7 @@ const Terminal = forwardRef(function Terminal({
       if (timer) { clearTimeout(timer); timer = null; }
       tick(epoch);
     };
-    const fallbackToPolling = async () => {
+    const fallbackToPolling = async (reason = 'network') => {
       if (disposed || !streamMode) return;
       streamMode = false;
       streamRecoveryInProgress = false;
@@ -1108,6 +1115,7 @@ const Terminal = forwardRef(function Terminal({
       }
       const drained = streamClient?.suspend?.();
       setStreamStatus('off');
+      setTransportFallback(reason);
       telemetry.setMode('snapshot', { fallback: true });
       setConn(nextConnection(connState, 'reset'));
       try { await drained; } catch { /* stream failure already surfaced */ }
@@ -1120,6 +1128,7 @@ const Terminal = forwardRef(function Terminal({
       setStreamStatus(status);
       telemetry.status(status);
       if (status === 'live') {
+        streamHasBeenLive = true;
         if (streamFallbackTimer) {
           clearTimeout(streamFallbackTimer);
           streamFallbackTimer = null;
@@ -1141,6 +1150,7 @@ const Terminal = forwardRef(function Terminal({
             timer = null;
           }
           telemetry.setMode('live');
+          setTransportFallback(null);
           setConn(nextConnection(connState, 'reset'));
           scheduleFit();
           scheduleStreamRender();
@@ -1155,7 +1165,10 @@ const Terminal = forwardRef(function Terminal({
         return;
       }
       if (streamMode && !streamFallbackTimer) {
-        streamFallbackTimer = setTimeout(fallbackToPolling, 1200);
+        streamFallbackTimer = setTimeout(
+          () => fallbackToPolling(streamHasBeenLive ? 'network' : 'unavailable'),
+          1200,
+        );
       }
     };
     const connectStream = async () => {
@@ -1189,7 +1202,7 @@ const Terminal = forwardRef(function Terminal({
         setStreamStatus('off');
       });
     };
-    if (streamMode) connectStream().catch(fallbackToPolling);
+    if (streamMode) connectStream().catch(() => fallbackToPolling('unavailable'));
     else startLoop();
     const resumeStream = () => {
       if (!streamMode || disposed) return;
@@ -1379,6 +1392,13 @@ const Terminal = forwardRef(function Terminal({
     setSelInfo('');
   };
   useBackButton(!!selUI, clearSelectionUI);
+  useBackButton(transportOpen, () => setTransportOpen(false));
+  useEffect(() => {
+    if (!transportOpen) return undefined;
+    setTransportNow(Date.now());
+    const timer = setInterval(() => setTransportNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [transportOpen]);
 
   const doCopy = async () => {
     const term = termRef.current;
@@ -1416,6 +1436,15 @@ const Terminal = forwardRef(function Terminal({
       <TerminalOverlays
         ready={ready}
         connectionInfo={connectionInfo}
+        configuredTransport={stream ? 'live' : 'snapshot'}
+        transportFallback={transportFallback}
+        transportOpen={transportOpen}
+        transportNow={transportNow}
+        onTransportToggle={() => {
+          setTransportNow(Date.now());
+          setTransportOpen((value) => !value);
+        }}
+        onTransportClose={() => setTransportOpen(false)}
         connected={connected}
         inputFailure={inputFailure}
         dbgVisible={dbgVisible}

@@ -31,6 +31,7 @@ export function createConnectionTelemetry({
     quality: 'connecting',
     stableQuality: 'connecting',
     rttMs: null,
+    recoveryAt: null,
   };
 
   const emit = () => {
@@ -44,20 +45,21 @@ export function createConnectionTelemetry({
     if (quality === state.stableQuality) {
       pendingQuality = null;
       pendingSince = 0;
+      state = { ...state, recoveryAt: null };
       emit();
       return;
     }
     if (state.stableQuality === 'connecting' && quality === 'poor' && !immediate) {
       pendingQuality = 'poor';
       pendingSince = now();
-      state = { ...state, stableQuality: 'degraded' };
+      state = { ...state, stableQuality: 'degraded', recoveryAt: null };
       emit();
       return;
     }
     if (state.stableQuality === 'connecting' || immediate) {
       pendingQuality = null;
       pendingSince = 0;
-      state = { ...state, stableQuality: quality };
+      state = { ...state, stableQuality: quality, recoveryAt: null };
       emit();
       return;
     }
@@ -67,13 +69,17 @@ export function createConnectionTelemetry({
     if (pendingQuality !== quality) {
       pendingQuality = quality;
       pendingSince = now();
+      state = {
+        ...state,
+        recoveryAt: quality === 'good' ? pendingSince + waitMs : null,
+      };
       emit();
       return;
     }
     if (now() - pendingSince >= waitMs) {
       pendingQuality = null;
       pendingSince = 0;
-      state = { ...state, stableQuality: quality };
+      state = { ...state, stableQuality: quality, recoveryAt: null };
     }
     emit();
   };
@@ -102,7 +108,7 @@ export function createConnectionTelemetry({
     setMode(nextMode, { fallback = false } = {}) {
       if (disposed || state.mode === nextMode) return;
       state = { ...state, mode: nextMode };
-      if (fallback) state.stableQuality = 'degraded';
+      if (fallback) state = { ...state, stableQuality: 'degraded', recoveryAt: null };
       emit();
     },
     getSnapshot() {

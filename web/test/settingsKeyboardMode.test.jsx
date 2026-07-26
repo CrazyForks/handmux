@@ -52,17 +52,17 @@ describe('Settings keyboard mode', () => {
 describe('Settings terminal refresh mode', () => {
   it('shows real-time first and selected by default', async () => {
     await render({ terminalTransport: 'live' });
-    const group = container.querySelector('[role="group"][aria-label="终端刷新模式"]');
+    const group = container.querySelector('[role="group"][aria-label="终端传输模式"]');
     const buttons = [...group.querySelectorAll('button')];
-    expect(buttons.map((button) => button.textContent)).toEqual(['实时更新', '定时刷新']);
+    expect(buttons.map((button) => button.textContent)).toEqual(['实时推送', '快照拉取']);
     expect(buttons.map((button) => button.getAttribute('aria-pressed'))).toEqual(['true', 'false']);
   });
 
   it('reports switching this browser to snapshot refresh', async () => {
     const onTerminalTransport = vi.fn();
     await render({ terminalTransport: 'live', onTerminalTransport });
-    const snapshot = [...container.querySelectorAll('[aria-label="终端刷新模式"] button')]
-      .find((button) => button.textContent === '定时刷新');
+    const snapshot = [...container.querySelectorAll('[aria-label="终端传输模式"] button')]
+      .find((button) => button.textContent === '快照拉取');
     act(() => snapshot.click());
     expect(onTerminalTransport).toHaveBeenCalledWith('snapshot');
   });

@@ -392,6 +392,35 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
   border-color: rgba(205,208,218,.18);
   background: rgba(105,109,120,.38);
 }
+.terminal-connection__mode {
+  font: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.terminal-transport-scrim {
+  position: absolute; inset: 0; z-index: 7;
+  margin: 0; padding: 0; border: 0; background: transparent;
+}
+.terminal-transport-popover {
+  position: absolute; z-index: 8;
+  top: calc(var(--terminal-overlay-top, 1px) + 30px); right: 9px;
+  width: min(280px, calc(100% - 18px));
+  padding: 11px 12px;
+  border: 1px solid rgba(235,235,245,.14);
+  border-radius: 9px;
+  background: rgba(35,36,40,.96);
+  color: rgba(235,235,245,.86);
+  box-shadow: 0 7px 24px rgba(0,0,0,.42);
+  font: 12px/1.45 -apple-system, system-ui, sans-serif;
+}
+.terminal-transport-popover__title { margin-bottom: 8px; color: #fff; font-weight: 650; }
+.terminal-transport-popover__row {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 2px 0; color: rgba(235,235,245,.55);
+}
+.terminal-transport-popover__row b { color: rgba(235,235,245,.9); font-weight: 550; }
+.terminal-transport-popover p { margin: 8px 0 0; }
+.terminal-transport-popover__recovery { color: rgba(100,174,255,.9); }
 .terminal-connection__quality { color: rgba(235,235,245,.52); }
 .terminal-connection.is-good .terminal-connection__quality {
   color: rgba(100,174,255,.84);

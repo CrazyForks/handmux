@@ -8,6 +8,12 @@ const CALLOUT_W = 200;
 export default function TerminalOverlays({
   ready,
   connectionInfo,
+  configuredTransport,
+  transportFallback,
+  transportOpen,
+  transportNow,
+  onTransportToggle,
+  onTransportClose,
   connected,
   inputFailure,
   dbgVisible,
@@ -25,9 +31,21 @@ export default function TerminalOverlays({
   selActionsRef,
   termRef,
 }) {
+  const recoverySeconds = connectionInfo?.recoveryAt
+    ? Math.max(0, Math.ceil((connectionInfo.recoveryAt - transportNow) / 1000))
+    : null;
+  const transportMessage = configuredTransport === 'snapshot'
+    ? t('terminal.transport_detail_manual')
+    : connectionInfo?.mode === 'live'
+      ? t('terminal.transport_detail_live')
+      : transportFallback === 'unavailable'
+        ? t('terminal.transport_detail_unavailable')
+        : t('terminal.transport_detail_fallback');
   return (
     <>
       {!ready && <LensBoot hint={t('boot.loading')} />}
+      {transportOpen && <button type="button" className="terminal-transport-scrim"
+        aria-label={t('common.close')} onClick={onTransportClose} />}
       {ready && connected && !scrollInfo && !selInfo && connectionInfo && (
         <div className={`terminal-connection is-${connectionInfo.quality}`}>
           <span className="terminal-connection__tag terminal-connection__quality">
@@ -35,9 +53,34 @@ export default function TerminalOverlays({
             {' '}
             {connectionInfo.rttMs == null ? '-- ms' : `${connectionInfo.rttMs} ms`}
           </span>
-          <span className={`terminal-connection__tag terminal-connection__mode is-${connectionInfo.mode}`}>
+          <button type="button"
+            className={`terminal-connection__tag terminal-connection__mode is-${connectionInfo.mode}`}
+            aria-expanded={transportOpen}
+            onClick={onTransportToggle}>
             {t(`terminal.transport_${connectionInfo.mode}`)}
-          </span>
+          </button>
+        </div>
+      )}
+      {transportOpen && connectionInfo && (
+        <div className="terminal-transport-popover" role="dialog"
+          aria-label={t('terminal.transport_detail_title')}>
+          <div className="terminal-transport-popover__title">{t('terminal.transport_detail_title')}</div>
+          <div className="terminal-transport-popover__row">
+            <span>{t('terminal.transport_detail_configured')}</span>
+            <b>{t(`settings.terminal_transport_${configuredTransport}`)}</b>
+          </div>
+          <div className="terminal-transport-popover__row">
+            <span>{t('terminal.transport_detail_current')}</span>
+            <b>{t(`settings.terminal_transport_${connectionInfo.mode}`)}</b>
+          </div>
+          <p>{transportMessage}</p>
+          {configuredTransport === 'live' && connectionInfo.mode === 'snapshot' && (
+            <p className="terminal-transport-popover__recovery">
+              {recoverySeconds == null
+                ? t('terminal.transport_detail_waiting')
+                : t('terminal.transport_detail_retry', { seconds: recoverySeconds })}
+            </p>
+          )}
         </div>
       )}
       {!connected && (

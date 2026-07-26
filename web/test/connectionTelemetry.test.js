@@ -67,12 +67,17 @@ describe('connection telemetry', () => {
     });
     telemetry.status('error');
     telemetry.sample({ ok: true, rttMs: 100 });
+    expect(telemetry.getSnapshot().recoveryAt).toBe(30000);
     now = 29999;
     telemetry.sample({ ok: true, rttMs: 100 });
     expect(telemetry.getSnapshot()).toMatchObject({ quality: 'good', stableQuality: 'degraded' });
     now = 30000;
     telemetry.sample({ ok: true, rttMs: 100 });
-    expect(telemetry.getSnapshot()).toMatchObject({ quality: 'good', stableQuality: 'good' });
+    expect(telemetry.getSnapshot()).toMatchObject({
+      quality: 'good',
+      stableQuality: 'good',
+      recoveryAt: null,
+    });
     telemetry.destroy();
   });
 });
