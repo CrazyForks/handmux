@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   fitRows, scrollDecision, topTarget, bottomTarget, cursorBufferLine,
-  bottomPadRows, followTarget,
+  bottomPadRows, followTarget, viewportAtTop,
 } from '../src/terminalViewport.js';
 
 describe('fitRows', () => {
@@ -20,6 +20,14 @@ describe('scrollDecision', () => {
   it('down: internal while below bottom, else forward', () => {
     expect(scrollDecision(5, 20, 1)).toBe('internal');
     expect(scrollDecision(20, 20, 1)).toBe('forward');
+  });
+});
+
+describe('viewportAtTop', () => {
+  it('trusts the clamped DOM edge over xterm row rounding', () => {
+    expect(viewportAtTop(1, 0)).toBe(true);
+    expect(viewportAtTop(0, 4)).toBe(false);
+    expect(viewportAtTop(0, undefined)).toBe(true);
   });
 });
 

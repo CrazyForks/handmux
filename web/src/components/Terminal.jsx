@@ -7,7 +7,7 @@ import { idleDelay } from '../cadence.js';
 import { initialConnection, nextConnection } from '../connection.js';
 import { scanDocLinks } from '../docDecorations.js';
 import {
-  fitRows, bottomPadRows, scrollDecision, cursorBufferLine, followTarget,
+  fitRows, bottomPadRows, scrollDecision, cursorBufferLine, followTarget, viewportAtTop,
 } from '../terminalViewport.js';
 import { trimCopy } from '../terminalSelection.js';
 import { useFlash } from '../hooks/useFlash.js';
@@ -314,7 +314,6 @@ const Terminal = forwardRef(function Terminal({
     // touchstart / new wheel gesture re-arms, so momentum on its own can never pull again.
     let pullArmed = true;
     let freezeTouchForHistoryPull = () => {};
-    let releaseWheelAfterHistoryPull = () => {};
     let lastAnsi = null;
     let lastCur = ''; // last frame's cursor key (row,col,vis) — a cursor-only move must still repaint
     let curInfo = null; // last frame's cursor {row,col,vis}, placed by placeCursor() after sizing settles
@@ -408,7 +407,10 @@ const Terminal = forwardRef(function Terminal({
     // stays fresh — but only a true at-bottom view follows new output (scrollToBottom); scrolled up a
     // little we refresh IN PLACE (keepPosition, no yank to the bottom). Past the zone = browsing → pause.
     const nearBottom = () => buf().baseY - buf().viewportY <= LIVE_SCROLL_SLACK;
-    const atTop = () => buf().viewportY === 0;
+    const atTop = () => viewportAtTop(
+      buf().viewportY,
+      liveHost.querySelector('.xterm-viewport')?.scrollTop,
+    );
     const pauseStreamForHistory = () => {
       if (!streamMode || historyMode) return;
       historyMode = true;
@@ -437,12 +439,15 @@ const Terminal = forwardRef(function Terminal({
       // faked round at the display layer. floor()·CHUNK+CHUNK is always strictly > depth, so it never stalls.
       const previousDepth = depth;
       const requestedDepth = Math.min(Math.floor(depth / CHUNK) * CHUNK + CHUNK, MAX_LINES);
+      const request = repaint(requestedDepth, true);
+      // repaint sets busy synchronously before its first await, so this immediately exposes the existing
+      // “拉取中” state in the history banner while the snapshot is in flight.
       showScrollPos();
-      repaint(requestedDepth, true).then((applied) => {
+      request.then((applied) => {
         // Commit pagination only after a successful response was accepted. A timeout, auth failure,
         // pane switch, or stale snapshot retries this same page instead of silently skipping 100 rows.
         if (applied && !disposed && depth === previousDepth) depth = requestedDepth;
-      }).finally(releaseWheelAfterHistoryPull);
+      });
     };
 
     let paneRows = 0; // the real pane's row count (drives auto-shrink, below)
@@ -740,7 +745,6 @@ const Terminal = forwardRef(function Terminal({
       onKeepKeyboard: () => onKeepKeyboardRef.current?.() ?? false,
     });
     freezeTouchForHistoryPull = touch.freezeHistoryGesture;
-    releaseWheelAfterHistoryPull = touch.releaseWheelHistoryGesture;
 
     // Rebuild the persistent doc-path UNDERLINE after each full repaint (the visual cue; the actual
     // tap is handled by the link provider above). Underline-only (no bg) so it can't trigger the

@@ -56,7 +56,6 @@ export function createTerminalTouchController({
   let wheelPending = 0;
   let wheelBusy = false;
   let wheelGestureActive = false;
-  let wheelHistoryFrozen = false;
   let wheelGestureTimer = null;
   const liveViewport = () => (
     host.querySelector('.terminal__live .xterm-viewport')
@@ -84,7 +83,6 @@ export function createTerminalTouchController({
     if (wheelGestureTimer) clearTimeout(wheelGestureTimer);
     wheelGestureTimer = null;
     wheelGestureActive = false;
-    wheelHistoryFrozen = false;
   };
   const keepWheelGestureAlive = () => {
     if (wheelGestureTimer) clearTimeout(wheelGestureTimer);
@@ -381,20 +379,8 @@ export function createTerminalTouchController({
       armHistoryPull();
     }
     keepWheelGestureAlive();
-    // A page load may finish while a trackpad's momentum is still emitting wheel events. Consume the
-    // rest of that same burst so it cannot act on the expanded xterm buffer. The quiet timer only
-    // unlocks the NEXT gesture; it never delays the current page request.
-    if (wheelHistoryFrozen) {
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
     showScrollPosition();
     maybePullMore();
-    if (wheelHistoryFrozen) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
   };
 
   const onPointerDown = (event) => {
@@ -426,13 +412,7 @@ export function createTerminalTouchController({
         historyPullFrozen = true;
         scrollVelocityY = 0;
       }
-      if (wheelGestureActive) wheelHistoryFrozen = true;
       stopFling();
-    },
-    releaseWheelHistoryGesture() {
-      // The expanded buffer is now anchored. Let the still-active trackpad gesture scroll through
-      // those newly loaded rows; Terminal's pullArmed guard still prevents a second page in this burst.
-      wheelHistoryFrozen = false;
     },
     dispose() {
       cancelLongPress();
