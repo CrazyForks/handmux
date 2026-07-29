@@ -3,6 +3,7 @@ import { SerializeAddon } from '@xterm/addon-serialize';
 import { cursorSeq, prepareLiveSeed } from './terminalSeed.js';
 
 const DEFAULT_RENDER_SCROLLBACK = 100;
+const MAX_TRAILING_BLANK_ROWS = 3;
 
 const write = (term, data) => new Promise((resolve) => term.write(data, resolve));
 
@@ -22,6 +23,62 @@ function mouseTracking(data, previous) {
     active = match[2] === 'h';
   }
   return { active, tail: ascii.slice(-12) };
+}
+
+function isDefaultBlankLine(line, cols) {
+  if (!line) return true;
+  for (let col = 0; col < cols; col += 1) {
+    const cell = line.getCell(col);
+    if (!cell) continue;
+    const chars = cell.getChars();
+    if ((chars && /[^ \t]/.test(chars)) || !cell.isAttributeDefault()) return false;
+  }
+  return true;
+}
+
+function normalProjection(term, serializer, renderScrollback, cursorVisible) {
+  const buffer = term.buffer.normal;
+  const bufferRows = Math.min(buffer.length, term.rows + renderScrollback);
+  const start = buffer.length - bufferRows;
+  const cursorLine = buffer.baseY + buffer.cursorY;
+  let lastRequiredLine = cursorLine;
+
+  // Only the source pane's live grid can contain the empty tail. Never trim history above baseY,
+  // and preserve any row with text or terminal attributes (notably Codex/Claude shaded padding).
+  for (let line = buffer.length - 1; line >= buffer.baseY; line -= 1) {
+    if (!isDefaultBlankLine(buffer.getLine(line), term.cols)) {
+      lastRequiredLine = Math.max(lastRequiredLine, line);
+      break;
+    }
+  }
+
+  const trailingBlankRows = buffer.length - 1 - lastRequiredLine;
+  if (trailingBlankRows <= MAX_TRAILING_BLANK_ROWS) {
+    return {
+      ansi: serializer.serialize({ excludeModes: true, scrollback: renderScrollback }),
+      bufferRows,
+      start,
+      cur: null,
+    };
+  }
+
+  const end = lastRequiredLine + MAX_TRAILING_BLANK_ROWS;
+  return {
+    // Range serialization keeps the selected blank rows but deliberately omits cursor restoration.
+    // Return the cursor from this same mirror revision so the visible projection can place it after
+    // adding its own top padding, without changing the exact pane-sized parser state.
+    ansi: serializer.serialize({
+      excludeModes: true,
+      range: { start, end },
+    }),
+    bufferRows: end - start + 1,
+    start,
+    cur: {
+      row: end - cursorLine,
+      col: buffer.cursorX,
+      vis: cursorVisible,
+    },
+  };
 }
 
 // An exact pane-sized xterm core with no DOM renderer. Raw tmux bytes always land here, so their
@@ -107,23 +164,26 @@ export function createTerminalStreamMirror({
       // projection, so repainting its entire accumulated scrollback on every output revision is wasted
       // work (and eventually blocks the browser for tens of milliseconds per frame). Keep one history
       // page beside the live grid; deeper scrolling already switches to the snapshot history loader.
-      const visibleBufferRows = active.type === 'alternate'
-        ? active.length
-        : Math.min(active.length, term.rows + renderScrollback);
-      const visibleBufferStart = active.type === 'alternate'
-        ? 0
-        : active.length - visibleBufferRows;
+      const projection = active.type === 'alternate'
+        ? {
+            ansi: serializer.serialize({ excludeModes: true, scrollback: renderScrollback }),
+            bufferRows: active.length,
+            start: 0,
+            cur: null,
+          }
+        : normalProjection(term, serializer, renderScrollback, cursor.visible);
       const mouseMode = term.modes?.mouseTrackingMode;
       return {
         revision,
-        ansi: serializer.serialize({ excludeModes: true, scrollback: renderScrollback }),
+        ansi: projection.ansi,
+        cur: projection.cur,
         cursorVisible: cursor.visible,
         alt: active.type === 'alternate',
         mouseAware: mouse.active || (!!mouseMode && mouseMode !== 'none'),
         boundaryLine: active.type === 'alternate'
           ? null
-          : Math.max(0, term.buffer.normal.baseY - visibleBufferStart),
-        bufferRows: visibleBufferRows,
+          : Math.max(0, term.buffer.normal.baseY - projection.start),
+        bufferRows: projection.bufferRows,
         paneRows: term.rows,
         paneCols: term.cols,
       };

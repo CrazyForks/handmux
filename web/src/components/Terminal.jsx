@@ -847,7 +847,9 @@ const Terminal = forwardRef(function Terminal({
       const pad = frame.alt ? 0 : Math.max(0, term.rows - frame.bufferRows);
       const padding = pad ? '\r\n'.repeat(pad) : '';
       const showCursor = frame.cursorVisible || forceCursorRef.current;
-      const cursorMode = showCursor ? '\x1b[?25h' : '\x1b[?25l';
+      const cursorMode = frame.cur
+        ? cursorSeq(frame.cur, term.rows, frame.bufferRows + pad, forceCursorRef.current)
+        : (showCursor ? '\x1b[?25h' : '\x1b[?25l');
       term.write(
         `\x1b[?1049l\x1b[?25l\x1b[0m\x1b[2J\x1b[3J\x1b[H${padding}${frame.ansi}${cursorMode}`,
         () => {

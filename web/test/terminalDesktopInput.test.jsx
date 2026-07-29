@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
         return seed && cursor ? {
           revision,
           ansi: seed.ansi,
+          cur: cursor,
           cursorVisible: !!cursor.vis,
           alt: !!seed.alt,
           mouseAware: !!seed.mouseAware,
