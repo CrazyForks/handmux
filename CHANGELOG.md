@@ -4,6 +4,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Changed
+- 降低实时推送在持续输出、多窗口和长时间浏览历史时的资源占用。
+
 ### Fixed
 - 修复实时推送连续输出时，历史与实时区域之间暂时缺少中间内容、输出结束后才恢复的问题。
 

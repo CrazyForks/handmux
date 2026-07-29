@@ -40,6 +40,7 @@ export function openTerminalStream({
   let pendingDataBytes = 0;
   let awaitingSeed = true;
   let streamReady = false;
+  let queuedDataBatch = null;
 
   const clearProbe = () => {
     if (probeTimer) clearInterval(probeTimer);
@@ -97,6 +98,7 @@ export function openTerminalStream({
     pendingDataBytes = 0;
     awaitingSeed = true;
     streamReady = false;
+    queuedDataBatch = null;
     clearConnectTimer();
     clearProbe();
     try { target?.close(); } catch { /* already closed */ }
@@ -108,6 +110,7 @@ export function openTerminalStream({
     pendingDataBytes = 0;
     awaitingSeed = true;
     streamReady = false;
+    queuedDataBatch = null;
     if (socket?.readyState === WebSocketCtor.OPEN) {
       onStatus?.('connecting');
       armConnectTimer(socket);
@@ -131,6 +134,7 @@ export function openTerminalStream({
     pendingDataBytes = 0;
     awaitingSeed = true;
     streamReady = false;
+    queuedDataBatch = null;
     armConnectTimer(nextSocket);
     nextSocket.binaryType = 'arraybuffer';
     nextSocket.onopen = () => {
@@ -156,6 +160,9 @@ export function openTerminalStream({
           }
           return;
         }
+        // A protocol frame is an ordering boundary. Binary output received after it must not merge
+        // into a batch that will be parsed before it.
+        queuedDataBatch = null;
         if (awaitingSeed && message.type !== 'seed') return;
         if (message.type === 'seed') {
           awaitingSeed = false;
@@ -168,19 +175,42 @@ export function openTerminalStream({
           requestFreshSeed();
           return;
         }
+        if (queuedDataBatch?.epoch === messageEpoch) {
+          queuedDataBatch.chunks.push(event.data);
+          queuedDataBatch.byteLength += event.data.byteLength;
+          return;
+        }
       }
       const frameEpoch = messageEpoch;
       const queuedAt = Date.now();
-      const dataBytes = typeof event.data === 'string' ? 0 : event.data.byteLength;
+      const dataBatch = typeof event.data === 'string' ? null : {
+        epoch: frameEpoch,
+        queuedAt,
+        chunks: [event.data],
+        byteLength: event.data.byteLength,
+      };
+      if (dataBatch) queuedDataBatch = dataBatch;
       writes = writes.then(async () => {
+        if (dataBatch && queuedDataBatch === dataBatch) queuedDataBatch = null;
         if (closed || paused || frameEpoch !== messageEpoch) return;
-        pendingDataBytes = Math.max(0, pendingDataBytes - dataBytes);
-        if (streamReady && dataBytes > 0 && Date.now() - queuedAt > maxFrameLagMs) {
+        pendingDataBytes = Math.max(0, pendingDataBytes - (dataBatch?.byteLength ?? 0));
+        if (streamReady && dataBatch && Date.now() - dataBatch.queuedAt > maxFrameLagMs) {
           requestFreshSeed();
           return;
         }
-        if (typeof event.data !== 'string') {
-          await onData?.(new Uint8Array(event.data));
+        if (dataBatch) {
+          if (dataBatch.chunks.length === 1) {
+            await onData?.(new Uint8Array(dataBatch.chunks[0]));
+            return;
+          }
+          const joined = new Uint8Array(dataBatch.byteLength);
+          let offset = 0;
+          for (const chunk of dataBatch.chunks) {
+            const bytes = new Uint8Array(chunk);
+            joined.set(bytes, offset);
+            offset += bytes.byteLength;
+          }
+          await onData?.(joined);
           return;
         }
         if (message.type === 'seed') await onSeed?.(message);
@@ -224,6 +254,7 @@ export function openTerminalStream({
       pendingDataBytes = 0;
       awaitingSeed = true;
       streamReady = false;
+      queuedDataBatch = null;
       clearReconnectTimer();
       clearConnectTimer();
       clearProbe();
@@ -246,6 +277,7 @@ export function openTerminalStream({
       pendingDataBytes = 0;
       awaitingSeed = true;
       streamReady = false;
+      queuedDataBatch = null;
       if (socket?.readyState === WebSocketCtor.OPEN) {
         onStatus?.('connecting');
         armConnectTimer(socket);
@@ -262,6 +294,7 @@ export function openTerminalStream({
       messageEpoch += 1;
       pendingDataBytes = 0;
       streamReady = false;
+      queuedDataBatch = null;
       clearReconnectTimer();
       detachSocket();
       return writes;

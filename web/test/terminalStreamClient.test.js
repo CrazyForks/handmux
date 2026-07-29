@@ -262,6 +262,66 @@ describe('openTerminalStream', () => {
     vi.useRealTimers();
   });
 
+  it('coalesces adjacent output queued behind an in-flight parser write', async () => {
+    const blocked = {};
+    blocked.promise = new Promise((resolve) => { blocked.resolve = resolve; });
+    let dataCount = 0;
+    const onData = vi.fn(() => {
+      dataCount += 1;
+      return dataCount === 1 ? blocked.promise : undefined;
+    });
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+      onData,
+    });
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    ws.message(JSON.stringify({ type: 'seed' }));
+    ws.message(JSON.stringify({ type: 'ready' }));
+    for (let i = 0; i < 6; i += 1) await Promise.resolve();
+
+    ws.message(new Uint8Array([1]).buffer);
+    for (let i = 0; i < 4; i += 1) await Promise.resolve();
+    expect(onData).toHaveBeenCalledTimes(1);
+    ws.message(new Uint8Array([2]).buffer);
+    ws.message(new Uint8Array([3, 4]).buffer);
+    ws.message(new Uint8Array([5]).buffer);
+
+    blocked.resolve();
+    await vi.waitFor(() => expect(onData).toHaveBeenCalledTimes(2));
+    expect([...onData.mock.calls[0][0]]).toEqual([1]);
+    expect([...onData.mock.calls[1][0]]).toEqual([2, 3, 4, 5]);
+    stream.close();
+  });
+
+  it('never coalesces output across a ready protocol boundary', async () => {
+    const seed = {};
+    seed.promise = new Promise((resolve) => { seed.resolve = resolve; });
+    const events = [];
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+      onSeed: () => seed.promise,
+      onData: (data) => events.push([...data]),
+      onReady: () => events.push('ready'),
+    });
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    ws.message(JSON.stringify({ type: 'seed' }));
+    await Promise.resolve();
+    ws.message(new Uint8Array([1]).buffer);
+    ws.message(new Uint8Array([2]).buffer);
+    ws.message(JSON.stringify({ type: 'ready' }));
+    ws.message(new Uint8Array([3]).buffer);
+
+    seed.resolve();
+    await vi.waitFor(() => expect(events).toEqual([[1, 2], 'ready', [3]]));
+    stream.close();
+  });
+
   it('resyncs on the same socket when queued output exceeds the byte limit', async () => {
     const seed = {};
     seed.promise = new Promise((resolve) => { seed.resolve = resolve; });

@@ -628,14 +628,16 @@ describe('desktop terminal input', () => {
   });
 
   it('pauses only past the 15-line live zone and resyncs when returning to it', async () => {
+    vi.useFakeTimers();
     let callbacks;
     const pause = vi.fn();
+    const suspend = vi.fn();
     const resync = vi.fn();
     mocks.openTerminalStream.mockImplementation((options) => {
       callbacks = options;
       return {
         pause,
-        suspend: vi.fn(),
+        suspend,
         resync,
         close: vi.fn(() => Promise.resolve()),
       };
@@ -668,7 +670,8 @@ describe('desktop terminal input', () => {
       cur: { row: 0, col: 0, vis: true },
     }));
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      vi.advanceTimersByTime(100);
+      await Promise.resolve();
     });
     const viewport = view.container.querySelector('.terminal__live .xterm-viewport');
     term.buffer.active.baseY = 10;
@@ -689,6 +692,10 @@ describe('desktop terminal input', () => {
     act(() => viewport.dispatchEvent(new Event('scroll')));
     expect(pause).toHaveBeenCalledOnce();
     expect(resync).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(9999));
+    expect(suspend).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(suspend).toHaveBeenCalledOnce();
 
     term.buffer.active.viewportY = 85;
     act(() => viewport.dispatchEvent(new Event('scroll')));

@@ -104,6 +104,9 @@ export class PaneControlStream {
     if (line.subarray(0, 8).toString('ascii') === '%output ') {
       const split = line.indexOf(0x20, 8);
       if (split < 0 || line.subarray(8, split).toString('ascii') !== this.pane) return;
+      // Paused/capturing output is intentionally discarded. Avoid decoding and allocating a second
+      // byte buffer for data that no client will consume.
+      if (this.phase !== 'buffer' && this.phase !== 'live') return;
       const output = decodeControlData(line.subarray(split + 1));
       if (this.phase === 'buffer') {
         if (this.pendingOutputBytes + output.length > MAX_BUFFERED_BYTES) {

@@ -18,6 +18,7 @@ import { openXterm } from '../terminalXterm.js';
 import { createTerminalSelectionController } from '../terminalSelectionController.js';
 import { createTerminalTouchController } from '../terminalTouchController.js';
 import { createConnectionTelemetry } from '../connectionTelemetry.js';
+import { streamPaintDelay } from '../streamPaintCadence.js';
 import { useBackButton } from '../hooks/useBackButton.js';
 
 const LIVE_MARGIN = 20; // capture this many rows beyond the viewport so a small scroll-up has slack
@@ -27,6 +28,7 @@ const MAX_LINES = 5000; // backend cap on capture depth
 const LIVE_SCROLL_SLACK = 15; // scrolled up within this many lines of the bottom still counts as "live"
                               // (keep polling + follow new output); scroll up further to browse/pause
 const STREAM_BACKGROUND_RESET_MS = 10000;
+const STREAM_HISTORY_SUSPEND_MS = 10000;
 
 // Snapshot mode rewrites capture-pane frames. Stream mode parses raw tmux output in an exact
 // pane-sized off-screen core and paints coalesced revisions into this one visible xterm. Scrolling
@@ -285,11 +287,14 @@ const Terminal = forwardRef(function Terminal({
     let streamMode = stream;
     let streamFallbackTimer = null;
     let streamBackgroundTimer = null;
+    let streamHistoryTimer = null;
     let streamBackgroundSuspended = false;
     let hiddenAt = null;
     let streamMirror = null;
     let streamMirrorReady = false;
     let streamPaintRaf = null;
+    let streamPaintTimer = null;
+    let lastStreamPaintAt = null;
     let streamPaintBusy = false;
     let streamPaintQueued = false;
     let scheduleStreamRender = () => {};
@@ -431,6 +436,11 @@ const Terminal = forwardRef(function Terminal({
       historyMode = true;
       streamCursorOwned = false;
       streamClient?.pause();
+      if (streamHistoryTimer) clearTimeout(streamHistoryTimer);
+      streamHistoryTimer = setTimeout(() => {
+        streamHistoryTimer = null;
+        if (!disposed && streamMode && historyMode) streamClient?.suspend();
+      }, STREAM_HISTORY_SUSPEND_MS);
       setStreamStatus('paused');
     };
     // Pull a deeper history slice when sitting at the top. Driven from term.onScroll, the touch handler AND
@@ -827,6 +837,7 @@ const Terminal = forwardRef(function Terminal({
       if (!frame) return;
       streamPaintBusy = true;
       streamPaintQueued = false;
+      lastStreamPaintAt = Date.now();
       const firstFrame = !seeded;
       const keepPosition = !firstFrame && !atBottom();
       const anchorFromBottom = keepPosition ? buf().length - buf().viewportY : 0;
@@ -875,8 +886,25 @@ const Terminal = forwardRef(function Terminal({
         },
       );
     };
-    scheduleStreamRender = () => {
-      if (disposed || historyMode || streamPaintRaf != null) return;
+    scheduleStreamRender = ({ immediate = false } = {}) => {
+      if (disposed || historyMode) return;
+      if (immediate && streamPaintTimer != null) {
+        clearTimeout(streamPaintTimer);
+        streamPaintTimer = null;
+      }
+      if (streamPaintRaf != null || streamPaintTimer != null) return;
+      const delay = streamPaintDelay({
+        now: Date.now(),
+        lastPaintAt: lastStreamPaintAt,
+        immediate,
+      });
+      if (delay > 0) {
+        streamPaintTimer = setTimeout(() => {
+          streamPaintTimer = null;
+          scheduleStreamRender();
+        }, delay);
+        return;
+      }
       streamPaintRaf = requestAnimationFrame(paintStreamFrame);
     };
 
@@ -928,7 +956,7 @@ const Terminal = forwardRef(function Terminal({
       streamMirrorReady = true;
       if (!recoveringInBackground) {
         scheduleFit();
-        scheduleStreamRender();
+        scheduleStreamRender({ immediate: true });
         setTimeout(() => {
           if (!disposed && streamMirrorReady && !revealed) scheduleStreamRender();
         }, 400);
@@ -1111,11 +1139,19 @@ const Terminal = forwardRef(function Terminal({
       streamMode = false;
       streamRecoveryInProgress = false;
       historyMode = false;
+      if (streamHistoryTimer) {
+        clearTimeout(streamHistoryTimer);
+        streamHistoryTimer = null;
+      }
       streamMirrorReady = false;
       streamPaintQueued = false;
       if (streamPaintRaf != null) {
         cancelAnimationFrame(streamPaintRaf);
         streamPaintRaf = null;
+      }
+      if (streamPaintTimer != null) {
+        clearTimeout(streamPaintTimer);
+        streamPaintTimer = null;
       }
       const drained = streamClient?.suspend?.();
       setStreamStatus('off');
@@ -1157,7 +1193,7 @@ const Terminal = forwardRef(function Terminal({
           setTransportFallback(null);
           setConn(nextConnection(connState, 'reset'));
           scheduleFit();
-          scheduleStreamRender();
+          scheduleStreamRender({ immediate: true });
         }
         return;
       }
@@ -1211,6 +1247,10 @@ const Terminal = forwardRef(function Terminal({
     const resumeStream = () => {
       if (!streamMode || disposed) return;
       historyMode = false;
+      if (streamHistoryTimer) {
+        clearTimeout(streamHistoryTimer);
+        streamHistoryTimer = null;
+      }
       streamMirrorReady = false;
       streamCursorOwned = false;
       liveBoundaryLine = null;
@@ -1328,6 +1368,7 @@ const Terminal = forwardRef(function Terminal({
       if (keyboardSettleTimer) clearTimeout(keyboardSettleTimer);
       if (streamFallbackTimer) clearTimeout(streamFallbackTimer);
       if (streamBackgroundTimer) clearTimeout(streamBackgroundTimer);
+      if (streamHistoryTimer) clearTimeout(streamHistoryTimer);
       streamClient?.close();
       streamMirror?.dispose();
       streamMirror = null;
@@ -1338,6 +1379,7 @@ const Terminal = forwardRef(function Terminal({
       sub.dispose();
       liveViewport?.removeEventListener('scroll', handleBufferScroll);
       if (streamPaintRaf != null) cancelAnimationFrame(streamPaintRaf);
+      if (streamPaintTimer != null) clearTimeout(streamPaintTimer);
       telemetry.destroy();
       for (const { deco, marker } of decosRef.current) { deco.dispose(); marker.dispose(); }
       decosRef.current = [];
