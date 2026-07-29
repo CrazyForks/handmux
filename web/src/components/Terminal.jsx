@@ -928,6 +928,7 @@ const Terminal = forwardRef(function Terminal({
       streamMirrorReady = true;
       if (!recoveringInBackground) {
         scheduleFit();
+        scheduleStreamRender();
         setTimeout(() => {
           if (!disposed && streamMirrorReady && !revealed) scheduleStreamRender();
         }, 400);

@@ -576,6 +576,57 @@ describe('desktop terminal input', () => {
     expect(term.write).not.toHaveBeenCalledWith(move, expect.any(Function));
   });
 
+  it('repaints a completed resync after the terminal is already visible', async () => {
+    let callbacks;
+    mocks.openTerminalStream.mockImplementation((options) => {
+      callbacks = options;
+      return {
+        pause: vi.fn(),
+        suspend: vi.fn(),
+        resync: vi.fn(),
+        close: vi.fn(() => Promise.resolve()),
+      };
+    });
+    render(<Terminal pane="%1" desktop stream />);
+    await vi.waitFor(() => expect(callbacks).toBeDefined());
+    await act(async () => callbacks.onSeed({
+      ansi: 'initial\n',
+      width: 80,
+      height: 24,
+      historyLines: 0,
+      alt: false,
+      mouseAware: false,
+    }));
+    await act(async () => callbacks.onReady({ cur: { row: 0, col: 0, vis: true } }));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
+    const term = mocks.instances[0];
+    expect(term.write).toHaveBeenCalledWith(
+      expect.stringContaining('initial\n'),
+      expect.any(Function),
+    );
+    term.write.mockClear();
+
+    await act(async () => callbacks.onSeed({
+      ansi: 'resynced\n',
+      width: 80,
+      height: 24,
+      historyLines: 0,
+      alt: false,
+      mouseAware: false,
+    }));
+    await act(async () => callbacks.onReady({ cur: { row: 0, col: 0, vis: true } }));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(term.write).toHaveBeenCalledWith(
+      expect.stringContaining('resynced\n'),
+      expect.any(Function),
+    );
+  });
+
   it('pauses only past the 15-line live zone and resyncs when returning to it', async () => {
     let callbacks;
     const pause = vi.fn();
