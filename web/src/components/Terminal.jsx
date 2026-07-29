@@ -149,7 +149,7 @@ const Terminal = forwardRef(function Terminal({
   // The effect's scheduleFit, surfaced so the font controls (below) can re-fit the row count
   // after changing the size from outside the effect scope.
   const fitRef = useRef(null);
-  const settleKeyboardFitRef = useRef(null);
+  const settleLayoutFitRef = useRef(null);
   // One-shot flag for the pager's "适配高度" button: the next fit() sizes the font so the whole pane fills
   // the screen (see the fit-to-fill block in fit()). Set here, consumed in effect scope.
   const fitScreenPendingRef = useRef(false);
@@ -235,7 +235,9 @@ const Terminal = forwardRef(function Terminal({
     // animation. inset can reach zero one frame before the terminal has regained its final height.
     if (inset === 0 && prev > 0) {
       collapseKeepCursorRef.current = true;
-      (settleKeyboardFitRef.current ?? fitRef.current)?.();
+      (settleLayoutFitRef.current ?? fitRef.current)?.();
+    } else if (stream) {
+      (settleLayoutFitRef.current ?? fitRef.current)?.();
     } else {
       fitRef.current?.();
     }
@@ -243,7 +245,9 @@ const Terminal = forwardRef(function Terminal({
   }, [inset]);
 
   // Adding/removing either conditional scrollbar gutter changes the grid's usable box.
-  useEffect(() => { fitRef.current?.(); }, [xOverflow, yOverflow]);
+  useEffect(() => {
+    (stream ? settleLayoutFitRef.current : fitRef.current)?.();
+  }, [stream, xOverflow, yOverflow]);
 
   useEffect(() => {
     let disposed = false;
@@ -297,6 +301,12 @@ const Terminal = forwardRef(function Terminal({
     let lastStreamPaintAt = null;
     let streamPaintBusy = false;
     let streamPaintQueued = false;
+    let streamLayoutSettled = !streamMode;
+    let streamSeedNeedsFit = true;
+    let fitGeneration = 0;
+    let fitRaf = null;
+    let layoutSettleGeneration = 0;
+    let layoutSettleRaf = null;
     let scheduleStreamRender = () => {};
     let historyMode = false;
     let seeded = false;
@@ -585,16 +595,18 @@ const Terminal = forwardRef(function Terminal({
         res();
       }));
     };
-    const settleFrame = () => {
+    const settleFrame = (generation = fitGeneration) => {
+      if (generation !== fitGeneration) return Promise.resolve();
       if (streamMode) {
-        if (streamMirrorReady) scheduleStreamRender();
+        streamLayoutSettled = true;
+        if (streamMirrorReady) scheduleStreamRender({ immediate: !revealed });
         return Promise.resolve();
       }
       return reframeForRows();
     };
 
-    const fit = (pass = 0) => {
-      if (disposed || !elRef.current || !term.rows) return;
+    const fit = (pass = 0, generation = fitGeneration) => {
+      if (disposed || generation !== fitGeneration || !elRef.current || !term.rows) return;
       const overlayHost = elRef.current.parentElement;
       const hostRect = overlayHost?.getBoundingClientRect();
       if (overlayHost && hostRect) {
@@ -623,7 +635,12 @@ const Terminal = forwardRef(function Terminal({
       );
       setXOverflow((current) => (current === hasXOverflow ? current : hasXOverflow));
       syncYScrollbar();
-      if (!avail || !curH) return;
+      if (!avail || !curH) {
+        // A newly mounted/returning PWA can expose a zero-sized grid for a frame. There is no new layout
+        // to commit yet, so keep the last stable grid live instead of leaving stream paints paused forever.
+        if (streamMode) settleFrame(generation);
+        return;
+      }
       // Publish the visible height so absolutely-positioned overlays (pager, top banner) anchor to the
       // on-screen slice instead of the full container (whose top is clipped off-screen with the keyboard up).
       overlayHost?.style.setProperty('--vis-h', `${avail}px`);
@@ -642,7 +659,11 @@ const Terminal = forwardRef(function Terminal({
         const est = Math.max(8, Math.min(40, Math.round(cur * (fullAvailRef.current || avail) / (paneRows * cellH))));
         fitScreenVerifyRef.current = true;
         fontRef.current = est; setFont(est); // pin manual so auto-shrink won't fight it
-        if (est !== cur) { term.options.fontSize = est; requestAnimationFrame(() => fit(pass)); return; }
+        if (est !== cur) {
+          term.options.fontSize = est;
+          requestAnimationFrame(() => fit(pass, generation));
+          return;
+        }
       }
       if (fitScreenVerifyRef.current && paneRows) {
         const rows = Math.floor((fullAvailRef.current || avail) / cellH); // rows that actually fit now
@@ -650,7 +671,7 @@ const Terminal = forwardRef(function Terminal({
         if (rows < paneRows && cur > 8) { // a row is still cut → shrink one and re-check
           fontRef.current = cur - 1; setFont(cur - 1);
           term.options.fontSize = cur - 1;
-          requestAnimationFrame(() => fit(pass));
+          requestAnimationFrame(() => fit(pass, generation));
           return;
         }
         fitScreenVerifyRef.current = false; // all paneRows fit (or hit the min font) → settle
@@ -666,7 +687,7 @@ const Terminal = forwardRef(function Terminal({
           const next = Math.max(6, Math.round(cur * (avail / needed)));
           if (next < cur) {
             term.options.fontSize = next;
-            requestAnimationFrame(() => fit(pass + 1));
+            requestAnimationFrame(() => fit(pass + 1, generation));
             return;
           }
         }
@@ -681,7 +702,7 @@ const Terminal = forwardRef(function Terminal({
         // poll (the window-switch half-screen bug). Hidden too, so the cursor doesn't flash at the bottom
         // before placeCursor re-places it.
         term.write(`\x1b[?25l\x1b[${term.rows};1H`, () => {
-          if (disposed) return;
+          if (disposed || generation !== fitGeneration) return;
           term.resize(term.cols, want);
           syncYScrollbar();
           // Full-screen app scroll after a resize:
@@ -703,26 +724,78 @@ const Terminal = forwardRef(function Terminal({
           // preserves the visible buffer line across that resize; forcing the bottom here immediately
           // fired onScroll → resumeStream and made the first swipe flash back to live.
           } else if (!historyMode) term.scrollToBottom();
-          if (pass < 4) requestAnimationFrame(() => fit(pass + 1));
+          if (pass < 4) requestAnimationFrame(() => fit(pass + 1, generation));
           // last pass → grid settled: re-pad short content for the FINAL row count, THEN cursor + reveal
-          else settleFrame().then(() => { if (!disposed) { placeCursor(); if (!streamMode) reveal(); } });
+          else settleFrame(generation).then(() => {
+            if (!disposed && generation === fitGeneration) {
+              placeCursor();
+              if (!streamMode) reveal();
+            }
+          });
         });
         return;
       }
       // grid already matched the container (no resize) — reframe is a no-op here, but stays correct if the
       // seed had been padded for a different count. Place the cursor + unhide the now-complete frame.
-      settleFrame().then(() => { if (!disposed) { placeCursor(); if (!streamMode) reveal(); } });
+      settleFrame(generation).then(() => {
+        if (!disposed && generation === fitGeneration) {
+          placeCursor();
+          if (!streamMode) reveal();
+        }
+      });
     };
-    const scheduleFit = () => requestAnimationFrame(() => fit(0));
+    const scheduleFit = () => {
+      const generation = ++fitGeneration;
+      if (streamMode) streamLayoutSettled = false;
+      if (fitRaf != null) cancelAnimationFrame(fitRaf);
+      fitRaf = requestAnimationFrame(() => {
+        fitRaf = null;
+        fit(0, generation);
+      });
+    };
     fitRef.current = scheduleFit; // let the imperative font controls trigger a re-fit
-    let keyboardSettleTimer = null;
-    settleKeyboardFitRef.current = () => {
-      scheduleFit();
-      requestAnimationFrame(() => requestAnimationFrame(scheduleFit));
-      if (keyboardSettleTimer) clearTimeout(keyboardSettleTimer);
-      keyboardSettleTimer = setTimeout(scheduleFit, 350);
+
+    // visualViewport emits several intermediate sizes while the software keyboard animates. Re-fitting
+    // each one exposes xterm's resized-but-not-yet-repainted grid for a frame. Keep the last committed
+    // bottom-anchored frame, let the mirror continue consuming output, and commit only after both the
+    // reported inset and the viewport geometry stay unchanged across two frame intervals.
+    const scheduleSettledFit = () => {
+      const generation = ++layoutSettleGeneration;
+      // Invalidate an already queued/running fit immediately. Waiting for the next stable signature to call
+      // scheduleFit() is too late: the old fit could otherwise commit an intermediate keyboard height first.
+      fitGeneration += 1;
+      if (fitRaf != null) {
+        cancelAnimationFrame(fitRaf);
+        fitRaf = null;
+      }
+      if (streamMode) streamLayoutSettled = false;
+      if (layoutSettleRaf != null) cancelAnimationFrame(layoutSettleRaf);
+      let previousSignature = '';
+      let stableIntervals = 0;
+      const waitForStableViewport = () => {
+        if (disposed || generation !== layoutSettleGeneration) return;
+        const viewport = window.visualViewport;
+        const signature = [
+          Math.round(insetRef.current),
+          Math.round(viewport?.height ?? window.innerHeight),
+          Math.round(viewport?.offsetTop ?? 0),
+        ].join(':');
+        stableIntervals = signature === previousSignature ? stableIntervals + 1 : 0;
+        previousSignature = signature;
+        if (stableIntervals >= 2) {
+          layoutSettleRaf = null;
+          scheduleFit();
+          return;
+        }
+        layoutSettleRaf = requestAnimationFrame(waitForStableViewport);
+      };
+      layoutSettleRaf = requestAnimationFrame(waitForStableViewport);
     };
-    const onResize = () => scheduleFit();
+    settleLayoutFitRef.current = scheduleSettledFit;
+    const onResize = () => {
+      if (streamMode) scheduleSettledFit();
+      else scheduleFit();
+    };
     window.addEventListener('resize', onResize);
     window.addEventListener('orientationchange', onResize);
     // The bottom dock's height changes (swiping to the composer, the composer growing to multi-line)
@@ -740,7 +813,7 @@ const Terminal = forwardRef(function Terminal({
           if (!h) return;
           const grew = h > lastFitH;
           lastFitH = h;
-          if (grew) scheduleFit();
+          if (grew) onResize();
         })
       : null;
     if (ro && elRef.current) ro.observe(elRef.current);
@@ -827,7 +900,8 @@ const Terminal = forwardRef(function Terminal({
 
     const paintStreamFrame = () => {
       streamPaintRaf = null;
-      if (disposed || !streamMode || !streamMirrorReady || historyMode || !streamMirror
+      if (disposed || !streamMode || !streamMirrorReady || !streamLayoutSettled
+        || historyMode || !streamMirror
         || selActiveRef.current) return;
       if (streamPaintBusy) {
         streamPaintQueued = true;
@@ -835,6 +909,7 @@ const Terminal = forwardRef(function Terminal({
       }
       const frame = streamMirror.snapshot();
       if (!frame) return;
+      const layoutGeneration = fitGeneration;
       streamPaintBusy = true;
       streamPaintQueued = false;
       lastStreamPaintAt = Date.now();
@@ -854,6 +929,10 @@ const Terminal = forwardRef(function Terminal({
         `\x1b[?1049l\x1b[?25l\x1b[0m\x1b[2J\x1b[3J\x1b[H${padding}${frame.ansi}${cursorMode}`,
         () => {
           if (disposed || !streamMode) {
+            streamPaintBusy = false;
+            return;
+          }
+          if (!streamLayoutSettled || layoutGeneration !== fitGeneration) {
             streamPaintBusy = false;
             return;
           }
@@ -889,7 +968,7 @@ const Terminal = forwardRef(function Terminal({
       );
     };
     scheduleStreamRender = ({ immediate = false } = {}) => {
-      if (disposed || historyMode) return;
+      if (disposed || historyMode || !streamLayoutSettled) return;
       if (immediate && streamPaintTimer != null) {
         clearTimeout(streamPaintTimer);
         streamPaintTimer = null;
@@ -924,6 +1003,10 @@ const Terminal = forwardRef(function Terminal({
       lastHash = null;
       depth = Math.max(liveDepth(), Number(frame.historyLines) || 0);
       if (!recoveringInBackground) {
+        streamSeedNeedsFit = !revealed
+          || frame.width !== term.cols
+          || frame.height !== paneRows
+          || !!frame.alt !== altScreenRef.current;
         paneRows = frame.height;
         altScreenRef.current = !!frame.alt;
         mouseAwareRef.current = !!frame.mouseAware;
@@ -936,7 +1019,6 @@ const Terminal = forwardRef(function Terminal({
         lastCur = '';
         curInfo = null;
         setPaused(false);
-        scheduleFit();
       }
     };
 
@@ -957,10 +1039,15 @@ const Terminal = forwardRef(function Terminal({
       if (disposed) return;
       streamMirrorReady = true;
       if (!recoveringInBackground) {
-        scheduleFit();
-        scheduleStreamRender({ immediate: true });
+        if (streamSeedNeedsFit) scheduleFit();
+        else scheduleStreamRender({ immediate: true });
         setTimeout(() => {
-          if (!disposed && streamMirrorReady && !revealed) scheduleStreamRender();
+          if (!disposed && streamMirrorReady && !revealed) {
+            // Geometry can be temporarily unmeasurable while a newly-mounted PWA is becoming visible.
+            // Keep this as a black-screen safety net only; normal first paint is released by fit().
+            streamLayoutSettled = true;
+            scheduleStreamRender({ immediate: true });
+          }
         }, 400);
       }
     };
@@ -1195,7 +1282,6 @@ const Terminal = forwardRef(function Terminal({
           setTransportFallback(null);
           setConn(nextConnection(connState, 'reset'));
           scheduleFit();
-          scheduleStreamRender({ immediate: true });
         }
         return;
       }
@@ -1359,7 +1445,7 @@ const Terminal = forwardRef(function Terminal({
     return () => {
       disposed = true;
       fitRef.current = null;
-      settleKeyboardFitRef.current = null;
+      settleLayoutFitRef.current = null;
       wakeRef.current = null;
       resyncRef.current = null;
       refreshDecosRef.current = null;
@@ -1367,7 +1453,10 @@ const Terminal = forwardRef(function Terminal({
       stopFlingRef.current = null;
       selection.dispose();
       if (timer) clearTimeout(timer);
-      if (keyboardSettleTimer) clearTimeout(keyboardSettleTimer);
+      fitGeneration += 1;
+      layoutSettleGeneration += 1;
+      if (fitRaf != null) cancelAnimationFrame(fitRaf);
+      if (layoutSettleRaf != null) cancelAnimationFrame(layoutSettleRaf);
       if (streamFallbackTimer) clearTimeout(streamFallbackTimer);
       if (streamBackgroundTimer) clearTimeout(streamBackgroundTimer);
       if (streamHistoryTimer) clearTimeout(streamHistoryTimer);

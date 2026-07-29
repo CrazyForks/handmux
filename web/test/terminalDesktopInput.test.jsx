@@ -321,6 +321,56 @@ describe('desktop terminal input', () => {
     expect(view.container.querySelector('.terminal').classList.contains('desktop-input')).toBe(true);
   });
 
+  it('reveals the first live frame only after its final fitted grid is painted', async () => {
+    vi.useFakeTimers();
+    let callbacks;
+    mocks.openTerminalStream.mockImplementation((options) => {
+      callbacks = options;
+      return {
+        pause: vi.fn(),
+        suspend: vi.fn(),
+        resync: vi.fn(),
+        close: vi.fn(() => Promise.resolve()),
+      };
+    });
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function getRect() {
+        const height = this.classList?.contains('xterm-screen')
+          ? (mocks.instances[0]?.rows || 24) * 10
+          : 400;
+        return {
+          x: 0, y: 0, top: 0, left: 0, right: 800, bottom: height,
+          width: 800, height, toJSON() {},
+        };
+      });
+    const view = render(<Terminal pane="%1" stream />);
+    await vi.waitFor(() => expect(callbacks).toBeDefined());
+
+    await act(async () => callbacks.onSeed({
+      ansi: 'first-live-frame\n',
+      width: 80,
+      height: 24,
+      historyLines: 0,
+      alt: false,
+      mouseAware: false,
+    }));
+    await act(async () => callbacks.onReady({ cur: { row: 0, col: 0, vis: true } }));
+
+    const term = mocks.instances[0];
+    expect(view.container.querySelector('.terminal').classList.contains('terminal--loading')).toBe(true);
+    expect(term.write.mock.calls.some(([data]) => data.includes('first-live-frame'))).toBe(false);
+
+    await act(async () => {
+      vi.advanceTimersByTime(120);
+      await Promise.resolve();
+    });
+
+    expect(term.rows).toBe(40);
+    expect(term.write.mock.calls.some(([data]) => data.includes('first-live-frame'))).toBe(true);
+    expect(view.container.querySelector('.terminal').classList.contains('terminal--loading')).toBe(false);
+    rect.mockRestore();
+  });
+
   it('falls back to snapshot polling when the real-time stream cannot recover', async () => {
     vi.useFakeTimers();
     let callbacks;
@@ -464,7 +514,7 @@ describe('desktop terminal input', () => {
     expect(view.container.querySelector('.terminal-connection').textContent).toContain('实时');
   });
 
-  it('refits after the iOS keyboard collapse animation reaches its final height', async () => {
+  it('coalesces iOS keyboard animation sizes and commits only the final stable fit', async () => {
     vi.useFakeTimers();
     let callbacks;
     mocks.openTerminalStream.mockImplementation((options) => {
@@ -504,10 +554,27 @@ describe('desktop terminal input', () => {
     });
     expect(mocks.instances[0].rows).toBe(16);
 
-    view.rerender(<Terminal pane="%1" stream inset={0} />);
-    visibleHeight = 400;
+    visibleHeight = 220;
+    view.rerender(<Terminal pane="%1" stream inset={240} />);
     await act(async () => {
-      vi.advanceTimersByTime(350);
+      // The viewport looks stable long enough to queue a fit, but changes again before that fit runs.
+      vi.advanceTimersByTime(50);
+      await Promise.resolve();
+    });
+    expect(mocks.instances[0].rows).toBe(16);
+
+    visibleHeight = 300;
+    view.rerender(<Terminal pane="%1" stream inset={120} />);
+    await act(async () => {
+      vi.advanceTimersByTime(20);
+      await Promise.resolve();
+    });
+    expect(mocks.instances[0].rows).toBe(16);
+
+    visibleHeight = 400;
+    view.rerender(<Terminal pane="%1" stream inset={0} />);
+    await act(async () => {
+      vi.advanceTimersByTime(120);
       await Promise.resolve();
     });
 
