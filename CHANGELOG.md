@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.20.3] - 2026-08-01
+
 ### Changed
 - 降低实时推送在持续输出、多窗口和长时间浏览历史时的资源占用。
 
