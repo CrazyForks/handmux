@@ -14,6 +14,7 @@ import { useScreenWakeLock } from '../hooks/useScreenWakeLock.js';
 import { DEFAULT_SERVER_SHORTCUTS, mergeShortcuts, shortcutIdentity } from '../shortcutMerge.js';
 import { applyShortcutLayout, loadShortcutLayout } from '../shortcutLayout.js';
 import { t } from '../i18n';
+import { useBackButton } from '../hooks/useBackButton.js';
 
 // The 对话-lens composer — a single modern AI-agent input CARD (textarea on top, an action row beneath),
 // shown INSTEAD of the terminal BottomDock while the chat lens is active. It rides above the soft keyboard
@@ -43,6 +44,8 @@ export default function ChatComposer({
   // Draft persists across an app exit / lens switch (shared store with the dock's chat page — switching
   // lenses carries your half-typed message either way). send/clear set '' → the stored draft clears too.
   const [value, setValue] = useState(() => getChatDraft());
+  const [submitting, setSubmitting] = useState(false);
+  const submitInFlightRef = useRef(false);
   useEffect(() => { setChatDraft(value); }, [value]);
   const ref = useRef(null);          // the textarea
   const uploadRef = useRef(null);    // hidden <input type=file>
@@ -62,6 +65,7 @@ export default function ChatComposer({
     setLayout(loadShortcutLayout('chat'));
   };
   useEffect(() => { if (!editOpen) refreshShortcuts(); }, [editOpen]);
+  useBackButton(editOpen, () => setEditOpen(false));
   const quickFavs = applyShortcutLayout(
     mergeShortcuts(serverShortcuts.chat, favs, 'chat'), layout,
   );
@@ -117,19 +121,25 @@ export default function ChatComposer({
 
   // Type the text then Enter (the server paces the two so a TUI reads Enter as "submit", not a newline).
   const send = async () => {
-    if (!pane || !value.trim()) return;
+    if (!pane || !value.trim() || submitInFlightRef.current) return;
+    const text = value;
+    submitInFlightRef.current = true;
+    setSubmitting(true);
     stopVoiceIfRecording();
     try {
-      await sendText(pane, value, true);
-      onSent?.(value);
+      await sendText(pane, text, true);
+      onSent?.(text);
       // A bare, non-one-shot slash command may have opened a TUI picker that lives only in the terminal (and
       // the transcript stays silent until the user picks). Hand off to the terminal lens so they can see and
       // drive it — including unrecognized commands, since a missed picker leaves the phone stuck.
-      if (shouldHandOffSlash(value)) onInteractiveSlash?.(value.trim());
+      if (shouldHandOffSlash(text)) onInteractiveSlash?.(text.trim());
       setValue('');
       requestAnimationFrame(() => autoGrow(ref.current));
     } catch (err) {
       if (err instanceof UnauthorizedError) onAuthFail?.();
+    } finally {
+      submitInFlightRef.current = false;
+      setSubmitting(false);
     }
   };
 
@@ -212,7 +222,11 @@ export default function ChatComposer({
       </div>
       {/* Offscreen (not display:none) so a programmatic .click() reliably opens the picker on iOS Safari. */}
       <input ref={uploadRef} className="browse-file-input" type="file" multiple accept={UPLOAD_ACCEPT}
-        onChange={(e) => { uploadFiles(e.target.files); e.target.value = ''; }} />
+        onChange={(e) => {
+          const files = Array.from(e.target.files || []);
+          e.target.value = '';
+          uploadFiles(files);
+        }} />
       <div className={`cc-card${recording ? ' recording' : ''}`}
         onPointerDown={cardDown} onPointerMove={cardMove} onPointerUp={cardTapFocus}>
         <textarea
@@ -220,7 +234,18 @@ export default function ChatComposer({
           className="cc-text"
           rows={1}
           value={value}
-          onChange={(e) => { setValue(e.target.value); autoGrow(e.target); }}
+          aria-readonly={submitting}
+          onBeforeInput={(e) => {
+            if (submitInFlightRef.current) e.preventDefault();
+          }}
+          onChange={(e) => {
+            if (submitInFlightRef.current) {
+              e.target.value = value;
+              return;
+            }
+            setValue(e.target.value);
+            autoGrow(e.target);
+          }}
           onKeyDown={onComposerKeyDown}
           placeholder={t('chat.composer.placeholder')}
           autoCapitalize="off"
@@ -245,7 +270,8 @@ export default function ChatComposer({
               <button type="button" className="cc-send cc-stop" aria-label={t('chat.stop')} onClick={stop}>
                 <StopIcon /></button>
             ) : (
-              <button type="button" className="cc-send" aria-label={t('dock.send')} disabled={!value.trim()} onClick={send}>
+              <button type="button" className="cc-send" aria-label={t('dock.send')}
+                disabled={submitting || !value.trim()} onClick={send}>
                 <ArrowUpIcon /></button>
             )}
           </div>

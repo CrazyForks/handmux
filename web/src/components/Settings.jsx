@@ -6,12 +6,18 @@ import { fetchPaneCwd, getPanes } from '../api.js';
 import { fmtRemainMin, useRemaining } from '../previewCountdown.js';
 import { getDocHighlight, setDocHighlight } from '../storage.js';
 import { t, getLangCode, setLang, AVAILABLE } from '../i18n';
+import { SNAPSHOT_INTERVALS } from '../terminalTransport.js';
+import { useBackButton } from '../hooks/useBackButton.js';
 
 // Settings modal: the screen-column controls (⊟/⊞/↺, previously in the topbar) plus an explicit
 // font-size control. Font reads/writes the live terminal through termRef — the same persisted
 // size the two-finger pinch drives — so the modal and the gesture stay in sync.
 export default function Settings({ open, onClose, termRef, onColAdjust, onColRestore, onOpenChangelog, changelogUnread,
+  onReloadApp = () => window.location.reload(),
   chatTone = 'ink', onChatTone = () => {}, chatLensEnabled = false, onChatLensEnabled = () => {},
+  keyboardMode = 'auto', onKeyboardMode = () => {},
+  terminalTransport = 'live', onTerminalTransport = () => {},
+  snapshotInterval = 1000, onSnapshotInterval = () => {},
   hooksStatus = null, onEnableHooks = null,
   notifUnread = false, onOpenInbox,
   updateInfo = null, windowId = null,
@@ -82,6 +88,10 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
     }
     return () => { active = false; };
   }, [open, termRef, getColCount, windowId, pane]);
+
+  useBackButton(open && langOpen, () => setLangOpen(false));
+  useBackButton(open && dirOpen, () => setDirOpen(false));
+  useBackButton(open && scriptPushOpen, () => setScriptPushOpen(false));
 
   const toggleNotify = async () => {
     setNotifyBusy(true); setNotifyMsg('');
@@ -167,6 +177,49 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
         </div>
 
         <div className="settings-section">
+          <div className="settings-label">{t('settings.keyboard_mode')}</div>
+          <div className="settings-btns" role="group" aria-label={t('settings.keyboard_mode')}>
+            {['auto', 'mobile', 'desktop'].map((mode) => (
+              <button key={mode} type="button" className="fontbtn"
+                aria-pressed={keyboardMode === mode}
+                onClick={() => onKeyboardMode(mode)}>
+                {t(`settings.keyboard_mode_${mode}`)}
+              </button>
+            ))}
+          </div>
+          <div className="settings-hint">{t('settings.keyboard_mode_hint')}</div>
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-label">{t('settings.terminal_transport')}</div>
+          <div className="settings-btns" role="group" aria-label={t('settings.terminal_transport')}>
+            {['live', 'snapshot'].map((mode) => (
+              <button key={mode} type="button" className="fontbtn"
+                aria-pressed={terminalTransport === mode}
+                onClick={() => onTerminalTransport(mode)}>
+                {t(`settings.terminal_transport_${mode}`)}
+              </button>
+            ))}
+          </div>
+          <div className="settings-hint">{t('settings.terminal_transport_hint')}</div>
+          {terminalTransport === 'snapshot' && (
+            <div className="settings-suboption">
+              <div className="settings-label">{t('settings.snapshot_interval')}</div>
+              <div className="settings-btns settings-btns--compact" role="group" aria-label={t('settings.snapshot_interval')}>
+                {SNAPSHOT_INTERVALS.map((intervalMs) => (
+                  <button key={intervalMs} type="button" className="fontbtn"
+                    aria-pressed={snapshotInterval === intervalMs}
+                    onClick={() => onSnapshotInterval(intervalMs)}>
+                    {(intervalMs / 1000).toFixed(intervalMs % 1000 ? 1 : 0)}s
+                  </button>
+                ))}
+              </div>
+              <div className="settings-hint">{t('settings.snapshot_interval_hint')}</div>
+            </div>
+          )}
+        </div>
+
+        <div className="settings-section">
           {/* Soft gate: without Claude hooks the lens DECEIVES — a question/permission turn never lands in
              the transcript until answered, so the lens just looks idle while Claude waits (and the user's
              next message types into the unseen menu). Lock the toggle until hooks are in, with a one-tap
@@ -236,8 +289,10 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
             <button className="fontbtn" onClick={onOpenChangelog}>
               {t('settings.view_changelog')}{changelogUnread && <span className="settings-dot" aria-label={t('settings.has_update')} />}
             </button>
+            <button className="fontbtn" onClick={onReloadApp}>{t('settings.reload_app')}</button>
           </div>
-          {/* The upgrade is a computer-side `handmux update`; the phone can only show the notice, so no button.
+          {/* The upgrade is a computer-side `handmux update`; the reload button above only refreshes the client,
+              so the phone still has no upgrade button.
               `whatsNew` (concise per-version highlights the newer package carries) tells the user what the trip
               to the computer buys them — pulled in by the update check, so it may lag a bit. zh dicts (incl.
               zh-TW) map to the highlight's `zh`; everything else falls back to `en`. */}
@@ -340,7 +395,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
                 <span className="preview-remain-s" title={t('settings.preview_remain_title')}>{t('settings.preview_remain', { time: fmtRemainMin(remainMs) })}</span>
               </div>
               <div className="settings-btns">
-                <button className="fontbtn" onClick={() => { onOpenPreview?.(); onClose?.(); }}>{t('common.open')}</button>
+                <button className="fontbtn" onClick={() => onOpenPreview?.()}>{t('common.open')}</button>
                 <button className="fontbtn" onClick={() => onRenew?.()}>{t('settings.preview_renew')}</button>
                 {confirmStop ? (
                   <>
@@ -382,7 +437,7 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
         seedCwd={seedCwd}
         pane={pane}
         hint={t('settings.dir_picker_hint')}
-        onPick={(dir) => { setDirOpen(false); onStartPreview?.(dir); onClose?.(); }}
+        onPick={(dir) => { setDirOpen(false); onStartPreview?.(dir); }}
         onClose={() => setDirOpen(false)}
       />
       <PushScriptSheet

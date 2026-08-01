@@ -96,6 +96,8 @@ function BottomDock({
   // every change (send/fill set '' → the stored draft clears with it). The mount-time autoGrow +
   // pager ResizeObserver below already size a restored multi-line draft correctly.
   const [value, setValue] = useState(() => getChatDraft());
+  const [submitting, setSubmitting] = useState(false);
+  const submitInFlightRef = useRef(false);
   useEffect(() => { setChatDraft(value); }, [value]);
   const [multi, setMulti] = useState(false); // composer grew past one line → full-width text, mic/send overlay bottom-right
   const [crowd, setCrowd] = useState(false); // last text line would run under the overlaid buttons → reserve a bottom strip
@@ -140,6 +142,26 @@ function BottomDock({
     .filter((item) => !visibleGlobalCommandIds.has(shortcutIdentity(item)));
   const [modeOverride, setModeOverride] = useState({}); // pane → 'command' | 'agent'
   const mode = desktopUnified ? 'agent' : modeOverride[pane] || (agent ? 'agent' : 'command');
+  // Remember the keyboard-DOWN viewport height. Some mobile browsers resize window.innerHeight together
+  // with visualViewport.height, so comparing their current values reads zero even while the keyboard is up.
+  // The baseline only grows in one orientation; a real width/orientation change starts a fresh baseline.
+  const initialViewport = window.visualViewport;
+  const keyboardViewportRef = useRef({
+    width: initialViewport?.width ?? window.innerWidth,
+    fullHeight: Math.max(window.innerHeight, initialViewport?.height ?? 0),
+  });
+  const physicalKeyboardUp = () => {
+    const vv = window.visualViewport;
+    if (!vv) return false;
+    const viewport = keyboardViewportRef.current;
+    if (Math.abs(vv.width - viewport.width) > 40) {
+      viewport.width = vv.width;
+      viewport.fullHeight = Math.max(window.innerHeight, vv.height);
+    } else {
+      viewport.fullHeight = Math.max(viewport.fullHeight, window.innerHeight, vv.height);
+    }
+    return softKeyboardUp(viewport.fullHeight);
+  };
   const setMode = (next) => {
     // Carry the keyboard across a mode switch. The soft keyboard is held up by whichever field has focus
     // (command capture ⇄ chat composer); a switch used to leave focus on the OLD page's field, so the new
@@ -147,7 +169,9 @@ function BottomDock({
     // field off-screen could let the OS blur it and drop the keyboard. If a dock field currently holds it
     // up, hand focus to the new page's field synchronously — input→input keeps the keyboard on iOS and
     // re-activates the right box. Only ever when it was already up; never pops it unbidden.
-    const kbUp = softKeyboardUp() || document.activeElement === cmdRef.current || document.activeElement === ref.current;
+    const kbUp = physicalKeyboardUp()
+      || document.activeElement === cmdRef.current
+      || document.activeElement === ref.current;
     setModeOverride((m) => ({ ...m, [pane]: next }));
     // preventScroll: the field is already lifted above the keyboard by translateY(-inset), so DON'T let
     // iOS scroll the page to reveal it — that programmatic scroll-to-focus is the transient "jumps taller
@@ -303,15 +327,11 @@ function BottomDock({
       // Did the drag begin inside the chat composer's textarea? A vertical drag there scrolls the draft
       // first and only "falls off" into a keyboard toggle at the textarea's top/bottom edge (see onMove).
       const cmp = e.target?.closest?.('.input-text') || null;
-      // Was the keyboard genuinely up as the gesture BEGAN? Captured here, before the drag can graze the
-      // composer. Trust the ACTUAL keyboard height first (softKeyboardUp, offsetTop-immune) — iOS can leave
-      // the keyboard up while focus has drifted OFF the dock field (an aborted app-switch, a stray blur), and
-      // the pure activeElement check then reads "down", so a horizontal page-swipe would blur/collapse a
-      // keyboard that's really up (you had to nudge vertically first to re-focus a field and dodge it). The
-      // activeElement fallback still catches the keyboard mid-open, before its height has grown. Conversely a
-      // swipe that merely brushes the textarea focuses it (green) WITHOUT popping the keyboard — softKeyboardUp
-      // is false there, so kbUp stays false and we undo that stray focus on release (below).
-      const kbUp = softKeyboardUp() || document.activeElement === cmdRef.current || document.activeElement === ref.current;
+      // Was the keyboard genuinely up as the gesture BEGAN? The keyboard-down viewport baseline survives
+      // focus drift and browsers that resize both viewports; activeElement covers the first opening frame.
+      const kbUp = physicalKeyboardUp()
+        || document.activeElement === cmdRef.current
+        || document.activeElement === ref.current;
       d = e.touches.length === 1
         ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, dy: 0, decided: false, horiz: false, vert: false, strip, cmp, kbUp }
         : null;
@@ -500,24 +520,21 @@ function BottomDock({
   // Hardware Back closes the history panel and follows the same desktop focus restoration as its close
   // button; mobile still takes the identical setPanelOpen(false) path inside closeOverlay.
   useBackButton(panelOpen, () => closeOverlay(setPanelOpen));
+  useBackButton(cmdEditOpen || chatEditOpen, () => {
+    if (cmdEditOpen) closeOverlay(setCmdEditOpen);
+    else closeOverlay(setChatEditOpen);
+  });
 
   // The system can drop the soft keyboard WITHOUT blurring the focused field — e.g. an app-switch gesture
-  // aborted mid-way, or Android's Back. Focus (hence keyboardUp) then lies "up" while the keyboard is really
-  // down, and the ⌨ toggle sticks showing 收起 with no way to re-raise it. Reconcile against the visualViewport
-  // HEIGHT: overlap = innerHeight − vv.height is the keyboard's real height, immune to page scroll. We do NOT
-  // use the layout `inset` here — it also subtracts vv.offsetTop, which iOS pushes up during the focus scroll
-  // until the inset cancels to ~0 (see usePageScrollLock), so an inset edge would false-fire mid-open and
-  // slam the keyboard shut the instant you tapped the field. Height only falls when the keyboard truly goes,
-  // and only 'resize' (not 'scroll') is watched, so offsetTop churn is ignored. Latch on the up→down edge:
-  // drop the stale focus so the next tap cleanly re-opens. The rising (opening) edge is a no-op.
+  // aborted mid-way, or Android's Back. Reconcile against the baseline-aware physical height while still
+  // ignoring iOS offsetTop churn. Only a real height recovery clears stale focus.
   const kbdWasUpRef = useRef(false);
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return undefined;
     const reconcile = () => {
-      const overlap = window.innerHeight - vv.height; // keyboard height (offsetTop-immune), 0 when down
-      if (overlap > 120) { kbdWasUpRef.current = true; return; }
-      if (!kbdWasUpRef.current) return; // opening, or already down — nothing to reconcile
+      if (physicalKeyboardUp()) { kbdWasUpRef.current = true; return; }
+      if (!kbdWasUpRef.current) return;
       kbdWasUpRef.current = false;
       const active = document.activeElement;
       if (active === cmdRef.current || active === ref.current) active.blur();
@@ -638,21 +655,31 @@ function BottomDock({
     if (recording) { suppressVoiceRef.current = true; voice.stop(); }
   };
 
-  // Type the text then Enter (the server pauses between them so a TUI registers Enter as "send"
-  // rather than a newline).
-  const send = async () => {
-    if (!pane) return;
+  // Type the draft, optionally followed by Enter. Lock synchronously before the request: /send waits
+  // for tmux's text→Enter pacing, so leaving the editor active let rapid taps launch the same request
+  // several times before the first one returned.
+  const submitDraft = async (enter) => {
+    if (!pane || (!enter && !value) || submitInFlightRef.current) return;
+    const text = value;
+    submitInFlightRef.current = true;
+    setSubmitting(true);
     stopVoiceIfRecording();
     try {
-      await sendText(pane, value, true);
-      onSent?.(value); // record the sent command (App pushes it into the session's recent list)
+      await sendText(pane, text, enter);
+      onSent?.(text); // record the sent command (App pushes it into the session's recent list)
       setValue('');
-      requestAnimationFrame(() => autoGrow(ref.current)); // shrink back to one line once cleared
-      if (desktopUnified) onReturnToTerminal?.();
+      requestAnimationFrame(() => {
+        autoGrow(ref.current); // shrink back to one line once cleared
+        if (enter && desktopUnified) ref.current?.focus({ preventScroll: true });
+      });
     } catch (err) {
       if (err instanceof UnauthorizedError) onAuthFail?.();
+    } finally {
+      submitInFlightRef.current = false;
+      setSubmitting(false);
     }
   };
+  const send = () => submitDraft(true);
 
   // Command mode types STRAIGHT into the terminal: every keystroke is streamed to tmux as it's typed
   // (onText → send-keys + wake), and the field is wiped back to empty — so your text appears in the
@@ -702,7 +729,7 @@ function BottomDock({
     }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (value) void send();
+      void send();
     }
   };
 
@@ -756,6 +783,16 @@ function BottomDock({
   // currently holds it; a no-op when it's already down). Kept synchronous inside the tap gesture.
   useImperativeHandle(fwdRef, () => ({
     fill: pick,
+    keepKeyboardForGesture: () => {
+      const active = document.activeElement;
+      const keyboardOpen = physicalKeyboardUp()
+        || active === cmdRef.current
+        || active === ref.current;
+      if (!keyboardOpen) return false;
+      const field = fieldForPage(pageIndexRef.current);
+      field?.focus({ preventScroll: true });
+      return !!field;
+    },
     hideKeyboard: () => {
       const a = document.activeElement;
       if (a === cmdRef.current || a === ref.current) a.blur();
@@ -800,18 +837,7 @@ function BottomDock({
 
   // 填入: type the box text into the pane WITHOUT Enter (no submit), then clear — the secondary to
   // 发送 (which types + Enter). Mirrors send() with enter=false; a filled command is still recorded.
-  const fill = async () => {
-    if (!pane || !value) return;
-    stopVoiceIfRecording();
-    try {
-      await sendText(pane, value, false);
-      onSent?.(value);
-      setValue('');
-      requestAnimationFrame(() => autoGrow(ref.current));
-    } catch (err) {
-      if (err instanceof UnauthorizedError) onAuthFail?.();
-    }
-  };
+  const fill = () => submitDraft(false);
 
   // 发送 carries both submit actions on one button via pointer (tap vs hold), so they never collide:
   //   tap        → send() (type + Enter)
@@ -828,7 +854,7 @@ function BottomDock({
     if (e.cancelable) e.preventDefault();
     sendLongRef.current = false;
     sendPtRef.current = { x: e.clientX, y: e.clientY, moved: false };
-    if (!value) return; // empty box → no long-press; releasing just sends a bare Enter
+    if (!value || submitInFlightRef.current) return;
     sendTimer.current = setTimeout(() => {
       sendLongRef.current = true;
       navigator.vibrate?.(12);
@@ -895,7 +921,7 @@ function BottomDock({
     const g = ghostRef.current;
     ghostRef.current = null;
     if (!g) return;
-    if (g === 'send') { if (value) sendUp(); else sendCancel(); return; } // 原按钮空框时 disabled,对齐
+    if (g === 'send') { sendUp(); return; }
     if (!micPtRef.current.moved && voice.state !== 'requesting') toggleMic();
   };
   const ghostCancel = () => {
@@ -912,16 +938,7 @@ function BottomDock({
             dots slide together, widen and fuse into a single bar (--morph) that follows the finger (--drag)
             — the keyboard grabber — arming blue past the commit point. The tiny mode label is absolute so it
             adds no height. It sits OUTSIDE the pager, so its tap never collides with the swipe handlers. */}
-        {desktopUnified ? (
-          <div className="desktop-dock-state">
-            {terminalFocused && (
-              <span className="desktop-terminal-input">
-                <i className="desktop-terminal-input-dot" aria-hidden="true" />
-                {t('dock.desktopTerminalInput')}
-              </span>
-            )}
-          </div>
-        ) : (
+        {!desktopUnified && (
           <button type="button" className="dock-handle" ref={handleRef} aria-label={t('dock.mode.toggle')}
             onClick={() => setMode(mode === 'command' ? 'agent' : 'command')}>
             <span className="dock-mode-label">{mode === 'command' ? t('dock.mode.command') : t('dock.mode.chat')}</span>
@@ -1028,7 +1045,10 @@ function BottomDock({
                 accept={UPLOAD_ACCEPT}
                 onChange={async (e) => {
                   const session = filePickerSessionRef.current;
-                  const files = e.target.files;
+                  // FileList is live: clearing the picker also empties references already read from
+                  // `input.files` in real browsers. Snapshot it before clearing so the upload keeps
+                  // the user's selection while still allowing the same file to be picked again.
+                  const files = Array.from(e.target.files || []);
                   e.target.value = '';
                   filePickerPendingRef.current = false;
                   overlayOwnerRef.current = null;
@@ -1065,11 +1085,24 @@ function BottomDock({
                     stopVoiceIfRecording();
                     e.currentTarget.focus(); // 同步夺焦,确保这一下就弹出键盘
                   }}
-                  onChange={(e) => { setValue(e.target.value); autoGrow(e.target); }}
+                  aria-readonly={submitting}
+                  onBeforeInput={(e) => {
+                    if (submitInFlightRef.current) e.preventDefault();
+                  }}
+                  onChange={(e) => {
+                    if (submitInFlightRef.current) {
+                      e.target.value = value;
+                      return;
+                    }
+                    setValue(e.target.value);
+                    autoGrow(e.target);
+                  }}
                   onKeyDown={onComposerKeyDown}
                   onFocus={() => setKeyboardUp(true)}
                   onBlur={() => setKeyboardUp(false)}
-                  placeholder={t('dock.input.placeholder')}
+                  placeholder={desktopUnified
+                    ? t(keyboardUp ? 'dock.input.exitDraft' : 'dock.input.enterDraft')
+                    : t('dock.input.placeholder')}
                   autoCapitalize="off"
                   autoCorrect="off"
                   spellCheck={false}
@@ -1084,9 +1117,9 @@ function BottomDock({
                       : openOverlay(setPanelOpen))}><ClockIcon /></button>
                 )}
                 {micAvailable && <MicButton active={recording} disabled={voice.state === 'requesting'} onToggle={toggleMic} />}
-                {/* 发送 ↑ 常驻,空框禁用:点 = 发送组合文本,长按 = 填入。 */}
-                <button type="button" className="input-send" aria-label={t('dock.send')} title={t('dock.send.hint')}
-                  disabled={!value}
+                {/* 发送 ↑ 常驻:点 = 发送组合文本（空框发送裸 Enter）,长按 = 填入。 */}
+                <button type="button" className={`input-send${value ? '' : ' is-empty'}`} aria-label={t('dock.send')} title={t('dock.send.hint')}
+                  disabled={submitting}
                   onPointerDown={sendDown} onPointerMove={sendMove} onPointerUp={sendUp} onPointerCancel={sendCancel} onPointerLeave={sendCancel}>
                   <ArrowUpIcon />
                 </button>

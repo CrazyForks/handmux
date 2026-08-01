@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { readFileSync } from 'node:fs';
 
 const api = vi.hoisted(() => ({
   uploadFile: vi.fn(async () => ({ path: '/uploads/picked.txt' })),
@@ -23,6 +24,8 @@ import BottomDock from '../src/components/BottomDock.jsx';
 import { sendText } from '../src/api.js';
 import { t } from '../src/i18n';
 import { cmdScope, saveFavs } from '../src/favStore.js';
+
+const styles = readFileSync(`${process.cwd()}/src/styles.css`, 'utf8');
 
 let container;
 let root;
@@ -56,9 +59,21 @@ const deferred = () => {
   return { promise, resolve, reject };
 };
 const chooseFile = (picker, name = 'picked.txt') => {
+  const files = [new File(['picked'], name, { type: 'text/plain' })];
+  let value = 'picked';
   Object.defineProperty(picker, 'files', {
     configurable: true,
-    value: [new File(['picked'], name, { type: 'text/plain' })],
+    get: () => files,
+  });
+  // Match a real browser's live FileList: resetting the picker empties the same list object
+  // previously returned by `input.files`.
+  Object.defineProperty(picker, 'value', {
+    configurable: true,
+    get: () => value,
+    set: (next) => {
+      value = next;
+      if (next === '') files.length = 0;
+    },
   });
   act(() => picker.dispatchEvent(new Event('change', { bubbles: true })));
 };
@@ -88,6 +103,11 @@ const typeInto = (node, text) => act(() => {
 });
 
 describe('BottomDock', () => {
+  it('keeps the mobile composer placeholder conversational', () => {
+    render({ pane: '%1' });
+    expect(container.querySelector('.input-text').placeholder).toBe('说点什么…');
+  });
+
   it('renders the device-local command order across shared and local global items', () => {
     localStorage.setItem('hm_favs7_command', JSON.stringify([
       { kind: 'cmd', text: 'local', enter: false },
@@ -236,6 +256,67 @@ describe('BottomDock', () => {
     expect(sendText).toHaveBeenCalledWith('%1', 'ls -la', true);
   });
 
+  it('keeps the empty send button available for a bare Enter', async () => {
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    const button = container.querySelector('.input-send');
+    expect(button.disabled).toBe(false);
+    expect(button.classList.contains('is-empty')).toBe(true);
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(sendText).toHaveBeenCalledWith('%1', '', true);
+  });
+
+  it('locks editing and ignores repeated send taps until the request finishes', async () => {
+    const request = deferred();
+    sendText.mockReturnValueOnce(request.promise);
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    const input = container.querySelector('.input-text');
+    const button = container.querySelector('.input-send');
+    typeInto(input, '只发一次');
+
+    act(() => {
+      button.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+      button.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+    });
+
+    expect(sendText).toHaveBeenCalledTimes(1);
+    expect(button.disabled).toBe(true);
+    expect(input.getAttribute('aria-readonly')).toBe('true');
+    typeInto(input, '发送中不应改写');
+    expect(input.value).toBe('只发一次');
+
+    await act(async () => {
+      request.resolve({ ok: true });
+      await request.promise;
+      await Promise.resolve();
+    });
+    expect(input.value).toBe('');
+    expect(input.getAttribute('aria-readonly')).toBe('false');
+  });
+
+  it('unlocks the original draft after a send failure', async () => {
+    const request = deferred();
+    sendText.mockReturnValueOnce(request.promise);
+    render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
+    const input = container.querySelector('.input-text');
+    const button = container.querySelector('.input-send');
+    typeInto(input, '失败后保留');
+    fire(button, 'pointerup');
+
+    await act(async () => {
+      request.reject(new Error('offline'));
+      await request.promise.catch(() => {});
+      await Promise.resolve();
+    });
+
+    expect(input.value).toBe('失败后保留');
+    expect(button.disabled).toBe(false);
+    typeInto(input, '可以继续编辑');
+    expect(input.value).toBe('可以继续编辑');
+  });
+
   it('long-pressing the 发送 ↑ types the box text into the pane WITHOUT Enter', async () => {
     vi.useFakeTimers();
     const onSent = vi.fn();
@@ -249,12 +330,14 @@ describe('BottomDock', () => {
     vi.useRealTimers();
   });
 
-  it('发送 ↑ 常驻但空框禁用,有字时启用', () => {
+  it('发送 ↑ 常驻且空框也可发送裸 Enter', () => {
     render({ pane: '%1', agent: 'claude', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() });
-    expect(container.querySelector('.input-send')).not.toBe(null);     // 常驻:空框也在
-    expect(container.querySelector('.input-send').disabled).toBe(true); // …但禁用
+    expect(container.querySelector('.input-send')).not.toBe(null);
+    expect(container.querySelector('.input-send').disabled).toBe(false);
+    expect(container.querySelector('.input-send').classList.contains('is-empty')).toBe(true);
     typeInto(container.querySelector('.input-text'), 'ls');
-    expect(container.querySelector('.input-send').disabled).toBe(false); // 有字 → 启用
+    expect(container.querySelector('.input-send').disabled).toBe(false);
+    expect(container.querySelector('.input-send').classList.contains('is-empty')).toBe(false);
   });
 
   it('快捷栏:固定的上传(带图标)+ 一排自定义命令 chip;历史在药丸里', () => {
@@ -583,33 +666,47 @@ describe('BottomDock', () => {
     expect(container.querySelector(`[aria-label="${t('dock.attach')}"]`)).not.toBeNull();
     expect(container.querySelector('.input-history')).not.toBeNull();
     expect(container.querySelector('.input-send')).not.toBeNull();
+    expect(container.querySelector('.input-text').placeholder).toBe('按 Shift + Enter 进入草稿模式');
     expect(container.querySelector('.dock-page.command')).toBeNull();
     expect(container.querySelector('.keybar-grid')).toBeNull();
     expect(container.querySelector('.dock-handle')).toBeNull();
   });
 
-  it('shows only a blue dot plus neutral terminal-input copy while xterm owns focus', () => {
+  it('uses focus styling and dynamic placeholder instead of a terminal-mode label', () => {
     render({ pane: '%1', desktopUnified: true, terminalFocused: true });
-    const state = container.querySelector('.desktop-terminal-input');
-    expect(state.textContent).toBe('键盘直通终端');
-    expect(state.querySelector('.desktop-terminal-input-dot')).not.toBeNull();
-    render({ pane: '%1', desktopUnified: true, terminalFocused: false });
+    const input = container.querySelector('.input-text');
     expect(container.querySelector('.desktop-terminal-input')).toBeNull();
+    expect(input.placeholder).toBe('按 Shift + Enter 进入草稿模式');
+
+    act(() => input.focus());
+    expect(input.placeholder).toBe('按 Esc 回到终端模式 · Shift + Enter 换行');
   });
 
-  it('desktop Enter sends, Shift+Enter stays multiline, and Escape returns with the draft intact', async () => {
+  it('uses a separate rectangular shortcut row and a flat draft field only on desktop', () => {
+    expect(styles).toMatch(/\.quick-cmd\s*\{[^}]*border-radius:\s*12px/);
+    expect(styles).toMatch(/\.input-wrap\s*\{[^}]*border-radius:\s*20px/);
+    expect(styles).toMatch(/\.desktop-unified \.quick-(?:fix|cmd)[^{]*\{[^}]*border-radius:\s*6px/);
+    expect(styles).toMatch(/\.desktop-unified \.input-wrap\s*\{[^}]*padding:\s*3px 4px[^}]*border-radius:\s*8px[^}]*box-shadow:\s*none/);
+    expect(styles).toMatch(/\.desktop-unified \.input-text,[\s\S]*\.desktop-unified \.input-mirror\s*\{[^}]*padding:\s*6px 5px 6px 9px/);
+    expect(styles).toMatch(/@media\s*\(hover:\s*hover\)\s*and\s*\(pointer:\s*fine\)\s*\{[\s\S]*\.desktop-unified \.input-text,[\s\S]*font-size:\s*15px[^}]*line-height:\s*21px/);
+  });
+
+  it('desktop Enter sends and stays in draft mode, Shift+Enter stays multiline, and Escape returns', async () => {
     const onReturnToTerminal = vi.fn();
     render({ pane: '%1', desktopUnified: true, onReturnToTerminal });
     const input = container.querySelector('.input-text');
     const keydown = (key, opts = {}) =>
       act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...opts })));
 
+    act(() => input.focus());
     typeInto(input, '检查修改');
     await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'Enter', bubbles: true,
     })));
     await vi.waitFor(() => expect(sendText).toHaveBeenCalledWith('%1', '检查修改', true));
-    expect(onReturnToTerminal).toHaveBeenCalledTimes(1);
+    expect(onReturnToTerminal).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(input);
+    expect(input.placeholder).toBe('按 Esc 回到终端模式 · Shift + Enter 换行');
 
     typeInto(input, '第一行');
     keydown('Enter', { shiftKey: true });
@@ -618,7 +715,7 @@ describe('BottomDock', () => {
     typeInto(input, '保留草稿');
     keydown('Escape');
     expect(input.value).toBe('保留草稿');
-    expect(onReturnToTerminal).toHaveBeenCalledTimes(2);
+    expect(onReturnToTerminal).toHaveBeenCalledTimes(1);
   });
 
   it('desktop IME Enter does not send', () => {
@@ -911,6 +1008,31 @@ describe('BottomDock', () => {
       swipe(100); // drag right → command
       expect(dot('command').classList.contains('on')).toBe(true);
       expect(activePage('command')).toBe(true);
+    });
+
+    it('keeps a physically-open keyboard through a horizontal swipe after focus drifts', () => {
+      const originalInnerHeight = Object.getOwnPropertyDescriptor(window, 'innerHeight');
+      Object.defineProperty(window, 'innerHeight', { value: kbdDown, configurable: true });
+      const vv = installVV(kbdDown);
+      try {
+        render({ pane: '%1', onAuthFail: vi.fn(), onKey: vi.fn(), onText: vi.fn() }); // command
+        act(() => cap().focus());
+        // Model a browser that resizes BOTH layout and visual viewports: the old absolute
+        // innerHeight-vv.height test reads 0 even though the keyboard is physically open.
+        Object.defineProperty(window, 'innerHeight', { value: kbdUp, configurable: true });
+        vv.resize(kbdUp);
+        const driftTarget = document.createElement('button');
+        document.body.appendChild(driftTarget);
+        act(() => driftTarget.focus()); // OS keyboard remains open, but the dock field lost DOM focus
+        expect(document.activeElement).toBe(driftTarget);
+
+        swipe(-100); // → chat; must carry focus instead of running the "keyboard was down" blur path
+        expect(activePage('chat')).toBe(true);
+        expect(document.activeElement).toBe(container.querySelector('.input-text'));
+        driftTarget.remove();
+      } finally {
+        if (originalInnerHeight) Object.defineProperty(window, 'innerHeight', originalInnerHeight);
+      }
     });
 
     it('a drag shorter than the commit threshold snaps back (harder to trigger)', () => {

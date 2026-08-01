@@ -8,6 +8,7 @@ import FileBrowser from './FileBrowser.jsx';
 import DocView from './DocView.jsx';
 import { FolderIcon, ClockIcon, ChevronDownIcon } from './icons.jsx';
 import { t as tr } from '../i18n';
+import { useHistoryLayer, unwindHistory } from '../hooks/useBackButton.js';
 
 // Bottom-sheet shell for the file viewer. Rendered through a portal on <body> — NOT inside .app —
 // so the app's keyboard-inset transform (which makes .app the containing block for fixed children)
@@ -53,6 +54,20 @@ export default function FileManager({ open, pane, windowId, tabs, active, onActi
   const depthRef = useRef(0);           // # of our live history entries (base + recorded actions)
   const histRef = useRef([]);           // action stack: { type:'nav', prev } dir move | { type:'doc' } preview opened
   const pushHist = () => { window.history.pushState({ fileOverlay: true }, ''); depthRef.current += 1; };
+  useHistoryLayer(open, () => {
+    depthRef.current = Math.max(0, depthRef.current - 1);
+    const entry = histRef.current.pop();
+    if (entry?.type === 'doc') {
+      onActivateRef.current?.('home');
+      return;
+    }
+    if (entry?.type === 'nav') {
+      setBrowsePath(entry.prev);
+      if (entry.prev) setBrowseDir(windowIdRef.current, entry.prev);
+      return;
+    }
+    onMinimizeRef.current?.();
+  });
 
   // Persist every directory the browser lands on, keyed by window → next open returns here. A real
   // move (new path) also records where we came from and mirrors one history entry so Back retraces.
@@ -82,24 +97,8 @@ export default function FileManager({ open, pane, windowId, tabs, active, onActi
     histRef.current = [];
     depthRef.current = 0;
     pushHist(); // base entry for the open sheet
-    const onPop = () => {
-      depthRef.current = Math.max(0, depthRef.current - 1);
-      const entry = histRef.current.pop();
-      if (entry?.type === 'doc') {                         // preview opened from the sheet → home, as it was
-        onActivateRef.current?.('home');
-        return;
-      }
-      if (entry?.type === 'nav') {                         // dir move → the previous path
-        setBrowsePath(entry.prev);
-        if (entry.prev) setBrowseDir(windowIdRef.current, entry.prev);
-        return;
-      }
-      onMinimizeRef.current?.();                            // at the base → hide the sheet (even mid-preview)
-    };
-    window.addEventListener('popstate', onPop);
     return () => {
-      window.removeEventListener('popstate', onPop);
-      if (depthRef.current > 0) { window.history.go(-depthRef.current); depthRef.current = 0; }
+      if (depthRef.current > 0) { unwindHistory(depthRef.current); depthRef.current = 0; }
     };
   }, [open]);
   // Snap to the active pane's LIVE cwd (re-fetched each press, so a mid-session `cd` is honored).
@@ -170,7 +169,7 @@ export default function FileManager({ open, pane, windowId, tabs, active, onActi
               ? <HomeView onOpenDoc={onOpenDoc} refreshKey={refreshKey} />
               : <FileBrowser path={browsePath} onNavigate={onNavigate} onOpenDoc={onOpenDoc}
                   onJumpToCwd={pane ? jumpToCwd : null} refreshKey={refreshKey}
-                  pendingFile={pendingShare} onPendingConsumed={onPendingConsumed} />}
+                  pendingFile={pendingShare} onPendingConsumed={onPendingConsumed} overlayActive={open} />}
           </div>
         ) : <DocView type={cur.type} name={cur.name} content={cur.content} />}
       </div>

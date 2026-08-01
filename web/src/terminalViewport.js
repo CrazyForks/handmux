@@ -16,6 +16,13 @@ export function scrollDecision(viewportY, baseY, dir) {
   return viewportY < baseY ? 'internal' : 'forward';
 }
 
+// xterm's logical viewportY can lag one row behind the DOM viewport at a fractional row boundary.
+// The browser's clamped scrollTop is authoritative when available: zero means the user can scroll
+// no farther, regardless of xterm's rounded logical row.
+export function viewportAtTop(viewportY, scrollTop) {
+  return Number.isFinite(scrollTop) ? scrollTop <= 1 : viewportY === 0;
+}
+
 // scrollToLine target that puts `cursorLine` on the FIRST (top) visible row, clamped to [0, baseY].
 export function topTarget(cursorLine, baseY) {
   return clamp(cursorLine, 0, baseY);

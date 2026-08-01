@@ -49,14 +49,16 @@ describe('Settings preview section', () => {
   });
   it('shows 运行中 + countdown + 打开/续期/停止 when a preview is active', async () => {
     const onOpen = vi.fn(); const onRenew = vi.fn(); const onStop = vi.fn();
+    const onClose = vi.fn();
     await render({ activePreview: { name: 'main-3', kind: 'static', dir: '/home/u/site', expiresAt: Date.now() + 300_000 },
-      onStartPreview: vi.fn(), onOpenPreview: onOpen, onRenew, onStop });
+      onStartPreview: vi.fn(), onOpenPreview: onOpen, onRenew, onStop, onClose });
     expect(container.textContent).toContain('运行中');
     expect(container.querySelector('.live-dot')).toBeTruthy();
     expect(container.querySelector('.preview-remain-s').textContent).toMatch(/分钟$/); // minutes, no seconds
     const byText = (t) => [...container.querySelectorAll('button')].find((b) => b.textContent === t);
     click(byText('打开'));
     expect(onOpen).toHaveBeenCalled(); // opens the in-app preview sheet (no browser tab)
+    expect(onClose).not.toHaveBeenCalled(); // Settings remains the parent layer underneath
     click(byText('续期'));
     expect(onRenew).toHaveBeenCalled();
     // 停止 is two-tap (no nested modal): first tap reveals 确认停止, only that fires onStop.

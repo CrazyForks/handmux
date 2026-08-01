@@ -285,7 +285,7 @@ export default {
   'setup.sshReady': '✓ 免密 SSH 已配置好',
   'setup.sshSetup': '→ 正在配置到 {host} 的免密 SSH(你需要输入一次密码)…',
   'setup.sshHelp1': '服务端(一次性):把反向代理指向被转发的 loopback 端口。',
-  'setup.sshHelpNginx': '  nginx:  proxy_pass http://127.0.0.1:{port};  (加上 client_max_body_size 60m; proxy_read_timeout 90s;)',
+  'setup.sshHelpNginx': '  nginx:  proxy_pass http://127.0.0.1:{port};  并设置 proxy_http_version 1.1、Upgrade/Connection WebSocket 头、client_max_body_size 60m、proxy_read_timeout 90s;',
   'setup.sshHelpCaddy': '  caddy:  {url} {  reverse_proxy 127.0.0.1:{port}  }',
 
   // 工作区恢复

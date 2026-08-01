@@ -4,7 +4,7 @@ import { previewName } from '../previewName.js';
 import { setPreviewDir } from '../storage.js';
 
 // Static directory preview state. Website and local-port browsing belongs to the permanent Browser tool.
-export function usePreviews(current, { settingsOpen, setSettingsOpen }) {
+export function usePreviews(current) {
   const [previews, setPreviews] = useState([]);
   const [previewSheetOpen, setPreviewSheetOpen] = useState(false); // in-app preview sheet visible
   const [activeTabName, setActiveTabName] = useState(null);        // which tab the sheet shows
@@ -54,20 +54,12 @@ export function usePreviews(current, { settingsOpen, setSettingsOpen }) {
     return () => clearTimeout(id);
   }, [activeExpiresAt, refreshPreviews]);
 
-  // Open the preview sheet. If Settings is open (launching/opening from there), close Settings FIRST
-  // and open the sheet on the NEXT frame — never in the same commit. Both overlays balance the Back
-  // button via useBackButton (each pushes one history entry); swapping them in one commit makes the
-  // closing Settings' cleanup `history.back()` pop the sheet's just-pushed entry, whose fresh popstate
-  // listener then fires → the sheet flashes open and immediately closes back to the main page.
+  // Open as a child layer. The shared history registry ensures Back/Escape returns to Settings when
+  // launched there, while opening from the top bar still returns directly to the main screen.
   const openPreviewSheet = useCallback(() => {
     setActiveTabName(curPreviewName); // opening the window default → focus its tab
-    if (settingsOpen) {
-      setSettingsOpen(false);
-      requestAnimationFrame(() => setPreviewSheetOpen(true));
-    } else {
-      setPreviewSheetOpen(true);
-    }
-  }, [settingsOpen, setSettingsOpen, curPreviewName]);
+    setPreviewSheetOpen(true);
+  }, [curPreviewName]);
 
   const startPreview = useCallback(async (dir) => {
     if (!curPreviewName) return;

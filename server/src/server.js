@@ -13,6 +13,7 @@ import { claudeStatePath } from './cli/state.js';
 import * as commands from './tmux/commands.js';
 import * as push from './push.js';
 import { cacheControlFor } from './staticCache.js';
+import { compressStaticAssets } from './staticCompression.js';
 import { applyAppName, applyManifestName } from './appName.js';
 import { homedir } from 'node:os';
 import { createPreviews } from './previews.js';
@@ -24,6 +25,7 @@ import { createWorkspaceLock } from './workspace/lock.js';
 import { createGracefulShutdown, createWorkspaceBackground } from './workspace/checkpointer.js';
 import { createWorkspaceRuntime } from './workspace/runtime.js';
 import { createBrowserWorkerClient } from './browser/workerClient.js';
+import { createTerminalStream } from './terminalStream.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -137,6 +139,7 @@ if (appName) {
 }
 
 // index:false so the renamed shell below owns "/" too (otherwise static would serve the generic one).
+app.use(compressStaticAssets);
 app.use(express.static(staticDir, {
   index: false,
   // Cache-Control policy lives in staticCache.js (unit-tested): index.html + sw.js are never cached
@@ -160,11 +163,16 @@ app.get('*', (req, res, next) => {
 const server = app.listen(cfg.port, cfg.host, () => {
   console.log(`[handmux] listening on http://${cfg.host}:${cfg.port} (serving ${staticDir})`);
 });
+const terminalStream = createTerminalStream({ token, commands });
 server.on('upgrade', (req, socket, head) => {
+  if (terminalStream.onUpgrade(req, socket, head)) return;
   if (!browserWorker.onUpgrade(req, socket, head)) socket.destroy();
 });
 
 const shutdown = createGracefulShutdown({ events, workspace, browser: browserWorker, server });
-const handleSignal = () => { shutdown().catch(() => {}); };
+const handleSignal = () => {
+  terminalStream.close();
+  shutdown().catch(() => {});
+};
 process.on('SIGINT', handleSignal);
 process.on('SIGTERM', handleSignal);

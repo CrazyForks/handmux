@@ -286,7 +286,7 @@ export default {
   'setup.sshReady': '✓ passwordless SSH already set up',
   'setup.sshSetup': "→ setting up passwordless SSH to {host} (you'll enter the password once) …",
   'setup.sshHelp1': 'Server side (one-time): point a reverse proxy at the forwarded loopback port.',
-  'setup.sshHelpNginx': '  nginx:  proxy_pass http://127.0.0.1:{port};  (add client_max_body_size 60m; proxy_read_timeout 90s;)',
+  'setup.sshHelpNginx': '  nginx:  proxy_pass http://127.0.0.1:{port};  also set proxy_http_version 1.1, the Upgrade/Connection WebSocket headers, client_max_body_size 60m, and proxy_read_timeout 90s;',
   'setup.sshHelpCaddy': '  caddy:  {url} {  reverse_proxy 127.0.0.1:{port}  }',
 
   // workspace restore

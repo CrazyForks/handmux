@@ -286,12 +286,23 @@ describe('other bounded push operations', () => {
 describe('notification inbox failures', () => {
   const response = (ok, body = {}, status = ok ? 200 : 500) => ({ ok, status, json: async () => body });
 
+  it('does not touch the service worker or report an error when notifications are disabled', async () => {
+    localStorage.setItem('tw_notify', '0');
+    global.navigator.serviceWorker = { ready: new Promise(() => {}) };
+    const { getNotifications } = await import('../src/push.js');
+    await expect(getNotifications()).resolves.toEqual([]);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it('rejects a failed inbox load instead of turning it into an empty list', async () => {
     global.fetch = vi.fn(async (url) => String(url).includes('/api/push/key')
       ? response(true, { pushKey: 'K' })
       : response(false, {}, 503));
     const { getNotifications } = await import('../src/push.js');
-    await expect(getNotifications()).rejects.toThrow();
+    await expect(getNotifications()).rejects.toMatchObject({
+      message: 'notification inbox load failed',
+      status: 503,
+    });
   });
 
   it('rejects an unauthorized key lookup so App can return to the token prompt', async () => {

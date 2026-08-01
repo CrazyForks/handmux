@@ -20,7 +20,9 @@ const terminal = vi.hoisted(() => ({
   props: null,
   focusInput: vi.fn(),
   blurInput: vi.fn(),
+  forwardPageKey: vi.fn(),
 }));
+const bottomDock = vi.hoisted(() => ({ focusComposer: vi.fn() }));
 
 vi.mock('./api.js', async (importOriginal) => ({ ...(await importOriginal()), ...api }));
 vi.mock('./storage.js', async (importOriginal) => ({
@@ -56,19 +58,36 @@ vi.mock('./hooks/usePreviews.js', () => ({
   }),
 }));
 vi.mock('./useClaudeHooks.js', () => ({ useClaudeHooks: () => ({ status: 'installed', enable: vi.fn() }) }));
-vi.mock('./hooks/useBackButton.js', () => ({ useBackButton: () => {} }));
+vi.mock('./hooks/useBackButton.js', () => ({
+  useBackButton: () => {},
+  useHistoryLayer: () => {},
+  unwindHistory: () => {},
+}));
 vi.mock('./hooks/useExitConfirm.js', () => ({ useExitConfirm: () => {} }));
 vi.mock('./hooks/useKeyboardInset.js', () => ({ useKeyboardInset: () => 0 }));
 vi.mock('./hooks/usePageScrollLock.js', () => ({ usePageScrollLock: () => {} }));
 vi.mock('./hooks/useLongPress.js', () => ({ useLongPress: () => ({}) }));
-vi.mock('./desktopInput.js', () => ({ desktopInputEnvironment: () => true }));
+vi.mock('./desktopInput.js', () => ({
+  desktopInputEnvironment: () => true,
+  getKeyboardMode: () => 'auto',
+  setKeyboardMode: vi.fn(),
+  keyboardModeUsesDesktop: () => true,
+}));
 
 vi.mock('./components/WindowBar.jsx', () => ({
   default: (props) => { windowBar.props = props; return null; },
 }));
 vi.mock('./components/BottomDock.jsx', async () => {
-  const { forwardRef } = await import('react');
-  return { default: forwardRef((_props, _ref) => null) };
+  const { forwardRef, useImperativeHandle } = await import('react');
+  return {
+    default: forwardRef((_props, ref) => {
+      useImperativeHandle(ref, () => ({
+        focusComposer: bottomDock.focusComposer,
+        composerFocused: () => false,
+      }), []);
+      return null;
+    }),
+  };
 });
 vi.mock('./components/Terminal.jsx', async () => {
   const { forwardRef, useImperativeHandle } = await import('react');
@@ -84,6 +103,7 @@ vi.mock('./components/Terminal.jsx', async () => {
           terminal.blurInput();
           props.onInputFocusChange?.(false);
         },
+        forwardPageKey: terminal.forwardPageKey,
       }), [props.onInputFocusChange]);
       return <div data-testid="terminal-pane">{props.pane}</div>;
     }),
@@ -158,6 +178,8 @@ beforeEach(() => {
   terminal.props = null;
   terminal.focusInput.mockReset();
   terminal.blurInput.mockReset();
+  terminal.forwardPageKey.mockReset();
+  bottomDock.focusComposer.mockReset();
   localStorage.clear();
   localStorage.setItem('tw_lang', 'zh');
   localStorage.setItem('tw_token', 'good');
@@ -256,6 +278,93 @@ describe('App management dimensions', () => {
     act(() => windowBar.props.onPaneMapOpenChange(false));
     await flush(20);
     expect(terminal.focusInput).toHaveBeenCalledOnce();
+  });
+
+  it('returns desktop keyboard ownership to the terminal when the terminal is tapped', async () => {
+    await renderManagedSession();
+
+    act(() => terminal.props.onTap());
+
+    expect(terminal.focusInput).toHaveBeenCalledOnce();
+  });
+
+  it('moves desktop keyboard ownership into the draft on Shift+Enter', async () => {
+    await renderManagedSession();
+
+    act(() => terminal.props.onRequestDraft());
+
+    expect(terminal.blurInput).toHaveBeenCalledOnce();
+    expect(bottomDock.focusComposer).toHaveBeenCalledOnce();
+  });
+
+  it('keeps page-level physical keys connected to the terminal after toolbar focus', async () => {
+    const view = await renderManagedSession();
+    terminal.forwardPageKey.mockReturnValue(true);
+    const toolbarButton = document.createElement('button');
+    view.container.append(toolbarButton);
+    toolbarButton.focus();
+
+    fireEvent.keyDown(toolbarButton, { key: 'a', code: 'KeyA', keyCode: 65 });
+
+    expect(terminal.forwardPageKey).toHaveBeenCalledOnce();
+    expect(terminal.forwardPageKey.mock.calls[0][0]).toMatchObject({ key: 'a', code: 'KeyA' });
+  });
+
+  it('opens the draft page-wide while leaving editors, F5, and F12 alone', async () => {
+    const view = await renderManagedSession();
+    const toolbarButton = document.createElement('button');
+    const editor = document.createElement('textarea');
+    view.container.append(toolbarButton, editor);
+
+    fireEvent.keyDown(toolbarButton, { key: 'Enter', shiftKey: true });
+    expect(bottomDock.focusComposer).toHaveBeenCalledOnce();
+    expect(terminal.forwardPageKey).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(toolbarButton, { key: 'F5' });
+    fireEvent.keyDown(toolbarButton, { key: 'F12' });
+    fireEvent.keyDown(editor, { key: 'x', code: 'KeyX', keyCode: 88 });
+    expect(terminal.forwardPageKey).not.toHaveBeenCalled();
+  });
+});
+
+describe('App window switching', () => {
+  it('opens the target terminal immediately and ignores a slower stale pane response', async () => {
+    const session = { id: '$7', name: 'current' };
+    const first = { id: '@1', name: 'one', active: true, panes: 1, activePaneId: '%1' };
+    const second = { id: '@2', name: 'two', active: false, panes: 1, activePaneId: '%2' };
+    const third = { id: '@3', name: 'three', active: false, panes: 1, activePaneId: '%3' };
+    const secondPanes = deferred();
+    const thirdPanes = deferred();
+    localStorage.setItem('tw_bound', JSON.stringify([session.name]));
+    api.getSessions.mockResolvedValue([session]);
+    api.getWindows.mockResolvedValue([first, second, third]);
+    api.getPanes
+      .mockResolvedValueOnce([{ id: '%1', active: true, width: 80 }])
+      .mockReturnValueOnce(secondPanes.promise)
+      .mockReturnValueOnce(thirdPanes.promise);
+    await renderApp();
+
+    let secondSwitch;
+    act(() => { secondSwitch = windowBar.props.onSelectWindow(second); });
+    expect(windowBar.props.currentWindowId).toBe('@2');
+    expect(screen.getByTestId('terminal-pane').textContent).toBe('%2');
+
+    let thirdSwitch;
+    act(() => { thirdSwitch = windowBar.props.onSelectWindow(third); });
+    expect(windowBar.props.currentWindowId).toBe('@3');
+    expect(screen.getByTestId('terminal-pane').textContent).toBe('%3');
+
+    await act(async () => {
+      thirdPanes.resolve([{ id: '%3', active: true, width: 120 }]);
+      await thirdSwitch;
+    });
+    await act(async () => {
+      secondPanes.resolve([{ id: '%2', active: true, width: 90 }]);
+      await secondSwitch;
+    });
+
+    expect(windowBar.props.currentWindowId).toBe('@3');
+    expect(screen.getByTestId('terminal-pane').textContent).toBe('%3');
   });
 });
 

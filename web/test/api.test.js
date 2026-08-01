@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { getHistory, createSession, createWindow, renameSession, renameWindow, deleteWindow, swapWindows, createDir, UnauthorizedError, ApiError, fetchDoc, fetchDir, signAsr, sendInput } from '../src/api.js';
+import { getHistory, getPanes, createSession, createWindow, renameSession, renameWindow, deleteWindow, swapWindows, createDir, UnauthorizedError, ApiError, fetchDoc, fetchDir, signAsr, sendInput } from '../src/api.js';
 import { createPreview, getPreviews, deletePreview, previewUrl, fetchImageUrl } from '../src/api.js';
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
@@ -17,6 +17,16 @@ describe('api request timeout', () => {
     const err = await p;
     expect(err).toBeInstanceOf(Error);
     expect(err).not.toBeInstanceOf(UnauthorizedError);
+  });
+
+  it('also times out the pane lookup used during window switching', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn((_url, opts) => new Promise((_, reject) => {
+      opts.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    })));
+    const p = getPanes('@1').catch((e) => e);
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(await p).toBeInstanceOf(Error);
   });
 
   it('returns the json on a normal response (timeout cleared, no abort)', async () => {
