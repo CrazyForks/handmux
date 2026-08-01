@@ -11,6 +11,22 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.20.3',
+    date: '2026-08-01',
+    highlight: {
+      zh: '实时终端显示更稳定流畅',
+      en: 'More stable, smoother live terminals',
+    },
+    items: {
+      zh: [
+        '修复了实时终端持续输出时偶发缺行,以及内容较短、首次打开或展开键盘时画面位置不稳定的问题;长时间使用和多窗口同时打开也更流畅。',
+      ],
+      en: [
+        'Fixed occasional missing lines during continuous live output and unstable positioning with short content, first open, or keyboard expansion; long sessions and multiple visible windows also stay smoother.',
+      ],
+    },
+  },
+  {
     version: '0.20.2',
     date: '2026-07-27',
     highlight: {
