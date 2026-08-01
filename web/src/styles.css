@@ -1469,12 +1469,8 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-consent-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .browser-consent-actions button { border: 0; border-radius: 10px; padding: 10px 14px; color: #d9dce2; background: #303238; }
 .browser-consent-actions .browser-consent-enable { color: #fff; background: var(--blue); font-weight: 650; }
-.browser-entry-status-dot {
-  position: absolute; top: 7px; right: 7px; width: 7px; height: 7px; border-radius: 50%;
-  box-shadow: 0 0 0 2px #1b1c1f; pointer-events: none;
-}
-.browser-entry-status-dot.direct { background: var(--blue); }
-.browser-entry-status-dot.proxy { background: #f2a450; }
+.browser-entry.direct > svg { color: var(--blue); }
+.browser-entry.proxy > svg { color: #f2a450; }
 @media (max-width: 430px) {
   .browser-nav { gap: 1px; padding-inline: 3px; }
   .browser-nav-button { width: 36px; }

@@ -1609,10 +1609,9 @@ export default function App() {
           onEnableHooks={enableHooks}
         />
         <button className="topbar-icon" onClick={() => setUsageOpen(true)} aria-label={t('usage.title')} title={t('usage.title')}><GaugeIcon /></button>
-        <button className="topbar-icon browser-entry"
+        <button className={`topbar-icon browser-entry${browserStatus ? ` ${browserStatus}` : ''}`}
           onClick={() => browser.setOpen(true)} aria-label={t('app.browser')} title={t('app.browser')}>
           <GlobeIcon />
-          {browserStatus && <span className={`browser-entry-status-dot ${browserStatus}`} aria-hidden="true" />}
         </button>
         <button className="topbar-icon" onClick={reopenFiles} aria-label={t('app.files')} title={t('app.files')}><FolderIcon /></button>
         <button className="topbar-icon" onClick={() => setGitOpen(true)} aria-label="Git" title="Git"><GitIcon /></button>

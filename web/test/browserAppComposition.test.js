@@ -14,26 +14,25 @@ describe('built-in browser App composition', () => {
   });
 
   it('renders the browser toolbar entry unconditionally', () => {
-    expect(source).toMatch(/className="topbar-icon browser-entry"[^>]+onClick=\{\(\) => browser\.setOpen\(true\)\}/);
+    const browserEntryIndex = source.indexOf('className={`topbar-icon browser-entry');
+    expect(browserEntryIndex).toBeGreaterThan(-1);
+    expect(source.slice(browserEntryIndex, browserEntryIndex + 240))
+      .toContain('onClick={() => browser.setOpen(true)}');
     expect(source).not.toMatch(/\{shownPreview && \(\s*<button className="topbar-icon preview-live"/);
-    expect(source.indexOf('className="topbar-icon browser-entry"'))
-      .toBeLessThan(source.indexOf('aria-label={t(\'app.files\')}'));
+    expect(browserEntryIndex).toBeLessThan(source.indexOf('aria-label={t(\'app.files\')}'));
     expect(source.slice(
-      source.indexOf('className="topbar-icon browser-entry"'),
+      browserEntryIndex,
       source.indexOf('aria-label={t(\'app.files\')}'),
     )).not.toContain('aria-label={t(\'usage.title\')}');
   });
 
   it('shows device-tab status on the browser entry with proxy precedence', () => {
     expect(source).toContain('const browserStatus = browserEntryStatus(browser.tabs)');
-    expect(source).not.toMatch(/browser-entry \$\{browserStatus === 'proxy'/);
-    expect(source).toContain('browser-entry-status-dot ${browserStatus}');
-    const dot = styles.match(/\.browser-entry-status-dot\s*\{([^}]*)\}/)?.[1] || '';
-    expect(dot).toMatch(/top:\s*7px/);
-    expect(dot).toMatch(/right:\s*7px/);
-    expect(dot).not.toMatch(/bottom:/);
-    expect(styles).toMatch(/\.browser-entry-status-dot\.direct\s*\{[^}]*background:\s*var\(--blue\)/);
-    expect(styles).toMatch(/\.browser-entry-status-dot\.proxy\s*\{[^}]*background:\s*#f2a450/);
+    expect(source).toContain("className={`topbar-icon browser-entry${browserStatus ? ` ${browserStatus}` : ''}`}");
+    expect(source).not.toContain('browser-entry-status-dot');
+    expect(styles).not.toContain('.browser-entry-status-dot');
+    expect(styles).toMatch(/\.browser-entry\.direct\s*>\s*svg\s*\{[^}]*color:\s*var\(--blue\)/);
+    expect(styles).toMatch(/\.browser-entry\.proxy\s*>\s*svg\s*\{[^}]*color:\s*#f2a450/);
   });
 
   it('routes confirmed terminal web links into the built-in browser', () => {
