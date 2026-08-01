@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { cleanup, renderHook } from '@testing-library/react';
 import { useBrowserBackStack } from '../src/hooks/useBrowserBackStack.js';
+import { useBackButton } from '../src/hooks/useBackButton.js';
 
 const pop = () => act(() => window.dispatchEvent(new PopStateEvent('popstate')));
 
@@ -72,6 +73,38 @@ describe('useBrowserBackStack', () => {
     pop();
     expect(switchTab).not.toHaveBeenCalled();
     expect(setOpen).toHaveBeenCalledWith(false);
+  });
+
+  it('owns the top shared history layer without closing its parent', () => {
+    const closeParent = vi.fn();
+    const setOpen = vi.fn();
+    renderHook(() => {
+      useBackButton(true, closeParent);
+      useBrowserBackStack({
+        open: true,
+        historyActive: false,
+        switchTab: vi.fn(),
+        setOpen,
+      });
+    });
+
+    pop();
+
+    expect(setOpen).toHaveBeenCalledWith(false);
+    expect(closeParent).not.toHaveBeenCalled();
+  });
+
+  it('routes Escape through Browser history instead of broadcasting it', () => {
+    renderHook(() => useBrowserBackStack({
+      open: true,
+      historyActive: false,
+      switchTab: vi.fn(),
+      setOpen: vi.fn(),
+    }));
+
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
+
+    expect(window.history.back).toHaveBeenCalledOnce();
   });
 
   it('does not let an old close traversal shut an immediately reopened Browser', async () => {

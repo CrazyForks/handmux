@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
+import { unwindHistory, useHistoryLayer } from './useBackButton.js';
 
 // Mirror Browser's two UI levels into window.history:
-// History (root) → page (drill). The popstate handler only consumes entries;
+// History (root) → page (drill). The shared history-layer callback only consumes entries;
 // it never pushes from inside popstate, which keeps Android WebViews balanced.
 export function useBrowserBackStack({
   open,
@@ -17,6 +18,20 @@ export function useBrowserBackStack({
   switchTabRef.current = switchTab;
   setOpenRef.current = setOpen;
 
+  useHistoryLayer(open, () => {
+    const previousDepth = depthRef.current;
+    depthRef.current = Math.max(0, previousDepth - 1);
+    if (suppressNextPopRef.current) {
+      suppressNextPopRef.current = false;
+      return;
+    }
+    if (previousDepth > 1) {
+      void switchTabRef.current?.('history');
+    } else {
+      void setOpenRef.current?.(false);
+    }
+  });
+
   useEffect(() => {
     if (!open) {
       previousHistoryActiveRef.current = historyActive;
@@ -25,23 +40,8 @@ export function useBrowserBackStack({
     window.history.pushState({ overlay: true }, '');
     depthRef.current = 1;
     previousHistoryActiveRef.current = historyActive;
-    const onPop = () => {
-      const previousDepth = depthRef.current;
-      depthRef.current = Math.max(0, previousDepth - 1);
-      if (suppressNextPopRef.current) {
-        suppressNextPopRef.current = false;
-        return;
-      }
-      if (previousDepth > 1) {
-        void switchTabRef.current?.('history');
-      } else {
-        void setOpenRef.current?.(false);
-      }
-    };
-    window.addEventListener('popstate', onPop);
     return () => {
-      window.removeEventListener('popstate', onPop);
-      if (depthRef.current > 0) window.history.go(-depthRef.current);
+      if (depthRef.current > 0) unwindHistory(depthRef.current);
       depthRef.current = 0;
       suppressNextPopRef.current = false;
     };
