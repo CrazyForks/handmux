@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { createPortal } from 'react-dom';
 import {
   ChevronDownIcon,
+  FolderIcon,
   GlobeIcon,
   HomeIcon,
   MoreHorizontalIcon,
@@ -88,10 +89,6 @@ export default function BrowserSheet({ browser, staticPreview }) {
   useEffect(() => {
     if (!proxyAvailable) setNewPageMode('direct');
   }, [proxyAvailable]);
-
-  useEffect(() => {
-    if (open && homeActive) void staticPreview?.refreshPreviews?.();
-  }, [homeActive, open, staticPreview?.refreshPreviews]);
 
   useEffect(() => {
     setOptionsOpen(false);
@@ -244,7 +241,8 @@ export default function BrowserSheet({ browser, staticPreview }) {
   const refreshActive = async () => {
     if (!active) return;
     if (staticSelected) {
-      if (staticActive.status === 'running') setStaticReloadKey((value) => value + 1);
+      if (staticActive.status === 'error') await staticPreview.retryPreview(staticActive.name);
+      else if (staticActive.status === 'ready') setStaticReloadKey((value) => value + 1);
       return;
     }
     const tab = webActive;
@@ -347,6 +345,7 @@ export default function BrowserSheet({ browser, staticPreview }) {
   };
 
   const openDirPicker = async () => {
+    addressRef.current?.blur();
     let seed = staticPreview?.lastPreviewDir || null;
     if (!seed && staticPreview?.pane) {
       try { seed = (await fetchPaneCwd(staticPreview.pane)).cwd || null; } catch { /* picker falls back home */ }
@@ -394,11 +393,11 @@ export default function BrowserSheet({ browser, staticPreview }) {
     };
   };
   const activeLoading = staticSelected
-    ? staticActive.status === 'running' && !staticLoaded
+    ? staticActive.status === 'ensuring' || (staticActive.status === 'ready' && !staticLoaded)
     : !!webActive && (!loadedTabs.has(webActive.id)
       || frameUrls.current.get(webActive.id) !== webActive.url || refreshingTabs.has(webActive.id));
   const displayedError = historyError
-    || ((staticSelected || homeActive) ? staticPreview?.error : null)
+    || (homeActive ? staticPreview?.error : null)
     || (!staticSelected ? error : null);
 
   if (consentOpen) return createPortal(
@@ -460,7 +459,7 @@ export default function BrowserSheet({ browser, staticPreview }) {
                   <span className="browser-tab-label">{label}</span>
                 </button>
                 <button className="browser-tab-close" aria-label={t('browser.closeTab', { title: label })}
-                  onClick={() => staticPreview.closeTab(tab.name)}><XIcon /></button>
+                  onClick={() => { void staticPreview.closeTab(tab.name); }}><XIcon /></button>
               </span>
             );
           })}
@@ -481,11 +480,17 @@ export default function BrowserSheet({ browser, staticPreview }) {
           <input ref={addressRef} className="browser-address" aria-label={t('browser.address')}
             value={address} onChange={(event) => setAddress(event.target.value)}
             readOnly={staticSelected}
-            placeholder={t('browser.addressPlaceholder')} autoCapitalize="none" autoCorrect="off" spellCheck="false" />
+            placeholder={t(homeActive ? 'browser.addressOrDirectoryPlaceholder' : 'browser.addressPlaceholder')}
+            autoCapitalize="none" autoCorrect="off" spellCheck="false" />
+          {homeActive && (
+            <button type="button" className="browser-address-folder"
+              aria-label={t('browser.chooseDirectory')} title={t('browser.chooseDirectory')}
+              onClick={openDirPicker}><FolderIcon /></button>
+          )}
         </form>
         <button className={`browser-nav-button browser-refresh ${activeLoading ? 'loading' : ''}`}
           aria-label={t(activeLoading && proxied ? 'browser.stop' : 'browser.refresh')} aria-busy={activeLoading}
-          disabled={!active || homeActive || (staticSelected && staticActive.status !== 'running')}
+          disabled={!active || homeActive || (staticSelected && staticActive.status === 'ensuring')}
           onClick={activeLoading && proxied ? stopActive : refreshActive}>
           {activeLoading && proxied ? <StopIcon /> : <RefreshIcon />}
         </button>
@@ -545,20 +550,6 @@ export default function BrowserSheet({ browser, staticPreview }) {
                   <a className="browser-options-action browser-open-external"
                     href={webActive.originalUrl} target="_blank" rel="noopener noreferrer"
                     onClick={() => setOptionsOpen(false)}>{t('browser.openExternal')}</a>
-                </div>
-              )}
-
-              {staticSelected && (
-                <div className="browser-options-section browser-static-options">
-                  <strong>{t('browser.staticSource')}</strong>
-                  <p className="browser-options-hint browser-static-dir">{staticActive.dir}</p>
-                  {staticActive.status === 'running' ? (
-                    <button className="browser-options-danger"
-                      onClick={() => staticPreview.stopPreview(staticActive.name)}>{t('browser.stopStatic')}</button>
-                  ) : (
-                    <button className="browser-options-action"
-                      onClick={() => staticPreview.restartPreview(staticActive.name)}>{t('browser.restartStatic')}</button>
-                  )}
                 </div>
               )}
 
@@ -646,29 +637,6 @@ export default function BrowserSheet({ browser, staticPreview }) {
       <div ref={bodyRef} className={`browser-content ${device === 'desktop' ? 'desktop' : ''}`}
         inert={clearConfirmation ? '' : undefined}>
         <section className="browser-history" hidden={!homeActive}>
-          <div className="browser-static-launcher">
-            <div>
-              <h2>{t('browser.previewDirectory')}</h2>
-              <p>{t('browser.previewDirectoryHint')}</p>
-            </div>
-            <button onClick={openDirPicker}>{t('browser.chooseDirectory')}</button>
-          </div>
-          {staticPreview?.previews?.length > 0 && (
-            <div className="browser-static-running">
-              <h3>{t('browser.runningStatic')}</h3>
-              {(staticPreview.previews || []).map((preview) => (
-                <div className="browser-static-running-row" key={preview.name}>
-                  <button className="browser-static-running-main"
-                    onClick={() => staticPreview.openPreview(preview)}>
-                    <strong>{preview.name}</strong>
-                    <span>{preview.dir}</span>
-                  </button>
-                  <button className="browser-static-stop"
-                    onClick={() => staticPreview.stopPreview(preview.name)}>{t('browser.stopStatic')}</button>
-                </div>
-              ))}
-            </div>
-          )}
           <div className="browser-history-head">
             <h2>{t('browser.history')}</h2>
             {history.length > 0 && <button onClick={clearHistory}>{t('browser.clearHistory')}</button>}
@@ -741,7 +709,7 @@ export default function BrowserSheet({ browser, staticPreview }) {
         })}
         {staticSelected && (
           <div className="browser-pane static">
-            {staticActive.status === 'running' ? (
+            {staticActive.status === 'ready' ? (
               <div className="browser-frame-scaler" style={scalerStyleFor(pageZoom)}>
                 <iframe key={`${staticActive.name}-${staticReloadKey}`}
                   className="browser-frame"
@@ -758,13 +726,14 @@ export default function BrowserSheet({ browser, staticPreview }) {
                 )}
               </div>
             ) : (
-              <div className="browser-static-state" role="status">
-                <strong>{t(staticActive.status === 'checking'
-                  ? 'browser.staticChecking' : 'browser.staticStopped')}</strong>
+              <div className="browser-static-state" role={staticActive.status === 'error' ? 'alert' : 'status'}>
+                <strong>{staticActive.status === 'error'
+                  ? (staticActive.error?.message || t('browser.loadFailed'))
+                  : t('browser.staticOpening')}</strong>
                 <span>{staticActive.dir}</span>
-                {staticActive.status === 'stopped' && (
-                  <button onClick={() => staticPreview.restartPreview(staticActive.name)}>
-                    {t('browser.restartStatic')}
+                {staticActive.status === 'error' && (
+                  <button onClick={() => staticPreview.retryPreview(staticActive.name)}>
+                    {t('browser.retry')}
                   </button>
                 )}
               </div>

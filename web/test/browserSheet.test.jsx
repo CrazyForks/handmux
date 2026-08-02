@@ -67,17 +67,14 @@ const staticPreview = (overrides = {}) => ({
   selected: false,
   shownPreview: null,
   tabs: [],
-  previews: [],
   error: null,
   pane: null,
   lastPreviewDir: null,
   deactivate: vi.fn(),
   switchTab: vi.fn(),
   closeTab: vi.fn(),
-  openPreview: vi.fn(),
   startPreview: vi.fn(),
-  stopPreview: vi.fn(),
-  restartPreview: vi.fn(),
+  retryPreview: vi.fn(),
   ...overrides,
 });
 
@@ -97,22 +94,21 @@ const setInput = (input, value) => act(() => {
 });
 
 describe('BrowserSheet', () => {
-  it('lists running static previews on Home without a countdown', async () => {
-    const preview = staticPreview({
-      previews: [{ name: 'main-3', dir: '/home/u/site', expiresAt: Date.now() + 300_000 }],
-    });
+  it('puts directory selection inside the Home address row without a running list', async () => {
+    const preview = staticPreview();
     await render(browser({ historyActive: true, activeId: null }), preview);
-    expect(document.body.textContent).toContain('预览本地目录');
-    expect(document.body.textContent).toContain('正在运行的静态预览');
-    expect(document.body.textContent).toContain('/home/u/site');
-    expect(document.body.textContent).not.toMatch(/分钟|倒计时/);
-    click([...document.querySelectorAll('.browser-static-running-main')][0]);
-    expect(preview.openPreview).toHaveBeenCalledWith(preview.previews[0]);
+    const form = document.querySelector('.browser-address-form');
+    const folder = form.querySelector('button[aria-label="选择目录"]');
+    expect(folder).toBeTruthy();
+    expect(form.querySelector('input').placeholder).toBe('输入网址，或选择目录');
+    expect(document.querySelector('.browser-static-running')).toBeNull();
+    await clickAndFlush(folder);
+    expect(document.body.textContent).toContain('选择目录');
   });
 
-  it('renders a static directory as a green tab with its dedicated menu', async () => {
+  it('renders a static directory as a green tab with only view and zoom in its menu', async () => {
     const tab = {
-      name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'running',
+      name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'ready',
       url: '/preview/main-3/?token=x',
     };
     const preview = staticPreview({ selected: true, shownPreview: tab, tabs: [tab] });
@@ -126,8 +122,10 @@ describe('BrowserSheet', () => {
 
     click(document.querySelector('button[aria-label="网页预览器菜单"]'));
     const menu = document.querySelector('.browser-options-card');
-    expect(menu.textContent).toContain('源目录');
-    expect(menu.textContent).toContain('停止预览');
+    expect(menu.textContent).toContain('页面视图');
+    expect(menu.textContent).toContain('缩放网页');
+    expect(menu.textContent).not.toContain('源目录');
+    expect(menu.textContent).not.toContain('停止预览');
     expect(menu.textContent).not.toContain('用系统浏览器打开');
     expect(menu.textContent).not.toContain('连接方式');
     expect(menu.textContent).not.toContain('后台关闭');
@@ -135,33 +133,30 @@ describe('BrowserSheet', () => {
     expect(styles).toMatch(/\.browser-tab-wrap\.static[^}]*var\(--green\)/);
   });
 
-  it('keeps closing a static tab local and stopping it explicit', async () => {
+  it('closes a static tab through its unified lifecycle action', async () => {
     const tab = {
-      name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'running',
+      name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'ready',
       url: '/preview/main-3/?token=x',
     };
     const preview = staticPreview({ selected: true, shownPreview: tab, tabs: [tab] });
     await render(browser({ historyActive: true, activeId: null }), preview);
     click(document.querySelector('.browser-tab-wrap.static .browser-tab-close'));
     expect(preview.closeTab).toHaveBeenCalledWith('main-3');
-    expect(preview.stopPreview).not.toHaveBeenCalled();
-
-    click(document.querySelector('button[aria-label="网页预览器菜单"]'));
-    click([...document.querySelectorAll('.browser-options-card button')]
-      .find((button) => button.textContent === '停止预览'));
-    expect(preview.stopPreview).toHaveBeenCalledWith('main-3');
   });
 
-  it('shows a restart action when a static preview is no longer running', async () => {
-    const tab = { name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'stopped', url: null };
+  it('shows the actual static registration error with retry', async () => {
+    const tab = {
+      name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'error', url: null,
+      error: new Error('directory not found'),
+    };
     const preview = staticPreview({ selected: true, shownPreview: tab, tabs: [tab] });
     await render(browser({ historyActive: true, activeId: null }), preview);
     expect(document.querySelector('.browser-pane.static iframe')).toBeNull();
-    const restart = [...document.querySelectorAll('.browser-static-state button')]
-      .find((button) => button.textContent === '重新启动');
-    expect(restart).toBeTruthy();
-    click(restart);
-    expect(preview.restartPreview).toHaveBeenCalledWith('main-3');
+    expect(document.querySelector('.browser-static-state').textContent).toContain('directory not found');
+    const retry = document.querySelector('.browser-static-state button');
+    expect(retry.textContent).toBe('重试');
+    click(retry);
+    expect(preview.retryPreview).toHaveBeenCalledWith('main-3');
   });
   it('keeps fine-grained page zoom controls in the menu without blocking webpage interaction', async () => {
     const viewport = document.createElement('meta');

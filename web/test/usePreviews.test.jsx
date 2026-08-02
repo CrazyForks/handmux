@@ -3,23 +3,16 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 
 const api = vi.hoisted(() => {
-  let previews = [];
   return {
-    reset() { previews = []; },
-    getPreviews: vi.fn(async () => ({ previews: [...previews] })),
+    reset() {},
     createPreview: vi.fn(async (name, { dir }) => {
-      const entry = { name, dir, token: `token-${name}`, expiresAt: Date.now() + 3_600_000 };
-      previews = [...previews.filter((item) => item.name !== name), entry];
-      return entry;
+      return { name, dir, url: `/preview/${name}/?token=token-${name}` };
     }),
-    deletePreview: vi.fn(async (name) => {
-      previews = previews.filter((item) => item.name !== name);
-    }),
+    deletePreview: vi.fn(async () => {}),
   };
 });
 
 vi.mock('../src/api.js', () => ({
-  getPreviews: api.getPreviews,
   createPreview: api.createPreview,
   deletePreview: api.deletePreview,
   previewUrl: (entry) => `/preview/${entry.name}/?token=${entry.token}`,
@@ -70,7 +63,7 @@ describe('usePreviews static tabs', () => {
     await flush();
   };
 
-  it('silently renews an open static tab after remount', async () => {
+  it('automatically restores an open static tab after remount', async () => {
     await act(async () => { await model.startPreview('/home/u/site'); });
     const name = model.tabs[0].name;
     api.createPreview.mockClear();
@@ -78,40 +71,48 @@ describe('usePreviews static tabs', () => {
     await remount();
 
     expect(api.createPreview).toHaveBeenCalledWith(name, { dir: '/home/u/site' });
-    expect(model.tabs[0].status).toBe('running');
+    expect(model.tabs[0]).toMatchObject({ status: 'ready', url: `/preview/${name}/?token=token-${name}` });
   });
 
-  it('does not resurrect an explicitly stopped preview after remount', async () => {
+  it('foregrounds by ensuring the lease without a periodic heartbeat', async () => {
     await act(async () => { await model.startPreview('/home/u/site'); });
     const name = model.tabs[0].name;
-    await act(async () => { await model.stopPreview(name); });
     api.createPreview.mockClear();
 
-    await remount();
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      await Promise.resolve();
+    });
 
-    expect(api.createPreview).not.toHaveBeenCalled();
-    expect(model.tabs[0]).toMatchObject({ status: 'stopped', keepAlive: false });
+    expect(api.createPreview).toHaveBeenCalledTimes(1);
+    expect(api.createPreview).toHaveBeenCalledWith(name, { dir: '/home/u/site' });
+    expect(model.tabs[0].status).toBe('ready');
   });
 
-  it('keeps tab close device-local while Stop changes the server preview state', async () => {
+  it('closes the device tab and releases its server lease together', async () => {
     await act(async () => { await model.startPreview('/home/u/site'); });
     expect(model.selected).toBe(true);
     expect(model.tabs).toHaveLength(1);
-    expect(model.tabs[0]).toMatchObject({ dir: '/home/u/site', status: 'running' });
+    expect(model.tabs[0]).toMatchObject({ dir: '/home/u/site', status: 'ready' });
 
     const name = model.tabs[0].name;
-    act(() => model.closeTab(name));
+    await act(async () => { await model.closeTab(name); });
     expect(model.tabs).toHaveLength(0);
-    expect(api.deletePreview).not.toHaveBeenCalled();
-
-    await act(async () => {
-      await model.refreshPreviews();
-      model.openPreview(name);
-    });
-    expect(model.tabs).toHaveLength(1);
-
-    await act(async () => { await model.stopPreview(name); });
     expect(api.deletePreview).toHaveBeenCalledWith(name);
-    expect(model.tabs[0]).toMatchObject({ status: 'stopped', keepAlive: false });
+    expect(JSON.parse(localStorage.getItem('hm_static_preview_tabs1'))).toEqual([]);
+  });
+
+  it('keeps a failed restored tab and exposes retry with the real error', async () => {
+    localStorage.setItem('hm_static_preview_tabs1', JSON.stringify([
+      { name: 'dev-site-3', dir: '/home/u/site' },
+    ]));
+    api.createPreview.mockRejectedValueOnce(new Error('directory not found'));
+
+    await remount();
+
+    expect(model.tabs[0]).toMatchObject({ status: 'error' });
+    expect(model.tabs[0].error.message).toBe('directory not found');
+    await act(async () => { await model.retryPreview('dev-site-3'); });
+    expect(model.tabs[0].status).toBe('ready');
   });
 });

@@ -65,6 +65,13 @@ describe('catalog parity', () => {
     }
   });
 
+  it('does not expose the retired static-preview heartbeat TTL setting', () => {
+    for (const dict of [en, zh]) {
+      expect(dict['help.flags']).not.toContain('preview-ttl');
+      expect(dict['help.flags']).not.toContain('HANDMUX_PREVIEW_TTL');
+    }
+  });
+
   it('documents both restore forms and provides actionable restore messages in both locales', () => {
     for (const dict of [en, zh]) {
       expect(dict['help.body']).toContain('handmux restore [--dry-run] [--checkpoint <id>] [--session <name>]');

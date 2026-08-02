@@ -43,21 +43,16 @@ vi.mock('./push.js', async (importOriginal) => ({
 }));
 vi.mock('./hooks/usePreviews.js', () => ({
   usePreviews: () => ({
-    previews: [],
-    loaded: true,
     error: null,
     selected: false,
     deactivate: vi.fn(),
-    activePreview: null,
     shownPreview: null,
     tabs: [],
     activeName: null,
-    openPreview: vi.fn(),
     startPreview: vi.fn(),
-    restartPreview: vi.fn(),
+    retryPreview: vi.fn(),
     switchTab: vi.fn(),
     closeTab: vi.fn(),
-    stopPreview: vi.fn(),
   }),
 }));
 vi.mock('./useClaudeHooks.js', () => ({ useClaudeHooks: () => ({ status: 'installed', enable: vi.fn() }) }));

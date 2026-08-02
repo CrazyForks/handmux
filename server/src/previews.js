@@ -1,8 +1,8 @@
 // server/src/previews.js
-// Preview registry. Maps a safe single-segment name to an on-disk directory under $HOME with a TTL.
+// Preview registry. Maps a safe single-segment name to an on-disk directory under $HOME with a lease.
 // in-memory registry (loaded once at construction, flushed atomically on each mutation) — the previous
 // reload-and-write-back on every op was an unguarded read-modify-write that could lose an entry when a
-// GET's expiry-prune raced a concurrent register(). Pure-ish: home/now/store/ttl are injected for tests.
+// GET's lease update raced a concurrent register(). Pure-ish: home/now/store/ttl are injected for tests.
 import fs from 'node:fs';
 import path from 'node:path';
 import { homedir } from 'node:os';
@@ -22,14 +22,18 @@ export function createPreviews({
   home = homedir(),
   store = process.env.PREVIEW_STORE || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../data/previews.json'),
   now = () => Date.now(),
-  ttlMs = Number(process.env.HANDMUX_PREVIEW_TTL) || 3_600_000,
+  ttlMs = 2 * 60 * 60_000,
 } = {}) {
   let realHome;
   try { realHome = fs.realpathSync(home); } catch { realHome = home; }
 
   // Loaded ONCE — this in-memory array is the source of truth; every op mutates it and flushes atomically.
   let entries = readJsonArray(store);
-  const flush = () => writeJsonAtomic(store, entries);
+  let flushedExpiries = new Map(entries.map((entry) => [entry?.name, entry?.expiresAt]));
+  const flush = () => {
+    writeJsonAtomic(store, entries);
+    flushedExpiries = new Map(entries.map((entry) => [entry?.name, entry?.expiresAt]));
+  };
 
   // Drop any prior entry with this name, stamp one timestamp into createdAt/expiresAt, then persist.
   const upsert = (fields) => {
@@ -58,8 +62,14 @@ export function createPreviews({
   function get(name) {
     const entry = entries.find((e) => e && e.name === name);
     if (!entry) return { state: 'missing' };
-    if (entry.expiresAt <= now()) { entries = entries.filter((e) => e.name !== name); flush(); return { state: 'expired' }; }
+    const ts = now();
+    if (entry.expiresAt <= ts) { entries = entries.filter((e) => e.name !== name); flush(); return { state: 'expired' }; }
     if (entry.kind === 'dynamic') { entries = entries.filter((e) => e.name !== name); flush(); return { state: 'missing' }; }
+    // Match proxy leases: actual page/resource traffic renews the lease. Throttle persistence so a page
+    // with many assets does not rewrite the registry once per request.
+    const nextExpiry = ts + ttlMs;
+    entry.expiresAt = nextExpiry;
+    if (nextExpiry - (flushedExpiries.get(entry.name) || 0) >= 60_000) flush();
     return { state: 'active', entry: { kind: 'static', ...entry } }; // legacy rows (no kind) → static
   }
 

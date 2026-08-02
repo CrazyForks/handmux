@@ -35,6 +35,15 @@ describe('safePreviewName', () => {
 });
 
 describe('register', () => {
+  it('uses the same two-hour safety lease as browser proxy tabs by default', async () => {
+    const defaultLease = createPreviews({
+      home,
+      store: join(home, 'default-previews.json'),
+      now: () => clock.t,
+    });
+    const out = await defaultLease.register({ name: 'foo', dir: join(home, 'site') });
+    expect(out.expiresAt).toBe(clock.t + 2 * 60 * 60_000);
+  });
   it('registers a dir under home and returns expiresAt = now + ttl', async () => {
     const out = await previews.register({ name: 'foo', dir: join(home, 'site') });
     expect(out.name).toBe('foo');
@@ -60,17 +69,28 @@ describe('register', () => {
 });
 
 describe('get / list / remove', () => {
-  it('get returns active before expiry, expired after', async () => {
+  it('get renews an active lease from real preview traffic', async () => {
     await previews.register({ name: 'foo', dir: join(home, 'site') });
+    clock.t += 30_000;
     expect(previews.get('foo').state).toBe('active');
+    expect(previews.list()[0].expiresAt).toBe(clock.t + 600_000);
     clock.t += 600_001;
     expect(previews.get('foo').state).toBe('expired');
     expect(previews.get('foo').state).toBe('missing'); // expired entry was purged
   });
+  it('persists traffic renewals at most once per minute', async () => {
+    await previews.register({ name: 'foo', dir: join(home, 'site') });
+    clock.t += 30_000;
+    previews.get('foo');
+    expect(JSON.parse(await fsp.readFile(store, 'utf8'))[0].expiresAt).toBe(1_600_000);
+    clock.t += 30_000;
+    previews.get('foo');
+    expect(JSON.parse(await fsp.readFile(store, 'utf8'))[0].expiresAt).toBe(clock.t + 600_000);
+  });
   it('get returns missing for unknown name', () => {
     expect(previews.get('nope').state).toBe('missing');
   });
-  it('list returns only active and purges expired', async () => {
+  it('list does not renew leases and purges expired entries', async () => {
     await previews.register({ name: 'a', dir: join(home, 'site') });
     clock.t += 600_001;
     await previews.register({ name: 'b', dir: join(home, 'site') });

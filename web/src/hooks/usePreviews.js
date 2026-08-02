@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getPreviews, createPreview, deletePreview, previewUrl } from '../api.js';
+import { createPreview, deletePreview, previewUrl } from '../api.js';
 import { previewName } from '../previewName.js';
 import { getPreviewDir, setPreviewDir } from '../storage.js';
 
 const STATIC_TABS_KEY = 'hm_static_preview_tabs1';
-const KEEPALIVE_MS = 20 * 60_000;
 
 function readOpenTabs() {
   try {
@@ -13,9 +12,7 @@ function readOpenTabs() {
     return value.filter((item) => (
       item && /^[A-Za-z0-9._-]+$/.test(String(item.name || ''))
       && typeof item.dir === 'string' && item.dir.startsWith('/')
-    )).map((item) => ({
-      name: String(item.name), dir: item.dir, keepAlive: item.keepAlive !== false,
-    }));
+    )).map((item) => ({ name: String(item.name), dir: item.dir }));
   } catch {
     return [];
   }
@@ -23,24 +20,24 @@ function readOpenTabs() {
 
 function writeOpenTabs(tabs) {
   try {
-    localStorage.setItem(STATIC_TABS_KEY, JSON.stringify(tabs.map(({ name, dir, keepAlive }) => ({
-      name, dir, keepAlive,
-    }))));
+    localStorage.setItem(STATIC_TABS_KEY, JSON.stringify(tabs.map(({ name, dir }) => ({ name, dir }))));
   } catch {
     // Keep the current in-memory tabs usable when device storage is unavailable.
   }
 }
 
-// Static-directory registry and device-local tabs used by the permanent Web Previewer.
+// Device-local static tabs backed by server leases. Opening/foregrounding ensures the lease exists;
+// actual preview traffic renews it server-side, so there is no client heartbeat or expiry UI.
 export function usePreviews(current) {
-  const [previews, setPreviews] = useState([]);
-  const [loaded, setLoaded] = useState(false);
   const [openTabs, setOpenTabs] = useState(readOpenTabs);
+  const [runtime, setRuntime] = useState({});
   const [activeTabName, setActiveTabName] = useState(null);
   const [selected, setSelected] = useState(false);
   const [error, setError] = useState(null);
   const openTabsRef = useRef(openTabs);
+  const runtimeRef = useRef(runtime);
   openTabsRef.current = openTabs;
+  runtimeRef.current = runtime;
 
   const commitOpenTabs = useCallback((update) => {
     const next = typeof update === 'function' ? update(openTabsRef.current) : update;
@@ -50,73 +47,84 @@ export function usePreviews(current) {
     return next;
   }, []);
 
-  const refreshPreviews = useCallback(async () => {
+  const setTabRuntime = useCallback((name, value) => {
+    setRuntime((currentRuntime) => {
+      const next = { ...currentRuntime, [name]: value };
+      runtimeRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const ensurePreview = useCallback(async (tab, { quiet = false, allowDetached = false } = {}) => {
+    const prior = runtimeRef.current[tab.name];
+    if (!quiet || prior?.status !== 'ready') {
+      setTabRuntime(tab.name, { ...prior, status: 'ensuring', error: null });
+    }
     try {
-      const r = await getPreviews();
-      setPreviews(r.previews || []);
-      setLoaded(true);
-      return r.previews || [];
+      const created = await createPreview(tab.name, { dir: tab.dir });
+      // A user can close a restoring tab while registration is in flight. Release a late result instead
+      // of leaving an invisible server lease behind. A newly chosen directory is intentionally detached
+      // until registration succeeds and the tab is added below.
+      if (!allowDetached && !openTabsRef.current.some((item) => item.name === tab.name)) {
+        void deletePreview(tab.name).catch(() => {});
+        return null;
+      }
+      setTabRuntime(tab.name, {
+        status: 'ready',
+        url: created.url || previewUrl(created),
+        error: null,
+      });
+      setError(null);
+      return created;
     } catch (nextError) {
-      setError(nextError);
+      if (quiet && prior?.status === 'ready') return null;
+      const normalized = nextError instanceof Error ? nextError : new Error(String(nextError));
+      setTabRuntime(tab.name, { ...prior, status: 'error', error: normalized });
+      setError(normalized);
       return null;
     }
-  }, []);
-  useEffect(() => { refreshPreviews(); }, [refreshPreviews]);
+  }, [setTabRuntime]);
 
-  // The preview name for the open session-window, and its window-default entry (if any, not expired).
+  useEffect(() => {
+    void Promise.all(openTabsRef.current.map((tab) => ensurePreview(tab)));
+    const onVisibility = () => {
+      if (!document.hidden) {
+        void Promise.all(openTabsRef.current.map((tab) => ensurePreview(tab, { quiet: true })));
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [ensurePreview]);
+
   const curPreviewName = current
     ? previewName({ session: current.session?.name, windowName: current.window?.name, windowId: current.window?.id })
     : null;
-  const activePreview = previews.find((p) => p.name === curPreviewName && p.expiresAt > Date.now()) || null;
-  const liveByName = new Map(previews.map((entry) => [entry.name, entry]));
-  const tabs = openTabs.map((saved) => {
-    const live = liveByName.get(saved.name);
-    return {
-      ...saved,
-      kind: 'static',
-      status: live ? 'running' : (loaded ? 'stopped' : 'checking'),
-      expiresAt: live?.expiresAt ?? null,
-      url: live ? previewUrl(live) : null,
-    };
-  });
+  const tabs = openTabs.map((saved) => ({
+    ...saved,
+    kind: 'static',
+    status: runtime[saved.name]?.status || 'ensuring',
+    url: runtime[saved.name]?.url || null,
+    error: runtime[saved.name]?.error || null,
+  }));
   const activeName = tabs.find((tab) => tab.name === activeTabName)?.name ?? tabs[0]?.name ?? null;
   const shownPreview = selected ? (tabs.find((tab) => tab.name === activeName) || null) : null;
 
-  const addOpenTab = useCallback((entry, keepAlive = true) => {
-    commitOpenTabs((currentTabs) => {
-      const next = currentTabs.filter((item) => item.name !== entry.name);
-      next.push({ name: entry.name, dir: entry.dir, keepAlive });
-      return next;
-    });
-    setActiveTabName(entry.name);
-    setSelected(true);
-  }, [commitOpenTabs]);
-
-  const openPreview = useCallback((entryOrName) => {
-    const name = typeof entryOrName === 'string' ? entryOrName : entryOrName?.name;
-    const live = previews.find((entry) => entry.name === name);
-    const saved = openTabsRef.current.find((entry) => entry.name === name);
-    const entry = live || saved;
-    if (!entry) return false;
-    addOpenTab(entry, live ? true : saved.keepAlive);
-    return true;
-  }, [addOpenTab, previews]);
-
   const startPreview = useCallback(async (dir) => {
     if (!curPreviewName) return null;
-    try {
-      const created = await createPreview(curPreviewName, { dir });
-      setPreviewDir(current?.window?.id, dir);
-      await refreshPreviews();
-      const entry = { ...created, dir };
-      addOpenTab(entry, true);
-      setError(null);
-      return entry;
-    } catch (nextError) {
-      setError(nextError);
-      return null;
-    }
-  }, [addOpenTab, curPreviewName, current?.window?.id, refreshPreviews]);
+    const tab = { name: curPreviewName, dir };
+    const created = await ensurePreview(tab, { allowDetached: true });
+    if (!created) return null;
+    setPreviewDir(current?.window?.id, dir);
+    commitOpenTabs((currentTabs) => [...currentTabs.filter((item) => item.name !== tab.name), tab]);
+    setActiveTabName(tab.name);
+    setSelected(true);
+    return { ...tab, ...created };
+  }, [commitOpenTabs, curPreviewName, current?.window?.id, ensurePreview]);
+
+  const retryPreview = useCallback((name = activeName) => {
+    const target = openTabsRef.current.find((tab) => tab.name === name);
+    return target ? ensurePreview(target) : Promise.resolve(null);
+  }, [activeName, ensurePreview]);
 
   const switchTab = useCallback((name) => {
     if (!openTabsRef.current.some((tab) => tab.name === name)) return;
@@ -125,85 +133,34 @@ export function usePreviews(current) {
   }, []);
   const deactivate = useCallback(() => setSelected(false), []);
 
-  // Closing a tab is device-local. Stopping the server-side preview is an explicit separate action.
-  const closeTab = useCallback((name) => {
+  const closeTab = useCallback(async (name) => {
     if (!name) return;
+    setError(null);
     const remaining = commitOpenTabs((currentTabs) => currentTabs.filter((tab) => tab.name !== name));
+    setRuntime((currentRuntime) => {
+      const next = { ...currentRuntime };
+      delete next[name];
+      runtimeRef.current = next;
+      return next;
+    });
     if (activeTabName === name) {
       setActiveTabName(remaining[0]?.name || null);
       if (!remaining.length) setSelected(false);
     }
-  }, [activeTabName, commitOpenTabs]);
-
-  const stopPreview = useCallback(async (name = activeName) => {
-    const target = openTabsRef.current.find((tab) => tab.name === name)
-      || previews.find((tab) => tab.name === name);
-    if (!target) return false;
     try {
       await deletePreview(name);
-      commitOpenTabs((currentTabs) => currentTabs.map((tab) => (
-        tab.name === name ? { ...tab, keepAlive: false } : tab
-      )));
-      await refreshPreviews();
-      setError(null);
-      return true;
     } catch (nextError) {
-      setError(nextError);
-      return false;
+      setError(nextError instanceof Error ? nextError : new Error(String(nextError)));
     }
-  }, [activeName, commitOpenTabs, previews, refreshPreviews]);
-
-  const restartPreview = useCallback(async (name = activeName) => {
-    const target = openTabsRef.current.find((tab) => tab.name === name);
-    if (!target) return false;
-    try {
-      await createPreview(target.name, { dir: target.dir });
-      commitOpenTabs((currentTabs) => currentTabs.map((tab) => (
-        tab.name === name ? { ...tab, keepAlive: true } : tab
-      )));
-      await refreshPreviews();
-      setError(null);
-      return true;
-    } catch (nextError) {
-      setError(nextError);
-      return false;
-    }
-  }, [activeName, commitOpenTabs, refreshPreviews]);
-
-  const renewOpenTabs = useCallback(async () => {
-    const targets = openTabsRef.current.filter((tab) => tab.keepAlive);
-    if (!targets.length) return;
-    const results = await Promise.allSettled(targets.map((tab) => (
-      createPreview(tab.name, { dir: tab.dir })
-    )));
-    const failed = results.find((result) => result.status === 'rejected');
-    if (failed) {
-      setError(failed.reason instanceof Error ? failed.reason : new Error(String(failed.reason)));
-    } else {
-      setError(null);
-    }
-    await refreshPreviews();
-  }, [refreshPreviews]);
-
-  useEffect(() => {
-    void renewOpenTabs();
-    const timer = setInterval(() => { void renewOpenTabs(); }, KEEPALIVE_MS);
-    const onVisibility = () => { if (!document.hidden) void renewOpenTabs(); };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [renewOpenTabs]);
+  }, [activeTabName, commitOpenTabs]);
 
   return {
-    previews, loaded, error,
+    error,
     selected, deactivate,
-    activePreview, curPreviewName,
+    curPreviewName,
     tabs, activeName, shownPreview,
-    refreshPreviews, openPreview,
-    startPreview, restartPreview,
-    switchTab, closeTab, stopPreview,
+    startPreview, retryPreview,
+    switchTab, closeTab,
     pane: current?.paneId || null,
     lastPreviewDir: getPreviewDir(current?.window?.id),
   };

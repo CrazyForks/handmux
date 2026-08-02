@@ -380,8 +380,8 @@ start flags (matching env var in parens):
   --foreground, -f              run in the foreground (don't daemonize)
   --no-qr                       don't render the QR code
 
-rarely needed (env or flag): --static-dir / --upload-exts / --preview-ttl
-  (HANDMUX_STATIC_DIR / HANDMUX_UPLOAD_EXTS / HANDMUX_PREVIEW_TTL)
+rarely needed (env or flag): --static-dir / --upload-exts
+  (HANDMUX_STATIC_DIR / HANDMUX_UPLOAD_EXTS)
 
 'handmux service install' accepts these same start flags — they're baked into the autostart entry.
 `,

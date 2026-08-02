@@ -39,7 +39,7 @@ export function findTunnelId(listJsonOut, name) {
 
 // The config keys the wizard owns: everything it can set. mergeConfig wipes these from the existing config
 // before re-applying the answers, so switching a tunnel (or clearing an optional field) cleanly drops the
-// old value instead of leaving a stale field behind. Anything NOT here (staticDir, previewTtl…) is
+// old value instead of leaving a stale field behind. Anything NOT here (staticDir, uploadExts…) is
 // preserved untouched. `token` IS owned so the Token row can pin one AND clear it back to auto — but it
 // round-trips through answersFromConfig, so a re-run that never touches the row still writes it back.
 const WIZARD_KEYS = [

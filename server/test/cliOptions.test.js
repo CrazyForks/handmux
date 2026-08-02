@@ -167,6 +167,14 @@ describe('resolveConfig', () => {
       .filter((row) => row.key === 'previewDomain');
     expect(keys).toEqual([{ key: 'previewDomain', origin: '/c.json', display: 'old.example.com' }]);
   });
+  it('ignores the retired static-preview TTL option', () => {
+    const c = resolveConfig(
+      { previewTtl: '1' },
+      { previewTtl: '2' },
+      { HANDMUX_PREVIEW_TTL: '3' }, gen,
+    );
+    expect(c).not.toHaveProperty('previewTtl');
+  });
   it('normalizes shortcuts from the config file and keeps explicit empty lists', () => {
     const c = resolveConfig({}, {
       shortcuts: { command: [{ type: 'text', text: 'pwd', enter: true }], chat: [] },

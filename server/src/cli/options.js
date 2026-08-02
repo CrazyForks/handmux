@@ -71,7 +71,6 @@ export function resolveConfig(flags = {}, fileCfg = {}, env = process.env, gen =
     // environment (HANDMUX_STATIC_DIR / VAPID_* / XFYUN_* …), which is exactly where the server reads them.
     staticDir: pick('staticDir', env.HANDMUX_STATIC_DIR) || null,
     uploadExts: pick('uploadExts', env.HANDMUX_UPLOAD_EXTS) || null,
-    previewTtl: pick('previewTtl', env.HANDMUX_PREVIEW_TTL) || null,
     previewDomain: pick('previewDomain', env.HANDMUX_PREVIEW_DOMAIN) || null,
     vapid: fileCfg.vapid || null,   // { public, private, subject } — push notifications
     xfyun: fileCfg.xfyun || null,   // { appId, apiKey, apiSecret } — voice input

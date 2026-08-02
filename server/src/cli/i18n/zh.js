@@ -379,8 +379,8 @@ start flag(括号内为对应环境变量):
   --foreground, -f              前台运行(不后台化)
   --no-qr                       不渲染二维码
 
-很少用到(环境变量或 flag):--static-dir / --upload-exts / --preview-ttl
-  (HANDMUX_STATIC_DIR / HANDMUX_UPLOAD_EXTS / HANDMUX_PREVIEW_TTL)
+很少用到(环境变量或 flag):--static-dir / --upload-exts
+  (HANDMUX_STATIC_DIR / HANDMUX_UPLOAD_EXTS)
 
 'handmux service install' 也接受上面这些 start flag —— 它们会被烘进自启项。
 `,
