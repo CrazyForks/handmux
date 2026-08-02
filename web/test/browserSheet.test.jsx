@@ -241,18 +241,48 @@ describe('BrowserSheet', () => {
     expect(document.querySelector('iframe[data-tab-id="b"]')).not.toBe(frame);
   });
 
-  it('offers a manual proxy fallback only after a direct page stays loading', async () => {
+  it('replaces endless direct loading with an actionable reason and proxy fallback', async () => {
     vi.useFakeTimers();
     const directTabs = [{ ...tabs[0], mode: 'direct', url: tabs[0].originalUrl }];
     try {
       const model = browser({ tabs: directTabs, activeId: 'a', proxyAvailable: true });
       await render(model);
-      expect(document.querySelector('.browser-try-proxy')).toBeNull();
+      expect(document.querySelector('.browser-load-stalled')).toBeNull();
       act(() => vi.advanceTimersByTime(5000));
-      const fallback = document.querySelector('.browser-try-proxy');
+      const stalled = document.querySelector('.browser-load-stalled');
+      expect(stalled.textContent).toContain('网页可能无法访问');
+      expect(stalled.textContent).toContain('iframe 或 CSP');
+      expect(stalled.textContent).toContain('手机网络');
+      expect(document.querySelector('.browser-page-progress')).toBeNull();
+      const fallback = stalled.querySelector('.browser-try-proxy');
       expect(fallback.textContent).toBe('改用电脑代理');
       click(fallback);
       expect(model.navigateTab).toHaveBeenCalledWith('a', 'https://a.example/', 'proxy');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('explains a stalled proxy load and lets the user continue waiting', async () => {
+    vi.useFakeTimers();
+    try {
+      const model = browser({ navigateTab: vi.fn().mockResolvedValue(tabs[0]) });
+      await render(model);
+      act(() => vi.advanceTimersByTime(5000));
+      let stalled = document.querySelector('.browser-load-stalled');
+      expect(stalled.textContent).toContain('网页可能无法访问');
+      expect(stalled.textContent).toContain('电脑网络');
+      expect(stalled.textContent).toContain('代理不兼容');
+      expect(stalled.querySelector('.browser-try-direct').textContent).toBe('改用手机直连');
+      expect(stalled.querySelector('.browser-load-retry').textContent).toBe('重试');
+      await clickAndFlush(stalled.querySelector('.browser-load-retry'));
+      expect(model.navigateTab).toHaveBeenCalledWith('a', 'https://a.example/', 'proxy');
+      expect(document.querySelector('.browser-load-stalled')).toBeNull();
+      act(() => vi.advanceTimersByTime(5000));
+      stalled = document.querySelector('.browser-load-stalled');
+      click(stalled.querySelector('.browser-load-wait'));
+      expect(document.querySelector('.browser-load-stalled')).toBeNull();
+      expect(document.querySelector('.browser-page-progress')).not.toBeNull();
     } finally {
       vi.useRealTimers();
     }
