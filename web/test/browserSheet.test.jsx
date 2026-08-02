@@ -159,6 +159,30 @@ describe('BrowserSheet', () => {
     click(retry);
     expect(preview.retryPreview).toHaveBeenCalledWith('main-3');
   });
+
+  it('keeps visited static iframes mounted when tabs are switched', async () => {
+    const firstTab = {
+      name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'ready',
+      url: '/preview/main-3/?token=x',
+    };
+    const secondTab = {
+      name: 'docs-4', dir: '/home/u/docs', kind: 'static', status: 'ready',
+      url: '/preview/docs-4/?token=y',
+    };
+    const model = browser({ historyActive: true, activeId: null });
+    await render(model, staticPreview({ selected: true, shownPreview: firstTab, tabs: [firstTab, secondTab] }));
+    const first = document.querySelector('iframe[data-static-tab-name="main-3"]');
+
+    await render(model, staticPreview({ selected: true, shownPreview: secondTab, tabs: [firstTab, secondTab] }));
+    const second = document.querySelector('iframe[data-static-tab-name="docs-4"]');
+    expect(first.closest('.browser-pane').classList.contains('active')).toBe(false);
+    expect(second.closest('.browser-pane').classList.contains('active')).toBe(true);
+
+    await render(model, staticPreview({ selected: true, shownPreview: firstTab, tabs: [firstTab, secondTab] }));
+    expect(document.querySelector('iframe[data-static-tab-name="main-3"]')).toBe(first);
+    expect(document.querySelector('iframe[data-static-tab-name="docs-4"]')).toBe(second);
+  });
+
   it('keeps fine-grained page zoom controls in the menu without blocking webpage interaction', async () => {
     const viewport = document.createElement('meta');
     viewport.name = 'viewport';
@@ -168,8 +192,8 @@ describe('BrowserSheet', () => {
       await render(browser());
       click(document.querySelector('button[aria-label="网页预览器菜单"]'));
       const stepper = document.querySelector('.browser-zoom-stepper');
-      const scaler = document.querySelector('.browser-pane:not([hidden]) .browser-frame-scaler');
-      const frame = document.querySelector('.browser-pane:not([hidden]) .browser-frame');
+      const scaler = document.querySelector('.browser-pane.active .browser-frame-scaler');
+      const frame = document.querySelector('.browser-pane.active .browser-frame');
       expect(stepper.parentElement.parentElement.textContent).toContain('缩放网页');
       expect(document.querySelector('.browser-zoom-layer')).toBeNull();
 
@@ -181,7 +205,7 @@ describe('BrowserSheet', () => {
       expect(frame.style.width).toBe('90.9091%');
       expect(styles).toMatch(/\.browser-pane\s*\{[^}]*overflow:\s*auto/);
       expect(styles).toMatch(/\.browser-pane::.*scrollbar:horizontal\s*\{[^}]*height:\s*7px/);
-      expect(frame.hasAttribute('inert')).toBe(true); // loading alone owns inert; zoom never does
+      expect(frame.hasAttribute('inert')).toBe(false);
       act(() => frame.dispatchEvent(new Event('load')));
       expect(frame.hasAttribute('inert')).toBe(false);
       expect(document.querySelector('.browser-tabs').style.transform).toBe('');
@@ -551,7 +575,8 @@ describe('BrowserSheet', () => {
     expect(progressRule).toMatch(/height:\s*3px/);
     expect(proxyProgressRule).toMatch(/background:\s*rgba\(217,130,43/);
     expect(proxyProgressFillRule).toMatch(/background:\s*#d9822b/);
-    expect(frame.hasAttribute('inert')).toBe(true);
+    expect(frame.hasAttribute('inert')).toBe(false);
+    expect(styles.match(/\.browser-page-loading\s*\{([^}]*)\}/)?.[1]).toMatch(/pointer-events:\s*none/);
     expect(document.querySelector('button[aria-label="停止加载"]')).not.toBeNull();
 
     act(() => frame.dispatchEvent(new Event('load')));
@@ -620,8 +645,11 @@ describe('BrowserSheet', () => {
     await render({ ...model, activeId: 'b' });
     const frames = [...document.querySelectorAll('.browser-frame')];
     expect(frames).toHaveLength(2);
-    expect(frames[0].closest('.browser-pane').hidden).toBe(true);
-    expect(frames[1].closest('.browser-pane').hidden).toBe(false);
+    expect(frames[0].closest('.browser-pane').classList.contains('active')).toBe(false);
+    expect(frames[0].closest('.browser-pane').getAttribute('aria-hidden')).toBe('true');
+    expect(frames[1].closest('.browser-pane').classList.contains('active')).toBe(true);
+    expect(frames[1].closest('.browser-pane').getAttribute('aria-hidden')).toBe('false');
+    expect(styles).not.toMatch(/\.browser-pane\[hidden\]\s*\{[^}]*display:\s*none/);
     for (const frame of frames) {
       const sandbox = frame.getAttribute('sandbox').split(/\s+/);
       expect(sandbox).toEqual(expect.arrayContaining([

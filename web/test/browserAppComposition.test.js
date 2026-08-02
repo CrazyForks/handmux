@@ -51,9 +51,9 @@ describe('built-in browser App composition', () => {
     expect(source).not.toContain('disabled={!dynamicEnabled}');
   });
 
-  it('keeps the transparent loading layer interactive so it blocks the page below', () => {
+  it('keeps the loading progress visual while page interaction remains available', () => {
     const rule = styles.match(/\.browser-page-loading\s*\{([^}]+)\}/)?.[1] || '';
-    expect(rule).toContain('pointer-events: auto');
-    expect(rule).toContain('touch-action: none');
+    expect(rule).toContain('pointer-events: none');
+    expect(rule).not.toContain('touch-action: none');
   });
 });

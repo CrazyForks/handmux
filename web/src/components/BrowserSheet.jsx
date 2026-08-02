@@ -66,10 +66,12 @@ export default function BrowserSheet({ browser, staticPreview }) {
   const [pageZoom, setPageZoom] = useState(1);
   const [dirOpen, setDirOpen] = useState(false);
   const [seedCwd, setSeedCwd] = useState(null);
-  const [staticLoaded, setStaticLoaded] = useState(false);
-  const [staticReloadKey, setStaticReloadKey] = useState(0);
+  const [mountedStaticTabs, setMountedStaticTabs] = useState(() => new Set());
+  const [loadedStaticTabs, setLoadedStaticTabs] = useState(() => new Set());
+  const [staticReloadKeys, setStaticReloadKeys] = useState({});
   const frames = useRef(new Map());
   const frameUrls = useRef(new Map());
+  const staticFrameUrls = useRef(new Map());
   const refreshSequences = useRef(new Map());
   const activeIdRef = useRef(activeId);
   const openRef = useRef(open);
@@ -101,8 +103,9 @@ export default function BrowserSheet({ browser, staticPreview }) {
   }, [activeId, device, homeActive, staticActive?.name]);
 
   useEffect(() => {
-    setStaticLoaded(false);
-  }, [staticActive?.name, staticActive?.url, staticReloadKey]);
+    if (!staticSelected || !staticActive) return;
+    setMountedStaticTabs((current) => new Set(current).add(staticActive.name));
+  }, [staticActive?.name, staticSelected]);
 
   useLayoutEffect(() => {
     if (!open || homeActive || (!activeId && !staticActive?.name)) return;
@@ -193,6 +196,23 @@ export default function BrowserSheet({ browser, staticPreview }) {
   }, [tabs]);
 
   useEffect(() => {
+    const staticTabs = staticPreview?.tabs || [];
+    const live = new Set(staticTabs.map((tab) => tab.name));
+    setLoadedStaticTabs((current) => {
+      const next = new Set();
+      for (const tab of staticTabs) {
+        if (current.has(tab.name) && staticFrameUrls.current.get(tab.name) === tab.url) next.add(tab.name);
+      }
+      staticFrameUrls.current = new Map(staticTabs.map((tab) => [tab.name, tab.url]));
+      return next;
+    });
+    setMountedStaticTabs((current) => new Set([...current].filter((name) => live.has(name))));
+    setStaticReloadKeys((current) => Object.fromEntries(
+      Object.entries(current).filter(([name]) => live.has(name)),
+    ));
+  }, [staticPreview?.tabs]);
+
+  useEffect(() => {
     if (!open || !bodyRef.current) return undefined;
     const measure = () => setBodySize({
       width: bodyRef.current.clientWidth,
@@ -242,7 +262,17 @@ export default function BrowserSheet({ browser, staticPreview }) {
     if (!active) return;
     if (staticSelected) {
       if (staticActive.status === 'error') await staticPreview.retryPreview(staticActive.name);
-      else if (staticActive.status === 'ready') setStaticReloadKey((value) => value + 1);
+      else if (staticActive.status === 'ready') {
+        setLoadedStaticTabs((current) => {
+          const next = new Set(current);
+          next.delete(staticActive.name);
+          return next;
+        });
+        setStaticReloadKeys((current) => ({
+          ...current,
+          [staticActive.name]: (current[staticActive.name] || 0) + 1,
+        }));
+      }
       return;
     }
     const tab = webActive;
@@ -287,6 +317,11 @@ export default function BrowserSheet({ browser, staticPreview }) {
       next.delete(tab.id);
       return next;
     });
+  };
+
+  const staticFrameLoaded = (tab) => {
+    staticFrameUrls.current.set(tab.name, tab.url);
+    setLoadedStaticTabs((current) => new Set(current).add(tab.name));
   };
 
   const submitAddress = (event) => {
@@ -393,7 +428,9 @@ export default function BrowserSheet({ browser, staticPreview }) {
     };
   };
   const activeLoading = staticSelected
-    ? staticActive.status === 'ensuring' || (staticActive.status === 'ready' && !staticLoaded)
+    ? staticActive.status === 'ensuring' || (staticActive.status === 'ready'
+      && (!loadedStaticTabs.has(staticActive.name)
+        || staticFrameUrls.current.get(staticActive.name) !== staticActive.url))
     : !!webActive && (!loadedTabs.has(webActive.id)
       || frameUrls.current.get(webActive.id) !== webActive.url || refreshingTabs.has(webActive.id));
   const displayedError = historyError
@@ -678,7 +715,8 @@ export default function BrowserSheet({ browser, staticPreview }) {
           const selected = !staticSelected && !historyActive && tab.id === activeId;
           const loading = selected && (!loadedTabs.has(tab.id) || frameUrls.current.get(tab.id) !== tab.url || refreshingTabs.has(tab.id));
           return (
-          <div key={tab.id} className={`browser-pane ${tab.mode}`} hidden={!selected}>
+          <div key={tab.id} className={`browser-pane ${tab.mode} ${selected ? 'active' : ''}`}
+            aria-hidden={!selected}>
             <div className="browser-frame-scaler" style={scalerStyleFor(selected ? pageZoom : 1)}>
               <iframe key={`${tab.id}-${reloadKeys[tab.id] || 0}`}
                 ref={(node) => { if (node) frames.current.set(tab.id, node); else frames.current.delete(tab.id); }}
@@ -687,7 +725,6 @@ export default function BrowserSheet({ browser, staticPreview }) {
                 title={tabLabel(tab)}
                 src={tab.url}
                 sandbox={FRAME_SANDBOX}
-                inert={loading ? '' : undefined}
                 style={frameStyleFor(selected ? pageZoom : 1)}
                 onLoad={() => frameLoaded(tab)}
                 onError={() => {
@@ -705,39 +742,45 @@ export default function BrowserSheet({ browser, staticPreview }) {
           </div>
           );
         })}
-        {staticSelected && (
-          <div className="browser-pane static">
-            {staticActive.status === 'ready' ? (
-              <div className="browser-frame-scaler" style={scalerStyleFor(pageZoom)}>
-                <iframe key={`${staticActive.name}-${staticReloadKey}`}
+        {(staticPreview?.tabs || []).filter((tab) => mountedStaticTabs.has(tab.name)).map((tab) => {
+          const selected = staticSelected && tab.name === staticActive?.name;
+          const loading = selected && tab.status === 'ready'
+            && (!loadedStaticTabs.has(tab.name) || staticFrameUrls.current.get(tab.name) !== tab.url);
+          return (
+          <div key={`static-pane:${tab.name}`} className={`browser-pane static ${selected ? 'active' : ''}`}
+            aria-hidden={!selected}>
+            {tab.status === 'ready' ? (
+              <div className="browser-frame-scaler" style={scalerStyleFor(selected ? pageZoom : 1)}>
+                <iframe key={`${tab.name}-${staticReloadKeys[tab.name] || 0}`}
                   className="browser-frame"
-                  title={staticActive.name}
-                  src={staticActive.url}
-                  inert={!staticLoaded ? '' : undefined}
-                  style={frameStyleFor(pageZoom)}
-                  onLoad={() => setStaticLoaded(true)}
+                  data-static-tab-name={tab.name}
+                  title={tab.name}
+                  src={tab.url}
+                  style={frameStyleFor(selected ? pageZoom : 1)}
+                  onLoad={() => staticFrameLoaded(tab)}
                 />
-                {!staticLoaded && (
+                {loading && (
                   <div className="browser-page-loading" role="status" aria-live="polite">
                     <div className="browser-page-progress static" role="progressbar" aria-label={t('common.loading')} />
                   </div>
                 )}
               </div>
             ) : (
-              <div className="browser-static-state" role={staticActive.status === 'error' ? 'alert' : 'status'}>
-                <strong>{staticActive.status === 'error'
-                  ? (staticActive.error?.message || t('browser.loadFailed'))
+              <div className="browser-static-state" role={tab.status === 'error' ? 'alert' : 'status'}>
+                <strong>{tab.status === 'error'
+                  ? (tab.error?.message || t('browser.loadFailed'))
                   : t('browser.staticOpening')}</strong>
-                <span>{staticActive.dir}</span>
-                {staticActive.status === 'error' && (
-                  <button onClick={() => staticPreview.retryPreview(staticActive.name)}>
+                <span>{tab.dir}</span>
+                {tab.status === 'error' && (
+                  <button onClick={() => staticPreview.retryPreview(tab.name)}>
                     {t('browser.retry')}
                   </button>
                 )}
               </div>
             )}
           </div>
-        )}
+          );
+        })}
         {displayedError && (
           <div className="browser-error" role="alert">
             <span>{displayedError?.message || displayedError || t('browser.loadFailed')}</span>
