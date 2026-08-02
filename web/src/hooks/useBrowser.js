@@ -268,7 +268,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       if (!profileWarning) setError(null);
       return result;
     }).catch((nextError) => {
-      setError(nextError);
+      if (stillCurrent()) setError(nextError);
       return null;
     }).finally(() => {
       if (bindingPromises.current.get(id)?.promise === pending) {
@@ -346,7 +346,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     if (signal?.aborted) return null;
     const sequence = ++openSequence.current;
     const url = normalizeBrowserInput(input);
-    if (!url) { setError(new Error('browser URL must use http or https')); return null; }
+    if (!url) { setError(new Error(t('browser.urlInvalid'))); return null; }
     if (!accessEnabled && !force) {
       const pending = { url, mode };
       pendingUrlRef.current = pending;
@@ -442,6 +442,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
 
   const switchTab = useCallback(async (id) => {
     if (id === 'history') {
+      setError(null);
       if (openRef.current && activeRef.current && !historyRef.current) {
         commitTabs((current) => current.map((tab) => tab.id === activeRef.current ? hideTab(tab) : tab));
       }
@@ -450,6 +451,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     }
     const target = tabsRef.current.find((tab) => tab.id === id);
     if (!target) return false;
+    setError(null);
     commitTabs((current) => current.map((tab) => {
       if (tab.id === id) return { ...tab, deadline: null };
       if (tab.id === activeRef.current && openRef.current && !historyRef.current) return hideTab(tab);
@@ -476,6 +478,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const closeTab = useCallback((id) => {
     const index = tabsRef.current.findIndex((tab) => tab.id === id);
     if (index < 0) return;
+    setError(null);
     const closing = tabsRef.current[index];
     recordHistory(closing);
     release(closing);
@@ -494,9 +497,17 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const navigateTab = useCallback(async (id, input, requestedMode) => {
     const url = normalizeBrowserInput(input);
     const current = tabsRef.current.find((tab) => tab.id === id);
-    if (!url || !current) return null;
+    if (!current) return null;
+    if (!url) {
+      setError(new Error(t('browser.urlInvalid')));
+      return null;
+    }
     const mode = requestedMode || current.mode;
-    if (mode === 'proxy' && !browserProxy) return null;
+    if (mode === 'proxy' && !browserProxy) {
+      setError(new Error(t('browser.proxyUnavailable')));
+      return null;
+    }
+    setError(null);
     const sequence = (navigateSequence.current.get(id) || 0) + 1;
     navigateSequence.current.set(id, sequence);
     navigatingTabs.current.set(id, sequence);
@@ -523,7 +534,10 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       try {
         const binding = await request;
         if (navigateQueues.current.get(id) === request) navigateQueues.current.delete(id);
-        if (navigateSequence.current.get(id) === sequence) {
+        const latest = tabsRef.current.find((tab) => tab.id === id);
+        if (navigateSequence.current.get(id) === sequence
+          && latest?.mode === mode
+          && latest.originalUrl === url) {
           if (binding?.url) {
             applyBinding(id, binding);
             setError(null);
@@ -533,7 +547,10 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
         }
       } catch (nextError) {
         if (navigateQueues.current.get(id) === request) navigateQueues.current.delete(id);
-        if (navigateSequence.current.get(id) === sequence) {
+        const latest = tabsRef.current.find((tab) => tab.id === id);
+        if (navigateSequence.current.get(id) === sequence
+          && latest?.mode === mode
+          && latest.originalUrl === url) {
           commitTabs((all) => all.map((tab) => tab.id === id
             ? { ...tab, url: undefined, channel: undefined, generation: undefined }
             : tab));

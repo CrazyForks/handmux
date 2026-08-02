@@ -33,6 +33,14 @@ describe('findLocalUrls', () => {
     expect(one('http://localhost:3000/admin?tab=1#top').path).toBe('/admin?tab=1#top');
   });
 
+  it('keeps query and hash when the URL has no explicit slash', () => {
+    expect(one('open https://example.com?tab=1#top')).toMatchObject({
+      path: '?tab=1#top',
+      raw: 'https://example.com?tab=1#top',
+    });
+    expect(one('open https://example.com#section').raw).toBe('https://example.com#section');
+  });
+
   it('strips a trailing sentence dot but keeps the path', () => {
     const u = one('see http://localhost:3000/foo. done');
     expect(u.path).toBe('/foo');

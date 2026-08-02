@@ -192,6 +192,27 @@ describe('useBrowser device ownership', () => {
     }
   });
 
+  it('does not surface a late binding failure after the tab changes mode', async () => {
+    const { result } = await restoredProxy();
+    let rejectProfile;
+    api.getBrowserProxyStatus.mockResolvedValue({ ready: true, generation: 2 });
+    api.setBrowserProxyProfilePrefs.mockReturnValue(new Promise((_resolve, reject) => {
+      rejectProfile = reject;
+    }));
+
+    let restoring;
+    act(() => { restoring = result.current.ensureBinding('proxy-a'); });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => {
+      await result.current.navigateTab('proxy-a', 'https://a.example/', 'direct');
+      rejectProfile(Object.assign(new Error('profile failed'), { status: 500 }));
+      await restoring;
+    });
+
+    expect(result.current.tabs[0].mode).toBe('direct');
+    expect(result.current.error).toBeNull();
+  });
+
   it('starts a new binding when the canonical URL changes during an older retry', async () => {
     vi.useFakeTimers();
     try {
@@ -477,6 +498,53 @@ describe('useBrowser device ownership', () => {
 
     await act(async () => { await result.current.switchTab(firstId); });
     expect(api.acquireBrowserProxyLease).not.toHaveBeenCalled();
+  });
+
+  it('clears a tab-specific proxy error when switching to another tab', async () => {
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await act(async () => { await result.current.openUrl('https://ready.example/', { mode: 'direct' }); });
+    const directId = result.current.activeId;
+    api.setBrowserProxyProfilePrefs.mockRejectedValueOnce(
+      Object.assign(new Error('profile failed'), { status: 500 }),
+    );
+    await act(async () => { await result.current.openUrl('https://broken.example/', { mode: 'proxy' }); });
+    expect(result.current.error).not.toBeNull();
+
+    await act(async () => { await result.current.switchTab(directId); });
+    expect(result.current.error).toBeNull();
+  });
+
+  it('reports invalid address-bar input without replacing the current page', async () => {
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await act(async () => { await result.current.openUrl('https://ready.example/', { mode: 'direct' }); });
+    const id = result.current.activeId;
+
+    await act(async () => { await result.current.navigateTab(id, 'http://'); });
+
+    expect(result.current.tabs[0].originalUrl).toBe('https://ready.example/');
+    expect(result.current.error?.message).toBe(t('browser.urlInvalid'));
+  });
+
+  it('does not surface a late navigation failure after its tab is closed', async () => {
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await act(async () => { await result.current.openUrl('https://ready.example/', { mode: 'proxy' }); });
+    const id = result.current.activeId;
+    let rejectNavigate;
+    api.navigateBrowserProxyLease.mockReturnValue(new Promise((_resolve, reject) => {
+      rejectNavigate = reject;
+    }));
+
+    let navigating;
+    act(() => { navigating = result.current.navigateTab(id, 'https://next.example/'); });
+    await act(async () => { await Promise.resolve(); });
+    act(() => { result.current.closeTab(id); });
+    await act(async () => {
+      rejectNavigate(new Error('late navigation failure'));
+      await navigating;
+    });
+
+    expect(result.current.tabs).toEqual([]);
+    expect(result.current.error).toBeNull();
   });
 
   it('releases a stale proxy open when a newer open wins', async () => {

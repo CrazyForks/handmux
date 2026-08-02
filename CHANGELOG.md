@@ -26,6 +26,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 - 顶栏浏览器入口移到“文件”左侧；从“最近访问”进入网页时会增加一层返回栈，返回先回到最近访问页，再次返回才收起浏览器，与其他多层工具一致。
 
 ### Fixed
+- 静态目录在回到前台续期时不再更换 token 或重新加载已挂载页面，关闭后立即重开其他目录也不会被迟到请求误删；终端里不带显式 `/` 的网址会完整保留查询参数和锚点，地址栏输入无效网址时会明确提示。
 - 静态目录预览改用独立且不落盘的运行时 token，并在 opaque iframe 中隔离项目脚本；主 Handmux token 不再进入预览 URL，绝对静态资源路径会改写回各自能力路径。
 - 补齐十六进制 IPv4-mapped IPv6 的 loopback、link-local 与控制端口判定，避免代理页通过规范化 IPv6 地址绕过目标策略。
 - 代理 Cookie 持久化设置改为按设备串行提交，后发选择不会被迟到请求覆盖；清理 Cookie 会原地更新共享 Cookie Jar，不再销毁打开页签的运行租约。

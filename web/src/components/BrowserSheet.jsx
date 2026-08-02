@@ -19,7 +19,8 @@ import { t } from '../i18n';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap.js';
 import DirPicker from './DirPicker.jsx';
 
-// Temporary compatibility validation only: unsafe while proxied pages share the Handmux origin.
+// URL pages are cross-origin (the target origin in direct mode, a dedicated origin in proxy mode),
+// so same-origin is needed for normal site compatibility without exposing the Handmux app origin.
 const FRAME_SANDBOX = 'allow-scripts allow-forms allow-downloads allow-modals allow-popups allow-same-origin';
 // Static content is served by the Handmux HTTP process, so it must keep an opaque origin even though the
 // capability URL itself is same-origin. Otherwise project JavaScript could read the parent app's token.

@@ -10,6 +10,7 @@ beforeEach(async () => {
   home = await fsp.mkdtemp(join(tmpdir(), 'pvhome-'));
   outside = await fsp.mkdtemp(join(tmpdir(), 'pvout-'));
   await fsp.mkdir(join(home, 'site'));
+  await fsp.mkdir(join(home, 'site-2'));
   store = join(home, 'previews.json');
   clock = { t: 1_000_000 };
   previews = createPreviews({
@@ -68,13 +69,20 @@ describe('register', () => {
   it('rejects a bad name', async () => {
     expect(await previews.register({ name: '../x', dir: join(home, 'site') })).toMatchObject({ status: 400 });
   });
-  it('same name updates dir and resets expiry (renew = reset, not extend)', async () => {
+  it('same active name and dir renews without replacing the capability token', async () => {
     const first = await previews.register({ name: 'foo', dir: join(home, 'site') });
     clock.t = 1_500_000;
     const out = await previews.register({ name: 'foo', dir: join(home, 'site') });
     expect(out.expiresAt).toBe(1_500_000 + 600_000);
     expect(previews.list()).toHaveLength(1);
+    expect(out.accessToken).toBe(first.accessToken);
+  });
+  it('same name with a different dir replaces the capability token', async () => {
+    const first = await previews.register({ name: 'foo', dir: join(home, 'site') });
+    clock.t = 1_500_000;
+    const out = await previews.register({ name: 'foo', dir: join(home, 'site-2') });
     expect(out.accessToken).not.toBe(first.accessToken);
+    expect(previews.get('foo').entry.dir).toBe(await fsp.realpath(join(home, 'site-2')));
   });
 });
 

@@ -47,6 +47,7 @@ export function usePreviews(current) {
   const [error, setError] = useState(null);
   const openTabsRef = useRef(openTabs);
   const runtimeRef = useRef(runtime);
+  const previewOperations = useRef(new Map());
   openTabsRef.current = openTabs;
   runtimeRef.current = runtime;
 
@@ -66,36 +67,63 @@ export function usePreviews(current) {
     });
   }, []);
 
-  const ensurePreview = useCallback(async (tab, { quiet = false, allowDetached = false } = {}) => {
-    const prior = runtimeRef.current[tab.name];
-    if (!quiet || prior?.status !== 'ready') {
-      setTabRuntime(tab.name, { ...prior, status: 'ensuring', error: null });
-    }
-    try {
-      const created = await createPreview(tab.name, { dir: tab.dir });
-      if (typeof created?.url !== 'string' || !created.url) throw new Error('preview URL unavailable');
-      // A user can close a restoring tab while registration is in flight. Release a late result instead
-      // of leaving an invisible server lease behind. A newly chosen directory is intentionally detached
-      // until registration succeeds and the tab is added below.
-      if (!allowDetached && !openTabsRef.current.some((item) => item.name === tab.name)) {
-        void deletePreview(tab.name).catch(() => {});
+  const clearTabRuntime = useCallback((name) => {
+    setRuntime((currentRuntime) => {
+      if (!(name in currentRuntime)) return currentRuntime;
+      const next = { ...currentRuntime };
+      delete next[name];
+      runtimeRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const enqueuePreviewOperation = useCallback((name, operation) => {
+    const previous = previewOperations.current.get(name) || Promise.resolve();
+    const pending = previous.catch(() => {}).then(operation);
+    const tail = pending.catch(() => {});
+    previewOperations.current.set(name, tail);
+    return pending.finally(() => {
+      if (previewOperations.current.get(name) === tail) previewOperations.current.delete(name);
+    });
+  }, []);
+
+  const ensurePreview = useCallback((tab, { quiet = false, allowDetached = false } = {}) => (
+    enqueuePreviewOperation(tab.name, async () => {
+      const prior = runtimeRef.current[tab.name];
+      if (!quiet || prior?.status !== 'ready') {
+        setTabRuntime(tab.name, { ...prior, status: 'ensuring', error: null });
+      }
+      try {
+        const created = await createPreview(tab.name, { dir: tab.dir });
+        if (typeof created?.url !== 'string' || !created.url) throw new Error('preview URL unavailable');
+        // A user can close a restoring tab while registration is in flight. Release a late result instead
+        // of leaving an invisible server lease behind. A newly chosen directory is intentionally detached
+        // until registration succeeds and the tab is added below.
+        if (!allowDetached && !openTabsRef.current.some((item) => item.name === tab.name)) {
+          await deletePreview(tab.name).catch(() => {});
+          clearTabRuntime(tab.name);
+          return null;
+        }
+        setTabRuntime(tab.name, {
+          status: 'ready',
+          url: created.url,
+          error: null,
+        });
+        setError(null);
+        return created;
+      } catch (nextError) {
+        if (!allowDetached && !openTabsRef.current.some((item) => item.name === tab.name)) {
+          clearTabRuntime(tab.name);
+          return null;
+        }
+        if (quiet && prior?.status === 'ready') return null;
+        const normalized = nextError instanceof Error ? nextError : new Error(String(nextError));
+        setTabRuntime(tab.name, { ...prior, status: 'error', error: normalized });
+        setError(normalized);
         return null;
       }
-      setTabRuntime(tab.name, {
-        status: 'ready',
-        url: created.url,
-        error: null,
-      });
-      setError(null);
-      return created;
-    } catch (nextError) {
-      if (quiet && prior?.status === 'ready') return null;
-      const normalized = nextError instanceof Error ? nextError : new Error(String(nextError));
-      setTabRuntime(tab.name, { ...prior, status: 'error', error: normalized });
-      setError(normalized);
-      return null;
-    }
-  }, [setTabRuntime]);
+    })
+  ), [clearTabRuntime, enqueuePreviewOperation, setTabRuntime]);
 
   useEffect(() => {
     void Promise.all(openTabsRef.current.map((tab) => ensurePreview(tab)));
@@ -150,22 +178,17 @@ export function usePreviews(current) {
     if (!name) return;
     setError(null);
     const remaining = commitOpenTabs((currentTabs) => currentTabs.filter((tab) => tab.name !== name));
-    setRuntime((currentRuntime) => {
-      const next = { ...currentRuntime };
-      delete next[name];
-      runtimeRef.current = next;
-      return next;
-    });
+    clearTabRuntime(name);
     if (activeTabName === name) {
       setActiveTabName(remaining[0]?.name || null);
       if (!remaining.length) setSelected(false);
     }
     try {
-      await deletePreview(name);
+      await enqueuePreviewOperation(name, () => deletePreview(name));
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError : new Error(String(nextError)));
     }
-  }, [activeTabName, commitOpenTabs]);
+  }, [activeTabName, clearTabRuntime, commitOpenTabs, enqueuePreviewOperation]);
 
   return {
     error,

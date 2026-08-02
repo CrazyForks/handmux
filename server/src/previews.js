@@ -39,10 +39,29 @@ export function createPreviews({
     flushedExpiries = new Map(entries.map((entry) => [entry?.name, entry?.expiresAt]));
   };
 
-  // Drop any prior entry with this name, stamp one timestamp into createdAt/expiresAt, then persist.
+  const resultFor = (entry) => ({
+    name: entry.name,
+    kind: entry.kind,
+    accessToken: entry.accessToken,
+    expiresAt: entry.expiresAt,
+  });
+
+  // Re-registering the same active directory is a lease renewal. Preserve its capability so a
+  // foreground check does not change the iframe URL and reload an already-mounted page. A changed
+  // directory, expired row, or process-restored row without a runtime token receives a fresh one.
   const upsert = (fields) => {
-    entries = entries.filter((e) => e && e.name !== fields.name);
     const ts = now();
+    const current = entries.find((entry) => entry && entry.name === fields.name);
+    if (current?.kind === fields.kind
+      && current.dir === fields.dir
+      && current.expiresAt > ts
+      && typeof current.accessToken === 'string'
+      && current.accessToken) {
+      current.expiresAt = ts + ttlMs;
+      flush();
+      return resultFor(current);
+    }
+    entries = entries.filter((e) => e && e.name !== fields.name);
     const entry = {
       ...fields,
       accessToken: randomToken(),
@@ -51,12 +70,7 @@ export function createPreviews({
     };
     entries.push(entry);
     flush();
-    return {
-      name: entry.name,
-      kind: entry.kind,
-      accessToken: entry.accessToken,
-      expiresAt: entry.expiresAt,
-    };
+    return resultFor(entry);
   };
 
   async function register({ name, dir, port }) {

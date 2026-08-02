@@ -104,6 +104,27 @@ describe('usePreviews static tabs', () => {
     expect(JSON.parse(localStorage.getItem('hm_static_preview_tabs1'))).toEqual([]);
   });
 
+  it('serializes close and reopen so a late delete cannot remove the new directory', async () => {
+    await act(async () => { await model.startPreview('/home/u/old'); });
+    const name = model.tabs[0].name;
+    let resolveDelete;
+    api.deletePreview.mockReturnValueOnce(new Promise((resolve) => { resolveDelete = resolve; }));
+
+    let closing;
+    let reopening;
+    act(() => {
+      closing = model.closeTab(name);
+      reopening = model.startPreview('/home/u/new');
+    });
+    await flush();
+
+    expect(api.createPreview).toHaveBeenCalledTimes(1);
+    resolveDelete();
+    await act(async () => { await Promise.all([closing, reopening]); });
+    expect(api.createPreview).toHaveBeenLastCalledWith(name, { dir: '/home/u/new' });
+    expect(model.tabs).toEqual([expect.objectContaining({ name, dir: '/home/u/new' })]);
+  });
+
   it('keeps a failed restored tab and exposes retry with the real error', async () => {
     localStorage.setItem('hm_static_preview_tabs1', JSON.stringify([
       { name: 'dev-site-3', dir: '/home/u/site' },
