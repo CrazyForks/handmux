@@ -94,7 +94,11 @@ describe('BrowserSheet', () => {
       click(stepper.querySelector('button[aria-label="放大"]'));
       expect(stepper.textContent).toContain('110%');
       expect(frame.style.transform).toContain('scale(1.1)');
+      expect(scaler.style.width).toBe('110%');
+      expect(scaler.style.height).toBe('110%');
       expect(frame.style.width).toBe('90.9091%');
+      expect(styles).toMatch(/\.browser-pane\s*\{[^}]*overflow:\s*auto/);
+      expect(styles).toMatch(/\.browser-pane::.*scrollbar:horizontal\s*\{[^}]*height:\s*7px/);
       expect(frame.hasAttribute('inert')).toBe(true); // loading alone owns inert; zoom never does
       act(() => frame.dispatchEvent(new Event('load')));
       expect(frame.hasAttribute('inert')).toBe(false);
@@ -103,9 +107,13 @@ describe('BrowserSheet', () => {
 
       click(stepper.querySelector('button[aria-label="放大"]'));
       expect(stepper.textContent).toContain('125%');
+      expect(scaler.style.width).toBe('125%');
+      expect(frame.style.width).toBe('80%');
       click(stepper.querySelector('button[aria-label="重置网页缩放"]'));
       expect(stepper.textContent).toContain('100%');
-      expect(scaler.style.transform).toBe('');
+      expect(scaler.style.width).toBe('100%');
+      expect(frame.style.width).toBe('100%');
+      expect(frame.style.transform).toBe('');
 
       const zoomOut = stepper.querySelector('button[aria-label="缩小"]');
       const zoomIn = stepper.querySelector('button[aria-label="放大"]');

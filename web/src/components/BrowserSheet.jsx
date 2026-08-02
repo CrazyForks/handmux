@@ -319,14 +319,20 @@ export default function BrowserSheet({ browser }) {
     return [...PAGE_ZOOM_STEPS].reverse().find((value) => value < current) || current;
   });
   const desktopScale = device === 'desktop' && bodySize.width > 0 ? bodySize.width / 1280 : 1;
-  const scalerStyle = device === 'desktop' && bodySize.height > 0
-    ? { width: `${1280 * desktopScale}px`, height: `${bodySize.height}px` }
-    : undefined;
+  const scalerStyleFor = (zoom) => {
+    if (device === 'desktop' && bodySize.height <= 0) return undefined;
+    if (device === 'desktop') return {
+      width: `${1280 * desktopScale * zoom}px`,
+      height: `${bodySize.height * zoom}px`,
+    };
+    const percentage = `${Math.round(zoom * 100)}%`;
+    return { width: percentage, height: percentage };
+  };
   const frameStyleFor = (zoom) => {
     if (device === 'desktop' && bodySize.height <= 0) return undefined;
     if (device === 'desktop') return {
-      width: `${1280 / zoom}px`,
-      height: `${bodySize.height / (desktopScale * zoom)}px`,
+      width: '1280px',
+      height: `${bodySize.height / desktopScale}px`,
       transform: `scale(${desktopScale * zoom})`,
       transformOrigin: '0 0',
     };
@@ -592,7 +598,7 @@ export default function BrowserSheet({ browser }) {
           const loading = selected && (!loadedTabs.has(tab.id) || frameUrls.current.get(tab.id) !== tab.url || refreshingTabs.has(tab.id));
           return (
           <div key={tab.id} className={`browser-pane ${tab.mode}`} hidden={!selected}>
-            <div className="browser-frame-scaler" style={scalerStyle}>
+            <div className="browser-frame-scaler" style={scalerStyleFor(selected ? pageZoom : 1)}>
               <iframe key={`${tab.id}-${reloadKeys[tab.id] || 0}`}
                 ref={(node) => { if (node) frames.current.set(tab.id, node); else frames.current.delete(tab.id); }}
                 data-tab-id={tab.id}
