@@ -329,7 +329,10 @@ describe('BrowserSheet', () => {
     expect(document.querySelectorAll('.browser-mode-badge')).toHaveLength(0);
     expect(styles).toMatch(/\.browser-tabs\s*\{[^}]*min-height:\s*38px/);
     expect(styles).toMatch(/\.browser-tab\s*\{[^}]*min-height:\s*38px/);
-    expect(styles).toMatch(/\.browser-tab\s*\{[^}]*min-width:\s*calc\(3em \+ 20px\)/);
+    expect(styles).toMatch(/\.browser-tab-wrap\s*\{[^}]*min-width:\s*52px/);
+    expect(styles).toMatch(/\.browser-tab\s*\{[^}]*min-width:\s*0/);
+    expect(styles).toMatch(/\.browser-tab-wrap\.active \.browser-tab\s*\{[^}]*padding-right:\s*0/);
+    expect(styles).toMatch(/\.browser-history-tab, \.browser-head-button\s*\{[^}]*flex:\s*0 0 44px[^}]*width:\s*44px/);
     expect(styles).toMatch(/\.browser-tab-wrap\s*\{[^}]*--browser-tab-accent:\s*var\(--blue\)/);
     expect(styles).toMatch(/\.browser-tab-wrap\.proxy\s*\{[^}]*--browser-tab-accent:\s*#e8892f/);
     expect(styles).toMatch(/\.browser-tab-wrap\.static\s*\{[^}]*--browser-tab-accent:\s*var\(--green\)/);

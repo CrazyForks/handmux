@@ -1180,7 +1180,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-tabs-scroll::-webkit-scrollbar { display: none; }
 .browser-tab-wrap {
   --browser-tab-accent: var(--blue);
-  display: inline-flex; align-items: stretch; flex: 0 0 auto; max-width: 44vw;
+  display: inline-flex; align-items: stretch; flex: 0 0 auto; min-width: 52px; max-width: 44vw;
   border-right: 1px solid #1d2630; box-shadow: inset 0 2px 0 var(--browser-tab-accent);
 }
 .browser-tab-wrap.proxy { --browser-tab-accent: #e8892f; }
@@ -1191,10 +1191,11 @@ button.cmd-text { background: none; border: none; text-align: left; }
 }
 .browser-history-tab.active { background: #0b0f14; box-shadow: inset 0 -2px 0 var(--blue); }
 .browser-tab {
-  min-width: calc(3em + 20px); min-height: 38px; padding: 0 10px; display: inline-flex; align-items: center;
+  flex: 1 1 auto; min-width: 0; min-height: 38px; padding: 0 10px; display: inline-flex; align-items: center;
   border: 0; background: transparent; color: #9fb0c0; font-size: 13px; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; touch-action: manipulation;
 }
+.browser-tab-wrap.active .browser-tab { padding-right: 0; }
 .browser-tab svg { width: 15px; height: 15px; flex: 0 0 auto; }
 .browser-tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .browser-address-mode {
@@ -1205,9 +1206,10 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-address-mode.static { background: rgba(var(--green-rgb),.15); color: #71df91; }
 .browser-tab-wrap.active .browser-tab, .browser-history-tab.active { color: #fff; }
 .browser-history-tab {
-  flex: 0 0 44px; width: 44px; justify-content: center; padding: 0;
+  justify-content: center; padding: 0;
   border-right: 1px solid #1d2630;
 }
+.browser-history-tab, .browser-head-button { flex: 0 0 44px; width: 44px; min-width: 44px; }
 .browser-tab-close, .browser-head-button {
   min-width: 44px; min-height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
   border: 0; background: transparent; color: #758494; touch-action: manipulation;
