@@ -9,7 +9,7 @@ import {
   renameWindowIdeas, getChangelogSeen, setChangelogSeen,
   getVersionSeen, setVersionSeen,
   getReadInboxIds, addReadInboxId, pruneReadInboxIds, getNotifSeenTs, setNotifSeenTs,
-  getPreviewDir, getIdeas, getChatTone, setChatTone, getChatLensEnabled, setChatLensEnabled,
+  getIdeas, getChatTone, setChatTone, getChatLensEnabled, setChatLensEnabled,
   getWorkspacePromptState, markWorkspaceAutoShown, ignoreWorkspaceCheckpoint,
   applyWorkspaceRestoreMapping, removeRestoredSessionBindings,
 } from './storage.js';
@@ -25,7 +25,6 @@ import {
   splitPane as apiSplitPane, closePane as apiClosePane,
 } from './api.js';
 import { runSplitPane, runClosePane } from './paneActions.js';
-import PreviewSheet from './components/PreviewSheet.jsx';
 import BrowserSheet from './components/BrowserSheet.jsx';
 import { inboxRows, topView, maxTs } from './inbox.js';
 import { moveTarget } from './windowOrder.js';
@@ -143,7 +142,6 @@ export default function App() {
   const [localUrlPrompt, setLocalUrlPrompt] = useState(null); // { raw, x, y } for a tapped web URL
   const docTabs = useDocTabs(); // file-viewer tab state, kept across sheet open/close
   const browser = useBrowser({ enabled: !needToken, browserProxy: !!serverConfig?.browserProxy });
-  const browserStatus = browserEntryStatus(browser.tabs);
   const [bound, setBound] = useState(getBoundSessions); // session names pinned on this device
   const [favorites, setFavorites] = useState(getFavorites); // global favorite commands
   const [recent, setRecent] = useState([]); // current session's recent commands (keyed by session name)
@@ -313,18 +311,16 @@ export default function App() {
     setRecoveryPlan(null);
   }, [clearRecoveryOperation]);
 
-  // The in-app preview subsystem (registry state, active-preview derivation, start/stop/renew/open).
-  const {
-    previewSheetOpen, setPreviewSheetOpen,
-    activePreview, shownPreview, tabs: previewTabs, activeName: previewActiveName, openPreviewSheet,
-    startPreview, switchTab, closeTab, stopPreview, renewPreview,
-  } = usePreviews(current);
+  const staticPreview = usePreviews(current);
+  const browserStatus = browserEntryStatus([
+    ...browser.tabs,
+    ...staticPreview.tabs.map((tab) => ({ ...tab, mode: 'static' })),
+  ]);
   const terminalOverlayOpen = !!(
     drawerOpen || settingsOpen || usageOpen || bindOpen || newWinOpen || renameTarget
     || manageWindow || managePane || fileManagerOpen || gitOpen || basePrompt || docLinkPrompt
     || localUrlPrompt || recoveryDialogOpen || takeoverTarget || inboxOpen || ideaOpen
     || changelogOpen || notifInboxOpen || paneMapOpen || browser.open
-    || (previewSheetOpen && shownPreview)
   );
   const terminalOverlayWasOpenRef = useRef(false);
   const restoreFocusAfterOverlayRef = useRef(null);
@@ -411,11 +407,13 @@ export default function App() {
   // Hardware Back closes the open overlay (→ one level up) instead of exiting the app.
   // Multi-level tools pop one level at a time instead of closing mid-navigation. FileManager and GitPanel
   // own their stacks; Browser mirrors History→page through the dedicated hook below.
-  useBackButton(previewSheetOpen && !!shownPreview, () => setPreviewSheetOpen(false));
   useBrowserBackStack({
     open: browser.open,
-    historyActive: browser.historyActive,
-    switchTab: browser.switchTab,
+    historyActive: browser.historyActive && !staticPreview.selected,
+    switchTab: () => {
+      staticPreview.deactivate();
+      browser.switchTab('history');
+    },
     setOpen: browser.setOpen,
   });
   useBackButton(drawerOpen || recoveryDialogOpen, () => {
@@ -1643,6 +1641,7 @@ export default function App() {
         onEnableHooks={enableHooks}
         termRef={termRef}
         windowId={current?.window?.id}
+        pane={current?.paneId}
         getColCount={getTrackedColCount}
         onColAdjust={tmuxResizeCols}
         onColRestore={tmuxRestore}
@@ -1651,13 +1650,6 @@ export default function App() {
         notifUnread={hasNewNotif}
         onOpenInbox={openNotifInbox}
         updateInfo={updateInfo}
-        activePreview={activePreview}
-        pane={current?.paneId}
-        lastPreviewDir={getPreviewDir(current?.window?.id)}
-        onStartPreview={startPreview}
-        onOpenPreview={openPreviewSheet}
-        onRenew={renewPreview}
-        onStop={stopPreview}
       />
       <Changelog open={changelogOpen} onClose={() => setChangelogOpen(false)} />
       <InboxPage
@@ -1811,18 +1803,7 @@ export default function App() {
       <UploadOverlay />
       {/* One-time "Add to Home Screen" coach — self-gates (standalone / dismissed / desktop → nothing). */}
       <AddToHome />
-      {/* Auto-closes when there's no active preview (stopped/expired); 收起 just slides it down. */}
-      <PreviewSheet
-        open={previewSheetOpen && !!shownPreview}
-        tabs={previewTabs}
-        activeName={previewActiveName}
-        onSwitchTab={switchTab}
-        onCloseTab={closeTab}
-        onRenew={renewPreview}
-        onStop={stopPreview}
-        onMinimize={() => setPreviewSheetOpen(false)}
-      />
-      <BrowserSheet browser={browser} />
+      <BrowserSheet browser={browser} staticPreview={staticPreview} />
       {docToast && (
         <div className="doc-toast" role="alert" onClick={() => setDocToast(null)}>{docToast}</div>
       )}

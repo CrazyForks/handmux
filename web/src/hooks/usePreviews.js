@@ -1,20 +1,65 @@
-import { useState, useEffect, useCallback } from 'react';
-import { getPreviews, createPreview, deletePreview } from '../api.js';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { getPreviews, createPreview, deletePreview, previewUrl } from '../api.js';
 import { previewName } from '../previewName.js';
-import { setPreviewDir } from '../storage.js';
+import { getPreviewDir, setPreviewDir } from '../storage.js';
 
-// Static directory preview state. Website and local-port browsing belongs to the permanent Browser tool.
+const STATIC_TABS_KEY = 'hm_static_preview_tabs1';
+const KEEPALIVE_MS = 20 * 60_000;
+
+function readOpenTabs() {
+  try {
+    const value = JSON.parse(localStorage.getItem(STATIC_TABS_KEY) || '[]');
+    if (!Array.isArray(value)) return [];
+    return value.filter((item) => (
+      item && /^[A-Za-z0-9._-]+$/.test(String(item.name || ''))
+      && typeof item.dir === 'string' && item.dir.startsWith('/')
+    )).map((item) => ({
+      name: String(item.name), dir: item.dir, keepAlive: item.keepAlive !== false,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function writeOpenTabs(tabs) {
+  try {
+    localStorage.setItem(STATIC_TABS_KEY, JSON.stringify(tabs.map(({ name, dir, keepAlive }) => ({
+      name, dir, keepAlive,
+    }))));
+  } catch {
+    // Keep the current in-memory tabs usable when device storage is unavailable.
+  }
+}
+
+// Static-directory registry and device-local tabs used by the permanent Web Previewer.
 export function usePreviews(current) {
   const [previews, setPreviews] = useState([]);
-  const [previewSheetOpen, setPreviewSheetOpen] = useState(false); // in-app preview sheet visible
-  const [activeTabName, setActiveTabName] = useState(null);        // which tab the sheet shows
-  const [pathByName, setPathByName] = useState({});               // name → deep-link path for that preview
+  const [loaded, setLoaded] = useState(false);
+  const [openTabs, setOpenTabs] = useState(readOpenTabs);
+  const [activeTabName, setActiveTabName] = useState(null);
+  const [selected, setSelected] = useState(false);
+  const [error, setError] = useState(null);
+  const openTabsRef = useRef(openTabs);
+  openTabsRef.current = openTabs;
+
+  const commitOpenTabs = useCallback((update) => {
+    const next = typeof update === 'function' ? update(openTabsRef.current) : update;
+    openTabsRef.current = next;
+    setOpenTabs(next);
+    writeOpenTabs(next);
+    return next;
+  }, []);
 
   const refreshPreviews = useCallback(async () => {
     try {
       const r = await getPreviews();
       setPreviews(r.previews || []);
-    } catch { /* ignore */ }
+      setLoaded(true);
+      return r.previews || [];
+    } catch (nextError) {
+      setError(nextError);
+      return null;
+    }
   }, []);
   useEffect(() => { refreshPreviews(); }, [refreshPreviews]);
 
@@ -23,84 +68,143 @@ export function usePreviews(current) {
     ? previewName({ session: current.session?.name, windowName: current.window?.name, windowId: current.window?.id })
     : null;
   const activePreview = previews.find((p) => p.name === curPreviewName && p.expiresAt > Date.now()) || null;
-  const activeExpiresAt = activePreview?.expiresAt ?? null;
+  const liveByName = new Map(previews.map((entry) => [entry.name, entry]));
+  const tabs = openTabs.map((saved) => {
+    const live = liveByName.get(saved.name);
+    return {
+      ...saved,
+      kind: 'static',
+      status: live ? 'running' : (loaded ? 'stopped' : 'checking'),
+      expiresAt: live?.expiresAt ?? null,
+      url: live ? previewUrl(live) : null,
+    };
+  });
+  const activeName = tabs.find((tab) => tab.name === activeTabName)?.name ?? tabs[0]?.name ?? null;
+  const shownPreview = selected ? (tabs.find((tab) => tab.name === activeName) || null) : null;
 
-  // Every live preview belonging to THIS window → the tab strip. The window default (`<window>`) sorts
-  // first, then URL previews (`<window>-<port>`) by port. Each tab carries its remembered deep-link path.
-  const isWindowPreview = (name) => !!curPreviewName && name === curPreviewName;
-  const now = Date.now();
-  const tabs = previews
-    .filter((p) => p && p.expiresAt > now && isWindowPreview(p.name))
-    .map((p) => ({ name: p.name, kind: 'static', dir: p.dir, expiresAt: p.expiresAt, path: pathByName[p.name] || '/' }));
+  const addOpenTab = useCallback((entry, keepAlive = true) => {
+    commitOpenTabs((currentTabs) => {
+      const next = currentTabs.filter((item) => item.name !== entry.name);
+      next.push({ name: entry.name, dir: entry.dir, keepAlive });
+      return next;
+    });
+    setActiveTabName(entry.name);
+    setSelected(true);
+  }, [commitOpenTabs]);
 
-  // Effective active tab: the picked one if it's still live, else the first tab. shownPreview drives the
-  // topbar icon and the sheet header; shownPath its initial iframe path.
-  const activeName = tabs.find((tb) => tb.name === activeTabName)?.name ?? tabs[0]?.name ?? null;
-  const shownPreview = tabs.find((tb) => tb.name === activeName) ?? null;
-  const shownPath = shownPreview?.path || '/';
-
-  // Tabs are window-scoped; on window change, forget the active pick so it can't linger over another window.
-  useEffect(() => { setActiveTabName(null); }, [curPreviewName]);
-
-  // Reset the sheet's open flag once this window has no previews, so a later fresh preview doesn't pop the
-  // sheet open on its own (the flag would otherwise stay true from a previous session).
-  const hasTabs = tabs.length > 0;
-  useEffect(() => { if (!hasTabs) setPreviewSheetOpen(false); }, [hasTabs]);
-
-  // Auto-clear the topbar icon when the window-default preview's TTL elapses (refetch drops the expired entry).
-  useEffect(() => {
-    if (activeExpiresAt == null) return undefined;
-    const id = setTimeout(refreshPreviews, Math.max(0, activeExpiresAt - Date.now()) + 500);
-    return () => clearTimeout(id);
-  }, [activeExpiresAt, refreshPreviews]);
-
-  // Open as a child layer. The shared history registry ensures Back/Escape returns to Settings when
-  // launched there, while opening from the top bar still returns directly to the main screen.
-  const openPreviewSheet = useCallback(() => {
-    setActiveTabName(curPreviewName); // opening the window default → focus its tab
-    setPreviewSheetOpen(true);
-  }, [curPreviewName]);
+  const openPreview = useCallback((entryOrName) => {
+    const name = typeof entryOrName === 'string' ? entryOrName : entryOrName?.name;
+    const live = previews.find((entry) => entry.name === name);
+    const saved = openTabsRef.current.find((entry) => entry.name === name);
+    const entry = live || saved;
+    if (!entry) return false;
+    addOpenTab(entry, live ? true : saved.keepAlive);
+    return true;
+  }, [addOpenTab, previews]);
 
   const startPreview = useCallback(async (dir) => {
-    if (!curPreviewName) return;
+    if (!curPreviewName) return null;
     try {
-      await createPreview(curPreviewName, { dir });
-      setPreviewDir(current?.window?.id, dir); // remember → next open seeds here
-      setPathByName((m) => ({ ...m, [curPreviewName]: '/' }));
+      const created = await createPreview(curPreviewName, { dir });
+      setPreviewDir(current?.window?.id, dir);
       await refreshPreviews();
-      openPreviewSheet();
-    } catch { /* ignore */ }
-  }, [curPreviewName, current?.window?.id, refreshPreviews, openPreviewSheet]);
+      const entry = { ...created, dir };
+      addOpenTab(entry, true);
+      setError(null);
+      return entry;
+    } catch (nextError) {
+      setError(nextError);
+      return null;
+    }
+  }, [addOpenTab, curPreviewName, current?.window?.id, refreshPreviews]);
 
-  const switchTab = useCallback((name) => setActiveTabName(name), []);
+  const switchTab = useCallback((name) => {
+    if (!openTabsRef.current.some((tab) => tab.name === name)) return;
+    setActiveTabName(name);
+    setSelected(true);
+  }, []);
+  const deactivate = useCallback(() => setSelected(false), []);
 
-  // Close (stop) a tab: delete its registration + reap now. If it was active, the next render's activeName
-  // falls back to the first remaining tab; if it was the last, the hasTabs effect closes the sheet.
-  const closeTab = useCallback(async (name) => {
+  // Closing a tab is device-local. Stopping the server-side preview is an explicit separate action.
+  const closeTab = useCallback((name) => {
     if (!name) return;
+    const remaining = commitOpenTabs((currentTabs) => currentTabs.filter((tab) => tab.name !== name));
+    if (activeTabName === name) {
+      setActiveTabName(remaining[0]?.name || null);
+      if (!remaining.length) setSelected(false);
+    }
+  }, [activeTabName, commitOpenTabs]);
+
+  const stopPreview = useCallback(async (name = activeName) => {
+    const target = openTabsRef.current.find((tab) => tab.name === name)
+      || previews.find((tab) => tab.name === name);
+    if (!target) return false;
     try {
       await deletePreview(name);
-      setPathByName((m) => { const n = { ...m }; delete n[name]; return n; });
-      if (activeTabName === name) setActiveTabName(null);
+      commitOpenTabs((currentTabs) => currentTabs.map((tab) => (
+        tab.name === name ? { ...tab, keepAlive: false } : tab
+      )));
       await refreshPreviews();
-    } catch { /* ignore */ }
-  }, [activeTabName, refreshPreviews]);
+      setError(null);
+      return true;
+    } catch (nextError) {
+      setError(nextError);
+      return false;
+    }
+  }, [activeName, commitOpenTabs, previews, refreshPreviews]);
 
-  // The sheet's 停止 / 续期 popover acts on the ACTIVE tab.
-  const stopPreview = useCallback(() => closeTab(activeName), [closeTab, activeName]);
-  const renewPreview = useCallback(async () => {
-    const target = tabs.find((tb) => tb.name === activeName);
-    if (!target) return;
-    try { await createPreview(target.name, { dir: target.dir }); await refreshPreviews(); } catch { /* ignore */ }
-  }, [tabs, activeName, refreshPreviews]);
+  const restartPreview = useCallback(async (name = activeName) => {
+    const target = openTabsRef.current.find((tab) => tab.name === name);
+    if (!target) return false;
+    try {
+      await createPreview(target.name, { dir: target.dir });
+      commitOpenTabs((currentTabs) => currentTabs.map((tab) => (
+        tab.name === name ? { ...tab, keepAlive: true } : tab
+      )));
+      await refreshPreviews();
+      setError(null);
+      return true;
+    } catch (nextError) {
+      setError(nextError);
+      return false;
+    }
+  }, [activeName, commitOpenTabs, refreshPreviews]);
+
+  const renewOpenTabs = useCallback(async () => {
+    const targets = openTabsRef.current.filter((tab) => tab.keepAlive);
+    if (!targets.length) return;
+    const results = await Promise.allSettled(targets.map((tab) => (
+      createPreview(tab.name, { dir: tab.dir })
+    )));
+    const failed = results.find((result) => result.status === 'rejected');
+    if (failed) {
+      setError(failed.reason instanceof Error ? failed.reason : new Error(String(failed.reason)));
+    } else {
+      setError(null);
+    }
+    await refreshPreviews();
+  }, [refreshPreviews]);
+
+  useEffect(() => {
+    void renewOpenTabs();
+    const timer = setInterval(() => { void renewOpenTabs(); }, KEEPALIVE_MS);
+    const onVisibility = () => { if (!document.hidden) void renewOpenTabs(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [renewOpenTabs]);
 
   return {
-    previews,
-    previewSheetOpen, setPreviewSheetOpen,
+    previews, loaded, error,
+    selected, deactivate,
     activePreview, curPreviewName,
-    tabs, activeName, shownPreview, shownPath,
-    refreshPreviews, openPreviewSheet,
-    startPreview,
-    switchTab, closeTab, stopPreview, renewPreview,
+    tabs, activeName, shownPreview,
+    refreshPreviews, openPreview,
+    startPreview, restartPreview,
+    switchTab, closeTab, stopPreview,
+    pane: current?.paneId || null,
+    lastPreviewDir: getPreviewDir(current?.window?.id),
   };
 }

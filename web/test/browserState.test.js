@@ -64,6 +64,8 @@ describe('browser toolbar entry status', () => {
     expect(typeof browserState.browserEntryStatus).toBe('function');
     expect(browserState.browserEntryStatus([])).toBeNull();
     expect(browserState.browserEntryStatus([{ mode: 'direct' }])).toBe('direct');
+    expect(browserState.browserEntryStatus([{ mode: 'static' }])).toBe('static');
+    expect(browserState.browserEntryStatus([{ mode: 'direct' }, { kind: 'static' }])).toBe('static');
     expect(browserState.browserEntryStatus([{ mode: 'direct' }, { mode: 'proxy' }])).toBe('proxy');
     expect(browserState.browserEntryStatus([{ mode: 'proxy' }, { mode: 'direct' }])).toBe('proxy');
   });

@@ -10,7 +10,9 @@ describe('built-in browser App composition', () => {
     expect(source).toContain("import BrowserSheet from './components/BrowserSheet.jsx'");
     expect(source).toContain("import { useBrowser } from './hooks/useBrowser.js'");
     expect(source).toMatch(/const browser = useBrowser\(\{ enabled: !needToken, browserProxy: !!serverConfig\?\.browserProxy \}\)/);
-    expect(source).toContain('<BrowserSheet browser={browser} />');
+    expect(source).toContain('<BrowserSheet browser={browser} staticPreview={staticPreview} />');
+    expect(source).toContain('historyActive: browser.historyActive && !staticPreview.selected');
+    expect(source).toMatch(/switchTab: \(\) => \{\s*staticPreview\.deactivate\(\);\s*browser\.switchTab\('history'\)/);
   });
 
   it('renders the browser toolbar entry unconditionally', () => {
@@ -27,12 +29,13 @@ describe('built-in browser App composition', () => {
   });
 
   it('shows device-tab status on the browser entry with proxy precedence', () => {
-    expect(source).toContain('const browserStatus = browserEntryStatus(browser.tabs)');
+    expect(source).toMatch(/const browserStatus = browserEntryStatus\(\[\s*\.\.\.browser\.tabs,[\s\S]*mode: 'static'/);
     expect(source).toContain("className={`topbar-icon browser-entry${browserStatus ? ` ${browserStatus}` : ''}`}");
     expect(source).not.toContain('browser-entry-status-dot');
     expect(styles).not.toContain('.browser-entry-status-dot');
     expect(styles).toMatch(/\.browser-entry\.direct\s*>\s*svg\s*\{[^}]*color:\s*var\(--blue\)/);
     expect(styles).toMatch(/\.browser-entry\.proxy\s*>\s*svg\s*\{[^}]*color:\s*#f2a450/);
+    expect(styles).toMatch(/\.browser-entry\.static\s*>\s*svg\s*\{[^}]*color:\s*var\(--green\)/);
   });
 
   it('routes confirmed terminal web links into the built-in browser', () => {

@@ -63,7 +63,27 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-const render = (model) => act(() => root.render(<BrowserSheet browser={model} />));
+const staticPreview = (overrides = {}) => ({
+  selected: false,
+  shownPreview: null,
+  tabs: [],
+  previews: [],
+  error: null,
+  pane: null,
+  lastPreviewDir: null,
+  deactivate: vi.fn(),
+  switchTab: vi.fn(),
+  closeTab: vi.fn(),
+  openPreview: vi.fn(),
+  startPreview: vi.fn(),
+  stopPreview: vi.fn(),
+  restartPreview: vi.fn(),
+  ...overrides,
+});
+
+const render = (model, preview) => act(() => root.render(
+  <BrowserSheet browser={model} staticPreview={preview} />,
+));
 const click = (node) => act(() => node.dispatchEvent(new MouseEvent('click', { bubbles: true })));
 const clickAndFlush = (node) => act(async () => {
   node.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -77,6 +97,72 @@ const setInput = (input, value) => act(() => {
 });
 
 describe('BrowserSheet', () => {
+  it('lists running static previews on Home without a countdown', async () => {
+    const preview = staticPreview({
+      previews: [{ name: 'main-3', dir: '/home/u/site', expiresAt: Date.now() + 300_000 }],
+    });
+    await render(browser({ historyActive: true, activeId: null }), preview);
+    expect(document.body.textContent).toContain('预览本地目录');
+    expect(document.body.textContent).toContain('正在运行的静态预览');
+    expect(document.body.textContent).toContain('/home/u/site');
+    expect(document.body.textContent).not.toMatch(/分钟|倒计时/);
+    click([...document.querySelectorAll('.browser-static-running-main')][0]);
+    expect(preview.openPreview).toHaveBeenCalledWith(preview.previews[0]);
+  });
+
+  it('renders a static directory as a green tab with its dedicated menu', async () => {
+    const tab = {
+      name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'running',
+      url: '/preview/main-3/?token=x',
+    };
+    const preview = staticPreview({ selected: true, shownPreview: tab, tabs: [tab] });
+    await render(browser({ historyActive: true, activeId: null }), preview);
+    const staticTab = document.querySelector('.browser-tab-wrap.static');
+    const frame = document.querySelector('.browser-pane.static iframe');
+    expect(staticTab).toBeTruthy();
+    expect(frame.getAttribute('sandbox')).toBeNull();
+    expect(document.querySelector('.browser-address').readOnly).toBe(true);
+    expect(document.querySelector('.browser-address').value).toBe('/home/u/site');
+
+    click(document.querySelector('button[aria-label="网页预览器菜单"]'));
+    const menu = document.querySelector('.browser-options-card');
+    expect(menu.textContent).toContain('源目录');
+    expect(menu.textContent).toContain('停止预览');
+    expect(menu.textContent).not.toContain('用系统浏览器打开');
+    expect(menu.textContent).not.toContain('连接方式');
+    expect(menu.textContent).not.toContain('后台关闭');
+    expect(menu.textContent).not.toMatch(/分钟/);
+    expect(styles).toMatch(/\.browser-tab-wrap\.static[^}]*var\(--green\)/);
+  });
+
+  it('keeps closing a static tab local and stopping it explicit', async () => {
+    const tab = {
+      name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'running',
+      url: '/preview/main-3/?token=x',
+    };
+    const preview = staticPreview({ selected: true, shownPreview: tab, tabs: [tab] });
+    await render(browser({ historyActive: true, activeId: null }), preview);
+    click(document.querySelector('.browser-tab-wrap.static .browser-tab-close'));
+    expect(preview.closeTab).toHaveBeenCalledWith('main-3');
+    expect(preview.stopPreview).not.toHaveBeenCalled();
+
+    click(document.querySelector('button[aria-label="网页预览器菜单"]'));
+    click([...document.querySelectorAll('.browser-options-card button')]
+      .find((button) => button.textContent === '停止预览'));
+    expect(preview.stopPreview).toHaveBeenCalledWith('main-3');
+  });
+
+  it('shows a restart action when a static preview is no longer running', async () => {
+    const tab = { name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'stopped', url: null };
+    const preview = staticPreview({ selected: true, shownPreview: tab, tabs: [tab] });
+    await render(browser({ historyActive: true, activeId: null }), preview);
+    expect(document.querySelector('.browser-pane.static iframe')).toBeNull();
+    const restart = [...document.querySelectorAll('.browser-static-state button')]
+      .find((button) => button.textContent === '重新启动');
+    expect(restart).toBeTruthy();
+    click(restart);
+    expect(preview.restartPreview).toHaveBeenCalledWith('main-3');
+  });
   it('keeps fine-grained page zoom controls in the menu without blocking webpage interaction', async () => {
     const viewport = document.createElement('meta');
     viewport.name = 'viewport';

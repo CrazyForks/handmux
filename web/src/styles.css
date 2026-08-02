@@ -1170,86 +1170,6 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .file-min svg { width: 20px; height: 20px; }
 
 .file-body { flex: 1; overflow: hidden; display: flex; }
-/* Preview sheet iframe — fills the body (which is display:flex), white bg so a transparent site
-   renders on white like a real browser tab. */
-.preview-frame { flex: 1; width: 100%; border: 0; background: #fff; }
-/* One pane per open preview; all mounted in parallel, inactive ones display:none (kept alive). The
-   visible pane fills the flex body; in PC mode it's a plain block so the scaler sizes itself. */
-.preview-pane { flex: 1; min-width: 0; display: flex; }
-.preview-body.pc .preview-pane { display: block; }
-/* PC view: the body scrolls both axes; .preview-scaler is a box sized to the SCALED desktop page (so
-   zooming past fit gives real scroll area), and the iframe is a 1280px-wide desktop viewport
-   transform-scaled into it. The iframe stays interactive — it scrolls its own content and takes input. */
-.preview-body.pc { display: block; position: relative; overflow: auto; -webkit-overflow-scrolling: touch; }
-.preview-scaler { position: relative; }
-.preview-body.pc .preview-frame { position: absolute; top: 0; left: 0; flex: none; }
-/* Floating zoom control, bottom-center — anchored to the sheet (the transformed .file-sheet is the
-   containing block) so it stays put while the body scrolls. */
-.preview-zoom {
-  position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 2;
-  display: flex; align-items: center; gap: 2px; padding: 4px;
-  background: rgba(28,30,34,.92); border: 1px solid #3a3c42; border-radius: 999px; box-shadow: 0 6px 20px rgba(0,0,0,.45);
-}
-.preview-zoom-btn {
-  width: 34px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
-  background: transparent; border: none; color: #e6edf3; font-size: 20px; line-height: 1; border-radius: 999px;
-  touch-action: manipulation;
-}
-.preview-zoom-btn:disabled { color: #5a626b; }
-.preview-zoom-val { min-width: 46px; text-align: center; color: #9fb0c0; font-size: 13px; font-variant-numeric: tabular-nums; }
-/* Preview sheet top bar — mirrors the doc preview: 运行中 status + countdown + 续期/停止 + 收起. */
-.preview-head { position: relative; align-items: center; gap: 4px; min-height: 44px; padding-left: 10px; }
-.preview-status { display: inline-flex; align-items: center; gap: 5px; min-width: 0; color: #e6edf3; font-size: 12px; }
-.preview-status svg { width: 15px; height: 15px; flex: 0 0 auto; }
-.preview-state { color: var(--green); font-weight: 600; flex: 0 0 auto; }
-.preview-name { color: #9fb0c0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.preview-detail { color: #6e7d8c; margin-left: 6px; }
-/* Tab strip — one chip per open preview for this window; horizontal-scrollable (Safari-tab feel).
-   Active chip lit iOS-blue. Each chip = a label button + a × to stop that preview. */
-.preview-tabs {
-  display: flex; gap: 6px; align-items: center; flex: 0 0 auto;
-  padding: 6px 10px; overflow-x: auto; -webkit-overflow-scrolling: touch;
-  border-top: 1px solid #24262b; background: #1a1c20;
-}
-.preview-tab {
-  display: inline-flex; align-items: center; flex: 0 0 auto;
-  background: #26282e; border: 1px solid #34363c; border-radius: 999px; overflow: hidden;
-}
-.preview-tab.active { background: var(--blue); border-color: var(--blue); }
-.preview-tab-btn {
-  background: transparent; border: none; color: #c8d2dc; font-size: 12px;
-  padding: 5px 4px 5px 11px; font-variant-numeric: tabular-nums; touch-action: manipulation; max-width: 40vw;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.preview-tab.active .preview-tab-btn { color: #fff; font-weight: 600; }
-.preview-tab-close {
-  background: transparent; border: none; color: #8a97a6; font-size: 16px; line-height: 1;
-  padding: 4px 9px 4px 5px; touch-action: manipulation;
-}
-.preview-tab.active .preview-tab-close { color: rgba(255,255,255,.85); }
-/* TTL chip — minutes only; tap to open the 续期/关闭 popover. */
-.preview-remain {
-  margin-left: auto; flex: 0 0 auto; font-variant-numeric: tabular-nums;
-  color: #9fb0c0; font-size: 12px; padding: 4px 8px;
-  background: transparent; border: 1px solid #33353a; border-radius: 8px; touch-action: manipulation;
-}
-.preview-remain:active { color: var(--blue); border-color: var(--blue); }
-.preview-pop-backdrop { position: fixed; inset: 0; z-index: 5; }
-.preview-pop {
-  position: absolute; top: 46px; right: 8px; z-index: 6; min-width: 168px;
-  display: flex; flex-direction: column; gap: 2px; padding: 6px;
-  background: #232427; border: 1px solid #33353a; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.5);
-}
-.preview-pop-item { background: transparent; border: none; color: #e6edf3; text-align: left; padding: 10px 12px; border-radius: 8px; font-size: 14px; }
-.preview-pop-item:active { background: #2f3338; }
-.preview-pop-danger { color: var(--red); }
-/* Compact icon actions so the status + name + countdown stay visible on a narrow phone. */
-.preview-iconbtn { flex: 0 0 auto; width: 32px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: none; color: #9fb0c0; touch-action: manipulation; }
-.preview-iconbtn svg { width: 17px; height: 17px; }
-.preview-iconbtn:active { color: var(--blue); }
-.preview-head .file-min { width: 34px; }
-.preview-head .file-min svg { width: 18px; height: 18px; }
-
 /* Built-in browser — tabs above the address row, matching mobile Safari's compact system chrome. */
 .browser-sheet { background: #0b0f14; }
 .browser-tabs {
@@ -1262,6 +1182,8 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-tab-wrap.active, .browser-history-tab.active { background: #0b0f14; box-shadow: inset 0 -2px 0 var(--blue); }
 .browser-tab-wrap.proxy { border-top: 2px solid #d9822b; }
 .browser-tab-wrap.proxy.active { box-shadow: inset 0 -2px 0 #e8892f; }
+.browser-tab-wrap.static { border-top: 2px solid var(--green); }
+.browser-tab-wrap.static.active { box-shadow: inset 0 -2px 0 var(--green); }
 .browser-tab {
   min-height: 44px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px;
   border: 0; background: transparent; color: #9fb0c0; font-size: 13px; white-space: nowrap;
@@ -1275,6 +1197,8 @@ button.cmd-text { background: none; border: none; text-align: left; }
 }
 .browser-mode-badge.proxy, .browser-address-mode.proxy { background: rgba(217,130,43,.18); color: #f2a450; }
 .browser-mode-badge.proxy::after { content: '•'; font-size: 13px; line-height: 7px; }
+.browser-mode-badge.static, .browser-address-mode.static { background: rgba(var(--green-rgb),.15); color: #71df91; }
+.browser-mode-badge.static::after { content: '•'; font-size: 13px; line-height: 7px; }
 .browser-tab-wrap.active .browser-tab, .browser-history-tab.active { color: #fff; }
 .browser-history-tab {
   flex: 0 0 44px; width: 44px; justify-content: center; padding: 0;
@@ -1416,6 +1340,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-frame-scaler { width: 100%; height: 100%; position: relative; }
 .browser-frame { width: 100%; height: 100%; display: block; border: 0; background: #fff; will-change: transform; }
 .browser-pane.proxy { box-shadow: inset 0 2px 0 #d9822b; }
+.browser-pane.static { box-shadow: inset 0 2px 0 var(--green); }
 .browser-page-loading {
   position: absolute; inset: 0; z-index: 2;
   background: transparent;
@@ -1433,6 +1358,10 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-pane.proxy .browser-page-progress::after {
   background: #d9822b; box-shadow: 0 0 7px rgba(217,130,43,.72);
 }
+.browser-page-progress.static { background: rgba(var(--green-rgb),.16); }
+.browser-page-progress.static::after {
+  background: var(--green); box-shadow: 0 0 7px rgba(var(--green-rgb),.72);
+}
 @keyframes browser-progress { 45% { transform: scaleX(.68); } 100% { transform: scaleX(.9); } }
 .browser-content.desktop .browser-frame { position: absolute; inset: 0 auto auto 0; }
 .browser-history { flex: 1; min-width: 0; overflow-y: auto; padding: 18px 14px calc(18px + env(safe-area-inset-bottom)); background: #0b0f14; }
@@ -1440,6 +1369,27 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-history-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .browser-history-head h2 { margin: 0; font-size: 20px; }
 .browser-history-head button { min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: var(--blue); font-size: 14px; }
+.browser-static-launcher {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  margin-bottom: 22px; padding: 16px; border-radius: 14px; background: #151a20;
+}
+.browser-static-launcher h2, .browser-static-running h3 { margin: 0; color: #eef2f5; font-size: 16px; }
+.browser-static-launcher p { margin: 5px 0 0; color: #8492a0; font-size: 12px; line-height: 1.45; }
+.browser-static-launcher button, .browser-static-state button {
+  flex: none; min-height: 42px; padding: 0 14px; border: 0; border-radius: 10px;
+  background: rgba(var(--green-rgb),.16); color: #71df91; font-weight: 650;
+}
+.browser-static-running { margin: -8px 0 22px; }
+.browser-static-running h3 { margin-bottom: 8px; }
+.browser-static-running-row { display: flex; align-items: stretch; border-bottom: 1px solid #252c34; background: #151a20; }
+.browser-static-running-row:first-of-type { border-radius: 12px 12px 0 0; }
+.browser-static-running-row:last-child { border-bottom: 0; border-radius: 0 0 12px 12px; }
+.browser-static-running-main { min-width: 0; flex: 1; min-height: 58px; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 9px 12px; border: 0; background: transparent; color: #e8edf2; text-align: left; }
+.browser-static-running-main strong, .browser-static-running-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browser-static-running-main span, .browser-static-dir { color: #788797; font: 11px ui-monospace, "SF Mono", Menlo, monospace; }
+.browser-static-stop { flex: none; min-width: 72px; border: 0; background: transparent; color: #ff6961; }
+.browser-static-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 28px; background: #0b0f14; color: #e8edf2; text-align: center; }
+.browser-static-state span { max-width: 100%; overflow-wrap: anywhere; color: #83909d; font: 12px ui-monospace, "SF Mono", Menlo, monospace; }
 .browser-empty { color: #798796; text-align: center; margin-top: 22vh; }
 .browser-history-list { margin-top: 10px; border-radius: 12px; overflow: visible; background: #151a20; }
 .browser-history-row { position: relative; display: flex; border-bottom: 1px solid #252c34; }
@@ -1485,6 +1435,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-consent-actions .browser-consent-enable { color: #fff; background: var(--blue); font-weight: 650; }
 .browser-entry.direct > svg { color: var(--blue); }
 .browser-entry.proxy > svg { color: #f2a450; }
+.browser-entry.static > svg { color: var(--green); }
 @media (max-width: 430px) {
   .browser-nav { gap: 1px; padding-inline: 3px; }
   .browser-nav-button { width: 36px; }
@@ -1494,15 +1445,6 @@ button.cmd-text { background: none; border: none; text-align: left; }
   .browser-sheet { transition: none; }
   .browser-page-progress::after { animation: none; transform: scaleX(.72); }
 }
-/* 停止 confirm — overlaid INSIDE the sheet (which is its own z50 stacking context) so it sits above
-   the iframe; a settings-card dialog would render beneath the sheet. */
-.preview-confirm-backdrop { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.5); }
-.preview-confirm { width: min(86vw, 320px); background: #232427; border-radius: 12px; padding: 16px; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
-.preview-confirm-title { font-size: 16px; font-weight: 600; color: #e6edf3; margin-bottom: 8px; }
-.preview-confirm-text { font-size: 13px; color: #9aa3ad; line-height: 1.5; margin-bottom: 14px; }
-.preview-confirm-btns { display: flex; justify-content: flex-end; gap: 8px; }
-.preview-confirm-danger { background: #5a1f1f; color: var(--red); }
-
 /* Settings group heading (全局设置 / 当前会话设置) — a full-bleed banded separator (breaks out of the
    card's 16px padding) so the two scopes read as clearly distinct sections, iOS grouped-list style. */
 .settings-group {
@@ -1513,33 +1455,6 @@ button.cmd-text { background: none; border: none; text-align: left; }
 }
 .settings-head + .settings-group { margin-top: 0; } /* first band hugs the title */
 .settings-group + .settings-section { border-top: none; } /* band's own border is the separator */
-/* "运行中" inline status in the settings preview row. */
-.preview-running { display: inline-flex; align-items: center; gap: 6px; color: var(--green); font-weight: 600; font-size: 13px; }
-.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
-/* Static preview off/on segmented control. */
-.preview-seg {
-  display: inline-flex; align-self: flex-start; gap: 2px;
-  background: rgba(118,118,128,.22); border-radius: 9px; padding: 2px;
-}
-.preview-seg button {
-  background: transparent; border: none; color: rgba(235,235,245,.6);
-  padding: 7px 18px; min-width: 60px; font-size: 14px; font-weight: 600; border-radius: 7px;
-  touch-action: manipulation; transition: color .15s;
-}
-.preview-seg button.on { background: #48484a; color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35), 0 0 0 .5px rgba(0,0,0,.2); }
-.preview-seg button:active:not(.on) { color: #fff; }
-
-/* Start block (no active preview): the 不开启/静态/动态 segmented control + its controls, spaced. */
-.preview-start { display: flex; flex-direction: column; gap: 12px; }
-/* Active-preview block in settings: a status+countdown head, then the open/续期/停止 controls. */
-.preview-active { display: flex; flex-direction: column; gap: 10px; }
-.preview-active-head { display: flex; align-items: center; gap: 10px; }
-.preview-remain-s { margin-left: auto; font-variant-numeric: tabular-nums; color: #9aa3ad; font-size: 13px; }
-.settings-err { color: var(--red); }
-
-/* Live preview → the topbar icon goes steady green (a calm "server running" tell, no blink). */
-.preview-live { color: var(--green); }
-
 /* Home tab — 最近 / 新增 segmented switch + the active pane */
 .home-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .file-seg { display: flex; gap: 2px; margin: 10px 12px; padding: 2px; background: rgba(118,118,128,.20); border-radius: 9px; }
@@ -2063,7 +1978,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
   background: rgba(120,120,128,0.12); color: var(--muted, #8a8a8e); font-size: 12px; line-height: 1.55; }
 
 /* InboxPage — full-screen inbox. Reuses the shared .file-sheet slide-up shell + .file-tabs header (same as
-   FileManager/GitPanel/PreviewSheet), so it matches every other full-screen sheet. Only the list/detail
+   FileManager/GitPanel), so it matches every other full-screen sheet. Only the list/detail
    content is inbox-specific, styled with the same palette (bg #0b0f14, header #11161d, hairline #1d2630,
    text #e6edf3/#9fb0c0). Classes stay push-inbox-* (not inbox-*) — .inbox-* belongs to the pane-status Inbox. */
 /* Unread marker on the Settings「通知记录」button — inline after the label (NOT the absolute .topbar-dot,
@@ -2691,7 +2606,6 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .windowbar-scroll,
 .quick-scroll,
 .file-tabs-scroll,
-.preview-tabs,
 .git-tabs-scroll,
 .cc-quick {
   scrollbar-width: none;

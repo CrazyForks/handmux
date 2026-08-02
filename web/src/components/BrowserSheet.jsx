@@ -13,8 +13,10 @@ import {
   XIcon,
 } from './icons.jsx';
 import { BROWSER_CLOSE_AFTER_OPTIONS } from '../browserState.js';
+import { fetchPaneCwd } from '../api.js';
 import { t } from '../i18n';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap.js';
+import DirPicker from './DirPicker.jsx';
 
 // Temporary compatibility validation only: unsafe while proxied pages share the Handmux origin.
 const FRAME_SANDBOX = 'allow-scripts allow-forms allow-downloads allow-modals allow-popups allow-same-origin';
@@ -25,7 +27,11 @@ function tabLabel(tab) {
   try { return new URL(tab.originalUrl).hostname; } catch { return tab.originalUrl; }
 }
 
-export default function BrowserSheet({ browser }) {
+function staticTabLabel(tab) {
+  return tab.dir?.split('/').filter(Boolean).at(-1) || tab.name;
+}
+
+export default function BrowserSheet({ browser, staticPreview }) {
   const {
     open, accessEnabled, consentOpen, tabs, activeId, historyActive, closeAfter, history, error,
     persistProxyLogin, proxyAvailable,
@@ -35,11 +41,15 @@ export default function BrowserSheet({ browser }) {
     setProxyLoginPolicy,
     clearProxyLogin, deleteHistory,
   } = browser;
-  const active = tabs.find((tab) => tab.id === activeId) || null;
-  const proxied = active?.mode === 'proxy';
+  const webActive = tabs.find((tab) => tab.id === activeId) || null;
+  const staticActive = staticPreview?.selected ? staticPreview.shownPreview : null;
+  const staticSelected = !!staticActive;
+  const homeActive = historyActive && !staticSelected;
+  const active = staticActive || webActive;
+  const proxied = webActive?.mode === 'proxy' && !staticSelected;
   const [newPageMode, setNewPageMode] = useState('direct');
-  const menuMode = historyActive || !active ? newPageMode : active.mode;
-  const [address, setAddress] = useState(active?.originalUrl || '');
+  const menuMode = staticSelected ? 'static' : (homeActive || !webActive ? newPageMode : webActive.mode);
+  const [address, setAddress] = useState(webActive?.originalUrl || '');
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [timeOpen, setTimeOpen] = useState(false);
   const [device, setDevice] = useState('mobile');
@@ -53,6 +63,10 @@ export default function BrowserSheet({ browser }) {
   const [mountedTabs, setMountedTabs] = useState(() => new Set());
   const [unhealthyTabs, setUnhealthyTabs] = useState(() => new Set());
   const [pageZoom, setPageZoom] = useState(1);
+  const [dirOpen, setDirOpen] = useState(false);
+  const [seedCwd, setSeedCwd] = useState(null);
+  const [staticLoaded, setStaticLoaded] = useState(false);
+  const [staticReloadKey, setStaticReloadKey] = useState(0);
   const frames = useRef(new Map());
   const frameUrls = useRef(new Map());
   const refreshSequences = useRef(new Map());
@@ -68,52 +82,60 @@ export default function BrowserSheet({ browser }) {
   openRef.current = open;
 
   useEffect(() => {
-    setAddress(historyActive ? '' : (active?.originalUrl || ''));
-  }, [active?.originalUrl, historyActive]);
+    setAddress(staticSelected ? (staticActive?.dir || '') : (homeActive ? '' : (webActive?.originalUrl || '')));
+  }, [homeActive, staticActive?.dir, staticSelected, webActive?.originalUrl]);
 
   useEffect(() => {
     if (!proxyAvailable) setNewPageMode('direct');
   }, [proxyAvailable]);
 
   useEffect(() => {
+    if (open && homeActive) void staticPreview?.refreshPreviews?.();
+  }, [homeActive, open, staticPreview?.refreshPreviews]);
+
+  useEffect(() => {
     setOptionsOpen(false);
     setTimeOpen(false);
-    if (!historyActive) setHistoryModeOpen(null);
-  }, [activeId, historyActive, open]);
+    if (!homeActive) setHistoryModeOpen(null);
+  }, [activeId, homeActive, open, staticActive?.name]);
 
   useEffect(() => {
     setPageZoom(1);
-  }, [activeId, device, historyActive]);
+  }, [activeId, device, homeActive, staticActive?.name]);
+
+  useEffect(() => {
+    setStaticLoaded(false);
+  }, [staticActive?.name, staticActive?.url, staticReloadKey]);
 
   useLayoutEffect(() => {
-    if (!open || historyActive || !activeId) return;
+    if (!open || homeActive || (!activeId && !staticActive?.name)) return;
     activeTabRef.current?.scrollIntoView?.({
       behavior: 'smooth',
       block: 'nearest',
       inline: 'nearest',
     });
-  }, [activeId, historyActive, open, tabs.length]);
+  }, [activeId, homeActive, open, staticActive?.name, staticPreview?.tabs?.length, tabs.length]);
 
   useEffect(() => {
     if (!accessEnabled) {
       setMountedTabs(new Set());
       return;
     }
-    if (!open || historyActive || !active) return;
-    setMountedTabs((current) => new Set(current).add(active.id));
-    if (active.mode === 'proxy' && unhealthyTabs.has(active.id)) {
+    if (!open || historyActive || staticSelected || !webActive) return;
+    setMountedTabs((current) => new Set(current).add(webActive.id));
+    if (webActive.mode === 'proxy' && unhealthyTabs.has(webActive.id)) {
       setUnhealthyTabs((current) => {
         const next = new Set(current);
-        next.delete(active.id);
+        next.delete(webActive.id);
         return next;
       });
-      void recoverBinding(active.id);
-    } else if (active.mode === 'proxy' && !active.url) {
-      void ensureBinding(active.id);
+      void recoverBinding(webActive.id);
+    } else if (webActive.mode === 'proxy' && !webActive.url) {
+      void ensureBinding(webActive.id);
     }
   }, [
-    accessEnabled, active?.id, active?.mode, active?.url, ensureBinding, historyActive,
-    open, recoverBinding, unhealthyTabs,
+    accessEnabled, ensureBinding, historyActive, open, recoverBinding, staticSelected, unhealthyTabs,
+    webActive?.id, webActive?.mode, webActive?.url,
   ]);
 
   useModalFocusTrap({
@@ -195,24 +217,37 @@ export default function BrowserSheet({ browser }) {
     }, '*');
   }, []);
 
-  const postCommand = (command) => postTabCommand(active, command);
+  const postCommand = (command) => postTabCommand(webActive, command);
 
   const selectTab = (tab) => {
     setOptionsOpen(false);
     setHistoryError(null);
+    staticPreview?.deactivate();
     switchTab(tab.id);
+  };
+
+  const selectStaticTab = (tab) => {
+    setOptionsOpen(false);
+    setHistoryError(null);
+    switchTab('history');
+    staticPreview?.switchTab(tab.name);
   };
 
   const selectHistory = () => {
     setOptionsOpen(false);
     setHistoryError(null);
     setNewPageMode('direct');
+    staticPreview?.deactivate();
     return switchTab('history');
   };
 
   const refreshActive = async () => {
     if (!active) return;
-    const tab = active;
+    if (staticSelected) {
+      if (staticActive.status === 'running') setStaticReloadKey((value) => value + 1);
+      return;
+    }
+    const tab = webActive;
     const sequence = (refreshSequences.current.get(tab.id) || 0) + 1;
     refreshSequences.current.set(tab.id, sequence);
     setRefreshingTabs((current) => new Set(current).add(tab.id));
@@ -234,14 +269,14 @@ export default function BrowserSheet({ browser }) {
   };
 
   const stopActive = () => {
-    if (!active) return;
-    refreshSequences.current.set(active.id, (refreshSequences.current.get(active.id) || 0) + 1);
+    if (!webActive) return;
+    refreshSequences.current.set(webActive.id, (refreshSequences.current.get(webActive.id) || 0) + 1);
     postCommand('stop');
-    frameUrls.current.set(active.id, active.url);
-    setLoadedTabs((current) => new Set(current).add(active.id));
+    frameUrls.current.set(webActive.id, webActive.url);
+    setLoadedTabs((current) => new Set(current).add(webActive.id));
     setRefreshingTabs((current) => {
       const next = new Set(current);
-      next.delete(active.id);
+      next.delete(webActive.id);
       return next;
     });
   };
@@ -258,19 +293,21 @@ export default function BrowserSheet({ browser }) {
 
   const submitAddress = (event) => {
     event.preventDefault();
+    if (staticSelected) return;
     setHistoryError(null);
-    if (historyActive || !active) openUrl(address, { mode: newPageMode });
-    else navigateTab(active.id, address);
+    staticPreview?.deactivate();
+    if (homeActive || !webActive) openUrl(address, { mode: newPageMode });
+    else navigateTab(webActive.id, address);
   };
 
   const chooseMode = (mode) => {
-    if (mode === menuMode || (mode === 'proxy' && !proxyAvailable)) return;
+    if (staticSelected || mode === menuMode || (mode === 'proxy' && !proxyAvailable)) return;
     setHistoryError(null);
-    if (historyActive || !active) {
+    if (homeActive || !webActive) {
       setNewPageMode(mode);
       return;
     }
-    navigateTab(active.id, active.originalUrl, mode);
+    navigateTab(webActive.id, webActive.originalUrl, mode);
   };
 
   const openHistory = (entry, mode = entry.lastMode || 'direct', persistMode = false) => {
@@ -286,7 +323,7 @@ export default function BrowserSheet({ browser }) {
 
   const requestActiveSiteClear = () => {
     let origin;
-    try { origin = new URL(active.originalUrl).origin; } catch { return; }
+    try { origin = new URL(webActive.originalUrl).origin; } catch { return; }
     clearTriggerRef.current = document.activeElement;
     setClearConfirmation({ type: 'site', origin });
   };
@@ -307,6 +344,20 @@ export default function BrowserSheet({ browser }) {
     selectHistory();
     setAddress('');
     requestAnimationFrame(() => addressRef.current?.focus());
+  };
+
+  const openDirPicker = async () => {
+    let seed = staticPreview?.lastPreviewDir || null;
+    if (!seed && staticPreview?.pane) {
+      try { seed = (await fetchPaneCwd(staticPreview.pane)).cwd || null; } catch { /* picker falls back home */ }
+    }
+    setSeedCwd(seed);
+    setDirOpen(true);
+  };
+
+  const pickDirectory = async (dir) => {
+    setDirOpen(false);
+    await staticPreview?.startPreview(dir);
   };
 
   const pickTime = (value) => {
@@ -342,8 +393,13 @@ export default function BrowserSheet({ browser }) {
       transformOrigin: '0 0',
     };
   };
-  const activeLoading = !!active && (!loadedTabs.has(active.id)
-    || frameUrls.current.get(active.id) !== active.url || refreshingTabs.has(active.id));
+  const activeLoading = staticSelected
+    ? staticActive.status === 'running' && !staticLoaded
+    : !!webActive && (!loadedTabs.has(webActive.id)
+      || frameUrls.current.get(webActive.id) !== webActive.url || refreshingTabs.has(webActive.id));
+  const displayedError = historyError
+    || ((staticSelected || homeActive) ? staticPreview?.error : null)
+    || (!staticSelected ? error : null);
 
   if (consentOpen) return createPortal(
     <div className="file-sheet browser-sheet open browser-consent" role="dialog" aria-modal="true" aria-label={t('browser.consentTitle')}>
@@ -370,14 +426,14 @@ export default function BrowserSheet({ browser }) {
     <div className={`file-sheet browser-sheet ${open ? 'open' : ''}`} aria-hidden={!open}>
       <div className="browser-tabs" role="tablist" aria-label={t('browser.openTabs')}
         inert={clearConfirmation ? '' : undefined}>
-        <button className={`browser-tab browser-history-tab ${historyActive ? 'active' : ''}`} role="tab"
-          aria-selected={historyActive} aria-label={t('browser.history')} title={t('browser.history')}
+        <button className={`browser-tab browser-history-tab ${homeActive ? 'active' : ''}`} role="tab"
+          aria-selected={homeActive} aria-label={t('browser.history')} title={t('browser.history')}
           onClick={selectHistory}>
           <HomeIcon />
         </button>
         <div className="browser-tabs-scroll">
           {tabs.map((tab) => {
-            const selected = !historyActive && tab.id === activeId;
+            const selected = !staticSelected && !historyActive && tab.id === activeId;
             const label = tabLabel(tab);
             return (
               <span ref={selected ? activeTabRef : null}
@@ -392,6 +448,22 @@ export default function BrowserSheet({ browser }) {
               </span>
             );
           })}
+          {(staticPreview?.tabs || []).map((tab) => {
+            const selected = staticSelected && tab.name === staticActive?.name;
+            const label = staticTabLabel(tab);
+            return (
+              <span ref={selected ? activeTabRef : null}
+                className={`browser-tab-wrap static ${selected ? 'active' : ''}`} key={`static:${tab.name}`}>
+                <button className="browser-tab" role="tab" aria-selected={selected} title={tab.dir}
+                  onClick={() => selectStaticTab(tab)}>
+                  <span className="browser-mode-badge static" aria-label={t('browser.staticBadge')} />
+                  <span className="browser-tab-label">{label}</span>
+                </button>
+                <button className="browser-tab-close" aria-label={t('browser.closeTab', { title: label })}
+                  onClick={() => staticPreview.closeTab(tab.name)}><XIcon /></button>
+              </span>
+            );
+          })}
         </div>
         <button className="browser-head-button" aria-label={t('browser.newTab')} title={t('browser.newTab')} onClick={newTab}><PlusIcon /></button>
         <button className="browser-head-button" aria-label={t('browser.minimize')} title={t('browser.minimize')}
@@ -402,15 +474,19 @@ export default function BrowserSheet({ browser }) {
         <form className="browser-address-form" onSubmit={submitAddress}>
           <GlobeIcon />
           <span className={`browser-address-mode ${menuMode}`}>
-            {t(menuMode === 'proxy' ? 'browser.proxyBadge' : 'browser.directBadge')}
+            {t(menuMode === 'static'
+              ? 'browser.staticBadge'
+              : menuMode === 'proxy' ? 'browser.proxyBadge' : 'browser.directBadge')}
           </span>
           <input ref={addressRef} className="browser-address" aria-label={t('browser.address')}
             value={address} onChange={(event) => setAddress(event.target.value)}
+            readOnly={staticSelected}
             placeholder={t('browser.addressPlaceholder')} autoCapitalize="none" autoCorrect="off" spellCheck="false" />
         </form>
         <button className={`browser-nav-button browser-refresh ${activeLoading ? 'loading' : ''}`}
           aria-label={t(activeLoading && proxied ? 'browser.stop' : 'browser.refresh')} aria-busy={activeLoading}
-          disabled={!active || historyActive} onClick={activeLoading && proxied ? stopActive : refreshActive}>
+          disabled={!active || homeActive || (staticSelected && staticActive.status !== 'running')}
+          onClick={activeLoading && proxied ? stopActive : refreshActive}>
           {activeLoading && proxied ? <StopIcon /> : <RefreshIcon />}
         </button>
         <button className="browser-nav-button browser-options-trigger" aria-label={t('browser.menu')}
@@ -419,21 +495,23 @@ export default function BrowserSheet({ browser }) {
           <>
             <div className="browser-options-backdrop" onClick={() => setOptionsOpen(false)} />
             <div className="browser-options-card" role="dialog" aria-label={t('browser.menu')}>
-              <div className="browser-options-section browser-current-mode">
-                <strong>{t('browser.connectionMode')}</strong>
-                <div className="browser-mode-segment" role="group" aria-label={t('browser.switchMode')}>
-                  <button aria-pressed={menuMode === 'direct'}
-                    onClick={() => chooseMode('direct')}>{t('browser.directMode')}</button>
-                  <button className="proxy" aria-pressed={menuMode === 'proxy'}
-                    disabled={!proxyAvailable}
-                    aria-describedby={!proxyAvailable ? 'browser-options-proxy-unavailable' : undefined}
-                    onClick={() => chooseMode('proxy')}>{t('browser.proxyMode')}</button>
+              {!staticSelected && (
+                <div className="browser-options-section browser-current-mode">
+                  <strong>{t('browser.connectionMode')}</strong>
+                  <div className="browser-mode-segment" role="group" aria-label={t('browser.switchMode')}>
+                    <button aria-pressed={menuMode === 'direct'}
+                      onClick={() => chooseMode('direct')}>{t('browser.directMode')}</button>
+                    <button className="proxy" aria-pressed={menuMode === 'proxy'}
+                      disabled={!proxyAvailable}
+                      aria-describedby={!proxyAvailable ? 'browser-options-proxy-unavailable' : undefined}
+                      onClick={() => chooseMode('proxy')}>{t('browser.proxyMode')}</button>
+                  </div>
+                  {proxyAvailable
+                    ? <p className="browser-options-hint browser-proxy-limit">{t('browser.proxyLimitHint')}</p>
+                    : <p id="browser-options-proxy-unavailable"
+                      className="browser-options-hint">{t('browser.proxyUnavailable')}</p>}
                 </div>
-                {proxyAvailable
-                  ? <p className="browser-options-hint browser-proxy-limit">{t('browser.proxyLimitHint')}</p>
-                  : <p id="browser-options-proxy-unavailable"
-                    className="browser-options-hint">{t('browser.proxyUnavailable')}</p>}
-              </div>
+              )}
 
               <div className="browser-options-row">
                 <strong>{t('browser.pageView')}</strong>
@@ -445,7 +523,7 @@ export default function BrowserSheet({ browser }) {
                 </div>
               </div>
 
-              {active && !historyActive && (
+              {active && !homeActive && (
                 <div className="browser-options-section">
                   <div className="browser-options-row browser-zoom-row">
                     <strong>{t('browser.zoomPage')}</strong>
@@ -462,31 +540,47 @@ export default function BrowserSheet({ browser }) {
                 </div>
               )}
 
-              {active && !historyActive && (
+              {webActive && !homeActive && !staticSelected && (
                 <div className="browser-options-section">
                   <a className="browser-options-action browser-open-external"
-                    href={active.originalUrl} target="_blank" rel="noopener noreferrer"
+                    href={webActive.originalUrl} target="_blank" rel="noopener noreferrer"
                     onClick={() => setOptionsOpen(false)}>{t('browser.openExternal')}</a>
                 </div>
               )}
 
-              <div className="browser-options-section">
-                <button className="browser-close-trigger" aria-expanded={timeOpen}
-                  onClick={() => setTimeOpen((value) => !value)}>
-                  <strong>{t('browser.closeTiming')}</strong>
-                  <span>{t('browser.minutes', { value: closeAfter })} ▾</span>
-                </button>
-                {timeOpen && (
-                  <div className="browser-time-options" role="group" aria-label={t('browser.closeTiming')}>
-                    {BROWSER_CLOSE_AFTER_OPTIONS.map((value) => (
-                      <button key={value} className="browser-time-option" aria-pressed={closeAfter === value}
-                        onClick={() => pickTime(value)}>{t('browser.minutes', { value })}</button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {staticSelected && (
+                <div className="browser-options-section browser-static-options">
+                  <strong>{t('browser.staticSource')}</strong>
+                  <p className="browser-options-hint browser-static-dir">{staticActive.dir}</p>
+                  {staticActive.status === 'running' ? (
+                    <button className="browser-options-danger"
+                      onClick={() => staticPreview.stopPreview(staticActive.name)}>{t('browser.stopStatic')}</button>
+                  ) : (
+                    <button className="browser-options-action"
+                      onClick={() => staticPreview.restartPreview(staticActive.name)}>{t('browser.restartStatic')}</button>
+                  )}
+                </div>
+              )}
 
-              {proxyAvailable && (historyActive || !active) && (
+              {!staticSelected && (
+                <div className="browser-options-section">
+                  <button className="browser-close-trigger" aria-expanded={timeOpen}
+                    onClick={() => setTimeOpen((value) => !value)}>
+                    <strong>{t('browser.closeTiming')}</strong>
+                    <span>{t('browser.minutes', { value: closeAfter })} ▾</span>
+                  </button>
+                  {timeOpen && (
+                    <div className="browser-time-options" role="group" aria-label={t('browser.closeTiming')}>
+                      {BROWSER_CLOSE_AFTER_OPTIONS.map((value) => (
+                        <button key={value} className="browser-time-option" aria-pressed={closeAfter === value}
+                          onClick={() => pickTime(value)}>{t('browser.minutes', { value })}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {proxyAvailable && homeActive && (
                 <div className="browser-options-section browser-profile-options">
                   <div className="browser-options-row browser-profile-persist">
                     <span className="browser-options-title">
@@ -520,7 +614,7 @@ export default function BrowserSheet({ browser }) {
                 </div>
               )}
 
-              {proxyAvailable && active?.mode === 'proxy' && !historyActive && (
+              {proxyAvailable && webActive?.mode === 'proxy' && !homeActive && !staticSelected && (
                 <div className="browser-options-section">
                   <div className="browser-site-cookie-row">
                     <button className="browser-options-danger" onClick={requestActiveSiteClear}>
@@ -536,7 +630,7 @@ export default function BrowserSheet({ browser }) {
                 </div>
               )}
 
-              {(historyActive || !active) && (
+              {homeActive && (
                 <div className="browser-options-section">
                   <button className="browser-options-action" onClick={() => {
                     clearTriggerRef.current = document.activeElement;
@@ -551,7 +645,30 @@ export default function BrowserSheet({ browser }) {
 
       <div ref={bodyRef} className={`browser-content ${device === 'desktop' ? 'desktop' : ''}`}
         inert={clearConfirmation ? '' : undefined}>
-        <section className="browser-history" hidden={!historyActive}>
+        <section className="browser-history" hidden={!homeActive}>
+          <div className="browser-static-launcher">
+            <div>
+              <h2>{t('browser.previewDirectory')}</h2>
+              <p>{t('browser.previewDirectoryHint')}</p>
+            </div>
+            <button onClick={openDirPicker}>{t('browser.chooseDirectory')}</button>
+          </div>
+          {staticPreview?.previews?.length > 0 && (
+            <div className="browser-static-running">
+              <h3>{t('browser.runningStatic')}</h3>
+              {(staticPreview.previews || []).map((preview) => (
+                <div className="browser-static-running-row" key={preview.name}>
+                  <button className="browser-static-running-main"
+                    onClick={() => staticPreview.openPreview(preview)}>
+                    <strong>{preview.name}</strong>
+                    <span>{preview.dir}</span>
+                  </button>
+                  <button className="browser-static-stop"
+                    onClick={() => staticPreview.stopPreview(preview.name)}>{t('browser.stopStatic')}</button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="browser-history-head">
             <h2>{t('browser.history')}</h2>
             {history.length > 0 && <button onClick={clearHistory}>{t('browser.clearHistory')}</button>}
@@ -592,7 +709,7 @@ export default function BrowserSheet({ browser }) {
           )}
         </section>
         {tabs.filter((tab) => mountedTabs.has(tab.id)).map((tab) => {
-          const selected = !historyActive && tab.id === activeId;
+          const selected = !staticSelected && !historyActive && tab.id === activeId;
           const loading = selected && (!loadedTabs.has(tab.id) || frameUrls.current.get(tab.id) !== tab.url || refreshingTabs.has(tab.id));
           return (
           <div key={tab.id} className={`browser-pane ${tab.mode}`} hidden={!selected}>
@@ -622,19 +739,59 @@ export default function BrowserSheet({ browser }) {
           </div>
           );
         })}
-        {(error || historyError) && (
+        {staticSelected && (
+          <div className="browser-pane static">
+            {staticActive.status === 'running' ? (
+              <div className="browser-frame-scaler" style={scalerStyleFor(pageZoom)}>
+                <iframe key={`${staticActive.name}-${staticReloadKey}`}
+                  className="browser-frame"
+                  title={staticActive.name}
+                  src={staticActive.url}
+                  inert={!staticLoaded ? '' : undefined}
+                  style={frameStyleFor(pageZoom)}
+                  onLoad={() => setStaticLoaded(true)}
+                />
+                {!staticLoaded && (
+                  <div className="browser-page-loading" role="status" aria-live="polite">
+                    <div className="browser-page-progress static" role="progressbar" aria-label={t('common.loading')} />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="browser-static-state" role="status">
+                <strong>{t(staticActive.status === 'checking'
+                  ? 'browser.staticChecking' : 'browser.staticStopped')}</strong>
+                <span>{staticActive.dir}</span>
+                {staticActive.status === 'stopped' && (
+                  <button onClick={() => staticPreview.restartPreview(staticActive.name)}>
+                    {t('browser.restartStatic')}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {displayedError && (
           <div className="browser-error" role="alert">
-            <span>{historyError || error?.message || t('browser.loadFailed')}</span>
-            {!historyError && active && active.mode === 'direct' && proxyAvailable
-              ? <button onClick={() => navigateTab(active.id, active.originalUrl, 'proxy')}>{t('browser.tryProxy')}</button>
-              : !historyError && active && <button onClick={() => (
-                active.mode === 'proxy'
-                  ? recoverBinding(active.id)
-                  : navigateTab(active.id, active.originalUrl, active.mode)
+            <span>{displayedError?.message || displayedError || t('browser.loadFailed')}</span>
+            {!staticSelected && !historyError && webActive && webActive.mode === 'direct' && proxyAvailable
+              ? <button onClick={() => navigateTab(webActive.id, webActive.originalUrl, 'proxy')}>{t('browser.tryProxy')}</button>
+              : !staticSelected && !historyError && webActive && <button onClick={() => (
+                webActive.mode === 'proxy'
+                  ? recoverBinding(webActive.id)
+                  : navigateTab(webActive.id, webActive.originalUrl, webActive.mode)
               )}>{t('browser.retry')}</button>}
           </div>
         )}
       </div>
+      <DirPicker
+        open={dirOpen}
+        seedCwd={seedCwd}
+        pane={staticPreview?.pane}
+        hint={t('browser.directoryPickerHint')}
+        onPick={pickDirectory}
+        onClose={() => setDirOpen(false)}
+      />
       {clearConfirmation && (
         <div className="browser-profile-confirm-backdrop">
           <div ref={clearDialogRef} className="browser-profile-confirm"

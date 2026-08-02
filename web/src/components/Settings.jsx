@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { notifyEnabled, enableNotifications, disableNotifications, pushSupported, getScriptPushKey } from '../push.js';
-import DirPicker from './DirPicker.jsx';
 import PushScriptSheet from './PushScriptSheet.jsx';
-import { fetchPaneCwd, getPanes } from '../api.js';
-import { fmtRemainMin, useRemaining } from '../previewCountdown.js';
+import { getPanes } from '../api.js';
 import { getDocHighlight, setDocHighlight } from '../storage.js';
 import { t, getLangCode, setLang, AVAILABLE } from '../i18n';
 import { SNAPSHOT_INTERVALS } from '../terminalTransport.js';
@@ -20,11 +18,9 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   snapshotInterval = 1000, onSnapshotInterval = () => {},
   hooksStatus = null, onEnableHooks = null,
   notifUnread = false, onOpenInbox,
-  updateInfo = null, windowId = null,
+  updateInfo = null, windowId = null, pane = null,
   workspaceProtection = null,
-  activePreview = null, pane = null, lastPreviewDir = null,
-  getColCount = null,
-  onStartPreview, onOpenPreview, onRenew, onStop }) {
+  getColCount = null }) {
   const [font, setFont] = useState(null); // { size, auto } snapshot for display
   const [docHl, setDocHl] = useState(getDocHighlight()); // doc-path highlight toggle (default off)
   const [cols, setCols] = useState(null); // current pane's live col count (null = loading/unknown/restored)
@@ -47,25 +43,9 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   };
   const [scriptPushOpen, setScriptPushOpen] = useState(false);
   const [scriptPushKey, setScriptPushKey] = useState(null);
-  const [dirOpen, setDirOpen] = useState(false);
-  const [seedCwd, setSeedCwd] = useState(null); // dir the picker lands on (the pane's live cwd)
-  const [previewKind, setPreviewKind] = useState('off');    // start mode: off (default) / static
-  const [confirmStop, setConfirmStop] = useState(false);    // two-tap guard on 停止 (no nested modal)
-  const remainMs = useRemaining(activePreview?.expiresAt, !!activePreview && open); // live TTL countdown
-  useEffect(() => { setConfirmStop(false); }, [activePreview?.name, open]); // reset guards per preview/open
-  // Open the dir picker seeded at the LAST preview dir for this window (so re-previewing the same
-  // build is one tap), else the pane's current cwd (re-fetched, honoring a mid-session `cd`), else
-  // $HOME. The picker also has a "jump to cwd" shortcut for switching dirs on the spot.
   const openScriptPush = async () => {
     setScriptPushKey(notifyEnabled() ? await getScriptPushKey() : null);
     setScriptPushOpen(true);
-  };
-
-  const openDirPicker = async () => {
-    let seed = lastPreviewDir;
-    if (!seed && pane) { try { seed = (await fetchPaneCwd(pane)).cwd || null; } catch { /* → $HOME */ } }
-    setSeedCwd(seed);
-    setDirOpen(true);
   };
 
   useEffect(() => {
@@ -90,7 +70,6 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   }, [open, termRef, getColCount, windowId, pane]);
 
   useBackButton(open && langOpen, () => setLangOpen(false));
-  useBackButton(open && dirOpen, () => setDirOpen(false));
   useBackButton(open && scriptPushOpen, () => setScriptPushOpen(false));
 
   const toggleNotify = async () => {
@@ -385,61 +364,8 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
             <button className="fontbtn" onClick={restoreCol}>↺ {t('settings.cols_restore')}</button>
           </div>
         </div>
-
-        <div className="settings-section">
-          <div className="settings-label">{t('settings.preview_static_site')}</div>
-          {activePreview ? (
-            <div className="preview-active">
-              <div className="preview-active-head">
-                <span className="preview-running"><span className="live-dot" />{t('settings.preview_running_static')}</span>
-                <span className="preview-remain-s" title={t('settings.preview_remain_title')}>{t('settings.preview_remain', { time: fmtRemainMin(remainMs) })}</span>
-              </div>
-              <div className="settings-btns">
-                <button className="fontbtn" onClick={() => onOpenPreview?.()}>{t('common.open')}</button>
-                <button className="fontbtn" onClick={() => onRenew?.()}>{t('settings.preview_renew')}</button>
-                {confirmStop ? (
-                  <>
-                    <button className="fontbtn preview-confirm-danger" onClick={() => { setConfirmStop(false); onStop?.(); }}>{t('settings.preview_confirm_stop')}</button>
-                    <button className="fontbtn" onClick={() => setConfirmStop(false)}>{t('common.cancel')}</button>
-                  </>
-                ) : (
-                  <button className="fontbtn" onClick={() => setConfirmStop(true)}>{t('settings.preview_stop')}</button>
-                )}
-              </div>
-              <div className="settings-hint">
-                {t('settings.preview_name', { name: activePreview.name })}{activePreview.dir ? `(${activePreview.dir})` : ''}
-              </div>
-            </div>
-          ) : (
-            <div className="preview-start">
-              <div className="preview-seg" role="tablist" aria-label={t('settings.preview_type')}>
-                <button role="tab" className={previewKind === 'off' ? 'on' : ''} aria-selected={previewKind === 'off'} onClick={() => setPreviewKind('off')}>{t('settings.preview_off')}</button>
-                <button role="tab" className={previewKind === 'static' ? 'on' : ''} aria-selected={previewKind === 'static'} onClick={() => setPreviewKind('static')}>{t('settings.preview_static')}</button>
-              </div>
-              {previewKind === 'off' && (
-                <div className="settings-hint">{t('settings.preview_off_hint')}</div>
-              )}
-              {previewKind === 'static' && (
-                <>
-                  <div className="settings-btns">
-                    <button className="fontbtn" onClick={openDirPicker}>{t('settings.preview_pick_dir')}</button>
-                  </div>
-                  <div className="settings-hint">{t('settings.preview_static_hint')}</div>
-                </>
-              )}
-            </div>
-          )}
-        </div>
         </div>
       </div>
-      <DirPicker
-        open={dirOpen}
-        seedCwd={seedCwd}
-        pane={pane}
-        hint={t('settings.dir_picker_hint')}
-        onPick={(dir) => { setDirOpen(false); onStartPreview?.(dir); }}
-        onClose={() => setDirOpen(false)}
-      />
       <PushScriptSheet
         open={scriptPushOpen}
         pushKey={scriptPushKey}

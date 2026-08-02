@@ -184,5 +184,7 @@ export function clearBrowserTabs() {
 
 export function browserEntryStatus(tabs) {
   if (!Array.isArray(tabs) || tabs.length === 0) return null;
-  return tabs.some((tab) => tab?.mode === 'proxy') ? 'proxy' : 'direct';
+  if (tabs.some((tab) => tab?.mode === 'proxy')) return 'proxy';
+  if (tabs.some((tab) => tab?.mode === 'static' || tab?.kind === 'static')) return 'static';
+  return 'direct';
 }
