@@ -46,6 +46,7 @@ export function createDeviceCookieProfiles({
         flushTimer: null,
         dirty: false,
         operationPromise: Promise.resolve(),
+        configurePromise: Promise.resolve(),
         useVersion: 0,
         retentionEpoch: 0,
       };
@@ -247,7 +248,15 @@ export function createDeviceCookieProfiles({
     return { persist: profile.persist, retentionDays: profile.retentionDays, warning };
   };
 
-  const configure = (deviceId, prefs) => track(configureImpl(deviceId, prefs));
+  const configure = (deviceId, prefs) => {
+    const profile = profileFor(deviceId);
+    // Preference changes span reads, jar restoration, disk removal, and metadata writes. Serialize that
+    // whole transaction per device; serializing only the individual file operations lets an older enable
+    // finish after a newer disable and silently turn persistence back on.
+    const result = profile.configurePromise.catch(() => {}).then(() => configureImpl(deviceId, prefs));
+    profile.configurePromise = result.catch(() => {});
+    return track(result);
+  };
 
   const setActive = (deviceId, active) => {
     const profile = profiles.get(deviceId);

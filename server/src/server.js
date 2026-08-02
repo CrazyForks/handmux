@@ -94,7 +94,7 @@ try {
 // Static directory preview remains for folders without a web server. Arbitrary sites and local ports
 // use the built-in browser below; previewDomain may provide its dedicated public origin.
 const previews = createPreviews({ home });
-const preview = createPreview({ previews, token });
+const preview = createPreview({ previews });
 const previewDomain = process.env.HANDMUX_PREVIEW_DOMAIN || null;
 const handmuxOrigin = (() => {
   try {

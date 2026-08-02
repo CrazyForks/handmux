@@ -271,10 +271,9 @@ export function fetchImageUrl(path, sinceMtime = null) {
   });
 }
 
-// Static preview URL carries the token so a raw iframe navigation can establish its cookie.
-export const previewUrl = (entry) => {
-  return `/preview/${encodeURIComponent(entry?.name)}/?token=${encodeURIComponent(getToken() ?? '')}`;
-};
+// Static preview URLs are issued by the server with an independent runtime capability. Never derive one
+// from the main Handmux token on the device.
+export const previewUrl = (entry) => (typeof entry?.url === 'string' ? entry.url : null);
 export const createPreview = (name, { dir } = {}) =>
   req('/api/previews', { method: 'POST', body: JSON.stringify({ name, dir }) });
 export const getPreviews = () => req('/api/previews');

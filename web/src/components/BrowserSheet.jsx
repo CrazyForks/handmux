@@ -21,6 +21,9 @@ import DirPicker from './DirPicker.jsx';
 
 // Temporary compatibility validation only: unsafe while proxied pages share the Handmux origin.
 const FRAME_SANDBOX = 'allow-scripts allow-forms allow-downloads allow-modals allow-popups allow-same-origin';
+// Static content is served by the Handmux HTTP process, so it must keep an opaque origin even though the
+// capability URL itself is same-origin. Otherwise project JavaScript could read the parent app's token.
+const STATIC_FRAME_SANDBOX = 'allow-scripts allow-forms allow-downloads allow-modals allow-popups';
 const PAGE_ZOOM_STEPS = [0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
 
 function tabLabel(tab) {
@@ -798,6 +801,7 @@ export default function BrowserSheet({ browser, staticPreview }) {
                   data-static-tab-name={tab.name}
                   title={tab.name}
                   src={tab.url}
+                  sandbox={STATIC_FRAME_SANDBOX}
                   style={frameStyleFor(selected ? pageZoom : 1)}
                   onLoad={() => staticFrameLoaded(tab)}
                 />

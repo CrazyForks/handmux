@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { createPreview, deletePreview, previewUrl } from '../api.js';
+import { createPreview, deletePreview } from '../api.js';
 import { previewName } from '../previewName.js';
 import { getPreviewDir, setPreviewDir } from '../storage.js';
 
@@ -73,6 +73,7 @@ export function usePreviews(current) {
     }
     try {
       const created = await createPreview(tab.name, { dir: tab.dir });
+      if (typeof created?.url !== 'string' || !created.url) throw new Error('preview URL unavailable');
       // A user can close a restoring tab while registration is in flight. Release a late result instead
       // of leaving an invisible server lease behind. A newly chosen directory is intentionally detached
       // until registration succeeds and the tab is added below.
@@ -82,7 +83,7 @@ export function usePreviews(current) {
       }
       setTabRuntime(tab.name, {
         status: 'ready',
-        url: created.url || previewUrl(created),
+        url: created.url,
         error: null,
       });
       setError(null);

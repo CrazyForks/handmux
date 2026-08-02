@@ -6,13 +6,14 @@ import { createDeviceCookieProfiles } from './cookieProfiles.js';
 import { createBrowserProfilePersistence } from './profilePersistence.js';
 import { claimPublicOrigin } from './originLabel.js';
 import { browserLabelForOrigin } from './originLabel.js';
-import { createBrowserTargetPolicy } from './targetPolicy.js';
+import { classifyIp, createBrowserTargetPolicy } from './targetPolicy.js';
 import {
   hammerheadRebindHeaders,
   installHammerheadRebindLocationCompat,
 } from './hammerheadRedirectCompat.js';
 
 const defaultHammerhead = importedHammerhead.default || importedHammerhead;
+const POOL_IDLE_CLOSE_MS = 1_000;
 
 function normalizedOrigin(raw) {
   const url = new URL(raw);
@@ -28,7 +29,7 @@ function normalizedTarget(raw) {
 
 function isLoopbackUrl(raw) {
   const hostname = new URL(raw).hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  return hostname === 'localhost' || hostname === '::1' || hostname.startsWith('127.');
+  return hostname === 'localhost' || classifyIp(hostname) === 'loopback';
 }
 
 function bridgeScript(channel) {
@@ -210,8 +211,18 @@ export async function createBrowserPreviewManager({
     });
   };
   const poolFor = async (origin) => {
-    if (pools.has(origin)) return pools.get(origin);
-    if (pendingPools.has(origin)) return pendingPools.get(origin);
+    if (pools.has(origin)) {
+      const pool = pools.get(origin);
+      if (pool.closeTimer != null) clearTimer(pool.closeTimer);
+      pool.closeTimer = null;
+      pool.references += 1;
+      return pool;
+    }
+    if (pendingPools.has(origin)) {
+      const pool = await pendingPools.get(origin);
+      pool.references += 1;
+      return pool;
+    }
     const pending = (async () => {
       const proxy = new ProxyClass();
       const ports = poolCount++ === 0 ? internalPorts : [0, 0];
@@ -229,6 +240,8 @@ export async function createBrowserPreviewManager({
         const pool = {
           origin,
           proxy,
+          references: 0,
+          closeTimer: null,
           ports: [
             proxy.server1?.address?.()?.port ?? ports[0],
             proxy.server2?.address?.()?.port ?? ports[1],
@@ -243,10 +256,38 @@ export async function createBrowserPreviewManager({
     })();
     pendingPools.set(origin, pending);
     try {
-      return await pending;
+      const pool = await pending;
+      pool.references += 1;
+      return pool;
     } finally {
       if (pendingPools.get(origin) === pending) pendingPools.delete(origin);
     }
+  };
+
+  const releasePool = (pool) => {
+    if (!pool || pool.references <= 0) return;
+    pool.references -= 1;
+    if (pool.references !== 0) return;
+    // A request hook can replace the final lease while the old pool is still writing its redirect.
+    // Close after a short idle window so that response can drain; a new lease for the same origin reuses
+    // the pool and cancels this timer. This still releases idle Hammerhead ports without worker shutdown.
+    pool.closeTimer = setTimer(() => {
+      pool.closeTimer = null;
+      if (pool.references !== 0) return;
+      if (pools.get(pool.origin) === pool) pools.delete(pool.origin);
+      publicOriginClaims.delete(pool.origin);
+      pool.proxy.close();
+    }, POOL_IDLE_CLOSE_MS);
+  };
+
+  const disposeLease = (lease) => {
+    if (!lease || lease.disposed) return;
+    lease.disposed = true;
+    if (lease.timer != null) clearTimer(lease.timer);
+    lease.timer = null;
+    lease.detachCookies();
+    lease.pool.proxy.closeSession(lease.session);
+    releasePool(lease.pool);
   };
 
   const setDeviceActive = (deviceId) => cookieProfiles.setActive?.(
@@ -256,9 +297,7 @@ export async function createBrowserPreviewManager({
   const release = (lease) => {
     if (!lease || leases.get(lease.key) !== lease) return false;
     leases.delete(lease.key);
-    if (lease.timer != null) clearTimer(lease.timer);
-    lease.detachCookies();
-    lease.pool.proxy.closeSession(lease.session);
+    disposeLease(lease);
     setDeviceActive(lease.deviceId);
     return true;
   };
@@ -273,56 +312,59 @@ export async function createBrowserPreviewManager({
     const targetOrigin = new URL(target).origin;
     claimPublicOrigin(publicOriginClaims, publicOrigin, targetOrigin);
     const pool = await poolFor(publicOrigin);
-    if (closing) throw new Error('browser manager closing');
-    const session = new SessionClass(channel);
-    session.id = `_browser-${randomId()}-${encodeURIComponent(tabId)}`;
-    const policy = targetPolicyFactory({ topLevelUrl: target, handmuxOrigin });
-    const hooks = session.requestHookEventProvider || session;
-    hooks.addRequestEventListeners(hammerhead.RequestFilterRule.ANY, {
-      onRequest: async (event) => {
-        if (await rehomeNavigation(event, session)) return;
-        const result = await policy.check(event._requestInfo.url);
-        if (result.allowed) {
-          if (result.addresses?.length && event.requestOptions) {
-            const approved = result.addresses.map(({ address, family }) => ({ address, family }));
-            event.requestOptions.autoSelectFamily = true;
-            event.requestOptions.lookup = (_hostname, options, callback) => {
-              if (options?.all) callback(null, approved);
-              else callback(null, approved[0].address, approved[0].family);
-            };
-          }
-          return;
-        }
-        await event.setMock(new hammerhead.ResponseMock(
-          JSON.stringify({ error: 'browser target blocked', reason: result.reason }),
-          403,
-          { 'content-type': 'application/json; charset=utf-8' },
-        ));
-      },
-    }, () => {});
-    const detachCookies = cookieProfiles.attach(deviceId, session.cookies);
-    let publicUrl;
+    let session = null;
+    let detachCookies = null;
     try {
-      publicUrl = pool.proxy.openSession(target, session);
+      if (closing) throw new Error('browser manager closing');
+      session = new SessionClass(channel);
+      session.id = `_browser-${randomId()}-${encodeURIComponent(tabId)}`;
+      const policy = targetPolicyFactory({ topLevelUrl: target, handmuxOrigin });
+      const hooks = session.requestHookEventProvider || session;
+      hooks.addRequestEventListeners(hammerhead.RequestFilterRule.ANY, {
+        onRequest: async (event) => {
+          if (await rehomeNavigation(event, session)) return;
+          const result = await policy.check(event._requestInfo.url);
+          if (result.allowed) {
+            if (result.addresses?.length && event.requestOptions) {
+              const approved = result.addresses.map(({ address, family }) => ({ address, family }));
+              event.requestOptions.autoSelectFamily = true;
+              event.requestOptions.lookup = (_hostname, options, callback) => {
+                if (options?.all) callback(null, approved);
+                else callback(null, approved[0].address, approved[0].family);
+              };
+            }
+            return;
+          }
+          await event.setMock(new hammerhead.ResponseMock(
+            JSON.stringify({ error: 'browser target blocked', reason: result.reason }),
+            403,
+            { 'content-type': 'application/json; charset=utf-8' },
+          ));
+        },
+      }, () => {});
+      detachCookies = cookieProfiles.attach(deviceId, session.cookies);
+      const publicUrl = pool.proxy.openSession(target, session);
+      return {
+        key: leaseKey(deviceId, tabId),
+        tabId,
+        deviceId,
+        originalUrl: target,
+        url: publicUrl,
+        publicOrigin,
+        channel,
+        pool,
+        session,
+        policy,
+        detachCookies,
+        timer: null,
+        disposed: false,
+      };
     } catch (error) {
-      detachCookies();
-      pool.proxy.closeSession(session);
+      detachCookies?.();
+      if (session) pool.proxy.closeSession(session);
+      releasePool(pool);
       throw error;
     }
-    return {
-      key: leaseKey(deviceId, tabId),
-      tabId,
-      deviceId,
-      originalUrl: target,
-      url: publicUrl,
-      publicOrigin,
-      channel,
-      pool,
-      session,
-      policy,
-      detachCookies,
-      timer: null,
-    };
   };
 
   const putImpl = async ({ tabId, deviceId, url, origin }, requireExisting = false) => {
@@ -345,11 +387,7 @@ export async function createBrowserPreviewManager({
     });
     leases.set(key, next);
     touch(next);
-    if (existing) {
-      if (existing.timer != null) clearTimer(existing.timer);
-      existing.detachCookies();
-      existing.pool.proxy.closeSession(existing.session);
-    }
+    if (existing) disposeLease(existing);
     setDeviceActive(deviceId);
     return publicLease(next);
   };
@@ -416,13 +454,10 @@ export async function createBrowserPreviewManager({
         ));
         leases.set(current.key, next);
         touch(next);
-        if (current.timer != null) clearTimer(current.timer);
-        current.detachCookies();
-        current.pool.proxy.closeSession(current.session);
+        disposeLease(current);
         return true;
       } catch (error) {
-        next.detachCookies();
-        next.pool.proxy.closeSession(next.session);
+        disposeLease(next);
         throw error;
       }
     });
@@ -471,19 +506,11 @@ export async function createBrowserPreviewManager({
       return cookieProfiles.configure(deviceId, prefs);
     },
     async clearDeviceProfile(deviceId, { origin } = {}) {
-      const matching = [...leases.values()].filter((lease) => {
-        if (lease.deviceId !== deviceId) return false;
-        return origin === null || new URL(lease.originalUrl).origin === origin;
-      });
-      const closedTabIds = [];
-      for (const lease of matching) {
-        if (release(lease)) closedTabIds.push(lease.tabId);
-      }
       await cookieProfiles.clear(deviceId, {
         hostname: origin === null ? undefined : new URL(origin).hostname,
       });
       await cookieProfiles.flush?.(deviceId);
-      return { closedTabIds };
+      return { closedTabIds: [] };
     },
     async close() {
       if (closing) return;
@@ -491,7 +518,11 @@ export async function createBrowserPreviewManager({
       for (const lease of [...leases.values()]) release(lease);
       await Promise.allSettled([...pendingPools.values(), ...leaseQueues.values()]);
       for (const lease of [...leases.values()]) release(lease);
-      for (const pool of pools.values()) pool.proxy.close();
+      for (const pool of pools.values()) {
+        if (pool.closeTimer != null) clearTimer(pool.closeTimer);
+        pool.closeTimer = null;
+        pool.proxy.close();
+      }
       pools.clear();
       await cookieProfiles.close?.();
     },

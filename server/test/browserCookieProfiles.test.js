@@ -418,6 +418,34 @@ describe('device cookie profile concurrency', () => {
     return { promise, resolve };
   };
 
+  it('serializes preference changes so a completed older enable cannot undo a newer disable', async () => {
+    const readingMetadata = deferred();
+    const persistence = {
+      readMetadata: vi.fn(() => readingMetadata.promise),
+      read: vi.fn(async () => null),
+      write: vi.fn(),
+      remove: vi.fn(),
+      writeMetadata: vi.fn(),
+      removeMetadata: vi.fn(),
+      close: vi.fn(),
+    };
+    const profiles = createDeviceCookieProfiles({ createCookies, persistence });
+    const enabling = profiles.configure(DEVICE_A, { persist: true, retentionDays: 30 });
+    await Promise.resolve();
+    const disabling = profiles.configure(DEVICE_A, { persist: false, retentionDays: 30 });
+
+    let disabled = false;
+    disabling.then(() => { disabled = true; });
+    await Promise.resolve();
+    expect(disabled).toBe(false);
+
+    readingMetadata.resolve(null);
+    await expect(enabling).resolves.toMatchObject({ persist: true });
+    await expect(disabling).resolves.toMatchObject({ persist: false });
+    expect(persistence.removeMetadata).toHaveBeenCalledWith(DEVICE_A);
+    await profiles.close();
+  });
+
   it('does not let a deferred restore overwrite memory used while reading', async () => {
     const stale = createCookies();
     stale.setByServer('https://app.example/', ['session=stale; Path=/']);

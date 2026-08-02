@@ -510,6 +510,78 @@ describe('useBrowser device ownership', () => {
     expect(api.deleteBrowserProxyLease).toHaveBeenCalledWith(pending[0].id);
   });
 
+  it('cancels an in-flight proxy open and removes the provisional tab', async () => {
+    let resolveAcquire;
+    api.acquireBrowserProxyLease.mockReturnValue(new Promise((resolve) => { resolveAcquire = resolve; }));
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    const controller = new AbortController();
+    let opening;
+    act(() => {
+      opening = result.current.openUrl('https://slow.example/', {
+        mode: 'proxy', signal: controller.signal,
+      });
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const id = result.current.activeId;
+
+    await act(async () => {
+      controller.abort();
+      await opening;
+    });
+    expect(result.current.tabs).toEqual([]);
+    expect(result.current.activeId).toBeNull();
+    expect(result.current.historyActive).toBe(true);
+    expect(result.current.open).toBe(false);
+
+    resolveAcquire(binding(id, 'https://slow.example/'));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(api.deleteBrowserProxyLease).toHaveBeenCalledWith(id);
+  });
+
+  it('restores the previously active tab when a new proxy open is cancelled', async () => {
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await act(async () => { await result.current.openUrl('https://ready.example/'); });
+    const previousId = result.current.activeId;
+    let resolveAcquire;
+    api.acquireBrowserProxyLease.mockReturnValue(new Promise((resolve) => { resolveAcquire = resolve; }));
+    const controller = new AbortController();
+    let opening;
+    act(() => {
+      opening = result.current.openUrl('https://slow.example/', {
+        mode: 'proxy', signal: controller.signal,
+      });
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      controller.abort();
+      await opening;
+    });
+    expect(result.current.tabs).toHaveLength(1);
+    expect(result.current.activeId).toBe(previousId);
+    expect(result.current.tabs[0].deadline).toBeNull();
+    expect(result.current.historyActive).toBe(false);
+
+    resolveAcquire(binding('late', 'https://slow.example/'));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  });
+
   it('serializes proxy navigation so the latest canonical URL wins', async () => {
     const pending = [];
     const { result } = renderHook(() => useBrowser({ browserProxy: true }));

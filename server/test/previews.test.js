@@ -12,7 +12,13 @@ beforeEach(async () => {
   await fsp.mkdir(join(home, 'site'));
   store = join(home, 'previews.json');
   clock = { t: 1_000_000 };
-  previews = createPreviews({ home, store, now: () => clock.t, ttlMs: 600_000 });
+  previews = createPreviews({
+    home,
+    store,
+    now: () => clock.t,
+    ttlMs: 600_000,
+    randomToken: () => `preview-token-${clock.t}`,
+  });
 });
 afterEach(async () => {
   await fsp.rm(home, { recursive: true, force: true });
@@ -49,6 +55,9 @@ describe('register', () => {
     expect(out.name).toBe('foo');
     expect(out.kind).toBe('static');
     expect(out.expiresAt).toBe(1_000_000 + 600_000);
+    expect(out.accessToken).toBe('preview-token-1000000');
+    expect(previews.get('foo').entry.accessToken).toBe(out.accessToken);
+    expect(JSON.parse(await fsp.readFile(store, 'utf8'))[0]).not.toHaveProperty('accessToken');
   });
   it('rejects a dir outside home', async () => {
     expect(await previews.register({ name: 'foo', dir: outside })).toMatchObject({ status: 400 });
@@ -60,11 +69,12 @@ describe('register', () => {
     expect(await previews.register({ name: '../x', dir: join(home, 'site') })).toMatchObject({ status: 400 });
   });
   it('same name updates dir and resets expiry (renew = reset, not extend)', async () => {
-    await previews.register({ name: 'foo', dir: join(home, 'site') });
+    const first = await previews.register({ name: 'foo', dir: join(home, 'site') });
     clock.t = 1_500_000;
     const out = await previews.register({ name: 'foo', dir: join(home, 'site') });
     expect(out.expiresAt).toBe(1_500_000 + 600_000);
     expect(previews.list()).toHaveLength(1);
+    expect(out.accessToken).not.toBe(first.accessToken);
   });
 });
 

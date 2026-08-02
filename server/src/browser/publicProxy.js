@@ -1,6 +1,7 @@
 import http from 'node:http';
 import net from 'node:net';
 import { isBrowserBootstrapPath } from './bootstrap.js';
+import { classifyIp } from './targetPolicy.js';
 
 const SERVICE_PATHS = new Set([
   '/hammerhead.js',
@@ -35,7 +36,7 @@ function browserTarget(browser, req, deviceId) {
 }
 
 function isLoopback(address) {
-  return address === '127.0.0.1' || address === '::1' || String(address || '').startsWith('::ffff:127.');
+  return classifyIp(address) === 'loopback';
 }
 
 export function browserRequestOrigin(req) {

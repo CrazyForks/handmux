@@ -110,7 +110,7 @@ describe('BrowserSheet', () => {
   it('renders a static directory as a green tab with only view and zoom in its menu', async () => {
     const tab = {
       name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'ready',
-      url: '/preview/main-3/?token=x',
+      url: '/preview/main-3/preview-only/',
     };
     const preview = staticPreview({ selected: true, shownPreview: tab, tabs: [tab] });
     await render(browser({ historyActive: true, activeId: null }), preview);
@@ -118,7 +118,12 @@ describe('BrowserSheet', () => {
     const frame = document.querySelector('.browser-pane.static iframe');
     expect(staticTab).toBeTruthy();
     expect(staticTab.querySelector('.browser-mode-badge')).toBeNull();
-    expect(frame.getAttribute('sandbox')).toBeNull();
+    const sandbox = frame.getAttribute('sandbox').split(/\s+/);
+    expect(sandbox).toEqual(expect.arrayContaining([
+      'allow-scripts', 'allow-forms', 'allow-downloads', 'allow-modals', 'allow-popups',
+    ]));
+    expect(sandbox).not.toContain('allow-same-origin');
+    expect(sandbox.some((value) => value.startsWith('allow-top-navigation'))).toBe(false);
     expect(document.querySelector('.browser-address').readOnly).toBe(true);
     expect(document.querySelector('.browser-address').value).toBe('/home/u/site');
 
@@ -138,7 +143,7 @@ describe('BrowserSheet', () => {
   it('closes a static tab through its unified lifecycle action', async () => {
     const tab = {
       name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'ready',
-      url: '/preview/main-3/?token=x',
+      url: '/preview/main-3/capability-x/',
     };
     const preview = staticPreview({ selected: true, shownPreview: tab, tabs: [tab] });
     await render(browser({ historyActive: true, activeId: null }), preview);
@@ -164,11 +169,11 @@ describe('BrowserSheet', () => {
   it('keeps visited static iframes mounted when tabs are switched', async () => {
     const firstTab = {
       name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'ready',
-      url: '/preview/main-3/?token=x',
+      url: '/preview/main-3/capability-x/',
     };
     const secondTab = {
       name: 'docs-4', dir: '/home/u/docs', kind: 'static', status: 'ready',
-      url: '/preview/docs-4/?token=y',
+      url: '/preview/docs-4/capability-y/',
     };
     const model = browser({ historyActive: true, activeId: null });
     await render(model, staticPreview({ selected: true, shownPreview: firstTab, tabs: [firstTab, secondTab] }));
@@ -281,7 +286,7 @@ describe('BrowserSheet', () => {
   it('shows Close only on the active tab without reserving space on inactive tabs', async () => {
     const staticTab = {
       name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'ready',
-      url: '/preview/main-3/?token=x',
+      url: '/preview/main-3/capability-x/',
     };
     const model = browser();
     const preview = staticPreview({ tabs: [staticTab] });
@@ -305,7 +310,7 @@ describe('BrowserSheet', () => {
   it('orders web and static tabs together so a newly opened web tab stays last', async () => {
     const staticTab = {
       name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'ready', createdAt: 200,
-      url: '/preview/main-3/?token=x',
+      url: '/preview/main-3/capability-x/',
     };
     await render(browser({
       tabs: [
@@ -321,7 +326,7 @@ describe('BrowserSheet', () => {
   it('keeps direct, proxy, and static tabs compact with synchronized accent bars and no leading dots', async () => {
     const staticTab = {
       name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'ready',
-      url: '/preview/main-3/?token=x',
+      url: '/preview/main-3/capability-x/',
     };
     const preview = staticPreview({ tabs: [staticTab] });
     await render(browser({
@@ -464,7 +469,7 @@ describe('BrowserSheet', () => {
   it('records ready static previews and reopens their directories from history without web mode choices', async () => {
     const staticTab = {
       name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'ready',
-      url: '/preview/main-3/?token=secret',
+      url: '/preview/main-3/capability-secret/',
     };
     const model = browser({ historyActive: true, activeId: null });
     const selectedPreview = staticPreview({ selected: true, shownPreview: staticTab, tabs: [staticTab] });

@@ -82,6 +82,8 @@ describe('browser target policy', () => {
     ['http://[::]/', 'unspecified'],
     ['http://[fe80::1]/', 'link-local'],
     ['http://[ff02::1]/', 'multicast'],
+    ['http://[::ffff:a9fe:a9fe]/latest/meta-data/', 'link-local'],
+    ['http://[0:0:0:0:0:ffff:0:0]/', 'unspecified'],
   ])('blocks sensitive address %s', async (url, reason) => {
     await expect(policy().check(url)).resolves.toMatchObject({ allowed: false, reason });
   });
@@ -106,6 +108,17 @@ describe('browser target policy', () => {
     await expect(targetPolicy.check('https://localhost:30443/api/states')).resolves.toEqual({
       allowed: false,
       reason: 'handmux-origin',
+    });
+    await expect(targetPolicy.check('http://[::ffff:7f00:1]:30443/api/states')).resolves.toEqual({
+      allowed: false,
+      reason: 'handmux-origin',
+    });
+  });
+
+  it('does not let an ordinary page reach loopback through normalized IPv4-mapped IPv6', async () => {
+    await expect(policy().check('http://[::ffff:7f00:1]:9222/json')).resolves.toEqual({
+      allowed: false,
+      reason: 'loopback-not-authorized',
     });
   });
 

@@ -31,7 +31,7 @@ function browserFake() {
     })),
     deleteLease: vi.fn(() => true),
     configureDeviceProfile: vi.fn(async (_device, prefs) => prefs),
-    clearDeviceProfile: vi.fn(async () => ({ closedTabIds: ['client-a'] })),
+    clearDeviceProfile: vi.fn(async () => ({ closedTabIds: [] })),
   };
 }
 
@@ -83,6 +83,6 @@ describe('browser proxy lease routes', () => {
       .expect(200, { persist: true, retentionDays: 7 });
     await asDevice(request(app).post('/profile/clear'))
       .send({ origin: null })
-      .expect(200, { closedTabIds: ['client-a'] });
+      .expect(200, { closedTabIds: [] });
   });
 });

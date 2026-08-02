@@ -6,7 +6,7 @@ const api = vi.hoisted(() => {
   return {
     reset() {},
     createPreview: vi.fn(async (name, { dir }) => {
-      return { name, dir, url: `/preview/${name}/?token=token-${name}` };
+      return { name, dir, url: `/preview/${name}/token-${name}/` };
     }),
     deletePreview: vi.fn(async () => {}),
   };
@@ -15,7 +15,6 @@ const api = vi.hoisted(() => {
 vi.mock('../src/api.js', () => ({
   createPreview: api.createPreview,
   deletePreview: api.deletePreview,
-  previewUrl: (entry) => `/preview/${entry.name}/?token=${entry.token}`,
 }));
 
 import { usePreviews } from '../src/hooks/usePreviews.js';
@@ -73,7 +72,7 @@ describe('usePreviews static tabs', () => {
 
     expect(api.createPreview).toHaveBeenCalledWith(name, { dir: '/home/u/site' });
     expect(model.tabs[0]).toMatchObject({
-      status: 'ready', url: `/preview/${name}/?token=token-${name}`, createdAt,
+      status: 'ready', url: `/preview/${name}/token-${name}/`, createdAt,
     });
   });
 

@@ -1,9 +1,9 @@
-// Preview registry routes: register a static dir OR a dynamic port, list, and remove. The url carries
-// ?token= so the browser's first navigation sets the preview cookie. 503 when previews are disabled.
+// Preview registry routes: register a static directory, list, and remove. Each registration returns a
+// runtime-only capability URL; the main Handmux token is never exposed to preview content.
 import express from 'express';
 import { safePreviewName } from '../previews.js';
 
-export function previewRoutes({ previews, token }) {
+export function previewRoutes({ previews }) {
   const r = express.Router();
 
   // POST {name,dir} registers a static directory served at /preview/<name>/.
@@ -14,7 +14,7 @@ export function previewRoutes({ previews, token }) {
     try {
       const out = await previews.register({ name, dir });
       if (out.error) return res.status(out.status).json({ error: out.error });
-      const url = `/preview/${encodeURIComponent(out.name)}/?token=${encodeURIComponent(token)}`;
+      const url = `/preview/${encodeURIComponent(out.name)}/${encodeURIComponent(out.accessToken)}/`;
       res.json({ name: out.name, kind: out.kind, url, expiresAt: out.expiresAt });
     } catch (e) { next(e); }
   });

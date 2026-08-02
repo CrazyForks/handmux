@@ -698,7 +698,7 @@ describe('claude events + push bound', () => {
 
 describe('previews API', () => {
   const fakePreviews = (over = {}) => ({
-    register: vi.fn(async () => ({ name: 'foo', kind: 'static', expiresAt: 42 })),
+    register: vi.fn(async () => ({ name: 'foo', kind: 'static', accessToken: 'preview-only', expiresAt: 42 })),
     list: vi.fn(() => [{ name: 'foo', kind: 'static', dir: '/home/u/site', expiresAt: 42 }]),
     remove: vi.fn(),
     ...over,
@@ -712,7 +712,7 @@ describe('previews API', () => {
   it('POST {name,dir} returns a static path url', async () => {
     const pv = fakePreviews();
     const res = await auth(request(appPv(pv)).post('/api/previews')).send({ name: 'foo', dir: '/home/u/site' }).expect(200);
-    expect(res.body).toEqual({ name: 'foo', kind: 'static', url: '/preview/foo/?token=good', expiresAt: 42 });
+    expect(res.body).toEqual({ name: 'foo', kind: 'static', url: '/preview/foo/preview-only/', expiresAt: 42 });
     expect(pv.register).toHaveBeenCalledWith({ name: 'foo', dir: '/home/u/site' });
   });
   it('POST rejects port previews', async () => {

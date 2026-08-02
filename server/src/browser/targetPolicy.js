@@ -8,23 +8,62 @@ function ipv4Parts(address) {
     : null;
 }
 
-function classifyIp(raw) {
+function ipv6Words(address) {
+  const halves = address.split('::');
+  if (halves.length > 2) return null;
+  const parseHalf = (half) => {
+    if (!half) return [];
+    const words = [];
+    for (const token of half.split(':')) {
+      if (token.includes('.')) {
+        const parts = ipv4Parts(token);
+        if (!parts) return null;
+        words.push((parts[0] << 8) | parts[1], (parts[2] << 8) | parts[3]);
+      } else {
+        if (!/^[0-9a-f]{1,4}$/.test(token)) return null;
+        words.push(Number.parseInt(token, 16));
+      }
+    }
+    return words;
+  };
+  const left = parseHalf(halves[0]);
+  const right = parseHalf(halves[1] || '');
+  if (!left || !right) return null;
+  if (halves.length === 1) return left.length === 8 ? left : null;
+  const omitted = 8 - left.length - right.length;
+  if (omitted < 1) return null;
+  return [...left, ...Array(omitted).fill(0), ...right];
+}
+
+function mappedIpv4Parts(address) {
+  const words = ipv6Words(address);
+  if (!words
+    || words.slice(0, 5).some((word) => word !== 0)
+    || words[5] !== 0xffff) return null;
+  return [words[6] >> 8, words[6] & 0xff, words[7] >> 8, words[7] & 0xff];
+}
+
+function classifyIpv4(parts) {
+  if (parts[0] === 0) return 'unspecified';
+  if (parts[0] === 127) return 'loopback';
+  if (parts[0] === 169 && parts[1] === 254) return 'link-local';
+  if (parts[0] >= 224) return 'multicast';
+  return null;
+}
+
+export function classifyIp(raw) {
   const address = String(raw || '').replace(/^\[|\]$/g, '').toLowerCase();
   if (net.isIP(address) === 4) {
     const parts = ipv4Parts(address);
-    if (parts[0] === 0) return 'unspecified';
-    if (parts[0] === 127) return 'loopback';
-    if (parts[0] === 169 && parts[1] === 254) return 'link-local';
-    if (parts[0] >= 224) return 'multicast';
-    return null;
+    return classifyIpv4(parts);
   }
   if (net.isIP(address) === 6) {
+    const mapped = mappedIpv4Parts(address);
+    if (mapped) return classifyIpv4(mapped);
     if (address === '::') return 'unspecified';
     if (address === '::1') return 'loopback';
     if (/^fe[89ab]/.test(address)) return 'link-local';
     if (address.startsWith('ff')) return 'multicast';
-    const mapped = address.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
-    if (mapped) return classifyIp(mapped);
     return null;
   }
   return null;

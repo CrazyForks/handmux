@@ -218,10 +218,12 @@ describe('asr api', () => {
 describe('previews api', () => {
   it('previewUrl builds a static token-carrying path for a static entry', () => {
     vi.stubGlobal('localStorage', { getItem: () => 'tok123' });
-    expect(previewUrl({ name: 'main-build-3', kind: 'static' })).toBe('/preview/main-build-3/?token=tok123');
+    expect(previewUrl({ name: 'main-build-3', url: '/preview/main-build-3/preview-only/' }))
+      .toBe('/preview/main-build-3/preview-only/');
+    expect(previewUrl({ name: 'main-build-3', kind: 'static' })).toBeNull();
   });
   it('createPreview POSTs {name,dir} for a static start', async () => {
-    const fetch = vi.fn(async () => jsonRes(200, { name: 'foo', kind: 'static', url: '/preview/foo/?token=x', expiresAt: 9 }));
+    const fetch = vi.fn(async () => jsonRes(200, { name: 'foo', kind: 'static', url: '/preview/foo/preview-only/', expiresAt: 9 }));
     vi.stubGlobal('fetch', fetch);
     vi.stubGlobal('localStorage', { getItem: () => 't' });
     await expect(createPreview('foo', { dir: '/home/u/site' })).resolves.toMatchObject({ name: 'foo' });

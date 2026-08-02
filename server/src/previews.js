@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { homedir } from 'node:os';
+import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { isUnder } from './docPath.js';
 import { readJsonArray, writeJsonAtomic } from './jsonStore.js';
@@ -23,6 +24,7 @@ export function createPreviews({
   store = process.env.PREVIEW_STORE || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../data/previews.json'),
   now = () => Date.now(),
   ttlMs = 2 * 60 * 60_000,
+  randomToken = () => randomBytes(24).toString('base64url'),
 } = {}) {
   let realHome;
   try { realHome = fs.realpathSync(home); } catch { realHome = home; }
@@ -31,7 +33,9 @@ export function createPreviews({
   let entries = readJsonArray(store);
   let flushedExpiries = new Map(entries.map((entry) => [entry?.name, entry?.expiresAt]));
   const flush = () => {
-    writeJsonAtomic(store, entries);
+    // Access tokens are runtime capabilities. Open device tabs re-register after a restart and receive
+    // a fresh token, so a stale registry file can never resurrect an old preview URL.
+    writeJsonAtomic(store, entries.map(({ accessToken: _accessToken, ...entry }) => entry));
     flushedExpiries = new Map(entries.map((entry) => [entry?.name, entry?.expiresAt]));
   };
 
@@ -39,10 +43,20 @@ export function createPreviews({
   const upsert = (fields) => {
     entries = entries.filter((e) => e && e.name !== fields.name);
     const ts = now();
-    const entry = { ...fields, createdAt: ts, expiresAt: ts + ttlMs };
+    const entry = {
+      ...fields,
+      accessToken: randomToken(),
+      createdAt: ts,
+      expiresAt: ts + ttlMs,
+    };
     entries.push(entry);
     flush();
-    return { name: entry.name, kind: entry.kind, expiresAt: entry.expiresAt };
+    return {
+      name: entry.name,
+      kind: entry.kind,
+      accessToken: entry.accessToken,
+      expiresAt: entry.expiresAt,
+    };
   };
 
   async function register({ name, dir, port }) {

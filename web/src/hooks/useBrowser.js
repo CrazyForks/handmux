@@ -37,6 +37,24 @@ function transientProxyError(error) {
 
 const wait = (duration) => new Promise((resolve) => setTimeout(resolve, duration));
 
+function abortError() {
+  const error = new Error('browser open aborted');
+  error.name = 'AbortError';
+  return error;
+}
+
+function abortable(operation, signal) {
+  if (!signal) return operation;
+  if (signal.aborted) return Promise.reject(abortError());
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(abortError());
+    signal.addEventListener('abort', onAbort, { once: true });
+    Promise.resolve(operation).then(resolve, reject).finally(() => {
+      signal.removeEventListener('abort', onAbort);
+    });
+  });
+}
+
 function localId() {
   const bytes = new Uint8Array(18);
   crypto.getRandomValues(bytes);
@@ -122,6 +140,28 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
   const release = useCallback((tab) => {
     if (tab?.mode === 'proxy') deleteBrowserProxyLease(tab.id).catch(() => {});
   }, []);
+
+  const discardOpenedTab = useCallback((id, restore = null) => {
+    const index = tabsRef.current.findIndex((tab) => tab.id === id);
+    if (index < 0) return;
+    const discarded = tabsRef.current[index];
+    release(discarded);
+    const remaining = commitTabs((current) => current.filter((tab) => tab.id !== id));
+    if (activeRef.current === id) {
+      const restored = restore?.activeId
+        ? remaining.find((tab) => tab.id === restore.activeId)
+        : null;
+      const next = restored || remaining[Math.min(index, remaining.length - 1)] || null;
+      if (next && !restore?.historyActive) {
+        commitTabs((current) => current.map((tab) => (
+          tab.id === next.id ? { ...tab, deadline: null } : tab
+        )));
+      }
+      commitActive(next?.id || null);
+      commitHistory(restore?.historyActive ?? !next);
+      if (restore) commitOpen(restore.open);
+    }
+  }, [commitActive, commitHistory, commitOpen, commitTabs, release]);
 
   const enqueueProfileOperation = useCallback((work) => {
     const operation = profileQueue.current.catch(() => {}).then(work);
@@ -302,7 +342,8 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     return () => clearTimeout(timer);
   }, [pruneExpired, tabs]);
 
-  const openUrl = useCallback(async (input, { mode = 'direct', force = false } = {}) => {
+  const openUrl = useCallback(async (input, { mode = 'direct', force = false, signal } = {}) => {
+    if (signal?.aborted) return null;
     const sequence = ++openSequence.current;
     const url = normalizeBrowserInput(input);
     if (!url) { setError(new Error('browser URL must use http or https')); return null; }
@@ -318,6 +359,11 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       return null;
     }
     const id = localId();
+    const previousView = {
+      activeId: activeRef.current,
+      historyActive: historyRef.current,
+      open: openRef.current,
+    };
     const created = runtimeTab({
       id, mode, originalUrl: url, title: '', deadline: null, createdAt: Date.now(),
     });
@@ -328,18 +374,24 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     commitHistory(false);
     commitOpen(true);
     setError(null);
-    if (mode === 'proxy') await ensureBinding(id);
-    else await Promise.resolve();
+    try {
+      if (mode === 'proxy') await abortable(ensureBinding(id), signal);
+      else await abortable(Promise.resolve(), signal);
+    } catch (nextError) {
+      discardOpenedTab(id, previousView);
+      if (nextError?.name === 'AbortError') return null;
+      throw nextError;
+    }
+    if (signal?.aborted) {
+      discardOpenedTab(id, previousView);
+      return null;
+    }
     if (sequence !== openSequence.current) {
-      const stale = tabsRef.current.find((tab) => tab.id === id);
-      if (stale) {
-        release(stale);
-        commitTabs((current) => current.filter((tab) => tab.id !== id));
-      }
+      discardOpenedTab(id);
       return null;
     }
     return tabsRef.current.find((tab) => tab.id === id) || created;
-  }, [accessEnabled, browserProxy, commitActive, commitHistory, commitOpen, commitTabs, ensureBinding, hideTab, release]);
+  }, [accessEnabled, browserProxy, commitActive, commitHistory, commitOpen, commitTabs, discardOpenedTab, ensureBinding, hideTab]);
 
   const enableAccess = useCallback(() => {
     if (enablePromise.current) return enablePromise.current;

@@ -92,23 +92,81 @@ describe('browser proxy leases', () => {
   });
 
   it('deleting one lease revokes only its Hammerhead session', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = fakeHammerhead();
+      const manager = await createBrowserPreviewManager({ hammerhead: fake.api });
+      const first = await manager.putLease({
+        tabId: 'client-a', deviceId: DEVICE, url: 'https://app.example/a',
+        origin: 'https://b-app.preview.example',
+      });
+      const second = await manager.putLease({
+        tabId: 'client-b', deviceId: DEVICE, url: 'https://app.example/b',
+        origin: 'https://b-app.preview.example',
+      });
+
+      expect(manager.deleteLease('client-a', DEVICE)).toBe(true);
+      expect(manager.getLease('client-a', DEVICE)).toBeNull();
+      expect(manager.getLease('client-b', DEVICE)).toEqual(second);
+      expect(fake.proxies[0].closeSession).toHaveBeenCalledOnce();
+      expect(fake.proxies[0].closeSession.mock.calls[0][0].id).toContain('client-a');
+      expect(first.url).not.toBe(second.url);
+      expect(fake.proxies[0].close).not.toHaveBeenCalled();
+      expect(manager.deleteLease('client-b', DEVICE)).toBe(true);
+      expect(fake.proxies[0].close).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(fake.proxies[0].close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('clears shared Cookies in place without invalidating open tab leases', async () => {
     const fake = fakeHammerhead();
     const manager = await createBrowserPreviewManager({ hammerhead: fake.api });
-    const first = await manager.putLease({
+    await manager.putLease({
       tabId: 'client-a', deviceId: DEVICE, url: 'https://app.example/a',
       origin: 'https://b-app.preview.example',
     });
-    const second = await manager.putLease({
-      tabId: 'client-b', deviceId: DEVICE, url: 'https://app.example/b',
-      origin: 'https://b-app.preview.example',
-    });
+    const session = fake.proxies[0].openSession.mock.calls[0][1];
+    session.cookies.setByServer('https://app.example/', ['session=value; Path=/']);
 
-    expect(manager.deleteLease('client-a', DEVICE)).toBe(true);
-    expect(manager.getLease('client-a', DEVICE)).toBeNull();
-    expect(manager.getLease('client-b', DEVICE)).toEqual(second);
-    expect(fake.proxies[0].closeSession).toHaveBeenCalledOnce();
-    expect(fake.proxies[0].closeSession.mock.calls[0][0].id).toContain('client-a');
-    expect(first.url).not.toBe(second.url);
+    await expect(manager.clearDeviceProfile(DEVICE, { origin: 'https://app.example' }))
+      .resolves.toEqual({ closedTabIds: [] });
+
+    expect(manager.getLease('client-a', DEVICE)).not.toBeNull();
+    expect(session.cookies.getHeader({
+      url: 'https://app.example/', hostname: 'app.example',
+    })).toBeNull();
+    expect(fake.proxies[0].closeSession).not.toHaveBeenCalled();
+  });
+
+  it('reuses an idle pool when a new lease arrives during the response-drain window', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = fakeHammerhead();
+      const manager = await createBrowserPreviewManager({ hammerhead: fake.api });
+      await manager.putLease({
+        tabId: 'first', deviceId: DEVICE, url: 'https://app.example/a',
+        origin: 'https://b-app.preview.example',
+      });
+      manager.deleteLease('first', DEVICE);
+      await vi.advanceTimersByTimeAsync(500);
+
+      await manager.putLease({
+        tabId: 'second', deviceId: DEVICE, url: 'https://app.example/b',
+        origin: 'https://b-app.preview.example',
+      });
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(fake.proxies).toHaveLength(1);
+      expect(fake.proxies[0].close).not.toHaveBeenCalled();
+      manager.deleteLease('second', DEVICE);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(fake.proxies[0].close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('expires idle leases only as resource cleanup', async () => {
@@ -128,6 +186,9 @@ describe('browser proxy leases', () => {
 
       expect(manager.getLease('client-a', DEVICE)).toBeNull();
       expect(fake.proxies[0].closeSession).toHaveBeenCalledOnce();
+      expect(fake.proxies[0].close).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(fake.proxies[0].close).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
     }
