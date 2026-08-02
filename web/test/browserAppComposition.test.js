@@ -34,7 +34,7 @@ describe('built-in browser App composition', () => {
     expect(source).not.toContain('browser-entry-status-dot');
     expect(styles).not.toContain('.browser-entry-status-dot');
     expect(styles).toMatch(/\.browser-entry\.direct\s*>\s*svg\s*\{[^}]*color:\s*var\(--blue\)/);
-    expect(styles).toMatch(/\.browser-entry\.proxy\s*>\s*svg\s*\{[^}]*color:\s*#f2a450/);
+    expect(styles).toMatch(/\.browser-entry\.proxy\s*>\s*svg\s*\{[^}]*color:\s*#d9822b/);
     expect(styles).toMatch(/\.browser-entry\.static\s*>\s*svg\s*\{[^}]*color:\s*var\(--green\)/);
   });
 
