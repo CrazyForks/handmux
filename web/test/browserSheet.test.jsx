@@ -206,6 +206,10 @@ describe('BrowserSheet', () => {
       expect(frame.style.width).toBe('90.9091%');
       expect(styles).toMatch(/\.browser-pane\s*\{[^}]*overflow:\s*auto/);
       expect(styles).toMatch(/\.browser-pane::.*scrollbar:horizontal\s*\{[^}]*height:\s*7px/);
+      expect(styles).toMatch(/\.browser-content\s*\{[^}]*isolation:\s*isolate[^}]*contain:\s*paint/);
+      expect(styles).not.toMatch(/\.browser-frame\s*\{[^}]*will-change:\s*transform/);
+      expect(styles).toMatch(/\.browser-tabs\s*\{[^}]*z-index:\s*2/);
+      expect(styles).toMatch(/\.browser-nav\s*\{[^}]*z-index:\s*2/);
       expect(frame.hasAttribute('inert')).toBe(false);
       act(() => frame.dispatchEvent(new Event('load')));
       expect(frame.hasAttribute('inert')).toBe(false);
