@@ -18,6 +18,15 @@ import { useModalFocusTrap } from '../hooks/useModalFocusTrap.js';
 
 // Temporary compatibility validation only: unsafe while proxied pages share the Handmux origin.
 const FRAME_SANDBOX = 'allow-scripts allow-forms allow-downloads allow-modals allow-popups allow-same-origin';
+const ZOOMABLE_VIEWPORT = 'width=device-width, initial-scale=1';
+
+function allowViewportZoom(content) {
+  if (!content) return ZOOMABLE_VIEWPORT;
+  return content.split(',')
+    .map((part) => part.trim())
+    .filter((part) => !/^(maximum-scale|user-scalable)\s*=/i.test(part))
+    .join(', ');
+}
 
 function tabLabel(tab) {
   if (tab.title) return tab.title;
@@ -65,6 +74,18 @@ export default function BrowserSheet({ browser }) {
   const clearDialogRef = useRef(null);
   activeIdRef.current = activeId;
   openRef.current = open;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const viewport = document.querySelector('meta[name="viewport"]');
+    if (!viewport) return undefined;
+    const previous = viewport.getAttribute('content');
+    viewport.setAttribute('content', allowViewportZoom(previous));
+    return () => {
+      if (previous == null) viewport.removeAttribute('content');
+      else viewport.setAttribute('content', previous);
+    };
+  }, [open]);
 
   useEffect(() => {
     setAddress(historyActive ? '' : (active?.originalUrl || ''));

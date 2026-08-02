@@ -77,6 +77,22 @@ const setInput = (input, value) => act(() => {
 });
 
 describe('BrowserSheet', () => {
+  it('allows native pinch zoom only while the browser sheet is open', async () => {
+    const viewport = document.createElement('meta');
+    viewport.name = 'viewport';
+    viewport.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
+    document.head.appendChild(viewport);
+    const model = browser();
+    try {
+      await render(model);
+      expect(viewport.content).toBe('width=device-width, initial-scale=1, viewport-fit=cover');
+      await render({ ...model, open: false });
+      expect(viewport.content).toBe('width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
+    } finally {
+      viewport.remove();
+    }
+  });
+
   it('explains direct and proxy access accurately before first use and requires an explicit enable action', async () => {
     const model = browser({ open: false, consentOpen: true });
     await render(model);
