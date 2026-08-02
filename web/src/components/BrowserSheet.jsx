@@ -439,7 +439,6 @@ export default function BrowserSheet({ browser, staticPreview }) {
                 className={`browser-tab-wrap ${tab.mode} ${selected ? 'active' : ''}`} key={tab.id}>
                 <button className="browser-tab" role="tab" aria-selected={selected} title={tab.originalUrl}
                   onClick={() => selectTab(tab)}>
-                  {tab.mode === 'proxy' && <span className="browser-mode-badge proxy" aria-label={t('browser.proxyMode')} />}
                   <span className="browser-tab-label">{label}</span>
                 </button>
                 <button className="browser-tab-close" aria-label={t('browser.closeTab', { title: label })}
@@ -455,7 +454,6 @@ export default function BrowserSheet({ browser, staticPreview }) {
                 className={`browser-tab-wrap static ${selected ? 'active' : ''}`} key={`static:${tab.name}`}>
                 <button className="browser-tab" role="tab" aria-selected={selected} title={tab.dir}
                   onClick={() => selectStaticTab(tab)}>
-                  <span className="browser-mode-badge static" aria-label={t('browser.staticBadge')} />
                   <span className="browser-tab-label">{label}</span>
                 </button>
                 <button className="browser-tab-close" aria-label={t('browser.closeTab', { title: label })}

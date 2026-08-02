@@ -1173,39 +1173,43 @@ button.cmd-text { background: none; border: none; text-align: left; }
 /* Built-in browser — tabs above the address row, matching mobile Safari's compact system chrome. */
 .browser-sheet { background: #0b0f14; }
 .browser-tabs {
-  display: flex; align-items: stretch; flex: 0 0 auto; min-height: 48px;
+  display: flex; align-items: stretch; flex: 0 0 auto; min-height: 38px;
   padding-top: env(safe-area-inset-top); background: #11161d; border-bottom: 1px solid #1d2630;
 }
 .browser-tabs-scroll { display: flex; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .browser-tabs-scroll::-webkit-scrollbar { display: none; }
-.browser-tab-wrap { display: inline-flex; align-items: stretch; flex: 0 0 auto; max-width: 44vw; border-right: 1px solid #1d2630; }
-.browser-tab-wrap.active, .browser-history-tab.active { background: #0b0f14; box-shadow: inset 0 -2px 0 var(--blue); }
-.browser-tab-wrap.proxy { border-top: 2px solid #d9822b; }
-.browser-tab-wrap.proxy.active { box-shadow: inset 0 -2px 0 #e8892f; }
-.browser-tab-wrap.static { border-top: 2px solid var(--green); }
-.browser-tab-wrap.static.active { box-shadow: inset 0 -2px 0 var(--green); }
+.browser-tab-wrap {
+  --browser-tab-accent: var(--blue);
+  display: inline-flex; align-items: stretch; flex: 0 0 auto; max-width: 44vw;
+  border-right: 1px solid #1d2630; box-shadow: inset 0 2px 0 var(--browser-tab-accent);
+}
+.browser-tab-wrap.proxy { --browser-tab-accent: #e8892f; }
+.browser-tab-wrap.static { --browser-tab-accent: var(--green); }
+.browser-tab-wrap.active {
+  background: #0b0f14;
+  box-shadow: inset 0 2px 0 var(--browser-tab-accent), inset 0 -2px 0 var(--browser-tab-accent);
+}
+.browser-history-tab.active { background: #0b0f14; box-shadow: inset 0 -2px 0 var(--blue); }
 .browser-tab {
-  min-height: 44px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px;
+  min-height: 38px; padding: 0 10px; display: inline-flex; align-items: center;
   border: 0; background: transparent; color: #9fb0c0; font-size: 13px; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; touch-action: manipulation;
 }
 .browser-tab svg { width: 15px; height: 15px; flex: 0 0 auto; }
 .browser-tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.browser-mode-badge, .browser-address-mode {
+.browser-address-mode {
   flex: 0 0 auto; padding: 2px 4px; border-radius: 4px; background: #343a42;
   color: #aeb9c4; font-size: 9px; font-weight: 700; line-height: 1.1; letter-spacing: .2px;
 }
-.browser-mode-badge.proxy, .browser-address-mode.proxy { background: rgba(217,130,43,.18); color: #f2a450; }
-.browser-mode-badge.proxy::after { content: '•'; font-size: 13px; line-height: 7px; }
-.browser-mode-badge.static, .browser-address-mode.static { background: rgba(var(--green-rgb),.15); color: #71df91; }
-.browser-mode-badge.static::after { content: '•'; font-size: 13px; line-height: 7px; }
+.browser-address-mode.proxy { background: rgba(217,130,43,.18); color: #f2a450; }
+.browser-address-mode.static { background: rgba(var(--green-rgb),.15); color: #71df91; }
 .browser-tab-wrap.active .browser-tab, .browser-history-tab.active { color: #fff; }
 .browser-history-tab {
   flex: 0 0 44px; width: 44px; justify-content: center; padding: 0;
   border-right: 1px solid #1d2630;
 }
 .browser-tab-close, .browser-head-button {
-  min-width: 44px; min-height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 44px; min-height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
   border: 0; background: transparent; color: #758494; touch-action: manipulation;
 }
 .browser-tab-close { min-width: 32px; width: 32px; }

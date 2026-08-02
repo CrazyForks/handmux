@@ -116,6 +116,7 @@ describe('BrowserSheet', () => {
     const staticTab = document.querySelector('.browser-tab-wrap.static');
     const frame = document.querySelector('.browser-pane.static iframe');
     expect(staticTab).toBeTruthy();
+    expect(staticTab.querySelector('.browser-mode-badge')).toBeNull();
     expect(frame.getAttribute('sandbox')).toBeNull();
     expect(document.querySelector('.browser-address').readOnly).toBe(true);
     expect(document.querySelector('.browser-address').value).toBe('/home/u/site');
@@ -248,6 +249,27 @@ describe('BrowserSheet', () => {
     expect(recent.querySelector('.browser-tab-close')).toBeNull();
   });
 
+  it('keeps direct, proxy, and static tabs compact with synchronized accent bars and no leading dots', async () => {
+    const staticTab = {
+      name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'ready',
+      url: '/preview/main-3/?token=x',
+    };
+    const preview = staticPreview({ tabs: [staticTab] });
+    await render(browser({
+      tabs: [
+        { ...tabs[0], mode: 'direct' },
+        tabs[1],
+      ],
+    }), preview);
+    expect(document.querySelectorAll('.browser-mode-badge')).toHaveLength(0);
+    expect(styles).toMatch(/\.browser-tabs\s*\{[^}]*min-height:\s*38px/);
+    expect(styles).toMatch(/\.browser-tab\s*\{[^}]*min-height:\s*38px/);
+    expect(styles).toMatch(/\.browser-tab-wrap\s*\{[^}]*--browser-tab-accent:\s*var\(--blue\)/);
+    expect(styles).toMatch(/\.browser-tab-wrap\.proxy\s*\{[^}]*--browser-tab-accent:\s*#e8892f/);
+    expect(styles).toMatch(/\.browser-tab-wrap\.static\s*\{[^}]*--browser-tab-accent:\s*var\(--green\)/);
+    expect(styles).toMatch(/\.browser-tab-wrap\.active\s*\{[^}]*inset 0 2px 0 var\(--browser-tab-accent\)[^}]*inset 0 -2px 0 var\(--browser-tab-accent\)/);
+  });
+
   it('scrolls a newly active tab into view', async () => {
     const scrollIntoView = vi.fn();
     Object.defineProperty(Element.prototype, 'scrollIntoView', {
@@ -280,11 +302,11 @@ describe('BrowserSheet', () => {
     }
   });
 
-  it('marks proxy tabs orange and lets an existing tab switch modes in place', async () => {
+  it('marks proxy tabs orange without a leading dot and lets an existing tab switch modes in place', async () => {
     const model = browser();
     await render(model);
     const alpha = [...document.querySelectorAll('[role="tab"]')].find((node) => node.textContent.includes('Alpha'));
-    expect(alpha.querySelector('.browser-mode-badge.proxy')).not.toBeNull();
+    expect(alpha.querySelector('.browser-mode-badge')).toBeNull();
     expect(alpha.closest('.browser-tab-wrap').classList.contains('proxy')).toBe(true);
     click(document.querySelector('button[aria-label="网页预览器菜单"]'));
     const modeButtons = [...document.querySelectorAll('.browser-mode-segment button')];
