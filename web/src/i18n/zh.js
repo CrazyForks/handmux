@@ -71,6 +71,8 @@ export default {
   'browser.menu': '浏览器菜单',
   'browser.connectionMode': '连接方式',
   'browser.pageView': '页面视图',
+  'browser.zoomPage': '缩放网页',
+  'browser.resetZoom': '重置网页缩放',
   'browser.proxyLogin': '代理登录',
   'browser.proxyLoginHelpLabel': '代理登录说明',
   'browser.proxyLoginHelp': '是否将代理 Cookie 加密保存在运行 Handmux 的电脑上，以便重启后保持登录状态。',

@@ -72,6 +72,8 @@ export default {
   'browser.menu': 'Browser menu',
   'browser.connectionMode': 'Connection',
   'browser.pageView': 'Page view',
+  'browser.zoomPage': 'Zoom page',
+  'browser.resetZoom': 'Reset page zoom',
   'browser.proxyLogin': 'Proxy sign-in',
   'browser.proxyLoginHelpLabel': 'About proxy sign-in',
   'browser.proxyLoginHelp': 'Whether to encrypt and store proxy Cookies on the computer running Handmux so sign-ins survive a restart.',

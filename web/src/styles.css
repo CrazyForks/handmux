@@ -1255,7 +1255,6 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-tabs {
   display: flex; align-items: stretch; flex: 0 0 auto; min-height: 48px;
   padding-top: env(safe-area-inset-top); background: #11161d; border-bottom: 1px solid #1d2630;
-  touch-action: pan-x pan-y;
 }
 .browser-tabs-scroll { display: flex; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .browser-tabs-scroll::-webkit-scrollbar { display: none; }
@@ -1292,7 +1291,6 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-nav {
   position: relative; display: flex; align-items: center; gap: 4px; flex: 0 0 auto; min-height: 50px;
   padding: 4px 6px; background: #1a1c20; border-bottom: 1px solid #262b32;
-  touch-action: pan-x pan-y;
 }
 .browser-nav-button {
   width: 44px; height: 44px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
@@ -1390,15 +1388,33 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-options-action {
   width: 100%; min-height: 42px; padding: 0; border: 0; background: transparent; color: #eef1f4; text-align: left; font-size: 14px; font-weight: 600;
 }
+.browser-zoom-trigger { display: flex; align-items: center; justify-content: space-between; }
+.browser-zoom-trigger span { color: #9fc6ff; font-size: 13px; font-weight: 400; font-variant-numeric: tabular-nums; }
 
-.browser-content {
-  position: relative; flex: 1; min-height: 0; display: flex; overflow: hidden; background: #fff;
-  touch-action: pan-x pan-y pinch-zoom;
-}
+.browser-content { position: relative; flex: 1; min-height: 0; display: flex; overflow: hidden; background: #fff; }
 .browser-pane { flex: 1; min-width: 0; min-height: 0; }
 .browser-pane[hidden] { display: none; }
-.browser-frame-scaler { width: 100%; height: 100%; position: relative; }
-.browser-frame { width: 100%; height: 100%; display: block; border: 0; background: #fff; touch-action: pan-x pan-y pinch-zoom; }
+.browser-frame-scaler { width: 100%; height: 100%; position: relative; transform-origin: center; will-change: transform; }
+.browser-frame { width: 100%; height: 100%; display: block; border: 0; background: #fff; }
+.browser-zoom-layer {
+  position: absolute; inset: 0; z-index: 4; overflow: hidden; touch-action: none;
+  user-select: none; -webkit-user-select: none; cursor: grab;
+}
+.browser-zoom-layer:active { cursor: grabbing; }
+.browser-zoom-pill {
+  position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 2px; padding: 4px; border: 1px solid #3a3c42; border-radius: 999px;
+  background: rgba(28,30,34,.94); box-shadow: 0 6px 20px rgba(0,0,0,.45); cursor: default;
+}
+.browser-zoom-pill button {
+  min-width: 34px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+  padding: 0 8px; border: 0; border-radius: 999px; background: transparent; color: #e6edf3;
+  font: 16px/1 system-ui, sans-serif; touch-action: manipulation;
+}
+.browser-zoom-pill button:disabled { color: #5a626b; }
+.browser-zoom-pill .browser-zoom-value { min-width: 54px; color: #9fc6ff; font-size: 13px; font-variant-numeric: tabular-nums; }
+.browser-zoom-divider { width: 1px; height: 20px; margin: 0 3px; background: #454950; }
+.browser-zoom-pill .browser-zoom-done { min-width: 48px; color: var(--blue); font-size: 14px; font-weight: 650; }
 .browser-pane.proxy { box-shadow: inset 0 2px 0 #d9822b; }
 .browser-page-loading {
   position: absolute; inset: 0; z-index: 2;

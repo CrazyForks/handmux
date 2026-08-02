@@ -76,6 +76,8 @@ export default {
   'browser.menu': '브라우저 메뉴',
   'browser.connectionMode': '연결 방식',
   'browser.pageView': '페이지 보기',
+  'browser.zoomPage': '웹페이지 확대/축소',
+  'browser.resetZoom': '웹페이지 확대/축소 재설정',
   'browser.proxyLogin': '프록시 로그인',
   'browser.proxyLoginHelpLabel': '프록시 로그인 정보',
   'browser.proxyLoginHelp': '재시작 후에도 로그인 상태를 유지할 수 있도록 Handmux를 실행하는 컴퓨터에 프록시 Cookie를 암호화해 저장할지 여부입니다.',

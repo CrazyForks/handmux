@@ -69,6 +69,11 @@ const clickAndFlush = (node) => act(async () => {
   node.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   await Promise.resolve();
 });
+const pointer = (node, type, pointerId, clientX, clientY) => act(() => {
+  const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX, clientY });
+  Object.defineProperty(event, 'pointerId', { value: pointerId });
+  node.dispatchEvent(event);
+});
 const submit = (form) => act(() => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
 const setInput = (input, value) => act(() => {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
@@ -77,16 +82,35 @@ const setInput = (input, value) => act(() => {
 });
 
 describe('BrowserSheet', () => {
-  it('allows native pinch zoom only while the browser sheet is open', async () => {
+  it('pinch-zooms only the webpage while browser chrome stays fixed', async () => {
     const viewport = document.createElement('meta');
     viewport.name = 'viewport';
     viewport.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
     document.head.appendChild(viewport);
-    const model = browser();
     try {
-      await render(model);
-      expect(viewport.content).toBe('width=device-width, initial-scale=1, viewport-fit=cover');
-      await render({ ...model, open: false });
+      await render(browser());
+      click(document.querySelector('button[aria-label="浏览器菜单"]'));
+      click([...document.querySelectorAll('.browser-options-card button')]
+        .find((node) => node.textContent.includes('缩放网页')));
+
+      const layer = document.querySelector('.browser-zoom-layer');
+      const content = document.querySelector('.browser-content');
+      const scaler = document.querySelector('.browser-pane:not([hidden]) .browser-frame-scaler');
+      expect(layer.parentElement).toBe(content);
+      expect(document.querySelector('.browser-tabs').contains(layer)).toBe(false);
+      expect(document.querySelector('.browser-nav').contains(layer)).toBe(false);
+
+      pointer(layer, 'pointerdown', 1, 100, 100);
+      pointer(layer, 'pointerdown', 2, 200, 100);
+      pointer(layer, 'pointermove', 2, 300, 100);
+      expect(scaler.style.transform).toContain('scale(2)');
+      expect(document.querySelector('.browser-tabs').style.transform).toBe('');
+      expect(document.querySelector('.browser-nav').style.transform).toBe('');
+
+      click([...document.querySelectorAll('.browser-zoom-pill button')]
+        .find((node) => node.textContent === '完成'));
+      expect(document.querySelector('.browser-zoom-layer')).toBeNull();
+      expect(scaler.style.transform).toContain('scale(2)');
       expect(viewport.content).toBe('width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
     } finally {
       viewport.remove();

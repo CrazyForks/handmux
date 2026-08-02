@@ -76,6 +76,8 @@ export default {
   'browser.menu': 'ブラウザメニュー',
   'browser.connectionMode': '接続方法',
   'browser.pageView': 'ページ表示',
+  'browser.zoomPage': 'ページを拡大・縮小',
+  'browser.resetZoom': 'ページのズームをリセット',
   'browser.proxyLogin': 'プロキシログイン',
   'browser.proxyLoginHelpLabel': 'プロキシログインについて',
   'browser.proxyLoginHelp': '再起動後もログイン状態を維持できるよう、Handmux を実行しているコンピュータにプロキシ Cookie を暗号化して保存するかどうか。',
