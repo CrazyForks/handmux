@@ -1386,7 +1386,8 @@ button.cmd-text { background: none; border: none; text-align: left; }
   width: 100%; min-height: 42px; padding: 0; border: 0; background: transparent; color: #ff6961; text-align: left; font-size: 14px;
 }
 .browser-options-action {
-  width: 100%; min-height: 42px; padding: 0; border: 0; background: transparent; color: #eef1f4; text-align: left; font-size: 14px; font-weight: 600;
+  width: 100%; min-height: 42px; padding: 0; border: 0; background: transparent; color: #eef1f4;
+  display: flex; align-items: center; text-align: left; text-decoration: none; font-size: 14px; font-weight: 600;
 }
 .browser-zoom-row { min-height: 44px; }
 .browser-zoom-stepper {

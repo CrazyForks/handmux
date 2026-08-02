@@ -462,6 +462,14 @@ export default function BrowserSheet({ browser }) {
                 </div>
               )}
 
+              {active && !historyActive && (
+                <div className="browser-options-section">
+                  <a className="browser-options-action browser-open-external"
+                    href={active.originalUrl} target="_blank" rel="noopener noreferrer"
+                    onClick={() => setOptionsOpen(false)}>{t('browser.openExternal')}</a>
+                </div>
+              )}
+
               <div className="browser-options-section">
                 <button className="browser-close-trigger" aria-expanded={timeOpen}
                   onClick={() => setTimeOpen((value) => !value)}>
@@ -644,7 +652,7 @@ export default function BrowserSheet({ browser }) {
                 : 'browser.proxyLogin')}>
             {clearConfirmation.type === 'help-about' ? (
               <>
-                <h2>{t('browser.about')}</h2>
+                <h2>{t('browser.consentTitle')}</h2>
                 <p>{t('browser.consentBody')}</p>
                 <ul>
                   <li>{t('browser.consentComputer')}</li>

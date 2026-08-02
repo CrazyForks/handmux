@@ -84,7 +84,7 @@ describe('BrowserSheet', () => {
     document.head.appendChild(viewport);
     try {
       await render(browser());
-      click(document.querySelector('button[aria-label="浏览器菜单"]'));
+      click(document.querySelector('button[aria-label="网页预览菜单"]'));
       const stepper = document.querySelector('.browser-zoom-stepper');
       const scaler = document.querySelector('.browser-pane:not([hidden]) .browser-frame-scaler');
       const frame = document.querySelector('.browser-pane:not([hidden]) .browser-frame');
@@ -138,12 +138,14 @@ describe('BrowserSheet', () => {
     const model = browser({ open: false, consentOpen: true });
     await render(model);
     const consent = document.querySelector('.browser-consent').textContent;
+    expect(consent).toContain('这是网页预览，不是完整浏览器');
+    expect(consent).toContain('开发服务');
+    expect(consent).toContain('localhost');
     expect(consent).toContain('手机直连');
     expect(consent).toContain('经电脑代理');
-    expect(consent).toContain('代理访问通常更慢');
     expect(consent).toContain('iframe 或 CSP');
-    expect(consent).toContain('支持 WebSocket');
-    expect(consent).toContain('不保证所有网站都能正常使用');
+    expect(consent).toContain('可能无法判断原因');
+    expect(consent).toContain('系统浏览器');
     expect(consent).not.toContain('关闭并销毁登录状态');
     const acknowledge = document.querySelector('.browser-consent-enable');
     expect(acknowledge.textContent).toBe('好的');
@@ -202,12 +204,12 @@ describe('BrowserSheet', () => {
     const alpha = [...document.querySelectorAll('[role="tab"]')].find((node) => node.textContent.includes('Alpha'));
     expect(alpha.querySelector('.browser-mode-badge.proxy')).not.toBeNull();
     expect(alpha.closest('.browser-tab-wrap').classList.contains('proxy')).toBe(true);
-    click(document.querySelector('button[aria-label="浏览器菜单"]'));
+    click(document.querySelector('button[aria-label="网页预览菜单"]'));
     const modeButtons = [...document.querySelectorAll('.browser-mode-segment button')];
     expect(modeButtons.map((node) => node.textContent)).toEqual(['手机直连', '经电脑代理']);
     expect(modeButtons.map((node) => node.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
     expect(document.querySelector('.browser-proxy-limit').textContent)
-      .toBe('代理访问通常更慢，且不保证所有网站都能正常使用。');
+      .toBe('电脑代理会转发并改写网页，不保证兼容所有网站。');
     click(modeButtons[0]);
     expect(model.navigateTab).toHaveBeenCalledWith('a', 'https://a.example/', 'direct');
   });
@@ -215,7 +217,7 @@ describe('BrowserSheet', () => {
   it('closes the options card when entering History and does not revive it on return', async () => {
     const model = browser();
     await render(model);
-    click(document.querySelector('button[aria-label="浏览器菜单"]'));
+    click(document.querySelector('button[aria-label="网页预览菜单"]'));
     expect(document.querySelector('.browser-options-card')).not.toBeNull();
 
     click(document.querySelector('.browser-history-tab'));
@@ -300,7 +302,7 @@ describe('BrowserSheet', () => {
     document.body.appendChild(outside);
     const model = browser();
     await render(model);
-    const menuTrigger = document.querySelector('button[aria-label="浏览器菜单"]');
+    const menuTrigger = document.querySelector('button[aria-label="网页预览菜单"]');
     click(menuTrigger);
     const trigger = [...document.querySelectorAll('.browser-options-card button')]
       .find((node) => node.textContent === '清理本站代理 Cookie');
@@ -373,7 +375,7 @@ describe('BrowserSheet', () => {
     expect(proxy.disabled).toBe(true);
     const reason = document.querySelector('.browser-history-mode-menu p');
     expect(reason.textContent)
-      .toBe('请在电脑终端运行 handmux setup，选择“内置浏览器”配置预览域名；配置前只能使用手机直连。');
+      .toBe('请在电脑终端运行 handmux setup，选择“网页预览”配置代理域名；配置前只能使用手机直连。');
     expect(proxy.getAttribute('aria-describedby')).toBe(reason.id);
   });
 
@@ -388,7 +390,7 @@ describe('BrowserSheet', () => {
 
     expect(model.openUrl).not.toHaveBeenCalled();
     expect(document.querySelector('.browser-error').textContent)
-      .toContain('请在电脑终端运行 handmux setup，选择“内置浏览器”配置预览域名；配置前只能使用手机直连。');
+      .toContain('请在电脑终端运行 handmux setup，选择“网页预览”配置代理域名；配置前只能使用手机直连。');
   });
 
   it('clears stale history errors when switching tabs or starting a valid address operation', async () => {
@@ -672,7 +674,7 @@ describe('BrowserSheet', () => {
     });
     await render(model);
     expect(document.querySelectorAll('.browser-nav > button')).toHaveLength(2);
-    const menuButton = document.querySelector('button[aria-label="浏览器菜单"]');
+    const menuButton = document.querySelector('button[aria-label="网页预览菜单"]');
     expect(menuButton.querySelector('svg')).not.toBeNull();
     expect(menuButton.textContent).toBe('');
     click(menuButton);
@@ -683,9 +685,15 @@ describe('BrowserSheet', () => {
     expect(card.textContent).toContain('页面视图');
     expect(card.textContent).toContain('后台页签关闭');
     expect(card.textContent).toContain('清理本站代理 Cookie');
+    const external = card.querySelector('.browser-open-external');
+    expect(external.textContent).toBe('用系统浏览器打开');
+    expect(external.getAttribute('href')).toBe('https://a.example/');
+    expect(external.getAttribute('target')).toBe('_blank');
+    expect(external.getAttribute('rel')).toContain('noopener');
+    expect(external.getAttribute('rel')).toContain('noreferrer');
     expect(card.textContent).not.toContain('清理全部代理 Cookie');
     expect(card.textContent).not.toContain('代理登录持久化');
-    expect(card.textContent).not.toContain('关闭内置浏览器');
+    expect(card.textContent).not.toContain('关闭网页预览');
     const cookieRow = card.querySelector('.browser-site-cookie-row');
     expect(cookieRow).not.toBeNull();
     expect(cookieRow.querySelector('strong')).toBeNull();
@@ -730,17 +738,18 @@ describe('BrowserSheet', () => {
       proxyLoginRetentionDays: 30,
     });
     await render(model);
-    click(document.querySelector('button[aria-label="浏览器菜单"]'));
+    click(document.querySelector('button[aria-label="网页预览菜单"]'));
     const card = document.querySelector('.browser-options-card');
 
     expect(card.textContent).toContain('在电脑上持久化保存代理 Cookie');
     expect(card.textContent).toContain('清理全部代理 Cookie');
-    expect(card.textContent).toContain('关于内置浏览器');
+    expect(card.textContent).toContain('关于网页预览');
     expect(card.textContent).not.toContain('清理本站代理 Cookie');
-    expect(card.textContent).not.toContain('关闭内置浏览器');
+    expect(card.textContent).not.toContain('关闭网页预览');
 
-    click([...card.querySelectorAll('button')].find((node) => node.textContent === '关于内置浏览器'));
+    click([...card.querySelectorAll('button')].find((node) => node.textContent === '关于网页预览'));
     const about = document.querySelector('.browser-profile-confirm');
+    expect(about.textContent).toContain('不是完整浏览器');
     expect(about.textContent).toContain('手机直连');
     expect(about.textContent).toContain('经电脑代理');
     expect(about.textContent).toContain('按当前设备隔离');
@@ -780,7 +789,7 @@ describe('BrowserSheet', () => {
       proxyLoginRetentionDays: null,
     });
     await render(model);
-    click(document.querySelector('button[aria-label="浏览器菜单"]'));
+    click(document.querySelector('button[aria-label="网页预览菜单"]'));
     click(document.querySelector('.browser-profile-persist input'));
 
     expect(model.setProxyLoginPolicy).toHaveBeenCalledWith({ persist: false, retentionDays: null });
@@ -790,7 +799,7 @@ describe('BrowserSheet', () => {
   it('lets a new page choose its connection mode before opening the address', async () => {
     const model = browser({ historyActive: true });
     await render(model);
-    click(document.querySelector('button[aria-label="浏览器菜单"]'));
+    click(document.querySelector('button[aria-label="网页预览菜单"]'));
 
     const modeButtons = [...document.querySelectorAll('.browser-mode-segment button')];
     expect(modeButtons.map((node) => node.disabled)).toEqual([false, false]);

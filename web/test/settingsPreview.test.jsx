@@ -31,7 +31,7 @@ describe('Settings preview section', () => {
       clearProxyLogin: vi.fn(),
     };
     await render({ browser });
-    expect(container.textContent).not.toContain('启用内置浏览器');
+    expect(container.textContent).not.toContain('网页预览');
     expect(container.textContent).not.toContain('网页默认打开方式');
     expect(container.textContent).not.toContain('持久保留代理登录状态');
     expect(container.textContent).not.toContain('清理全部代理登录状态');

@@ -53,9 +53,9 @@ describe('catalog parity', () => {
     expect(missing).toEqual([]);
   });
 
-  it('names and explains the built-in browser domain consistently in setup', () => {
-    expect(zh['setup.secBrowser']).toBe('内置浏览器');
-    expect(zh['setup.askBrowserDomain']).toContain('内置浏览器预览域名');
+  it('names and explains the web preview proxy domain consistently in setup', () => {
+    expect(zh['setup.secBrowser']).toBe('网页预览');
+    expect(zh['setup.askBrowserDomain']).toContain('网页预览代理域名');
     expect(zh['setup.browserAbout']).toContain('留空则仅使用手机直连');
     expect(zh['setup.browserOff']).toContain('手机直连');
     for (const dict of [en, zh]) {

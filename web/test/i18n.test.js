@@ -93,6 +93,19 @@ describe('browser dual-mode copy', () => {
     expect(dict['browser.consentIdle']).not.toContain(destroyedWord);
     expect(dict['browser.proxyLimitHint']).toBeTruthy();
     expect(dict['browser.proxyUnavailable']).toContain('handmux setup');
+    expect(dict['browser.openExternal']).toBeTruthy();
+  });
+
+  it.each([
+    ['en', en, 'Web preview', 'not a full browser'],
+    ['zh', zh, '网页预览', '不是完整浏览器'],
+    ['zh-TW', zhTW, '網頁預覽', '不是完整瀏覽器'],
+    ['ja', ja, 'ウェブプレビュー', '完全なブラウザではありません'],
+    ['ko', ko, '웹 미리보기', '완전한 브라우저가 아닙니다'],
+  ])('%s positions the feature as web preview', (_code, dict, featureName, boundary) => {
+    expect(dict['app.browser']).toBe(featureName);
+    expect(dict['browser.consentTitle']).toContain(boundary);
+    expect(dict['browser.openExternal']).toBeTruthy();
   });
 
   it.each([
