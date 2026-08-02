@@ -11,6 +11,26 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.21.0',
+    date: '2026-08-03',
+    highlight: {
+      zh: '网页预览：手机直连、电脑代理与静态目录',
+      en: 'Web preview: direct, computer proxy, and static folders',
+    },
+    items: {
+      zh: [
+        '新增常驻网页预览器：可由手机直连开发服务、localhost、内网和允许嵌入的网站，也可在配置 previewDomain 后经电脑代理访问；静态目录预览也已融合到同一界面。',
+        '网址和静态目录现在使用统一的持久标签与最近访问；切换标签会保留页面、滚动和表单状态，支持手机/电脑视图、网页缩放、刷新、停止及用系统浏览器打开。',
+        '电脑代理支持按设备隔离的 Cookie Profile，可在相关企业系统间复用 SSO Cookie，并可选择加密持久化、按网站清理或全部清理。',
+      ],
+      en: [
+        'Added a persistent Web Preview for direct phone access to development services, localhost, intranet pages, and sites that allow embedding, plus computer proxy access after previewDomain is configured; static folders now share the same interface.',
+        'URL and static-folder previews now use unified persistent tabs and recent history; switching tabs preserves page, scroll, and form state, with mobile/desktop views, page zoom, refresh, stop, and Open in system browser.',
+        'Computer proxy mode supports a device-isolated Cookie Profile that can reuse SSO cookies across related enterprise systems, with optional encrypted persistence and per-site or full cleanup.',
+      ],
+    },
+  },
+  {
     version: '0.20.3',
     date: '2026-08-01',
     highlight: {
