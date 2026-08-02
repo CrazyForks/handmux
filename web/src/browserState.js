@@ -71,6 +71,16 @@ export function setProxyLoginRetentionDays(value) {
 }
 
 function sanitizedHistoryEntry(entry) {
+  if (entry?.kind === 'static') {
+    const dir = String(entry.dir || '');
+    if (!dir.startsWith('/') || dir.includes('\0') || dir.length > 4096) return null;
+    return {
+      kind: 'static',
+      dir,
+      title: String(entry.title || ''),
+      visitedAt: Number.isFinite(Number(entry.visitedAt)) ? Number(entry.visitedAt) : Date.now(),
+    };
+  }
   try {
     const url = new URL(String(entry?.url || ''));
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
@@ -120,7 +130,10 @@ export function upsertBrowserHistory(entry) {
   const clean = sanitizedHistoryEntry(entry);
   if (!clean) return;
   const remaining = readBrowserHistory().filter((item) => (
-    item.url !== clean.url && (!clean.sessionId || item.sessionId !== clean.sessionId)
+    clean.kind === 'static'
+      ? item.kind !== 'static' || item.dir !== clean.dir
+      : item.kind === 'static'
+        || (item.url !== clean.url && (!clean.sessionId || item.sessionId !== clean.sessionId))
   ));
   localStorage.setItem(HISTORY_KEY, JSON.stringify([clean, ...remaining].slice(0, HISTORY_LIMIT)));
 }
@@ -129,7 +142,9 @@ export function deleteBrowserHistoryEntry(entry) {
   const target = sanitizedHistoryEntry(entry);
   if (!target) return;
   const remaining = readBrowserHistory().filter((item) => (
-    item.url !== target.url || item.visitedAt !== target.visitedAt
+    target.kind === 'static'
+      ? item.kind !== 'static' || item.dir !== target.dir || item.visitedAt !== target.visitedAt
+      : item.kind === 'static' || item.url !== target.url || item.visitedAt !== target.visitedAt
   ));
   localStorage.setItem(HISTORY_KEY, JSON.stringify(remaining));
 }

@@ -38,6 +38,7 @@ const browser = (overrides = {}) => ({
   setProxyLoginRetentionDays: vi.fn(),
   setProxyLoginPolicy: vi.fn(),
   setHistoryMode: vi.fn(),
+  recordStaticHistory: vi.fn(),
   clearProxyLogin: vi.fn(),
   deleteHistory: vi.fn(),
   navigateTab: vi.fn(),
@@ -273,6 +274,28 @@ describe('BrowserSheet', () => {
     expect(recent.querySelector('.browser-tab-close')).toBeNull();
   });
 
+  it('shows Close only on the active tab and turns inactive close hit areas into tab selection', async () => {
+    const staticTab = {
+      name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'ready',
+      url: '/preview/main-3/?token=x',
+    };
+    const model = browser();
+    const preview = staticPreview({ tabs: [staticTab] });
+    await render(model, preview);
+
+    expect(document.querySelector('button[aria-label="关闭 Alpha"]')).not.toBeNull();
+    expect(document.querySelector('button[aria-label="关闭 Beta"]')).toBeNull();
+    const inactiveTails = [...document.querySelectorAll('.browser-tab-close.select-only')];
+    expect(inactiveTails).toHaveLength(2);
+    expect(inactiveTails.every((node) => node.querySelector('svg') === null)).toBe(true);
+
+    click(inactiveTails[0]);
+    expect(model.switchTab).toHaveBeenCalledWith('b');
+    click(inactiveTails[1]);
+    expect(model.switchTab).toHaveBeenLastCalledWith('history');
+    expect(preview.switchTab).toHaveBeenCalledWith('main-3');
+  });
+
   it('keeps direct, proxy, and static tabs compact with synchronized accent bars and no leading dots', async () => {
     const staticTab = {
       name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'ready',
@@ -410,6 +433,31 @@ describe('BrowserSheet', () => {
     click([...document.querySelectorAll('.browser-history-mode-option')].find((node) => node.textContent === '经电脑代理'));
     expect(model.openUrl).toHaveBeenLastCalledWith('https://old.example/', { mode: 'proxy' });
     expect(model.setHistoryMode).toHaveBeenCalledWith(model.history[0], 'proxy');
+  });
+
+  it('records ready static previews and reopens their directories from history without web mode choices', async () => {
+    const staticTab = {
+      name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'ready',
+      url: '/preview/main-3/?token=secret',
+    };
+    const model = browser({ historyActive: true, activeId: null });
+    const selectedPreview = staticPreview({ selected: true, shownPreview: staticTab, tabs: [staticTab] });
+    await render(model, selectedPreview);
+    expect(model.recordStaticHistory).toHaveBeenCalledWith({ dir: '/home/u/site', title: 'site' });
+
+    const entry = { kind: 'static', dir: '/home/u/site', title: 'site', visitedAt: 123 };
+    const historyModel = browser({ historyActive: true, activeId: null, history: [entry] });
+    const preview = staticPreview();
+    await render(historyModel, preview);
+    expect(document.querySelector('.browser-history-mode.static').textContent).toBe('静态');
+    expect(document.querySelector('.browser-history-url').textContent).toBe('/home/u/site');
+    click(document.querySelector('.browser-history-main'));
+    expect(preview.startPreview).toHaveBeenCalledWith('/home/u/site');
+    expect(historyModel.openUrl).not.toHaveBeenCalled();
+
+    click(document.querySelector('.browser-history-more'));
+    const menu = document.querySelector('.browser-history-mode-menu');
+    expect(menu.textContent).toBe('删除此记录');
   });
 
   it('shows each history mode inline and keeps Cookie cleanup out of history-row menus', async () => {

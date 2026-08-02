@@ -1396,6 +1396,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-history-url { color: #788797; font: 11px ui-monospace, "SF Mono", Menlo, monospace; }
 .browser-history-mode { flex: none; padding: 2px 6px; border-radius: 999px; color: #9ba7b3; background: #252c34; font: 10px/1.2 system-ui, sans-serif; }
 .browser-history-mode.proxy { color: #f2a450; background: rgba(242,164,80,.12); }
+.browser-history-mode.static { color: #71df91; background: rgba(var(--green-rgb),.12); }
 .browser-history-mode-menu {
   position: absolute; right: 8px; top: 50px; z-index: 4; width: min(260px, calc(100vw - 44px));
   display: flex; flex-direction: column; gap: 2px; padding: 6px;

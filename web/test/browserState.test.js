@@ -136,6 +136,31 @@ describe('device-local browser history', () => {
     }]);
   });
 
+  it('stores static history by directory without retaining preview URLs or tokens', () => {
+    upsertBrowserHistory({
+      kind: 'static', dir: '/home/u/site', title: 'site', visitedAt: 123,
+      url: '/preview/main-3/?token=secret', token: 'secret',
+    });
+    upsertBrowserHistory({
+      kind: 'static', dir: '/home/u/site', title: 'site', visitedAt: 124,
+      url: '/preview/main-3/?token=new-secret',
+    });
+
+    expect(readBrowserHistory()).toEqual([{
+      kind: 'static', dir: '/home/u/site', title: 'site', visitedAt: 124,
+    }]);
+  });
+
+  it('keeps web and static history identities separate and deletes one static visit exactly', () => {
+    addBrowserHistory({ url: 'https://example.com/', title: 'Web', visitedAt: 122 });
+    addBrowserHistory({ kind: 'static', dir: '/home/u/site', title: 'site', visitedAt: 123 });
+    const [staticEntry, webEntry] = readBrowserHistory();
+
+    deleteBrowserHistoryEntry(staticEntry);
+
+    expect(readBrowserHistory()).toEqual([webEntry]);
+  });
+
   it('keeps the newest 200 records and can clear them', () => {
     for (let i = 0; i < 205; i += 1) {
       addBrowserHistory({ url: `https://example.com/${i}`, title: `Page ${i}`, visitedAt: i });

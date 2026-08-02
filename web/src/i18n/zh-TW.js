@@ -91,6 +91,7 @@ export default {
   'browser.siteCookieHelp': '這裡只會清理目前裝置中符合本站真實網址的代理 Cookie。父網域 Cookie 可能讓相關內部網站一起登出，手機直接連線 Cookie 不受影響。',
   'browser.openMode': '選擇開啟方式',
   'browser.historyMore': '更多開啟方式',
+  'browser.historyActions': '更多操作',
   'browser.proxyLimitHint': '電腦代理會轉送並改寫網頁，不保證與所有網站相容。',
   'browser.proxyUnavailable': '請在電腦終端執行 handmux setup，選擇「網頁預覽器」設定代理網域；設定前只能使用手機直連。',
   'browser.tryProxy': '改用電腦代理',

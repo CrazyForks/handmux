@@ -91,6 +91,7 @@ export default {
   'browser.siteCookieHelp': '현재 기기에서 사이트의 실제 URL과 일치하는 프록시 Cookie만 정리합니다. 상위 도메인 Cookie로 인해 관련 내부 사이트에서도 로그아웃될 수 있습니다. 직접 연결 Cookie는 영향을 받지 않습니다.',
   'browser.openMode': '열기 방식 선택',
   'browser.historyMore': '더 많은 열기 옵션',
+  'browser.historyActions': '추가 작업',
   'browser.proxyLimitHint': '컴퓨터 프록시는 페이지를 전달하고 다시 작성하므로 모든 사이트와의 호환성을 보장하지 않습니다.',
   'browser.proxyUnavailable': '컴퓨터 터미널에서 handmux setup을 실행하고 “웹 미리보기”에서 프록시 도메인을 설정하세요. 설정 전에는 휴대폰 직접 연결만 사용할 수 있습니다.',
   'browser.tryProxy': '컴퓨터 프록시 사용',

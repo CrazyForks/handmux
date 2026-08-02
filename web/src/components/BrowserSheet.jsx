@@ -39,7 +39,7 @@ export default function BrowserSheet({ browser, staticPreview }) {
     openUrl, switchTab, closeTab, setOpen, setCloseAfter,
     navigateTab, ensureBinding, recoverBinding, markBindingReady, updateTabMeta,
     clearHistory, setHistoryMode, enableAccess, cancelAccess,
-    setProxyLoginPolicy,
+    setProxyLoginPolicy, recordStaticHistory,
     clearProxyLogin, deleteHistory,
   } = browser;
   const webActive = tabs.find((tab) => tab.id === activeId) || null;
@@ -106,6 +106,11 @@ export default function BrowserSheet({ browser, staticPreview }) {
     if (!staticSelected || !staticActive) return;
     setMountedStaticTabs((current) => new Set(current).add(staticActive.name));
   }, [staticActive?.name, staticSelected]);
+
+  useEffect(() => {
+    if (!staticSelected || staticActive?.status !== 'ready') return;
+    recordStaticHistory?.({ dir: staticActive.dir, title: staticTabLabel(staticActive) });
+  }, [recordStaticHistory, staticActive?.dir, staticActive?.name, staticActive?.status, staticSelected]);
 
   useLayoutEffect(() => {
     if (!open || homeActive || (!activeId && !staticActive?.name)) return;
@@ -345,6 +350,11 @@ export default function BrowserSheet({ browser, staticPreview }) {
 
   const openHistory = (entry, mode = entry.lastMode || 'direct', persistMode = false) => {
     setHistoryModeOpen(null);
+    if (entry.kind === 'static') {
+      setHistoryError(null);
+      void staticPreview?.startPreview(entry.dir);
+      return;
+    }
     if (mode === 'proxy' && !proxyAvailable) {
       setHistoryError(t('browser.proxyUnavailable'));
       return;
@@ -478,8 +488,13 @@ export default function BrowserSheet({ browser, staticPreview }) {
                   onClick={() => selectTab(tab)}>
                   <span className="browser-tab-label">{label}</span>
                 </button>
-                <button className="browser-tab-close" aria-label={t('browser.closeTab', { title: label })}
-                  onClick={() => closeTab(tab.id)}><XIcon /></button>
+                {selected ? (
+                  <button className="browser-tab-close" aria-label={t('browser.closeTab', { title: label })}
+                    onClick={() => closeTab(tab.id)}><XIcon /></button>
+                ) : (
+                  <span className="browser-tab-close select-only" aria-hidden="true"
+                    onClick={() => selectTab(tab)} />
+                )}
               </span>
             );
           })}
@@ -493,8 +508,13 @@ export default function BrowserSheet({ browser, staticPreview }) {
                   onClick={() => selectStaticTab(tab)}>
                   <span className="browser-tab-label">{label}</span>
                 </button>
-                <button className="browser-tab-close" aria-label={t('browser.closeTab', { title: label })}
-                  onClick={() => { void staticPreview.closeTab(tab.name); }}><XIcon /></button>
+                {selected ? (
+                  <button className="browser-tab-close" aria-label={t('browser.closeTab', { title: label })}
+                    onClick={() => { void staticPreview.closeTab(tab.name); }}><XIcon /></button>
+                ) : (
+                  <span className="browser-tab-close select-only" aria-hidden="true"
+                    onClick={() => selectStaticTab(tab)} />
+                )}
               </span>
             );
           })}
@@ -679,30 +699,39 @@ export default function BrowserSheet({ browser, staticPreview }) {
           {history.length === 0 ? <p className="browser-empty">{t('browser.emptyHistory')}</p> : (
             <div className="browser-history-list">
               {history.map((entry, index) => {
-                const key = `${entry.visitedAt}-${entry.url}-${index}`;
+                const staticEntry = entry.kind === 'static';
+                const key = `${entry.visitedAt}-${staticEntry ? entry.dir : entry.url}-${index}`;
                 return (
                   <div className="browser-history-row" key={key}>
                     <button className="browser-history-main" onClick={() => openHistory(entry)}>
-                      <strong>{entry.title || entry.url}</strong>
+                      <strong>{entry.title || (staticEntry ? entry.dir : entry.url)}</strong>
                       <span className="browser-history-meta">
-                        <span className={`browser-history-mode ${entry.lastMode || 'direct'}`}>
-                          {t(entry.lastMode === 'proxy' ? 'browser.proxyBadge' : 'browser.directBadge')}
+                        <span className={`browser-history-mode ${staticEntry ? 'static' : (entry.lastMode || 'direct')}`}>
+                          {t(staticEntry
+                            ? 'browser.staticBadge'
+                            : entry.lastMode === 'proxy' ? 'browser.proxyBadge' : 'browser.directBadge')}
                         </span>
-                        <span className="browser-history-url">{entry.url}</span>
+                        <span className="browser-history-url">{staticEntry ? entry.dir : entry.url}</span>
                       </span>
                     </button>
-                    <button className="browser-history-more" aria-label={t('browser.historyMore')}
+                    <button className="browser-history-more"
+                      aria-label={t(staticEntry ? 'browser.historyActions' : 'browser.historyMore')}
                       aria-expanded={historyModeOpen === key}
                       onClick={() => setHistoryModeOpen((value) => value === key ? null : key)}>…</button>
                     {historyModeOpen === key && (
-                      <div className="browser-history-mode-menu" role="dialog" aria-label={t('browser.openMode')}>
-                        <button className="browser-history-mode-option" onClick={() => openHistory(entry, 'direct', true)}>{t('browser.directMode')}</button>
-                        <button className="browser-history-mode-option proxy" disabled={!proxyAvailable}
-                          aria-describedby={!proxyAvailable ? `browser-history-proxy-unavailable-${index}` : undefined}
-                          onClick={() => openHistory(entry, 'proxy', true)}>{t('browser.proxyMode')}</button>
+                      <div className="browser-history-mode-menu" role="dialog"
+                        aria-label={t(staticEntry ? 'browser.historyActions' : 'browser.openMode')}>
+                        {!staticEntry && (
+                          <>
+                            <button className="browser-history-mode-option" onClick={() => openHistory(entry, 'direct', true)}>{t('browser.directMode')}</button>
+                            <button className="browser-history-mode-option proxy" disabled={!proxyAvailable}
+                              aria-describedby={!proxyAvailable ? `browser-history-proxy-unavailable-${index}` : undefined}
+                              onClick={() => openHistory(entry, 'proxy', true)}>{t('browser.proxyMode')}</button>
+                          </>
+                        )}
                         <button className="browser-history-mode-option danger"
                           onClick={() => removeHistory(entry)}>{t('browser.deleteHistoryEntry')}</button>
-                        {!proxyAvailable && <p id={`browser-history-proxy-unavailable-${index}`}>{t('browser.proxyUnavailable')}</p>}
+                        {!staticEntry && !proxyAvailable && <p id={`browser-history-proxy-unavailable-${index}`}>{t('browser.proxyUnavailable')}</p>}
                       </div>
                     )}
                   </div>

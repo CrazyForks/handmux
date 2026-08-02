@@ -528,10 +528,20 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     return saved;
   }, []);
   const setHistoryMode = useCallback((entry, mode) => {
+    if (entry?.kind === 'static') return null;
     upsertBrowserHistory({ ...entry, lastMode: mode });
     const next = readBrowserHistory();
     setHistory(next);
     return next.find((item) => item.url === entry?.url) || null;
+  }, []);
+  const recordStaticHistory = useCallback((entry) => {
+    upsertBrowserHistory({
+      kind: 'static',
+      dir: entry?.dir,
+      title: entry?.title,
+      visitedAt: Date.now(),
+    });
+    setHistory(readBrowserHistory());
   }, []);
 
   const saveProfilePrefs = useCallback(async (change) => {
@@ -576,7 +586,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     setPersistProxyLogin: (value) => saveProfilePrefs({ persist: !!value }),
     setProxyLoginRetentionDays: (value) => saveProfilePrefs({ retentionDays: value }),
     setProxyLoginPolicy: ({ persist, retentionDays }) => saveProfilePrefs({ persist, retentionDays }),
-    clearProxyLogin, setHistoryMode, navigateTab, ensureBinding, recoverBinding,
+    clearProxyLogin, setHistoryMode, recordStaticHistory, navigateTab, ensureBinding, recoverBinding,
     markBindingReady, updateTabMeta,
     deleteHistory: (entry) => { deleteBrowserHistoryEntry(entry); setHistory(readBrowserHistory()); },
     clearHistory: () => { clearBrowserHistory(); setHistory([]); },

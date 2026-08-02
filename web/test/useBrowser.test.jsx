@@ -56,6 +56,17 @@ describe('useBrowser device ownership', () => {
     return hook;
   };
 
+  it('publishes static directory visits into the shared device-local history', () => {
+    const { result } = renderHook(() => useBrowser());
+
+    act(() => result.current.recordStaticHistory({ dir: '/home/u/site', title: 'site' }));
+
+    expect(result.current.history[0]).toMatchObject({
+      kind: 'static', dir: '/home/u/site', title: 'site',
+    });
+    expect(readBrowserHistory()[0]).not.toHaveProperty('url');
+  });
+
   it('waits for worker readiness before restoring profile then lease', async () => {
     vi.useFakeTimers();
     try {

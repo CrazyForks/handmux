@@ -86,6 +86,7 @@ export default {
   'browser.siteCookieHelp': '这里只清理当前设备中与本站真实网址匹配的代理 Cookie。父域 Cookie 可能让相关内网站点一起退出，手机直连 Cookie 不受影响。',
   'browser.openMode': '选择打开方式',
   'browser.historyMore': '更多打开方式',
+  'browser.historyActions': '更多操作',
   'browser.proxyLimitHint': '电脑代理会转发并改写网页，不保证兼容所有网站。',
   'browser.proxyUnavailable': '请在电脑终端运行 handmux setup，选择“网页预览器”配置代理域名；配置前只能使用手机直连。',
   'browser.tryProxy': '改用电脑代理',

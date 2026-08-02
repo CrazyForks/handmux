@@ -87,6 +87,7 @@ export default {
   'browser.siteCookieHelp': 'This clears only proxy Cookies on this device that match the site’s real URL. Parent-domain Cookies may sign you out of related internal sites. Direct-site Cookies are unaffected.',
   'browser.openMode': 'Choose how to open',
   'browser.historyMore': 'More opening options',
+  'browser.historyActions': 'More actions',
   'browser.proxyLimitHint': 'Computer proxy mode forwards and rewrites pages and may not work with every website.',
   'browser.proxyUnavailable': 'Run handmux setup on the computer and choose “Web preview” to configure its proxy domain. Until then, only Direct mode is available.',
   'browser.tryProxy': 'Try computer proxy',

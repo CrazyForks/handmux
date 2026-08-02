@@ -91,6 +91,7 @@ export default {
   'browser.siteCookieHelp': 'この端末でサイトの実 URL に一致するプロキシ Cookie のみを消去します。親ドメイン Cookie により関連する社内サイトからもログアウトする場合があります。直接接続の Cookie には影響しません。',
   'browser.openMode': '開き方を選択',
   'browser.historyMore': 'その他の開き方',
+  'browser.historyActions': 'その他の操作',
   'browser.proxyLimitHint': 'PC プロキシはページを転送・書き換えるため、すべてのサイトとの互換性は保証しません。',
   'browser.proxyUnavailable': 'パソコンのターミナルで handmux setup を実行し、「ウェブプレビュー」でプロキシドメインを設定してください。設定するまではスマホからの直接接続のみ利用できます。',
   'browser.tryProxy': 'PC プロキシを試す',
