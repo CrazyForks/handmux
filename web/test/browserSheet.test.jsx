@@ -69,11 +69,6 @@ const clickAndFlush = (node) => act(async () => {
   node.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   await Promise.resolve();
 });
-const pointer = (node, type, pointerId, clientX, clientY) => act(() => {
-  const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX, clientY });
-  Object.defineProperty(event, 'pointerId', { value: pointerId });
-  node.dispatchEvent(event);
-});
 const submit = (form) => act(() => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
 const setInput = (input, value) => act(() => {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
@@ -82,7 +77,7 @@ const setInput = (input, value) => act(() => {
 });
 
 describe('BrowserSheet', () => {
-  it('pinch-zooms only the webpage while browser chrome stays fixed', async () => {
+  it('keeps fine-grained page zoom controls in the menu without blocking webpage interaction', async () => {
     const viewport = document.createElement('meta');
     viewport.name = 'viewport';
     viewport.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
@@ -90,27 +85,41 @@ describe('BrowserSheet', () => {
     try {
       await render(browser());
       click(document.querySelector('button[aria-label="浏览器菜单"]'));
-      click([...document.querySelectorAll('.browser-options-card button')]
-        .find((node) => node.textContent.includes('缩放网页')));
-
-      const layer = document.querySelector('.browser-zoom-layer');
-      const content = document.querySelector('.browser-content');
+      const stepper = document.querySelector('.browser-zoom-stepper');
       const scaler = document.querySelector('.browser-pane:not([hidden]) .browser-frame-scaler');
-      expect(layer.parentElement).toBe(content);
-      expect(document.querySelector('.browser-tabs').contains(layer)).toBe(false);
-      expect(document.querySelector('.browser-nav').contains(layer)).toBe(false);
+      const frame = document.querySelector('.browser-pane:not([hidden]) .browser-frame');
+      expect(stepper.parentElement.parentElement.textContent).toContain('缩放网页');
+      expect(document.querySelector('.browser-zoom-layer')).toBeNull();
 
-      pointer(layer, 'pointerdown', 1, 100, 100);
-      pointer(layer, 'pointerdown', 2, 200, 100);
-      pointer(layer, 'pointermove', 2, 300, 100);
-      expect(scaler.style.transform).toContain('scale(2)');
+      click(stepper.querySelector('button[aria-label="放大"]'));
+      expect(stepper.textContent).toContain('110%');
+      expect(frame.style.transform).toContain('scale(1.1)');
+      expect(frame.style.width).toBe('90.9091%');
+      expect(frame.hasAttribute('inert')).toBe(true); // loading alone owns inert; zoom never does
+      act(() => frame.dispatchEvent(new Event('load')));
+      expect(frame.hasAttribute('inert')).toBe(false);
       expect(document.querySelector('.browser-tabs').style.transform).toBe('');
       expect(document.querySelector('.browser-nav').style.transform).toBe('');
 
-      click([...document.querySelectorAll('.browser-zoom-pill button')]
-        .find((node) => node.textContent === '完成'));
-      expect(document.querySelector('.browser-zoom-layer')).toBeNull();
-      expect(scaler.style.transform).toContain('scale(2)');
+      click(stepper.querySelector('button[aria-label="放大"]'));
+      expect(stepper.textContent).toContain('125%');
+      click(stepper.querySelector('button[aria-label="重置网页缩放"]'));
+      expect(stepper.textContent).toContain('100%');
+      expect(scaler.style.transform).toBe('');
+
+      const zoomOut = stepper.querySelector('button[aria-label="缩小"]');
+      const zoomIn = stepper.querySelector('button[aria-label="放大"]');
+      for (const value of [90, 80, 75]) {
+        click(zoomOut);
+        expect(stepper.textContent).toContain(`${value}%`);
+      }
+      expect(zoomOut.disabled).toBe(true);
+      click(stepper.querySelector('button[aria-label="重置网页缩放"]'));
+      for (const value of [110, 125, 150, 175, 200]) {
+        click(zoomIn);
+        expect(stepper.textContent).toContain(`${value}%`);
+      }
+      expect(zoomIn.disabled).toBe(true);
       expect(viewport.content).toBe('width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
     } finally {
       viewport.remove();

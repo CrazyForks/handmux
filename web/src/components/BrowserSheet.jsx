@@ -14,15 +14,11 @@ import {
 } from './icons.jsx';
 import { BROWSER_CLOSE_AFTER_OPTIONS } from '../browserState.js';
 import { t } from '../i18n';
-import { useBackButton } from '../hooks/useBackButton.js';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap.js';
 
 // Temporary compatibility validation only: unsafe while proxied pages share the Handmux origin.
 const FRAME_SANDBOX = 'allow-scripts allow-forms allow-downloads allow-modals allow-popups allow-same-origin';
-const MAX_PAGE_ZOOM = 4;
-const DEFAULT_PAGE_ZOOM = { s: 1, x: 0, y: 0 };
-
-const pointerDistance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const PAGE_ZOOM_STEPS = [0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
 
 function tabLabel(tab) {
   if (tab.title) return tab.title;
@@ -57,8 +53,7 @@ export default function BrowserSheet({ browser }) {
   const [slowDirectId, setSlowDirectId] = useState(null);
   const [mountedTabs, setMountedTabs] = useState(() => new Set());
   const [unhealthyTabs, setUnhealthyTabs] = useState(() => new Set());
-  const [zoomMode, setZoomMode] = useState(false);
-  const [pageZoom, setPageZoom] = useState(DEFAULT_PAGE_ZOOM);
+  const [pageZoom, setPageZoom] = useState(1);
   const frames = useRef(new Map());
   const frameUrls = useRef(new Map());
   const refreshSequences = useRef(new Map());
@@ -67,18 +62,11 @@ export default function BrowserSheet({ browser }) {
   const activeTabRef = useRef(null);
   const addressRef = useRef(null);
   const bodyRef = useRef(null);
-  const activeScalerRef = useRef(null);
-  const pageZoomRef = useRef(pageZoom);
-  const zoomPointers = useRef(new Map());
-  const zoomPinch = useRef(null);
-  const zoomPan = useRef(null);
   const clearTriggerRef = useRef(null);
   const clearCancelRef = useRef(null);
   const clearDialogRef = useRef(null);
   activeIdRef.current = activeId;
   openRef.current = open;
-  pageZoomRef.current = pageZoom;
-  useBackButton(open && zoomMode, () => setZoomMode(false));
 
   useEffect(() => {
     setAddress(historyActive ? '' : (active?.originalUrl || ''));
@@ -95,17 +83,8 @@ export default function BrowserSheet({ browser }) {
   }, [activeId, historyActive, open]);
 
   useEffect(() => {
-    setZoomMode(false);
-    setPageZoom(DEFAULT_PAGE_ZOOM);
+    setPageZoom(1);
   }, [activeId, device, historyActive]);
-
-  useEffect(() => {
-    if (open && zoomMode && active && !historyActive) return;
-    zoomPointers.current.clear();
-    zoomPinch.current = null;
-    zoomPan.current = null;
-    if (!open) setZoomMode(false);
-  }, [active, historyActive, open, zoomMode]);
 
   useLayoutEffect(() => {
     if (!open || historyActive || !activeId) return;
@@ -335,87 +314,29 @@ export default function BrowserSheet({ browser }) {
     setCloseAfter(value);
     setTimeOpen(false);
   };
-  const applyPageZoom = (nextScale, nextX, nextY) => {
-    const s = Math.min(MAX_PAGE_ZOOM, Math.max(1, nextScale));
-    if (s <= 1) {
-      setPageZoom(DEFAULT_PAGE_ZOOM);
-      return;
-    }
-    const body = bodyRef.current;
-    const scaler = activeScalerRef.current;
-    if (!body || !scaler) {
-      setPageZoom({ s, x: nextX, y: nextY });
-      return;
-    }
-    const overflowX = Math.max(0, (scaler.offsetWidth * s - body.clientWidth) / 2);
-    const overflowY = Math.max(0, (scaler.offsetHeight * s - body.clientHeight) / 2);
-    setPageZoom({
-      s,
-      x: Math.min(overflowX, Math.max(-overflowX, nextX)),
-      y: Math.min(overflowY, Math.max(-overflowY, nextY)),
-    });
-  };
-  const zoomPageBy = (factor) => {
-    const view = pageZoomRef.current;
-    applyPageZoom(view.s * factor, view.x, view.y);
-  };
-  const startPageZoom = () => {
-    setOptionsOpen(false);
-    setTimeOpen(false);
-    setZoomMode(true);
-  };
-  const onZoomPointerDown = (event) => {
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    zoomPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (zoomPointers.current.size === 2) {
-      const [a, b] = [...zoomPointers.current.values()];
-      zoomPinch.current = {
-        distance: pointerDistance(a, b) || 1,
-        scale: pageZoomRef.current.s,
-      };
-      zoomPan.current = null;
-    } else if (zoomPointers.current.size === 1) {
-      zoomPan.current = { x: event.clientX, y: event.clientY };
-    }
-  };
-  const onZoomPointerMove = (event) => {
-    if (!zoomPointers.current.has(event.pointerId)) return;
-    zoomPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (zoomPointers.current.size >= 2 && zoomPinch.current) {
-      const [a, b] = [...zoomPointers.current.values()];
-      const view = pageZoomRef.current;
-      applyPageZoom(
-        zoomPinch.current.scale * (pointerDistance(a, b) / zoomPinch.current.distance),
-        view.x,
-        view.y,
-      );
-      return;
-    }
-    if (!zoomPan.current || pageZoomRef.current.s <= 1) return;
-    const dx = event.clientX - zoomPan.current.x;
-    const dy = event.clientY - zoomPan.current.y;
-    zoomPan.current = { x: event.clientX, y: event.clientY };
-    const view = pageZoomRef.current;
-    applyPageZoom(view.s, view.x + dx, view.y + dy);
-  };
-  const endZoomPointer = (event) => {
-    zoomPointers.current.delete(event.pointerId);
-    if (zoomPointers.current.size === 1) {
-      const [point] = [...zoomPointers.current.values()];
-      zoomPinch.current = null;
-      zoomPan.current = point;
-    } else if (zoomPointers.current.size === 0) {
-      zoomPinch.current = null;
-      zoomPan.current = null;
-    }
-  };
+  const zoomPageBy = (direction) => setPageZoom((current) => {
+    if (direction > 0) return PAGE_ZOOM_STEPS.find((value) => value > current) || current;
+    return [...PAGE_ZOOM_STEPS].reverse().find((value) => value < current) || current;
+  });
   const desktopScale = device === 'desktop' && bodySize.width > 0 ? bodySize.width / 1280 : 1;
   const scalerStyle = device === 'desktop' && bodySize.height > 0
     ? { width: `${1280 * desktopScale}px`, height: `${bodySize.height}px` }
     : undefined;
-  const frameStyle = device === 'desktop' && bodySize.height > 0
-    ? { width: '1280px', height: `${bodySize.height / desktopScale}px`, transform: `scale(${desktopScale})`, transformOrigin: '0 0' }
-    : undefined;
+  const frameStyleFor = (zoom) => {
+    if (device === 'desktop' && bodySize.height <= 0) return undefined;
+    if (device === 'desktop') return {
+      width: `${1280 / zoom}px`,
+      height: `${bodySize.height / (desktopScale * zoom)}px`,
+      transform: `scale(${desktopScale * zoom})`,
+      transformOrigin: '0 0',
+    };
+    return {
+      width: `${(100 / zoom).toFixed(4)}%`,
+      height: `${(100 / zoom).toFixed(4)}%`,
+      transform: zoom === 1 ? undefined : `scale(${zoom})`,
+      transformOrigin: '0 0',
+    };
+  };
   const activeLoading = !!active && (!loadedTabs.has(active.id)
     || frameUrls.current.get(active.id) !== active.url || refreshingTabs.has(active.id));
 
@@ -530,10 +451,18 @@ export default function BrowserSheet({ browser }) {
 
               {active && !historyActive && (
                 <div className="browser-options-section">
-                  <button className="browser-options-action browser-zoom-trigger" onClick={startPageZoom}>
+                  <div className="browser-options-row browser-zoom-row">
                     <strong>{t('browser.zoomPage')}</strong>
-                    <span>{Math.round(pageZoom.s * 100)}%</span>
-                  </button>
+                    <div className="browser-zoom-stepper" role="group" aria-label={t('browser.zoomPage')}>
+                      <button onClick={() => zoomPageBy(-1)} disabled={pageZoom <= PAGE_ZOOM_STEPS[0]}
+                        aria-label={t('preview.zoomOut')}>−</button>
+                      <button className="browser-zoom-value" onClick={() => setPageZoom(1)}
+                        aria-label={t('browser.resetZoom')}>{Math.round(pageZoom * 100)}%</button>
+                      <button onClick={() => zoomPageBy(1)}
+                        disabled={pageZoom >= PAGE_ZOOM_STEPS[PAGE_ZOOM_STEPS.length - 1]}
+                        aria-label={t('preview.zoomIn')}>＋</button>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -663,10 +592,7 @@ export default function BrowserSheet({ browser }) {
           const loading = selected && (!loadedTabs.has(tab.id) || frameUrls.current.get(tab.id) !== tab.url || refreshingTabs.has(tab.id));
           return (
           <div key={tab.id} className={`browser-pane ${tab.mode}`} hidden={!selected}>
-            <div ref={selected ? activeScalerRef : undefined} className="browser-frame-scaler" style={selected ? {
-              ...scalerStyle,
-              transform: `translate(${pageZoom.x}px, ${pageZoom.y}px) scale(${pageZoom.s})`,
-            } : scalerStyle}>
+            <div className="browser-frame-scaler" style={scalerStyle}>
               <iframe key={`${tab.id}-${reloadKeys[tab.id] || 0}`}
                 ref={(node) => { if (node) frames.current.set(tab.id, node); else frames.current.delete(tab.id); }}
                 data-tab-id={tab.id}
@@ -674,8 +600,8 @@ export default function BrowserSheet({ browser }) {
                 title={tabLabel(tab)}
                 src={tab.url}
                 sandbox={FRAME_SANDBOX}
-                inert={loading || (selected && zoomMode) ? '' : undefined}
-                style={frameStyle}
+                inert={loading ? '' : undefined}
+                style={frameStyleFor(selected ? pageZoom : 1)}
                 onLoad={() => frameLoaded(tab)}
                 onError={() => {
                   if (tab.mode !== 'proxy') return;
@@ -695,24 +621,6 @@ export default function BrowserSheet({ browser }) {
           </div>
           );
         })}
-        {open && zoomMode && active && !historyActive && (
-          <div className="browser-zoom-layer"
-            onPointerDown={onZoomPointerDown}
-            onPointerMove={onZoomPointerMove}
-            onPointerUp={endZoomPointer}
-            onPointerCancel={endZoomPointer}>
-            <div className="browser-zoom-pill" onPointerDown={(event) => event.stopPropagation()}>
-              <button onClick={() => zoomPageBy(1 / 1.5)} disabled={pageZoom.s <= 1}
-                aria-label={t('preview.zoomOut')}>−</button>
-              <button className="browser-zoom-value" onClick={() => applyPageZoom(1, 0, 0)}
-                aria-label={t('browser.resetZoom')}>{Math.round(pageZoom.s * 100)}%</button>
-              <button onClick={() => zoomPageBy(1.5)} disabled={pageZoom.s >= MAX_PAGE_ZOOM}
-                aria-label={t('preview.zoomIn')}>＋</button>
-              <span className="browser-zoom-divider" aria-hidden="true" />
-              <button className="browser-zoom-done" onClick={() => setZoomMode(false)}>{t('common.done')}</button>
-            </div>
-          </div>
-        )}
         {(error || historyError) && (
           <div className="browser-error" role="alert">
             <span>{historyError || error?.message || t('browser.loadFailed')}</span>
