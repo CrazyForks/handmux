@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-08-03
+
 ### Added
 - 新增顶部常驻的网页预览器：可由手机直连开发服务、`localhost`、内网和允许嵌入的网站，也可在通过 `handmux setup` 配置 `previewDomain` 后选择经电脑代理访问；原静态目录预览也融合到同一界面。
 - 电脑代理新增按设备隔离的 Cookie Profile：相关企业系统可复用符合真实域规则的 SSO Cookie，并可选择加密持久化到电脑、按网站清理或全部清理；不同设备与手机直连始终隔离。
