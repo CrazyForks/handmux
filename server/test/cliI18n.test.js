@@ -54,8 +54,8 @@ describe('catalog parity', () => {
   });
 
   it('names and explains the web preview proxy domain consistently in setup', () => {
-    expect(zh['setup.secBrowser']).toBe('网页预览');
-    expect(zh['setup.askBrowserDomain']).toContain('网页预览代理域名');
+    expect(zh['setup.secBrowser']).toBe('网页预览器');
+    expect(zh['setup.askBrowserDomain']).toContain('网页预览器代理域名');
     expect(zh['setup.browserAbout']).toContain('留空则仅使用手机直连');
     expect(zh['setup.browserOff']).toContain('手机直连');
     for (const dict of [en, zh]) {

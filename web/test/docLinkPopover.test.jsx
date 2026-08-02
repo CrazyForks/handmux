@@ -23,7 +23,7 @@ describe('DocLinkPopover', () => {
     expect(buttons[0].disabled).toBe(false);
     expect(buttons[1].disabled).toBe(true);
     expect(container.textContent).toContain('handmux setup');
-    expect(container.textContent).toContain('网页预览');
+    expect(container.textContent).toContain('网页预览器');
     click(buttons[0]);
     expect(onOpen).toHaveBeenCalledWith('https://example.com', 'direct');
   });

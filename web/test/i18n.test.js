@@ -98,13 +98,13 @@ describe('browser dual-mode copy', () => {
 
   it.each([
     ['en', en, 'Web preview', 'not a full browser'],
-    ['zh', zh, '网页预览', '不是完整浏览器'],
-    ['zh-TW', zhTW, '網頁預覽', '不是完整瀏覽器'],
-    ['ja', ja, 'ウェブプレビュー', '完全なブラウザではありません'],
-    ['ko', ko, '웹 미리보기', '완전한 브라우저가 아닙니다'],
+    ['zh', zh, '网页预览器', '不是真正的浏览器'],
+    ['zh-TW', zhTW, '網頁預覽器', '不是真正的瀏覽器'],
+    ['ja', ja, 'ウェブプレビュー', '完全なブラウザではなく'],
+    ['ko', ko, '웹 미리보기', '완전한 브라우저가 아니며'],
   ])('%s positions the feature as web preview', (_code, dict, featureName, boundary) => {
     expect(dict['app.browser']).toBe(featureName);
-    expect(dict['browser.consentTitle']).toContain(boundary);
+    expect(dict['browser.consentBody']).toContain(boundary);
     expect(dict['browser.openExternal']).toBeTruthy();
   });
 
