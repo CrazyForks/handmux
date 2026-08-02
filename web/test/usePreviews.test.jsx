@@ -66,12 +66,15 @@ describe('usePreviews static tabs', () => {
   it('automatically restores an open static tab after remount', async () => {
     await act(async () => { await model.startPreview('/home/u/site'); });
     const name = model.tabs[0].name;
+    const createdAt = model.tabs[0].createdAt;
     api.createPreview.mockClear();
 
     await remount();
 
     expect(api.createPreview).toHaveBeenCalledWith(name, { dir: '/home/u/site' });
-    expect(model.tabs[0]).toMatchObject({ status: 'ready', url: `/preview/${name}/?token=token-${name}` });
+    expect(model.tabs[0]).toMatchObject({
+      status: 'ready', url: `/preview/${name}/?token=token-${name}`, createdAt,
+    });
   });
 
   it('foregrounds by ensuring the lease without a periodic heartbeat', async () => {

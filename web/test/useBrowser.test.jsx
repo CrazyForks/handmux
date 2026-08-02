@@ -323,6 +323,7 @@ describe('useBrowser device ownership', () => {
 
     expect(opened.originalUrl).toBe('https://example.com/');
     expect(opened.url).toBe('https://example.com/');
+    expect(opened.createdAt).toEqual(expect.any(Number));
     expect(api.acquireBrowserProxyLease).not.toHaveBeenCalled();
     expect(readBrowserTabs().tabs).toEqual([
       expect.objectContaining({ id: opened.id, mode: 'direct', originalUrl: 'https://example.com/' }),
@@ -331,7 +332,7 @@ describe('useBrowser device ownership', () => {
     first.unmount();
     const restored = renderHook(() => useBrowser({ browserProxy: true }));
     expect(restored.result.current.tabs[0]).toMatchObject({
-      id: opened.id, originalUrl: 'https://example.com/', url: 'https://example.com/',
+      id: opened.id, originalUrl: 'https://example.com/', url: 'https://example.com/', createdAt: opened.createdAt,
     });
   });
 

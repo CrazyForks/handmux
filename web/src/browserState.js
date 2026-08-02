@@ -156,12 +156,14 @@ export function clearBrowserHistory() {
 function persistedTab(tab) {
   const originalUrl = normalizeBrowserInput(tab?.originalUrl);
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(String(tab?.id || '')) || !originalUrl) return null;
+  const createdAt = Number(tab?.createdAt);
   return {
     id: String(tab.id),
     mode: tab.mode === 'proxy' ? 'proxy' : 'direct',
     originalUrl,
     title: String(tab.title || '').slice(0, 1024),
     deadline: Number.isFinite(tab.deadline) ? tab.deadline : null,
+    ...(Number.isFinite(createdAt) && createdAt > 0 ? { createdAt } : {}),
   };
 }
 

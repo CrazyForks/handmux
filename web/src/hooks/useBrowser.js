@@ -319,7 +319,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     }
     const id = localId();
     const created = runtimeTab({
-      id, mode, originalUrl: url, title: '', deadline: null,
+      id, mode, originalUrl: url, title: '', deadline: null, createdAt: Date.now(),
     });
     commitTabs((current) => [...current.map((tab) => (
       tab.id === activeRef.current && openRef.current && !historyRef.current ? hideTab(tab) : tab

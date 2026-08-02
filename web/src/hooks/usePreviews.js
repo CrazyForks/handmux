@@ -12,7 +12,14 @@ function readOpenTabs() {
     return value.filter((item) => (
       item && /^[A-Za-z0-9._-]+$/.test(String(item.name || ''))
       && typeof item.dir === 'string' && item.dir.startsWith('/')
-    )).map((item) => ({ name: String(item.name), dir: item.dir }));
+    )).map((item) => {
+      const createdAt = Number(item.createdAt);
+      return {
+        name: String(item.name),
+        dir: item.dir,
+        ...(Number.isFinite(createdAt) && createdAt > 0 ? { createdAt } : {}),
+      };
+    });
   } catch {
     return [];
   }
@@ -20,7 +27,11 @@ function readOpenTabs() {
 
 function writeOpenTabs(tabs) {
   try {
-    localStorage.setItem(STATIC_TABS_KEY, JSON.stringify(tabs.map(({ name, dir }) => ({ name, dir }))));
+    localStorage.setItem(STATIC_TABS_KEY, JSON.stringify(tabs.map(({ name, dir, createdAt }) => ({
+      name,
+      dir,
+      ...(Number.isFinite(createdAt) && createdAt > 0 ? { createdAt } : {}),
+    }))));
   } catch {
     // Keep the current in-memory tabs usable when device storage is unavailable.
   }
@@ -111,7 +122,8 @@ export function usePreviews(current) {
 
   const startPreview = useCallback(async (dir) => {
     if (!curPreviewName) return null;
-    const tab = { name: curPreviewName, dir };
+    const existing = openTabsRef.current.find((item) => item.name === curPreviewName);
+    const tab = { name: curPreviewName, dir, createdAt: existing?.createdAt || Date.now() };
     const created = await ensurePreview(tab, { allowDetached: true });
     if (!created) return null;
     setPreviewDir(current?.window?.id, dir);

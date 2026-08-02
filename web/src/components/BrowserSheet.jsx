@@ -32,6 +32,24 @@ function staticTabLabel(tab) {
   return tab.dir?.split('/').filter(Boolean).at(-1) || tab.name;
 }
 
+function orderedOpenTabs(webTabs, staticTabs) {
+  const entries = [
+    ...webTabs.map((tab) => ({ kind: 'web', tab })),
+    ...staticTabs.map((tab) => ({ kind: 'static', tab })),
+  ].map((entry, legacyIndex) => ({
+    ...entry,
+    legacyIndex,
+    createdAt: Number(entry.tab.createdAt),
+  }));
+  return entries.sort((left, right) => {
+    const leftOrdered = Number.isFinite(left.createdAt) && left.createdAt > 0;
+    const rightOrdered = Number.isFinite(right.createdAt) && right.createdAt > 0;
+    if (leftOrdered !== rightOrdered) return leftOrdered ? 1 : -1;
+    if (leftOrdered && left.createdAt !== right.createdAt) return left.createdAt - right.createdAt;
+    return left.legacyIndex - right.legacyIndex;
+  });
+}
+
 export default function BrowserSheet({ browser, staticPreview }) {
   const {
     open, accessEnabled, consentOpen, tabs, activeId, historyActive, closeAfter, history, error,
@@ -446,6 +464,7 @@ export default function BrowserSheet({ browser, staticPreview }) {
   const displayedError = historyError
     || (homeActive ? staticPreview?.error : null)
     || (!staticSelected ? error : null);
+  const tabStripEntries = orderedOpenTabs(tabs, staticPreview?.tabs || []);
 
   if (consentOpen) return createPortal(
     <div className="file-sheet browser-sheet open browser-consent" role="dialog" aria-modal="true" aria-label={t('browser.consentTitle')}>
@@ -478,27 +497,24 @@ export default function BrowserSheet({ browser, staticPreview }) {
           <HomeIcon />
         </button>
         <div className="browser-tabs-scroll">
-          {tabs.map((tab) => {
-            const selected = !staticSelected && !historyActive && tab.id === activeId;
-            const label = tabLabel(tab);
-            return (
-              <span ref={selected ? activeTabRef : null}
-                className={`browser-tab-wrap ${tab.mode} ${selected ? 'active' : ''}`} key={tab.id}>
-                <button className="browser-tab" role="tab" aria-selected={selected} title={tab.originalUrl}
-                  onClick={() => selectTab(tab)}>
-                  <span className="browser-tab-label">{label}</span>
-                </button>
-                {selected ? (
-                  <button className="browser-tab-close" aria-label={t('browser.closeTab', { title: label })}
-                    onClick={() => closeTab(tab.id)}><XIcon /></button>
-                ) : (
-                  <span className="browser-tab-close select-only" aria-hidden="true"
-                    onClick={() => selectTab(tab)} />
-                )}
-              </span>
-            );
-          })}
-          {(staticPreview?.tabs || []).map((tab) => {
+          {tabStripEntries.map(({ kind, tab }) => {
+            if (kind === 'web') {
+              const selected = !staticSelected && !historyActive && tab.id === activeId;
+              const label = tabLabel(tab);
+              return (
+                <span ref={selected ? activeTabRef : null}
+                  className={`browser-tab-wrap ${tab.mode} ${selected ? 'active' : ''}`} key={tab.id}>
+                  <button className="browser-tab" role="tab" aria-selected={selected} title={tab.originalUrl}
+                    onClick={() => selectTab(tab)}>
+                    <span className="browser-tab-label">{label}</span>
+                  </button>
+                  {selected && (
+                    <button className="browser-tab-close" aria-label={t('browser.closeTab', { title: label })}
+                      onClick={() => closeTab(tab.id)}><XIcon /></button>
+                  )}
+                </span>
+              );
+            }
             const selected = staticSelected && tab.name === staticActive?.name;
             const label = staticTabLabel(tab);
             return (
@@ -508,12 +524,9 @@ export default function BrowserSheet({ browser, staticPreview }) {
                   onClick={() => selectStaticTab(tab)}>
                   <span className="browser-tab-label">{label}</span>
                 </button>
-                {selected ? (
+                {selected && (
                   <button className="browser-tab-close" aria-label={t('browser.closeTab', { title: label })}
                     onClick={() => { void staticPreview.closeTab(tab.name); }}><XIcon /></button>
-                ) : (
-                  <span className="browser-tab-close select-only" aria-hidden="true"
-                    onClick={() => selectStaticTab(tab)} />
                 )}
               </span>
             );

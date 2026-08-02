@@ -274,7 +274,7 @@ describe('BrowserSheet', () => {
     expect(recent.querySelector('.browser-tab-close')).toBeNull();
   });
 
-  it('shows Close only on the active tab and turns inactive close hit areas into tab selection', async () => {
+  it('shows Close only on the active tab without reserving space on inactive tabs', async () => {
     const staticTab = {
       name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'ready',
       url: '/preview/main-3/?token=x',
@@ -285,15 +285,33 @@ describe('BrowserSheet', () => {
 
     expect(document.querySelector('button[aria-label="关闭 Alpha"]')).not.toBeNull();
     expect(document.querySelector('button[aria-label="关闭 Beta"]')).toBeNull();
-    const inactiveTails = [...document.querySelectorAll('.browser-tab-close.select-only')];
-    expect(inactiveTails).toHaveLength(2);
-    expect(inactiveTails.every((node) => node.querySelector('svg') === null)).toBe(true);
+    expect(document.querySelectorAll('.browser-tab-close')).toHaveLength(1);
+    const beta = [...document.querySelectorAll('[role="tab"]')].find((node) => node.textContent === 'Beta');
+    const staticButton = [...document.querySelectorAll('[role="tab"]')].find((node) => node.textContent === 'site');
+    expect(beta.closest('.browser-tab-wrap').querySelector('.browser-tab-close')).toBeNull();
+    expect(staticButton.closest('.browser-tab-wrap').querySelector('.browser-tab-close')).toBeNull();
 
-    click(inactiveTails[0]);
+    click(beta);
     expect(model.switchTab).toHaveBeenCalledWith('b');
-    click(inactiveTails[1]);
+    click(staticButton);
     expect(model.switchTab).toHaveBeenLastCalledWith('history');
     expect(preview.switchTab).toHaveBeenCalledWith('main-3');
+  });
+
+  it('orders web and static tabs together so a newly opened web tab stays last', async () => {
+    const staticTab = {
+      name: 'main-3', dir: '/home/u/site', kind: 'static', status: 'ready', createdAt: 200,
+      url: '/preview/main-3/?token=x',
+    };
+    await render(browser({
+      tabs: [
+        { ...tabs[0], createdAt: 100 },
+        { ...tabs[1], createdAt: 300 },
+      ],
+    }), staticPreview({ tabs: [staticTab] }));
+
+    expect([...document.querySelectorAll('[role="tab"]')].map((node) => node.textContent))
+      .toEqual(['', 'Alpha', 'site', 'Beta']);
   });
 
   it('keeps direct, proxy, and static tabs compact with synchronized accent bars and no leading dots', async () => {
