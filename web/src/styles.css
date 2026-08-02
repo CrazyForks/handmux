@@ -1191,7 +1191,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 }
 .browser-history-tab.active { background: #0b0f14; box-shadow: inset 0 -2px 0 var(--blue); }
 .browser-tab {
-  min-height: 38px; padding: 0 10px; display: inline-flex; align-items: center;
+  min-width: calc(3em + 20px); min-height: 38px; padding: 0 10px; display: inline-flex; align-items: center;
   border: 0; background: transparent; color: #9fb0c0; font-size: 13px; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; touch-action: manipulation;
 }
@@ -1431,7 +1431,7 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .browser-consent-actions button { border: 0; border-radius: 10px; padding: 10px 14px; color: #d9dce2; background: #303238; }
 .browser-consent-actions .browser-consent-enable { color: #fff; background: var(--blue); font-weight: 650; }
 .browser-entry.direct > svg { color: var(--blue); }
-.browser-entry.proxy > svg { color: #b86b2c; }
+.browser-entry.proxy > svg { color: #c46f24; }
 .browser-entry.static > svg { color: var(--green); }
 @media (max-width: 430px) {
   .browser-nav { gap: 1px; padding-inline: 3px; }
