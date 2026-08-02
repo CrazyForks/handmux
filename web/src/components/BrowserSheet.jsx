@@ -50,9 +50,6 @@ export default function BrowserSheet({ browser }) {
   const [historyModeOpen, setHistoryModeOpen] = useState(null);
   const [clearConfirmation, setClearConfirmation] = useState(null);
   const [historyError, setHistoryError] = useState(null);
-  const [stalledLoadKey, setStalledLoadKey] = useState(null);
-  const [dismissedStallKey, setDismissedStallKey] = useState(null);
-  const [loadWatchVersion, setLoadWatchVersion] = useState(0);
   const [mountedTabs, setMountedTabs] = useState(() => new Set());
   const [unhealthyTabs, setUnhealthyTabs] = useState(() => new Set());
   const [pageZoom, setPageZoom] = useState(1);
@@ -259,22 +256,6 @@ export default function BrowserSheet({ browser }) {
     });
   };
 
-  const restartLoadWatch = () => {
-    setStalledLoadKey(null);
-    setDismissedStallKey(null);
-    setLoadWatchVersion((current) => current + 1);
-  };
-
-  const retryStalledLoad = () => {
-    restartLoadWatch();
-    void refreshActive();
-  };
-
-  const switchStalledLoadMode = (tab, mode) => {
-    restartLoadWatch();
-    void navigateTab(tab.id, tab.originalUrl, mode);
-  };
-
   const submitAddress = (event) => {
     event.preventDefault();
     setHistoryError(null);
@@ -363,16 +344,6 @@ export default function BrowserSheet({ browser }) {
   };
   const activeLoading = !!active && (!loadedTabs.has(active.id)
     || frameUrls.current.get(active.id) !== active.url || refreshingTabs.has(active.id));
-  const activeLoadKey = active
-    ? `${active.id}|${active.mode}|${active.url}|${reloadKeys[active.id] || 0}|${loadWatchVersion}`
-    : '';
-
-  useEffect(() => {
-    setStalledLoadKey(null);
-    if (!open || !activeLoading || !active || dismissedStallKey === activeLoadKey) return undefined;
-    const timer = setTimeout(() => setStalledLoadKey(activeLoadKey), 5000);
-    return () => clearTimeout(timer);
-  }, [activeLoadKey, activeLoading, dismissedStallKey, open]);
 
   if (consentOpen) return createPortal(
     <div className="file-sheet browser-sheet open browser-consent" role="dialog" aria-modal="true" aria-label={t('browser.consentTitle')}>
@@ -615,7 +586,6 @@ export default function BrowserSheet({ browser }) {
         {tabs.filter((tab) => mountedTabs.has(tab.id)).map((tab) => {
           const selected = !historyActive && tab.id === activeId;
           const loading = selected && (!loadedTabs.has(tab.id) || frameUrls.current.get(tab.id) !== tab.url || refreshingTabs.has(tab.id));
-          const stalled = loading && stalledLoadKey === activeLoadKey;
           return (
           <div key={tab.id} className={`browser-pane ${tab.mode}`} hidden={!selected}>
             <div className="browser-frame-scaler" style={scalerStyleFor(selected ? pageZoom : 1)}>
@@ -636,31 +606,8 @@ export default function BrowserSheet({ browser }) {
                 }}
               />
               {loading && (
-                <div className="browser-page-loading"
-                  role={stalled ? undefined : 'status'} aria-live={stalled ? undefined : 'polite'}>
-                  {stalled ? (
-                    <div className="browser-load-stalled" role="alert">
-                      <strong>{t('browser.loadStalledTitle')}</strong>
-                      <p>{t(tab.mode === 'proxy' ? 'browser.proxyLoadStalled' : 'browser.directLoadStalled')}</p>
-                      <div className="browser-load-stalled-actions">
-                        <button className="browser-load-wait" onClick={() => {
-                          setDismissedStallKey(activeLoadKey);
-                          setStalledLoadKey(null);
-                        }}>{t('browser.keepWaiting')}</button>
-                        <button className="browser-load-retry" onClick={retryStalledLoad}>{t('browser.retry')}</button>
-                        {tab.mode === 'direct' && proxyAvailable && (
-                          <button className="browser-try-proxy"
-                            onClick={() => switchStalledLoadMode(tab, 'proxy')}>{t('browser.tryProxy')}</button>
-                        )}
-                        {tab.mode === 'proxy' && (
-                          <button className="browser-try-direct"
-                            onClick={() => switchStalledLoadMode(tab, 'direct')}>{t('browser.tryDirect')}</button>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="browser-page-progress" role="progressbar" aria-label={t('common.loading')} />
-                  )}
+                <div className="browser-page-loading" role="status" aria-live="polite">
+                  <div className="browser-page-progress" role="progressbar" aria-label={t('common.loading')} />
                 </div>
               )}
             </div>
