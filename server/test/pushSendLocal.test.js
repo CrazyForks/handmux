@@ -90,6 +90,17 @@ describe('key retrieval', () => {
     expect(typeof r2.body.pushKey).toBe('string');
   });
 
+  it('/push/subscribe reuses a requested device key and /unsubscribe returns it', async () => {
+    const stableKey = 'stable_device_key_123456';
+    const subscribed = await request(app).post('/api/push/subscribe').set('Authorization', 'Bearer good')
+      .send({ subscription: { endpoint: 'C', keys: {} }, boundSessions: [], pushKey: stableKey }).expect(200);
+    expect(subscribed.body.pushKey).toBe(stableKey);
+
+    const removed = await request(app).post('/api/push/unsubscribe').set('Authorization', 'Bearer good')
+      .send({ endpoint: 'C' }).expect(200);
+    expect(removed.body).toEqual({ ok: true, pushKey: stableKey });
+  });
+
   it('/push/subscribe rejects and prunes an expired welcome subscription', async () => {
     failureStatuses.set('C', 410);
     const r = await request(app).post('/api/push/subscribe').set('Authorization', 'Bearer good')

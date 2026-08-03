@@ -16,10 +16,11 @@ export function pushRoutes({ push, notifications }) {
   // the toggle proves the whole pipe (subscribe → push service → SW → notification) end to end.
   r.post('/push/subscribe', async (req, res, next) => {
     const sub = req.body?.subscription;
+    const preferredPushKey = req.body?.pushKey;
     const boundSessions = Array.isArray(req.body?.boundSessions) ? req.body.boundSessions : [];
     if (!sub || typeof sub.endpoint !== 'string') return res.status(400).json({ error: 'bad subscription' });
     try {
-      push.addSubscription(sub, boundSessions);
+      const pushKey = push.addSubscription(sub, boundSessions, preferredPushKey);
       const delivery = await push.sendToOne(sub, { title: '通知已开启 ✅', body: '会话「需要你」或「已完成」时提醒你', tag: 'handmux-welcome' }, { topic: 'handmux', urgency: 'high' });
       // `deliver` deliberately contains failures so an automatic pane push can never break the polling
       // loop. Enabling notifications is different: its welcome push is the end-to-end health check, so a
@@ -30,14 +31,14 @@ export function pushRoutes({ push, notifications }) {
           error: expired ? 'push subscription expired' : 'push delivery rejected',
         });
       }
-      res.json({ ok: true, count: push.count(), pushKey: push.getPushKey(sub.endpoint) });
+      res.json({ ok: true, count: push.count(), pushKey });
     } catch (e) { next(e); }
   });
 
   r.post('/push/unsubscribe', (req, res) => {
     const endpoint = req.body?.endpoint;
-    if (typeof endpoint === 'string') push.removeSubscription(endpoint);
-    res.json({ ok: true });
+    const pushKey = typeof endpoint === 'string' ? push.removeSubscription(endpoint) : null;
+    res.json({ ok: true, pushKey });
   });
 
   // Manual "send me a test" — pushes to every stored subscription.

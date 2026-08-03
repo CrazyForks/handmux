@@ -130,6 +130,32 @@ describe('push device key + scoped sends', () => {
     expect(push.getPushKey('A')).toBe(first);
   });
 
+  it('moves a stable pushKey to a replacement browser subscription', async () => {
+    push.addSubscription({ endpoint: 'A', keys: {} }, ['proj-a']);
+    const first = push.getPushKey('A');
+    expect(push.addSubscription({ endpoint: 'B', keys: {} }, ['proj-b'], first)).toBe(first);
+
+    expect(push.count()).toBe(1);
+    expect(push.getPushKey('A')).toBeNull();
+    expect(push.getPushKey('B')).toBe(first);
+    const result = await push.sendToDevices([first], { title: 't', body: 'b' });
+    expect(result.sent).toBe(1);
+    expect(sent).toEqual(['B']);
+  });
+
+  it('ignores an invalid preferred pushKey', () => {
+    const key = push.addSubscription({ endpoint: 'A', keys: {} }, [], 'not valid');
+    expect(key).toMatch(/^[A-Za-z0-9_-]{16,128}$/);
+    expect(key).not.toBe('not valid');
+  });
+
+  it('returns the stable pushKey when a subscription is removed', () => {
+    push.addSubscription({ endpoint: 'A', keys: {} }, []);
+    const key = push.getPushKey('A');
+    expect(push.removeSubscription('A')).toBe(key);
+    expect(push.removeSubscription('missing')).toBeNull();
+  });
+
   it('getPushKey lazy-generates for a legacy record with no key', () => {
     push.addSubscription({ endpoint: 'A', keys: {} }, []);
     const key = push.getPushKey('A');

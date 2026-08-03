@@ -129,7 +129,7 @@ handmux push <title> <body> [options]
 
 `--session` and `--device` are mutually exclusive.
 
-The **device key** is shown in the phone app under Settings → Script push. It is an addressing identifier, not a secret — the security boundary is the local server token.
+The **device key** is shown in the phone app under Settings → Script push. It is an addressing identifier, not a secret — the security boundary is the local server token. Turning push off and back on keeps the same key on that app installation, so device-targeted scripts do not need updating.
 
 > **Reliability:** Web Push is best-effort. For delivery-critical alerts use a dedicated messaging app (WeChat, Slack, etc.).
 

@@ -51,6 +51,36 @@ describe('enableNotifications', () => {
     });
   });
 
+  it('reuses and remembers the stable device key when the browser subscription changes', async () => {
+    allowNotifications();
+    const stableKey = 'stable_device_key_123456';
+    localStorage.setItem('tw_push_device_key', stableKey);
+    const subscription = { endpoint: 'REPLACEMENT' };
+    global.navigator.serviceWorker = {
+      register: vi.fn(async () => {}),
+      ready: Promise.resolve({
+        pushManager: {
+          getSubscription: vi.fn(async () => null),
+          subscribe: vi.fn(async () => subscription),
+        },
+      }),
+    };
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(response({ key: 'AQ' }))
+      .mockResolvedValueOnce(response({ pushKey: stableKey }));
+
+    const { enableNotifications } = await import('../src/push.js');
+    await enableNotifications();
+
+    const report = global.fetch.mock.calls.find(([url]) => url === '/api/push/subscribe');
+    expect(JSON.parse(report[1].body)).toEqual({
+      subscription,
+      boundSessions: ['proj-a', 'proj-b'],
+      pushKey: stableKey,
+    });
+    expect(localStorage.getItem('tw_push_device_key')).toBe(stableKey);
+  });
+
   it('returns control when the service worker never becomes ready', async () => {
     vi.useFakeTimers();
     allowNotifications();
@@ -257,6 +287,20 @@ describe('disableNotifications', () => {
     expect(sub.unsubscribe).toHaveBeenCalledOnce();
     expect(global.fetch.mock.calls[0][1].signal.aborted).toBe(true);
   });
+
+  it('preserves the server device key while removing the push subscription', async () => {
+    const stableKey = 'stable_device_key_123456';
+    const sub = { endpoint: 'E', unsubscribe: vi.fn(async () => true) };
+    global.navigator.serviceWorker = { ready: Promise.resolve({ pushManager: { getSubscription: async () => sub } }) };
+    global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ pushKey: stableKey }) }));
+
+    const { disableNotifications } = await import('../src/push.js');
+    await disableNotifications();
+    await vi.waitFor(() => expect(localStorage.getItem('tw_push_device_key')).toBe(stableKey));
+
+    expect(sub.unsubscribe).toHaveBeenCalledOnce();
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toEqual({ endpoint: 'E' });
+  });
 });
 
 describe('other bounded push operations', () => {
@@ -296,7 +340,7 @@ describe('notification inbox failures', () => {
 
   it('rejects a failed inbox load instead of turning it into an empty list', async () => {
     global.fetch = vi.fn(async (url) => String(url).includes('/api/push/key')
-      ? response(true, { pushKey: 'K' })
+      ? response(true, { pushKey: 'stable_device_key_123456' })
       : response(false, {}, 503));
     const { getNotifications } = await import('../src/push.js');
     await expect(getNotifications()).rejects.toMatchObject({
@@ -320,7 +364,7 @@ describe('notification inbox failures', () => {
 
   it('rejects a failed delete instead of reporting success to the optimistic UI', async () => {
     global.fetch = vi.fn(async (url) => String(url).includes('/api/push/key')
-      ? response(true, { pushKey: 'K' })
+      ? response(true, { pushKey: 'stable_device_key_123456' })
       : response(false, {}, 503));
     const { deleteNotification } = await import('../src/push.js');
     await expect(deleteNotification('n1')).rejects.toThrow();
@@ -354,7 +398,7 @@ describe('notification inbox failures', () => {
   it('aborts a stalled inbox fetch after resolving the device key', async () => {
     vi.useFakeTimers();
     global.fetch = vi.fn()
-      .mockResolvedValueOnce(response(true, { pushKey: 'K' }))
+      .mockResolvedValueOnce(response(true, { pushKey: 'stable_device_key_123456' }))
       .mockImplementationOnce((_url, { signal }) => new Promise((resolve, reject) => {
         signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
       }));
@@ -369,7 +413,7 @@ describe('notification inbox failures', () => {
   it('aborts a stalled notification delete', async () => {
     vi.useFakeTimers();
     global.fetch = vi.fn()
-      .mockResolvedValueOnce(response(true, { pushKey: 'K' }))
+      .mockResolvedValueOnce(response(true, { pushKey: 'stable_device_key_123456' }))
       .mockImplementationOnce((_url, { signal }) => new Promise((resolve, reject) => {
         signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
       }));

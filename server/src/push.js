@@ -39,6 +39,7 @@ function ensureInit() {
 }
 
 const genKey = () => crypto.randomBytes(18).toString('base64url');
+const VALID_PUSH_KEY = /^[A-Za-z0-9_-]{16,128}$/;
 
 let subs = load();
 
@@ -56,13 +57,20 @@ export function isConfigured() { ensureInit(); return configured; }
 export function publicKey() { ensureInit(); return process.env.VAPID_PUBLIC || null; }
 export function count() { return subs.length; }
 
-export function addSubscription(sub, boundSessions = []) {
+export function addSubscription(sub, boundSessions = [], preferredPushKey = null) {
   if (!sub || typeof sub.endpoint !== 'string') return false;
-  const i = subs.findIndex((s) => s.subscription.endpoint === sub.endpoint);
-  if (i === -1) subs.push({ subscription: sub, boundSessions, pushKey: genKey() });
-  else subs[i] = { subscription: sub, boundSessions, pushKey: subs[i].pushKey || genKey() };
+  const endpointRecord = subs.find((s) => s.subscription.endpoint === sub.endpoint);
+  const requestedKey = VALID_PUSH_KEY.test(preferredPushKey || '') ? preferredPushKey : null;
+  const keyRecord = requestedKey ? subs.find((s) => s.pushKey === requestedKey) : null;
+  const pushKey = keyRecord?.pushKey || endpointRecord?.pushKey || requestedKey || genKey();
+
+  // A browser PushSubscription is transport state, not device identity. Re-enabling push can produce a
+  // different endpoint; replace the old endpoint that owns this stable key instead of creating a new
+  // script-push target. Also collapse any legacy duplicate for the new endpoint.
+  subs = subs.filter((s) => s.subscription.endpoint !== sub.endpoint && s.pushKey !== pushKey);
+  subs.push({ subscription: sub, boundSessions, pushKey });
   persist();
-  return true;
+  return pushKey;
 }
 
 export function updateBound(endpoint, boundSessions = []) {
@@ -71,9 +79,10 @@ export function updateBound(endpoint, boundSessions = []) {
 }
 
 export function removeSubscription(endpoint) {
-  const before = subs.length;
+  const removed = subs.find((s) => s.subscription.endpoint === endpoint);
   subs = subs.filter((s) => s.subscription.endpoint !== endpoint);
-  if (subs.length !== before) persist();
+  if (removed) persist();
+  return removed?.pushKey || null;
 }
 
 // The device-addressing id (NOT an auth credential — see /api/push/send-local). Lazy-generate for

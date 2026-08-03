@@ -6,11 +6,21 @@ import { t } from './i18n';
 import { UnauthorizedError } from './api.js';
 
 const NOTIFY_KEY = 'tw_notify'; // '1' once the user has enabled device notifications on this device
+const PUSH_DEVICE_KEY = 'tw_push_device_key'; // stable script-push identity across unsubscribe/resubscribe
+const VALID_PUSH_KEY = /^[A-Za-z0-9_-]{16,128}$/;
 const LOCAL_STEP_TIMEOUT_MS = 10000;
 const PUSH_SERVICE_TIMEOUT_MS = 20000;
 
 export const notifyEnabled = () => localStorage.getItem(NOTIFY_KEY) === '1';
 const setNotifyFlag = (on) => localStorage.setItem(NOTIFY_KEY, on ? '1' : '0');
+const storedPushKey = () => {
+  const value = localStorage.getItem(PUSH_DEVICE_KEY);
+  return VALID_PUSH_KEY.test(value || '') ? value : null;
+};
+const rememberPushKey = (value) => {
+  if (VALID_PUSH_KEY.test(value || '')) localStorage.setItem(PUSH_DEVICE_KEY, value);
+  return VALID_PUSH_KEY.test(value || '') ? value : null;
+};
 
 export function pushSupported() {
   return typeof navigator !== 'undefined' && 'serviceWorker' in navigator
@@ -145,12 +155,15 @@ export async function enableNotifications() {
     );
   }
 
+  const subscribeBody = { subscription: sub, boundSessions: getBoundSessions() };
+  const previousPushKey = storedPushKey();
+  if (previousPushKey) subscribeBody.pushKey = previousPushKey;
   const r = await fetchWithTimeout(
     '/api/push/subscribe',
     {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ subscription: sub, boundSessions: getBoundSessions() }),
+      body: JSON.stringify(subscribeBody),
     },
     'push.reportTimeout',
   );
@@ -166,6 +179,8 @@ export async function enableNotifications() {
     if (r.status === 502) throw setupError('push.deliveryRejected');
     throw new Error(t('push.subscribeFailed'));
   }
+  const result = await r.json();
+  rememberPushKey(result.pushKey);
   setNotifyFlag(true);
   return true;
 }
@@ -179,7 +194,7 @@ export async function disableNotifications() {
       const reg = await readyServiceWorker();
       const sub = await currentSubscription(reg);
       if (!sub) return;
-      await Promise.allSettled([
+      const [serverCleanup] = await Promise.allSettled([
         fetchWithTimeout('/api/push/unsubscribe', {
           method: 'POST',
           headers: authHeaders({ 'Content-Type': 'application/json' }),
@@ -191,6 +206,10 @@ export async function disableNotifications() {
           'push.browserTimeout',
         ),
       ]);
+      if (serverCleanup.status === 'fulfilled' && serverCleanup.value.ok) {
+        const result = await serverCleanup.value.json();
+        rememberPushKey(result.pushKey);
+      }
     } catch { /* best effort — the local switch is already off */ }
   })();
 }
@@ -244,7 +263,7 @@ async function resolveScriptPushKey(strict) {
       }
       return null;
     }
-    return (await r.json()).pushKey || null;
+    return rememberPushKey((await r.json()).pushKey);
   } catch (e) {
     if (strict) throw e;
     return null;
