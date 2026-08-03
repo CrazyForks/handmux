@@ -29,10 +29,15 @@ const render = (props = {}) => act(() => root.render(
     onColAdjust={() => {}} onColRestore={() => {}} onOpenChangelog={() => {}} changelogUnread={false}
     {...props} />,
 ));
+const openRow = (label) => act(() => {
+  [...container.querySelectorAll('.settings-page-row')]
+    .find((button) => button.querySelector('.settings-page-row-label')?.textContent === label).click();
+});
 
 describe('Settings keyboard mode', () => {
   it('shows Auto, Mobile, and Desktop with the current choice selected', async () => {
     await render({ keyboardMode: 'auto' });
+    openRow('键盘模式');
     const group = container.querySelector('[role="group"][aria-label="键盘模式"]');
     const buttons = [...group.querySelectorAll('button')];
     expect(buttons.map((button) => button.textContent)).toEqual(['自动识别', '手机', '电脑']);
@@ -42,6 +47,7 @@ describe('Settings keyboard mode', () => {
   it('reports a manual mode change immediately', async () => {
     const onKeyboardMode = vi.fn();
     await render({ keyboardMode: 'auto', onKeyboardMode });
+    openRow('键盘模式');
     const desktop = [...container.querySelectorAll('[aria-label="键盘模式"] button')]
       .find((button) => button.textContent === '电脑');
     act(() => desktop.click());
@@ -52,6 +58,7 @@ describe('Settings keyboard mode', () => {
 describe('Settings terminal refresh mode', () => {
   it('shows real-time first and selected by default', async () => {
     await render({ terminalTransport: 'live' });
+    openRow('终端传输模式');
     const group = container.querySelector('[role="group"][aria-label="终端传输模式"]');
     const buttons = [...group.querySelectorAll('button')];
     expect(buttons.map((button) => button.textContent)).toEqual(['实时推送', '快照拉取']);
@@ -61,6 +68,7 @@ describe('Settings terminal refresh mode', () => {
   it('reports switching this browser to snapshot refresh', async () => {
     const onTerminalTransport = vi.fn();
     await render({ terminalTransport: 'live', onTerminalTransport });
+    openRow('终端传输模式');
     const snapshot = [...container.querySelectorAll('[aria-label="终端传输模式"] button')]
       .find((button) => button.textContent === '快照拉取');
     act(() => snapshot.click());
@@ -74,6 +82,7 @@ describe('Settings terminal refresh mode', () => {
       snapshotInterval: 1200,
       onSnapshotInterval,
     });
+    openRow('终端传输模式');
     const group = container.querySelector('[role="group"][aria-label="活跃时刷新频率"]');
     const buttons = [...group.querySelectorAll('button')];
     expect(buttons.map((button) => button.textContent)).toEqual(['0.8s', '1s', '1.2s', '1.5s', '2s']);

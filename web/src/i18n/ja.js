@@ -302,6 +302,12 @@ export default {
   // settings
   'settings.title': '設定',
   'settings.group_global': 'グローバル設定',
+  'settings.group_general': '一般',
+  'settings.group_terminal': 'ターミナル',
+  'settings.group_chat': 'チャット',
+  'settings.group_notifications': '通知',
+  'settings.group_about': '情報',
+  'settings.version_and_updates': 'バージョンとアップデート',
   'settings.font_size': 'フォントサイズ',
   'settings.font_decrease': 'フォントを縮小',
   'settings.font_increase': 'フォントを拡大',

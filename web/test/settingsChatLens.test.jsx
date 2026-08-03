@@ -23,19 +23,21 @@ describe('Settings 对话镜头 experimental gate', () => {
   it('always shows the 启用对话视图（实验性功能）toggle; the tone picker only appears when enabled', async () => {
     await render({ chatLensEnabled: false });
     expect(container.textContent).toContain('启用对话视图（实验性功能）');
-    // tone picker hidden while the lens is off (its option buttons are gone; the section label too —
-    // scoped to buttons so the toggle's own hint text mentioning 对话配色 doesn't false-positive)
-    expect([...container.querySelectorAll('.fontbtn')].some((b) => b.textContent === '暖夜')).toBe(false);
+    expect([...container.querySelectorAll('.settings-page-row-label')]
+      .some((label) => label.textContent === '对话配色')).toBe(false);
 
     await render({ chatLensEnabled: true });
-    expect(container.textContent).toContain('对话配色');
-    expect([...container.querySelectorAll('.fontbtn')].some((b) => b.textContent === '暖夜')).toBe(true);
+    const toneRow = [...container.querySelectorAll('.settings-page-row')]
+      .find((row) => row.querySelector('.settings-page-row-label')?.textContent === '对话配色');
+    expect(toneRow).toBeTruthy();
+    click(toneRow);
+    expect([...container.querySelectorAll('.settings-choice-row')].some((b) => b.textContent === '暖夜')).toBe(true);
   });
 
   it('the toggle is an iOS-style switch whose checkbox mirrors chatLensEnabled and reports changes', async () => {
     const onChatLensEnabled = vi.fn();
     await render({ chatLensEnabled: false, onChatLensEnabled });
-    const label = [...container.querySelectorAll('.settings-toggle')]
+    const label = [...container.querySelectorAll('.settings-page-switch')]
       .find((l) => l.textContent.includes('启用对话视图'));
     expect(label).toBeTruthy();
     const box = label.querySelector('input[type="checkbox"]');
@@ -44,7 +46,7 @@ describe('Settings 对话镜头 experimental gate', () => {
     expect(onChatLensEnabled).toHaveBeenCalledWith(true);
   });
 
-  const lensBox = () => [...container.querySelectorAll('.settings-toggle')]
+  const lensBox = () => [...container.querySelectorAll('.settings-page-switch')]
     .find((l) => l.textContent.includes('启用对话视图'))?.querySelector('input[type="checkbox"]');
 
   it('hooks absent → toggle locked with the need-hooks hint and a one-tap install button', async () => {

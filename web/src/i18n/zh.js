@@ -379,6 +379,12 @@ export default {
   // settings
   'settings.title': '设置',
   'settings.group_global': '全局设置',
+  'settings.group_general': '通用',
+  'settings.group_terminal': '终端',
+  'settings.group_chat': '对话',
+  'settings.group_notifications': '通知',
+  'settings.group_about': '关于',
+  'settings.version_and_updates': '版本与更新',
   'settings.font_size': '字体大小',
   'settings.font_decrease': '减小字体',
   'settings.font_increase': '增大字体',

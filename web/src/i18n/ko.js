@@ -302,6 +302,12 @@ export default {
   // settings
   'settings.title': '설정',
   'settings.group_global': '전체 설정',
+  'settings.group_general': '일반',
+  'settings.group_terminal': '터미널',
+  'settings.group_chat': '대화',
+  'settings.group_notifications': '알림',
+  'settings.group_about': '정보',
+  'settings.version_and_updates': '버전 및 업데이트',
   'settings.font_size': '글꼴 크기',
   'settings.font_decrease': '글꼴 축소',
   'settings.font_increase': '글꼴 확대',

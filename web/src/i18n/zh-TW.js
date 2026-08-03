@@ -302,6 +302,12 @@ export default {
   // settings
   'settings.title': '設定',
   'settings.group_global': '全域設定',
+  'settings.group_general': '一般',
+  'settings.group_terminal': '終端機',
+  'settings.group_chat': '對話',
+  'settings.group_notifications': '通知',
+  'settings.group_about': '關於',
+  'settings.version_and_updates': '版本與更新',
   'settings.font_size': '字型大小',
   'settings.font_decrease': '縮小字型',
   'settings.font_increase': '放大字型',
