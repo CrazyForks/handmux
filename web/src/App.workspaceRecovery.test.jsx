@@ -254,6 +254,8 @@ describe('App management dimensions', () => {
     await renderApp();
 
     await act(async () => { await windowBar.props.onManageWindow(loneWindow); });
+    expect(screen.getByRole('button', { name: /左右分屏/ }).closest('.sheet-row'))
+      .toBe(screen.getByRole('button', { name: /上下分屏/ }).closest('.sheet-row'));
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: '窗口宽度 +1' }));
       await Promise.resolve();
@@ -284,6 +286,8 @@ describe('App management dimensions', () => {
   it('resizes the selected side-by-side pane and restores only its saved split ratio', async () => {
     await renderManagedSession();
     await act(async () => { await windowBar.props.onManagePane('%1'); });
+    expect(screen.getByRole('button', { name: /左右分屏/ }).closest('.sheet-row')).toBeNull();
+    expect(screen.getByRole('button', { name: /上下分屏/ }).closest('.sheet-row')).toBeNull();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: '窗格宽度 +1' }));

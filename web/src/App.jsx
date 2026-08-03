@@ -1812,8 +1812,10 @@ export default function App() {
           // lone pane can be split from the window-level menu (the per-pane menu only appears once there's
           // a map to long-press). Shown for ANY single-pane window, current or not (split switches to it).
           ...(manageWindow.panes === 1 ? [
-            { key: 'split-h', icon: <SplitHIcon />, label: t('pane.splitH'), onClick: () => splitWindowAction(manageWindow, 'h') },
-            { key: 'split-v', icon: <SplitVIcon />, label: t('pane.splitV'), onClick: () => splitWindowAction(manageWindow, 'v') },
+            [
+              { key: 'split-h', icon: <SplitHIcon />, label: t('pane.splitH'), onClick: () => splitWindowAction(manageWindow, 'h') },
+              { key: 'split-v', icon: <SplitVIcon />, label: t('pane.splitV'), onClick: () => splitWindowAction(manageWindow, 'v') },
+            ],
           ] : []),
           // A window that ALREADY has a split → jump straight to its split map to manage the panes.
           ...(manageWindow.panes > 1 ? [
