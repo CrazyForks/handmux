@@ -5,11 +5,11 @@ import { getPreviewDir, setPreviewDir } from '../storage.js';
 
 const STATIC_TABS_KEY = 'hm_static_preview_tabs1';
 
-function readOpenTabs() {
+function readOpenTabState() {
   try {
     const value = JSON.parse(localStorage.getItem(STATIC_TABS_KEY) || '[]');
-    if (!Array.isArray(value)) return [];
-    return value.filter((item) => (
+    if (!Array.isArray(value)) return { tabs: [], duplicateNames: [] };
+    const valid = value.filter((item) => (
       item && /^[A-Za-z0-9._-]+$/.test(String(item.name || ''))
       && typeof item.dir === 'string' && item.dir.startsWith('/')
     )).map((item) => {
@@ -20,8 +20,19 @@ function readOpenTabs() {
         ...(Number.isFinite(createdAt) && createdAt > 0 ? { createdAt } : {}),
       };
     });
+    const seenDirs = new Set();
+    const tabs = [];
+    const duplicateNames = [];
+    for (const tab of valid) {
+      if (seenDirs.has(tab.dir)) duplicateNames.push(tab.name);
+      else {
+        seenDirs.add(tab.dir);
+        tabs.push(tab);
+      }
+    }
+    return { tabs, duplicateNames };
   } catch {
-    return [];
+    return { tabs: [], duplicateNames: [] };
   }
 }
 
@@ -40,7 +51,9 @@ function writeOpenTabs(tabs) {
 // Device-local static tabs backed by server leases. Opening/foregrounding ensures the lease exists;
 // actual preview traffic renews it server-side, so there is no client heartbeat or expiry UI.
 export function usePreviews(current) {
-  const [openTabs, setOpenTabs] = useState(readOpenTabs);
+  const restored = useRef(null);
+  if (!restored.current) restored.current = readOpenTabState();
+  const [openTabs, setOpenTabs] = useState(restored.current.tabs);
   const [runtime, setRuntime] = useState({});
   const [activeTabName, setActiveTabName] = useState(null);
   const [selected, setSelected] = useState(false);
@@ -126,6 +139,11 @@ export function usePreviews(current) {
   ), [clearTabRuntime, enqueuePreviewOperation, setTabRuntime]);
 
   useEffect(() => {
+    // Older builds could persist the same directory under different tmux-window-derived names. Keep
+    // the original tab, repair local state, and release the duplicate leases instead of restoring both.
+    writeOpenTabs(openTabsRef.current);
+    const duplicateNames = restored.current.duplicateNames.splice(0);
+    void Promise.all(duplicateNames.map((name) => deletePreview(name).catch(() => {})));
     void Promise.all(openTabsRef.current.map((tab) => ensurePreview(tab)));
     const onVisibility = () => {
       if (!document.hidden) {
@@ -151,6 +169,17 @@ export function usePreviews(current) {
 
   const startPreview = useCallback(async (dir) => {
     if (!curPreviewName) return null;
+    const sameDirectory = openTabsRef.current.find((item) => item.dir === dir);
+    if (sameDirectory) {
+      setPreviewDir(current?.window?.id, dir);
+      setActiveTabName(sameDirectory.name);
+      setSelected(true);
+      const prior = runtimeRef.current[sameDirectory.name];
+      if (prior?.status === 'ready') return { ...sameDirectory, ...prior };
+      const pending = previewOperations.current.get(sameDirectory.name);
+      const created = pending ? await pending : await ensurePreview(sameDirectory);
+      return created ? { ...sameDirectory, ...created } : null;
+    }
     const existing = openTabsRef.current.find((item) => item.name === curPreviewName);
     const tab = { name: curPreviewName, dir, createdAt: existing?.createdAt || Date.now() };
     const created = await ensurePreview(tab, { allowDetached: true });

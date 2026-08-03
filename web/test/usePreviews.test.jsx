@@ -76,6 +76,42 @@ describe('usePreviews static tabs', () => {
     });
   });
 
+  it('reuses a restored tab when history opens the same directory from another window identity', async () => {
+    localStorage.setItem('hm_static_preview_tabs1', JSON.stringify([
+      { name: 'other-window-9', dir: '/home/u/site', createdAt: 100 },
+    ]));
+    await remount();
+    api.createPreview.mockClear();
+
+    await act(async () => { await model.startPreview('/home/u/site'); });
+
+    expect(model.tabs).toHaveLength(1);
+    expect(model.tabs[0]).toMatchObject({ name: 'other-window-9', dir: '/home/u/site' });
+    expect(model.activeName).toBe('other-window-9');
+    expect(model.selected).toBe(true);
+    expect(api.createPreview).not.toHaveBeenCalled();
+  });
+
+  it('repairs persisted duplicate directories and releases only the redundant lease', async () => {
+    localStorage.setItem('hm_static_preview_tabs1', JSON.stringify([
+      { name: 'original-1', dir: '/home/u/site', createdAt: 100 },
+      { name: 'duplicate-2', dir: '/home/u/site', createdAt: 200 },
+      { name: 'docs-3', dir: '/home/u/docs', createdAt: 300 },
+    ]));
+    await remount();
+
+    expect(model.tabs.map(({ name, dir }) => ({ name, dir }))).toEqual([
+      { name: 'original-1', dir: '/home/u/site' },
+      { name: 'docs-3', dir: '/home/u/docs' },
+    ]);
+    expect(api.deletePreview).toHaveBeenCalledWith('duplicate-2');
+    expect(api.deletePreview).not.toHaveBeenCalledWith('original-1');
+    expect(JSON.parse(localStorage.getItem('hm_static_preview_tabs1'))).toEqual([
+      { name: 'original-1', dir: '/home/u/site', createdAt: 100 },
+      { name: 'docs-3', dir: '/home/u/docs', createdAt: 300 },
+    ]);
+  });
+
   it('foregrounds by ensuring the lease without a periodic heartbeat', async () => {
     await act(async () => { await model.startPreview('/home/u/site'); });
     const name = model.tabs[0].name;
