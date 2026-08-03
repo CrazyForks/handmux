@@ -489,6 +489,42 @@ describe('useBrowser device ownership', () => {
     expect(api.deleteBrowserProxyLease).not.toHaveBeenCalled();
   });
 
+  it('rebinds a proxy tab before reopening it after the worker restarts', async () => {
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await act(async () => { await result.current.openUrl('https://a.example/', { mode: 'proxy' }); });
+    const id = result.current.activeId;
+    await act(async () => { await result.current.setOpen(false); });
+    api.getBrowserProxyStatus.mockResolvedValue({ ready: true, generation: 2 });
+    api.acquireBrowserProxyLease.mockImplementation((tabId, url) => (
+      Promise.resolve(binding(tabId, url, 2))
+    ));
+    api.acquireBrowserProxyLease.mockClear();
+
+    await act(async () => { await result.current.setOpen(true); });
+
+    expect(api.acquireBrowserProxyLease).toHaveBeenCalledOnce();
+    expect(api.acquireBrowserProxyLease).toHaveBeenCalledWith(id, 'https://a.example/');
+    expect(result.current.tabs[0]).toMatchObject({ id, generation: 2 });
+    expect(result.current.tabs[0].url).toContain('/bootstrap');
+  });
+
+  it('rebinds a background proxy tab before switching to it after the worker restarts', async () => {
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await act(async () => { await result.current.openUrl('https://a.example/', { mode: 'proxy' }); });
+    const proxyId = result.current.activeId;
+    await act(async () => { await result.current.openUrl('https://b.example/', { mode: 'direct' }); });
+    api.getBrowserProxyStatus.mockResolvedValue({ ready: true, generation: 2 });
+    api.acquireBrowserProxyLease.mockImplementation((tabId, url) => (
+      Promise.resolve(binding(tabId, url, 2))
+    ));
+    api.acquireBrowserProxyLease.mockClear();
+
+    await act(async () => { await result.current.switchTab(proxyId); });
+
+    expect(api.acquireBrowserProxyLease).toHaveBeenCalledOnce();
+    expect(result.current.tabs.find((tab) => tab.id === proxyId)).toMatchObject({ generation: 2 });
+  });
+
   it('does not reacquire an already-mounted proxy tab just because it is switched', async () => {
     const { result } = renderHook(() => useBrowser({ browserProxy: true }));
     await act(async () => { await result.current.openUrl('https://a.example/', { mode: 'proxy' }); });

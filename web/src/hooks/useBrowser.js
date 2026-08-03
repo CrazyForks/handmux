@@ -451,6 +451,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     }
     const target = tabsRef.current.find((tab) => tab.id === id);
     if (!target) return false;
+    if (openRef.current && target.mode === 'proxy') await refreshProxyStatus();
     setError(null);
     commitTabs((current) => current.map((tab) => {
       if (tab.id === id) return { ...tab, deadline: null };
@@ -461,10 +462,12 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     commitHistory(false);
     if (openRef.current) await ensureBinding(id);
     return true;
-  }, [commitActive, commitHistory, commitTabs, ensureBinding, hideTab]);
+  }, [commitActive, commitHistory, commitTabs, ensureBinding, hideTab, refreshProxyStatus]);
 
   const setOpen = useCallback(async (visible) => {
     if (visible && !accessEnabled) { setConsentOpen(true); return false; }
+    const active = tabsRef.current.find((tab) => tab.id === activeRef.current);
+    if (visible && !historyRef.current && active?.mode === 'proxy') await refreshProxyStatus();
     if (activeRef.current && !historyRef.current) {
       commitTabs((current) => current.map((tab) => (
         tab.id === activeRef.current ? (visible ? { ...tab, deadline: null } : hideTab(tab)) : tab
@@ -473,7 +476,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     commitOpen(visible);
     if (visible && activeRef.current && !historyRef.current) await ensureBinding(activeRef.current);
     return true;
-  }, [accessEnabled, commitOpen, commitTabs, ensureBinding, hideTab]);
+  }, [accessEnabled, commitOpen, commitTabs, ensureBinding, hideTab, refreshProxyStatus]);
 
   const closeTab = useCallback((id) => {
     const index = tabsRef.current.findIndex((tab) => tab.id === id);
