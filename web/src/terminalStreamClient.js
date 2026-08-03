@@ -2,6 +2,7 @@ import { getToken } from './storage.js';
 
 const RECONNECT_MS = 1000;
 const CONNECT_TIMEOUT_MS = 3000;
+const READY_TIMEOUT_MS = 8000;
 const MAX_FRAME_LAG_MS = 300;
 const MAX_PENDING_DATA_BYTES = 256 * 1024;
 const PROBE_INTERVAL_MS = 10000;
@@ -19,6 +20,7 @@ export function openTerminalStream({
   token = getToken() ?? '',
   reconnectMs = RECONNECT_MS,
   connectTimeoutMs = CONNECT_TIMEOUT_MS,
+  readyTimeoutMs = READY_TIMEOUT_MS,
   maxFrameLagMs = MAX_FRAME_LAG_MS,
   maxPendingDataBytes = MAX_PENDING_DATA_BYTES,
   probeIntervalMs = PROBE_INTERVAL_MS,
@@ -41,6 +43,8 @@ export function openTerminalStream({
   let awaitingSeed = true;
   let streamReady = false;
   let queuedDataBatch = null;
+  let hasBeenLive = false;
+  let startupFailures = 0;
 
   const clearProbe = () => {
     if (probeTimer) clearInterval(probeTimer);
@@ -56,11 +60,11 @@ export function openTerminalStream({
       connectTimer = null;
     }
   };
-  const armConnectTimer = (target) => {
+  const armConnectTimer = (target, timeoutMs) => {
     clearConnectTimer();
     connectTimer = setTimeout(() => {
       if (socket === target && target.readyState !== 3) target.close(4000, 'stream timeout');
-    }, connectTimeoutMs);
+    }, timeoutMs);
   };
 
   const send = (message) => {
@@ -113,7 +117,7 @@ export function openTerminalStream({
     queuedDataBatch = null;
     if (socket?.readyState === WebSocketCtor.OPEN) {
       onStatus?.('connecting');
-      armConnectTimer(socket);
+      armConnectTimer(socket, readyTimeoutMs);
       clearProbe();
       if (subscribedSocket === socket) send({ type: 'resync' });
       else {
@@ -135,11 +139,15 @@ export function openTerminalStream({
     awaitingSeed = true;
     streamReady = false;
     queuedDataBatch = null;
-    armConnectTimer(nextSocket);
+    // The network handshake and the first tmux frame are different operations. Keep a short deadline
+    // while WebSocket itself is unavailable, then give the server's cold tmux attach/capture path enough
+    // time to finish (the server allows five seconds for attach alone).
+    armConnectTimer(nextSocket, connectTimeoutMs);
     nextSocket.binaryType = 'arraybuffer';
     nextSocket.onopen = () => {
       if (socket !== nextSocket || closed || paused) return;
       subscribedSocket = nextSocket;
+      armConnectTimer(nextSocket, readyTimeoutMs);
       send({ type: 'subscribe', token, pane });
     };
     nextSocket.onmessage = (event) => {
@@ -217,6 +225,8 @@ export function openTerminalStream({
         else if (message.type === 'ready') {
           await onReady?.(message);
           streamReady = true;
+          hasBeenLive = true;
+          startupFailures = 0;
           clearConnectTimer();
           onStatus?.('live');
           startProbes();
@@ -237,7 +247,12 @@ export function openTerminalStream({
         onAuthFail?.();
         return;
       }
-      onStatus?.('reconnecting');
+      // A cold app launch can lose its first stream while the tunnel and tmux control path warm up.
+      // Complete one fresh connection attempt before telling Terminal to fall back to snapshots. Once a
+      // stream has been live, preserve the existing fast-fallback behaviour for real network drops.
+      const retryColdStart = !hasBeenLive && startupFailures === 0;
+      if (!hasBeenLive) startupFailures += 1;
+      onStatus?.(retryColdStart ? 'connecting' : 'reconnecting');
       if (!paused) reconnectTimer = setTimeout(connect, reconnectMs);
     };
     nextSocket.onerror = () => {
@@ -280,7 +295,7 @@ export function openTerminalStream({
       queuedDataBatch = null;
       if (socket?.readyState === WebSocketCtor.OPEN) {
         onStatus?.('connecting');
-        armConnectTimer(socket);
+        armConnectTimer(socket, readyTimeoutMs);
         clearProbe();
         if (subscribedSocket === socket) send({ type: 'resync' });
         else {

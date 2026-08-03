@@ -543,23 +543,78 @@ describe('openTerminalStream', () => {
     vi.useRealTimers();
   });
 
-  it('times out a connection that never produces a ready frame', () => {
+  it('uses a separate longer deadline after the WebSocket handshake opens', async () => {
     vi.useFakeTimers();
     const statuses = [];
     const stream = openTerminalStream({
       pane: '%7',
       token: 'secret',
       WebSocketCtor: FakeWebSocket,
-      reconnectMs: 1000,
+      reconnectMs: 10,
       connectTimeoutMs: 20,
+      readyTimeoutMs: 50,
       onStatus: (status) => statuses.push(status),
     });
     const ws = FakeWebSocket.instances[0];
     ws.open();
     vi.advanceTimersByTime(20);
+    expect(ws.readyState).toBe(FakeWebSocket.OPEN);
+    vi.advanceTimersByTime(30);
     expect(ws.readyState).toBe(3);
-    expect(statuses).toContain('reconnecting');
+    expect(statuses).not.toContain('reconnecting');
+
+    vi.advanceTimersByTime(10);
+    const retry = FakeWebSocket.instances[1];
+    retry.open();
+    retry.message(JSON.stringify({ type: 'seed' }));
+    retry.message(JSON.stringify({ type: 'ready' }));
+    for (let i = 0; i < 6; i += 1) await Promise.resolve();
+    expect(statuses).toContain('live');
+    expect(statuses).not.toContain('reconnecting');
     stream.close();
     vi.useRealTimers();
+  });
+
+  it('reports reconnecting only after two complete cold-start attempts fail', () => {
+    vi.useFakeTimers();
+    const statuses = [];
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+      reconnectMs: 10,
+      connectTimeoutMs: 20,
+      readyTimeoutMs: 50,
+      onStatus: (status) => statuses.push(status),
+    });
+
+    vi.advanceTimersByTime(20); // first handshake never opens
+    expect(statuses).not.toContain('reconnecting');
+    vi.advanceTimersByTime(10); // start the complete retry
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    vi.advanceTimersByTime(20); // retry handshake also fails
+    expect(statuses).toContain('reconnecting');
+
+    stream.close();
+    vi.useRealTimers();
+  });
+
+  it('reports a drop immediately after the stream has already been live', async () => {
+    const statuses = [];
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+      onStatus: (status) => statuses.push(status),
+    });
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    ws.message(JSON.stringify({ type: 'seed' }));
+    ws.message(JSON.stringify({ type: 'ready' }));
+    for (let i = 0; i < 6; i += 1) await Promise.resolve();
+
+    ws.close(1006);
+    expect(statuses.at(-1)).toBe('reconnecting');
+    stream.close();
   });
 });
