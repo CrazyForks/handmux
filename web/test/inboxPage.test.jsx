@@ -13,6 +13,7 @@ describe('InboxPage list', () => {
   it('renders items newest-first with title and body', () => {
     render(<InboxPage open items={items} readIds={[]} detailId={null}
       onOpenDetail={() => {}} onCloseDetail={() => {}} onClose={() => {}} onDelete={() => {}} />);
+    expect(screen.getByText('脚本推送记录')).toBeTruthy();
     expect(screen.getByText('构建完成')).toBeTruthy();
     expect(screen.getByText('部署成功')).toBeTruthy();
     expect(screen.getByText(/^成功$/)).toBeTruthy();
@@ -25,15 +26,15 @@ describe('InboxPage list', () => {
   });
   it('shows a retryable load error without hiding the last good list', () => {
     const onRetry = vi.fn();
-    render(<InboxPage open items={items} readIds={[]} detailId={null} error="通知记录加载失败，请检查连接后重试"
+    render(<InboxPage open items={items} readIds={[]} detailId={null} error="脚本推送记录加载失败，请检查连接后重试"
       onRetry={onRetry} onOpenDetail={() => {}} onCloseDetail={() => {}} onClose={() => {}} onDelete={() => {}} />);
-    expect(screen.getByRole('alert').textContent).toContain('通知记录加载失败');
+    expect(screen.getByRole('alert').textContent).toContain('脚本推送记录加载失败');
     expect(screen.getByText('构建完成')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /重试|Retry/i }));
     expect(onRetry).toHaveBeenCalled();
   });
   it('does not claim the inbox is empty when its first load failed', () => {
-    render(<InboxPage open items={[]} readIds={[]} detailId={null} error="通知记录加载失败，请检查连接后重试"
+    render(<InboxPage open items={[]} readIds={[]} detailId={null} error="脚本推送记录加载失败，请检查连接后重试"
       onRetry={() => {}} onOpenDetail={() => {}} onCloseDetail={() => {}} onClose={() => {}} onDelete={() => {}} />);
     expect(screen.getByRole('alert')).toBeTruthy();
     expect(screen.queryByText(/还没有|No notifications/i)).toBeNull();

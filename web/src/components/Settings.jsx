@@ -156,6 +156,7 @@ export default function Settings({ open, onClose, termRef, onOpenChangelog, chan
   const [notify, setNotify] = useState(notifyEnabled());
   const [notifyBusy, setNotifyBusy] = useState(false);
   const [notifyMsg, setNotifyMsg] = useState('');
+  const [notifyDisableConfirm, setNotifyDisableConfirm] = useState(false);
   const [lensHooksBusy, setLensHooksBusy] = useState(false);
   const [lensHooksErr, setLensHooksErr] = useState(false);
   const [scriptPushKey, setScriptPushKey] = useState(null);
@@ -172,10 +173,13 @@ export default function Settings({ open, onClose, termRef, onOpenChangelog, chan
     } else {
       setPage('root');
       setNotifyMsg('');
+      setNotifyDisableConfirm(false);
+      rootScrollRef.current = 0;
     }
   }, [open, termRef]);
 
   useBackButton(open && page !== 'root', () => setPage('root'));
+  useBackButton(open && notifyDisableConfirm, () => setNotifyDisableConfirm(false));
 
   useLayoutEffect(() => {
     if (open && page === 'root' && bodyRef.current) bodyRef.current.scrollTop = rootScrollRef.current;
@@ -217,24 +221,37 @@ export default function Settings({ open, onClose, termRef, onOpenChangelog, chan
     }
   };
 
-  const toggleNotify = async () => {
+  const setNotificationEnabled = async (enabled) => {
     setNotifyBusy(true);
     setNotifyMsg('');
     try {
-      if (notify) {
-        await disableNotifications();
-        setNotify(false);
-        setNotifyMsg(t('settings.notify_disabled'));
-      } else {
+      if (enabled) {
         await enableNotifications();
         setNotify(true);
         setNotifyMsg(t('settings.notify_enabled'));
+      } else {
+        await disableNotifications();
+        setNotify(false);
+        setNotifyMsg(t('settings.notify_disabled'));
       }
     } catch (error) {
       setNotifyMsg(error.message || t('settings.notify_failed'));
     } finally {
       setNotifyBusy(false);
     }
+  };
+
+  const changeNotify = (event) => {
+    if (!event.target.checked) {
+      setNotifyDisableConfirm(true);
+      return;
+    }
+    setNotificationEnabled(true);
+  };
+
+  const confirmDisableNotify = () => {
+    setNotifyDisableConfirm(false);
+    setNotificationEnabled(false);
   };
 
   const openScriptPush = async () => {
@@ -301,10 +318,10 @@ export default function Settings({ open, onClose, termRef, onOpenChangelog, chan
         notificationsSupported ? t('settings.push_hint') : t('settings.push_unsupported')
       )}>
         <SettingsSwitchRow label={t('settings.push_notifications')} checked={notify}
-          disabled={!notificationsSupported || notifyBusy} busy={notifyBusy} onChange={toggleNotify} />
-        <SettingsNavRow label={t('pushInbox.title')} dot={notifUnread} onClick={() => onOpenInbox?.()} />
+          disabled={!notificationsSupported || notifyBusy} busy={notifyBusy} onChange={changeNotify} />
         <SettingsNavRow label={t('settings.script_push')} value={t('settings.script_push_open')}
           disabled={!notificationsSupported} onClick={openScriptPush} />
+        <SettingsNavRow label={t('pushInbox.title')} dot={notifUnread} onClick={() => onOpenInbox?.()} />
       </SettingsGroup>
 
       <SettingsGroup title={t('settings.group_about')}
@@ -312,10 +329,10 @@ export default function Settings({ open, onClose, termRef, onOpenChangelog, chan
         <SettingsValueRow label={t('settings.version')}
           value={updateInfo?.current ? `v${updateInfo.current}` : '—'} dot={!!updateInfo?.updateAvailable} />
         <SettingsNavRow label={t('settings.view_changelog')} dot={changelogUnread} onClick={onOpenChangelog} />
+        <SettingsNavRow label={t('settings.feedback')} onClick={() => openPage('feedback')} />
         <button type="button" className="settings-page-row settings-page-text-action" onClick={onReloadApp}>
           <span className="settings-page-row-label">{t('settings.reload_app')}</span>
         </button>
-        <SettingsNavRow label={t('settings.feedback')} onClick={() => openPage('feedback')} />
       </SettingsGroup>
     </>
   );
@@ -398,6 +415,22 @@ export default function Settings({ open, onClose, termRef, onOpenChangelog, chan
           {page === 'root' ? rootContent : detailContent[page]}
         </main>
       </div>
+      {notifyDisableConfirm && (
+        <div className="settings-confirm-backdrop" onClick={() => setNotifyDisableConfirm(false)}>
+          <div className="settings-confirm" role="alertdialog" aria-modal="true"
+            aria-labelledby="settings-notify-disable-title" aria-describedby="settings-notify-disable-hint"
+            onClick={(event) => event.stopPropagation()}>
+            <h2 id="settings-notify-disable-title">{t('settings.notify_disable_title')}</h2>
+            <p id="settings-notify-disable-hint">{t('settings.notify_disable_hint')}</p>
+            <div className="settings-confirm-actions">
+              <button type="button" autoFocus onClick={() => setNotifyDisableConfirm(false)}>{t('common.cancel')}</button>
+              <button type="button" className="danger" onClick={confirmDisableNotify}>
+                {t('settings.notify_disable_confirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

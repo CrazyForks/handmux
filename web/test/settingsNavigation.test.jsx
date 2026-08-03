@@ -57,4 +57,16 @@ describe('Settings full-screen navigation', () => {
     act(() => container.querySelector('.settings-page-back').click());
     expect(onClose).toHaveBeenCalledOnce();
   });
+
+  it('starts from the top whenever Settings is reopened from the main screen', () => {
+    const render = (open) => act(() => root.render(
+      <Settings open={open} onClose={() => {}} termRef={termRef} />,
+    ));
+    render(true);
+    container.querySelector('.settings-page-body').scrollTop = 240;
+
+    render(false);
+    render(true);
+    expect(container.querySelector('.settings-page-body').scrollTop).toBe(0);
+  });
 });

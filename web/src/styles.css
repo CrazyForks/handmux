@@ -201,6 +201,27 @@ button.settings-page-row:disabled, .settings-page-row.disabled { color: rgba(235
 .settings-page .push-script-intro {
   margin: 0 0 12px; color: var(--muted, #8a8a8e); font-size: 13px; line-height: 1.5;
 }
+.settings-confirm-backdrop {
+  position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 20px;
+  background: rgba(0,0,0,.58); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.settings-confirm {
+  width: min(300px, 100%); overflow: hidden; padding: 18px 18px 0;
+  border-radius: 16px; background: rgba(39,39,42,.98); text-align: center;
+  box-shadow: 0 18px 54px rgba(0,0,0,.58), inset 0 0 0 .5px rgba(255,255,255,.08);
+}
+.settings-confirm h2 { margin: 0 0 7px; color: #f2f2f7; font-size: 17px; font-weight: 600; }
+.settings-confirm p { margin: 0; color: rgba(235,235,245,.62); font-size: 13px; line-height: 1.45; }
+.settings-confirm-actions {
+  display: flex; margin: 17px -18px 0; border-top: .5px solid rgba(84,84,88,.7);
+}
+.settings-confirm-actions button {
+  flex: 1; min-height: 48px; padding: 0 10px; border: none; background: transparent;
+  color: #d8d8dc; font: 15px/1.2 -apple-system, system-ui, sans-serif; touch-action: manipulation;
+}
+.settings-confirm-actions button + button { border-left: .5px solid rgba(84,84,88,.7); }
+.settings-confirm-actions button:active { background: rgba(120,120,128,.18); }
+.settings-confirm-actions button.danger { color: var(--red); font-weight: 600; }
 
 @media (min-width: 700px) {
   .settings-page-content { padding-left: 20px; padding-right: 20px; }

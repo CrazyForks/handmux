@@ -60,6 +60,10 @@ describe('Settings update notice', () => {
     expect(version.querySelector('.settings-page-chevron')).toBeNull();
     expect([...container.querySelectorAll('.settings-page-row-label')]
       .filter((item) => item.textContent === '查看更新日志')).toHaveLength(1);
+    const aboutLabels = [...container.querySelectorAll('.settings-page-group')].at(-1)
+      .querySelectorAll('.settings-page-row-label');
+    expect([...aboutLabels].map((item) => item.textContent))
+      .toEqual(['版本', '查看更新日志', '反馈与交流', '重新加载应用']);
 
     const button = [...container.querySelectorAll('button')]
       .find((item) => item.textContent === '重新加载应用');
