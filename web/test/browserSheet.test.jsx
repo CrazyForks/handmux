@@ -820,6 +820,32 @@ describe('BrowserSheet', () => {
     expect(model.updateTabMeta).toHaveBeenCalledWith('a', { url: 'https://a.example/next', title: 'Next' });
   });
 
+  it('rebuilds an unavailable proxy session once until the replacement bridge is ready', async () => {
+    const model = browser({ recoverBinding: vi.fn().mockResolvedValue(tabs[0]) });
+    await render(model);
+    const frame = document.querySelector('iframe[data-tab-id="a"]');
+    const unavailable = {
+      source: 'handmux-browser', channel: 'ca', type: 'session-unavailable',
+    };
+
+    act(() => window.dispatchEvent(new MessageEvent('message', { source: window, data: unavailable })));
+    act(() => window.dispatchEvent(new MessageEvent('message', {
+      source: frame.contentWindow, data: { ...unavailable, channel: 'wrong' },
+    })));
+    act(() => window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: unavailable })));
+    act(() => window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: unavailable })));
+    await act(async () => { await Promise.resolve(); });
+    expect(model.recoverBinding).toHaveBeenCalledTimes(1);
+    expect(model.recoverBinding).toHaveBeenCalledWith('a');
+
+    act(() => window.dispatchEvent(new MessageEvent('message', {
+      source: frame.contentWindow,
+      data: { source: 'handmux-browser', channel: 'ca', type: 'ready' },
+    })));
+    act(() => window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: unavailable })));
+    expect(model.recoverBinding).toHaveBeenCalledTimes(2);
+  });
+
   it('matches bridge messages by iframe when same-origin tabs share one session channel', async () => {
     const sharedTabs = tabs.map((tab) => ({ ...tab, channel: 'shared' }));
     const model = browser({ tabs: sharedTabs });

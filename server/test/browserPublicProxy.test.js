@@ -50,6 +50,28 @@ describe('browser public proxy', () => {
     expect(resolvePublicRequest).not.toHaveBeenCalled();
   });
 
+  it('notifies the parent preview when a document loses its browser session', async () => {
+    const browser = { resolvePublicRequest: () => null };
+    const proxy = createBrowserPublicProxy({ browser });
+    const app = express();
+    app.use(proxy.handler);
+
+    const page = await request(app).get('/_browser-expired*channel-a/https://target.example/')
+      .set('Accept', 'text/html')
+      .set('Cookie', cookie);
+    const asset = await request(app).get('/task.js')
+      .set('Accept', 'application/javascript')
+      .set('Cookie', cookie);
+
+    expect(page.status).toBe(403);
+    expect(page.headers['cache-control']).toBe('no-store');
+    expect(page.type).toMatch(/html/);
+    expect(page.text).toContain("channel:\"channel-a\"");
+    expect(page.text).toContain("type:'session-unavailable'");
+    expect(asset.status).toBe(403);
+    expect(asset.body).toEqual({ error: 'browser session unavailable' });
+  });
+
   it('preserves target Authorization while removing only the Handmux bearer token', async () => {
     const received = [];
     const upstream = http.createServer((req, res) => {

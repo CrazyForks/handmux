@@ -9,6 +9,7 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ### Fixed
 - 修复电脑代理临时重启后，重新打开网页预览器或切回代理标签时可能停在 `browser unavailable` 错误页、需要反复刷新的问题。
+- 修复代理会话过期、丢失或设备 Cookie 失效后，网页可能停在 `browser session unavailable` 错误页而不会自动恢复的问题。
 
 ## [0.22.0] - 2026-08-03
 

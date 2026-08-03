@@ -13,6 +13,18 @@ const SERVICE_PATHS = new Set([
 ]);
 const DEVICE_COOKIE = 'tw_browser_device';
 
+function sessionChannel(pathname) {
+  const descriptor = String(pathname || '').split('/')[1] || '';
+  return descriptor.match(/\*([A-Za-z0-9_-]{1,128})$/)?.[1] || null;
+}
+
+function sessionUnavailableHtml(pathname) {
+  const channel = JSON.stringify(sessionChannel(pathname));
+  return `<!doctype html><meta charset="utf-8">
+<script>parent.postMessage({source:'handmux-browser',channel:${channel},type:'session-unavailable'},'*')</script>
+<pre>{"error":"browser session unavailable"}</pre>`;
+}
+
 export function isBrowserServicePath(pathname) {
   return SERVICE_PATHS.has(String(pathname || '').split('?')[0]);
 }
@@ -65,6 +77,12 @@ function filteredCookie(raw) {
   return values.join('; ');
 }
 
+function expectsDocument(req) {
+  const destination = String(req.headers['sec-fetch-dest'] || '').toLowerCase();
+  const accept = String(req.headers.accept || '').toLowerCase();
+  return destination === 'document' || destination === 'iframe' || accept.includes('text/html');
+}
+
 function upstreamHeaders(headers, port, token) {
   const out = { ...headers, host: `127.0.0.1:${port}` };
   if (token && out.authorization === `Bearer ${token}`) delete out.authorization;
@@ -101,7 +119,11 @@ export function createBrowserPublicProxy({
     const deviceId = cookieValue(req.headers.cookie, DEVICE_COOKIE);
     const target = browserTarget(browser, req, deviceId);
     if (!target) {
-      if (claimedBrowserRequest(req)) return res.status(403).json({ error: 'browser session unavailable' });
+      if (claimedBrowserRequest(req)) {
+        res.setHeader('Cache-Control', 'no-store');
+        if (expectsDocument(req)) return res.status(403).type('html').send(sessionUnavailableHtml(pathname));
+        return res.status(403).json({ error: 'browser session unavailable' });
+      }
       return next();
     }
     const { port } = target;

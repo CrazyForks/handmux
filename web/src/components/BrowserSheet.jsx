@@ -93,6 +93,7 @@ export default function BrowserSheet({ browser, staticPreview }) {
   const frameUrls = useRef(new Map());
   const staticFrameUrls = useRef(new Map());
   const refreshSequences = useRef(new Map());
+  const recoveringSessions = useRef(new Set());
   const activeIdRef = useRef(activeId);
   const openRef = useRef(open);
   const activeTabRef = useRef(null);
@@ -177,8 +178,23 @@ export default function BrowserSheet({ browser, staticPreview }) {
       const frameEntry = [...frames.current.entries()]
         .find(([, frame]) => frame.contentWindow === event.source);
       const tab = frameEntry && tabs.find((item) => item.id === frameEntry[0]);
-      if (!tab || tab.mode !== 'proxy' || tab.channel !== event.data.channel) return;
+      if (!tab || tab.mode !== 'proxy') return;
+      if (event.data.type === 'session-unavailable') {
+        if (tab.channel !== event.data.channel) return;
+        if (!openRef.current || activeIdRef.current !== tab.id) {
+          setUnhealthyTabs((current) => new Set(current).add(tab.id));
+          return;
+        }
+        if (recoveringSessions.current.has(tab.id)) return;
+        recoveringSessions.current.add(tab.id);
+        void recoverBinding(tab.id).then((binding) => {
+          if (!binding) recoveringSessions.current.delete(tab.id);
+        });
+        return;
+      }
+      if (tab.channel !== event.data.channel) return;
       if (event.data.type === 'ready') {
+        recoveringSessions.current.delete(tab.id);
         markBindingReady(tab.id, event.data.channel);
         setUnhealthyTabs((current) => {
           if (!current.has(tab.id)) return current;
@@ -196,7 +212,7 @@ export default function BrowserSheet({ browser, staticPreview }) {
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [markBindingReady, tabs, updateTabMeta]);
+  }, [markBindingReady, recoverBinding, tabs, updateTabMeta]);
 
   useEffect(() => {
     setLoadedTabs((current) => {
@@ -209,8 +225,12 @@ export default function BrowserSheet({ browser, staticPreview }) {
     });
     setMountedTabs((current) => {
       const live = new Set(tabs.map((tab) => tab.id));
+      const liveProxy = new Set(tabs.filter((tab) => tab.mode === 'proxy').map((tab) => tab.id));
       for (const id of refreshSequences.current.keys()) {
         if (!live.has(id)) refreshSequences.current.delete(id);
+      }
+      for (const id of recoveringSessions.current) {
+        if (!liveProxy.has(id)) recoveringSessions.current.delete(id);
       }
       return new Set([...current].filter((id) => live.has(id)));
     });
