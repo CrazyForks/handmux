@@ -12,7 +12,8 @@ describe('device-owned browser tabs', () => {
       tabs: [
         {
           id: 'a', mode: 'proxy', originalUrl: 'https://a.example/', title: 'A',
-          deadline: 123, createdAt: 100, url: '/bootstrap', channel: 'secret', generation: 4,
+          deadline: 123, createdAt: 100, siteVersion: 'desktop',
+          url: '/bootstrap', channel: 'secret', generation: 4,
         },
         { id: 'b', mode: 'direct', originalUrl: 'https://b.example/', title: 'B', deadline: null },
       ],
@@ -23,7 +24,10 @@ describe('device-owned browser tabs', () => {
 
     expect(readBrowserTabs()).toEqual({
       tabs: [
-        { id: 'a', mode: 'proxy', originalUrl: 'https://a.example/', title: 'A', deadline: 123, createdAt: 100 },
+        {
+          id: 'a', mode: 'proxy', originalUrl: 'https://a.example/', title: 'A',
+          deadline: 123, createdAt: 100, siteVersion: 'desktop',
+        },
         { id: 'b', mode: 'direct', originalUrl: 'https://b.example/', title: 'B', deadline: null },
       ],
       activeId: 'b',

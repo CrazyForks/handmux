@@ -11,8 +11,8 @@ let container;
 let root;
 
 const tabs = [
-  { id: 'a', mode: 'proxy', url: '/_browser-a/https://a.example/', originalUrl: 'https://a.example/', title: 'Alpha', channel: 'ca' },
-  { id: 'b', mode: 'proxy', url: '/_browser-b/https://b.example/', originalUrl: 'https://b.example/', title: 'Beta', channel: 'cb' },
+  { id: 'a', mode: 'proxy', siteVersion: 'mobile', url: '/_browser-a/https://a.example/', originalUrl: 'https://a.example/', title: 'Alpha', channel: 'ca' },
+  { id: 'b', mode: 'proxy', siteVersion: 'mobile', url: '/_browser-b/https://b.example/', originalUrl: 'https://b.example/', title: 'Beta', channel: 'cb' },
 ];
 
 const browser = (overrides = {}) => ({
@@ -129,7 +129,8 @@ describe('BrowserSheet', () => {
 
     click(document.querySelector('button[aria-label="网页预览器菜单"]'));
     const menu = document.querySelector('.browser-options-card');
-    expect(menu.textContent).toContain('页面视图');
+    expect(menu.textContent).toContain('页面宽度');
+    expect(menu.textContent).not.toContain('向网站请求');
     expect(menu.textContent).toContain('缩放网页');
     expect(menu.textContent).not.toContain('源目录');
     expect(menu.textContent).not.toContain('停止预览');
@@ -206,9 +207,9 @@ describe('BrowserSheet', () => {
       click(stepper.querySelector('button[aria-label="放大"]'));
       expect(stepper.textContent).toContain('110%');
       expect(frame.style.transform).toContain('scale(1.1)');
-      expect(scaler.style.width).toBe('110%');
+      expect(scaler.style.width).toBe('429px');
       expect(scaler.style.height).toBe('110%');
-      expect(frame.style.width).toBe('90.9091%');
+      expect(frame.style.width).toBe('390px');
       expect(styles).toMatch(/\.browser-pane\s*\{[^}]*overflow:\s*auto/);
       expect(styles).toMatch(/\.browser-pane::.*scrollbar:horizontal\s*\{[^}]*height:\s*7px/);
       expect(styles).toMatch(/\.browser-content\s*\{[^}]*isolation:\s*isolate[^}]*contain:\s*paint/);
@@ -223,13 +224,13 @@ describe('BrowserSheet', () => {
 
       click(stepper.querySelector('button[aria-label="放大"]'));
       expect(stepper.textContent).toContain('125%');
-      expect(scaler.style.width).toBe('125%');
-      expect(frame.style.width).toBe('80%');
+      expect(scaler.style.width).toBe('487.5px');
+      expect(frame.style.width).toBe('390px');
       click(stepper.querySelector('button[aria-label="重置网页缩放"]'));
       expect(stepper.textContent).toContain('100%');
-      expect(scaler.style.width).toBe('100%');
-      expect(frame.style.width).toBe('100%');
-      expect(frame.style.transform).toBe('');
+      expect(scaler.style.width).toBe('390px');
+      expect(frame.style.width).toBe('390px');
+      expect(frame.style.transform).toBe('scale(1)');
 
       const zoomOut = stepper.querySelector('button[aria-label="缩小"]');
       const zoomIn = stepper.querySelector('button[aria-label="放大"]');
@@ -893,7 +894,8 @@ describe('BrowserSheet', () => {
     expect(card).not.toBeNull();
     expect(card.textContent).toContain('连接方式');
     expect(card.textContent).not.toContain('当前网页');
-    expect(card.textContent).toContain('页面视图');
+    expect(card.textContent).toContain('页面宽度');
+    expect(card.textContent).toContain('向网站请求');
     expect(card.textContent).toContain('后台页签关闭');
     expect(card.textContent).toContain('清理本站代理 Cookie');
     const external = card.querySelector('.browser-open-external');
@@ -920,10 +922,16 @@ describe('BrowserSheet', () => {
     click(modeButtons[0]);
     expect(model.navigateTab).toHaveBeenCalledWith('a', 'https://a.example/', 'direct');
 
-    const viewButtons = [...card.querySelectorAll('.browser-view-segment button')];
-    expect(viewButtons.map((node) => node.getAttribute('aria-label'))).toEqual(['手机视图', '电脑视图']);
-    click(viewButtons[1]);
-    expect(viewButtons[1].getAttribute('aria-pressed')).toBe('true');
+    const widthButtons = [...card.querySelectorAll('.browser-width-row button')];
+    expect(widthButtons.map((node) => node.textContent)).toEqual(['窄屏', '宽屏']);
+    const navigationCount = model.navigateTab.mock.calls.length;
+    click(widthButtons[1]);
+    expect(widthButtons[1].getAttribute('aria-pressed')).toBe('true');
+    expect(model.navigateTab).toHaveBeenCalledTimes(navigationCount);
+    const siteVersionButtons = [...card.querySelectorAll('.browser-site-version-row button')];
+    expect(siteVersionButtons.map((node) => node.textContent)).toEqual(['手机版', '电脑版']);
+    await clickAndFlush(siteVersionButtons[1]);
+    expect(model.navigateTab).toHaveBeenCalledWith('a', 'https://a.example/', 'proxy', 'desktop');
 
     click(card.querySelector('.browser-close-trigger'));
     const closeChoices = [...card.querySelectorAll('.browser-time-option')];

@@ -157,15 +157,15 @@ const browserReq = (path, options = {}) => req(path, {
   ...options,
   headers: { ...(options.headers || {}), 'X-Handmux-Browser-Device': getBrowserDeviceId() },
 });
-export const acquireBrowserProxyLease = (tabId, url) =>
+export const acquireBrowserProxyLease = (tabId, url, siteVersion = 'mobile') =>
   browserReq(`/api/browser-proxy/leases/${encodeURIComponent(tabId)}`, {
     method: 'PUT',
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, siteVersion }),
   });
-export const navigateBrowserProxyLease = (tabId, url) =>
+export const navigateBrowserProxyLease = (tabId, url, siteVersion = 'mobile') =>
   browserReq(`/api/browser-proxy/leases/${encodeURIComponent(tabId)}/navigate`, {
     method: 'POST',
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, siteVersion }),
   });
 export const deleteBrowserProxyLease = (tabId) =>
   browserReq(`/api/browser-proxy/leases/${encodeURIComponent(tabId)}`, { method: 'DELETE' });

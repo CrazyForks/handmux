@@ -4,6 +4,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Changed
+- 网页预览器将容易误解的手机 / 电脑视图拆分为窄屏 / 宽屏页面宽度；电脑代理标签可另外向网站请求手机版或电脑版，切换时保留该标签的登录状态。
+
 ### Fixed
 - 修复电脑代理临时重启后，重新打开网页预览器或切回代理标签时可能停在 `browser unavailable` 错误页、需要反复刷新的问题。
 

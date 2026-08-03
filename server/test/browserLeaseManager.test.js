@@ -91,6 +91,44 @@ describe('browser proxy leases', () => {
     expect(firstSession.cookies._cookieJar).toBe(siblingSession.cookies._cookieJar);
   });
 
+  it('recreates one lease and aligns request headers and navigator when the site version changes', async () => {
+    const fake = fakeHammerhead();
+    const manager = await createBrowserPreviewManager({
+      hammerhead: fake.api,
+      targetPolicyFactory: () => ({ check: vi.fn(async () => ({ allowed: true })) }),
+    });
+    const input = {
+      tabId: 'client-a',
+      deviceId: DEVICE,
+      url: 'https://app.example/',
+      origin: 'https://b-app.preview.example',
+      sourceUserAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36',
+    };
+
+    const mobile = await manager.putLease({ ...input, siteVersion: 'mobile' });
+    const mobileSession = fake.proxies[0].openSession.mock.calls[0][1];
+    const requestOptions = { headers: {
+      'user-agent': input.sourceUserAgent,
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"Linux"',
+    } };
+    await mobileSession.requestListeners.onRequest({
+      _requestInfo: { url: input.url, isAjax: false, headers: requestOptions.headers },
+      requestOptions,
+      setMock: vi.fn(),
+    });
+
+    expect(mobile.siteVersion).toBe('mobile');
+    expect(requestOptions.headers['user-agent']).toContain('Android');
+    expect(requestOptions.headers['sec-ch-ua-mobile']).toBe('?1');
+    expect(await mobileSession.getPayloadScript()).toContain('profile.mobile');
+
+    const desktop = await manager.putLease({ ...input, siteVersion: 'desktop' });
+    expect(desktop.siteVersion).toBe('desktop');
+    expect(fake.proxies[0].openSession).toHaveBeenCalledTimes(2);
+    expect(fake.proxies[0].closeSession).toHaveBeenCalledWith(mobileSession);
+  });
+
   it('deleting one lease revokes only its Hammerhead session', async () => {
     vi.useFakeTimers();
     try {

@@ -70,8 +70,28 @@ describe('browser proxy lease routes', () => {
       'https://next.example/',
       DEVICE,
       expect.stringMatching(/^https:\/\/b-[0-9a-z]{13}\.preview\.example$/),
+      'mobile',
+      '',
     );
     expect(browser.deleteLease).toHaveBeenCalledWith('client-a', DEVICE);
+  });
+
+  it('validates and forwards the requested website version', async () => {
+    const browser = browserFake();
+    const app = appFor(browser);
+
+    await asDevice(request(app).put('/leases/client-a'))
+      .set('User-Agent', 'Desktop Browser')
+      .send({ url: 'https://app.example/', siteVersion: 'desktop' })
+      .expect(200);
+    await asDevice(request(app).put('/leases/client-b'))
+      .send({ url: 'https://app.example/', siteVersion: 'tablet' })
+      .expect(400, { error: 'bad browser site version' });
+
+    expect(browser.putLease).toHaveBeenCalledWith(expect.objectContaining({
+      siteVersion: 'desktop',
+      sourceUserAgent: 'Desktop Browser',
+    }));
   });
 
   it('keeps profile endpoints under browser-proxy', async () => {

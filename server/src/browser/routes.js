@@ -1,6 +1,7 @@
 import express from 'express';
 import { browserLabelForOrigin } from './originLabel.js';
 import { browserRequestOrigin } from './publicProxy.js';
+import { normalizeSiteVersion } from './siteVersion.js';
 
 const RETENTION_DAYS = new Set([1, 7, 30, null]);
 const DEVICE_ID = /^[A-Za-z0-9_-]{32,128}$/;
@@ -71,6 +72,8 @@ export function browserRoutes({
     if (!TAB_ID.test(req.params.tabId)) return res.status(400).json({ error: 'bad browser tab id' });
     const url = normalizedTarget(req.body?.url);
     if (!url) return res.status(400).json({ error: 'browser URL must use http or https' });
+    const siteVersion = normalizeSiteVersion(req.body?.siteVersion);
+    if (!siteVersion) return res.status(400).json({ error: 'bad browser site version' });
     try {
       const origin = wildcardOrigin(publicBase, new URL(url).origin);
       const lease = await browser.putLease({
@@ -78,6 +81,8 @@ export function browserRoutes({
         url: req.body.url,
         origin,
         deviceId: req.browserDeviceId,
+        siteVersion,
+        sourceUserAgent: req.get('user-agent') || '',
       });
       return res.json(responseLease(lease, req.browserDeviceId));
     } catch (error) {
@@ -90,6 +95,8 @@ export function browserRoutes({
     if (!TAB_ID.test(req.params.tabId)) return res.status(400).json({ error: 'bad browser tab id' });
     const url = normalizedTarget(req.body?.url);
     if (!url) return res.status(400).json({ error: 'browser URL must use http or https' });
+    const siteVersion = normalizeSiteVersion(req.body?.siteVersion);
+    if (!siteVersion) return res.status(400).json({ error: 'bad browser site version' });
     try {
       const origin = wildcardOrigin(publicBase, new URL(url).origin);
       const lease = await browser.navigateLease(
@@ -97,6 +104,8 @@ export function browserRoutes({
         req.body.url,
         req.browserDeviceId,
         origin,
+        siteVersion,
+        req.get('user-agent') || '',
       );
       if (!lease) return res.status(404).json({ error: 'browser proxy lease not found' });
       return res.json(responseLease(lease, req.browserDeviceId));

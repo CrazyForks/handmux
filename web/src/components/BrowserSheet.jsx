@@ -6,10 +6,8 @@ import {
   GlobeIcon,
   HomeIcon,
   MoreHorizontalIcon,
-  MonitorIcon,
   PlusIcon,
   RefreshIcon,
-  SmartphoneIcon,
   StopIcon,
   XIcon,
 } from './icons.jsx';
@@ -75,7 +73,7 @@ export default function BrowserSheet({ browser, staticPreview }) {
   const [address, setAddress] = useState(webActive?.originalUrl || '');
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [timeOpen, setTimeOpen] = useState(false);
-  const [device, setDevice] = useState('mobile');
+  const [pageWidth, setPageWidth] = useState('narrow');
   const [bodySize, setBodySize] = useState({ width: 0, height: 0 });
   const [loadedTabs, setLoadedTabs] = useState(() => new Set());
   const [refreshingTabs, setRefreshingTabs] = useState(() => new Set());
@@ -122,7 +120,7 @@ export default function BrowserSheet({ browser, staticPreview }) {
 
   useEffect(() => {
     setPageZoom(1);
-  }, [activeId, device, homeActive, staticActive?.name]);
+  }, [activeId, pageWidth, homeActive, staticActive?.name]);
 
   useEffect(() => {
     if (!staticSelected || !staticActive) return;
@@ -370,6 +368,23 @@ export default function BrowserSheet({ browser, staticPreview }) {
     navigateTab(webActive.id, webActive.originalUrl, mode);
   };
 
+  const requestSiteVersion = async (siteVersion) => {
+    if (!proxied || webActive.siteVersion === siteVersion) return;
+    setRefreshingTabs((current) => new Set(current).add(webActive.id));
+    const navigated = await navigateTab(
+      webActive.id,
+      webActive.originalUrl,
+      'proxy',
+      siteVersion,
+    );
+    if (navigated?.id === webActive.id && navigated.url) return;
+    setRefreshingTabs((current) => {
+      const next = new Set(current);
+      next.delete(webActive.id);
+      return next;
+    });
+  };
+
   const openHistory = (entry, mode = entry.lastMode || 'direct', persistMode = false) => {
     setHistoryModeOpen(null);
     if (entry.kind === 'static') {
@@ -434,28 +449,27 @@ export default function BrowserSheet({ browser, staticPreview }) {
     if (direction > 0) return PAGE_ZOOM_STEPS.find((value) => value > current) || current;
     return [...PAGE_ZOOM_STEPS].reverse().find((value) => value < current) || current;
   });
-  const desktopScale = device === 'desktop' && bodySize.width > 0 ? bodySize.width / 1280 : 1;
+  const previewWidth = pageWidth === 'wide' ? 1280 : 390;
+  const previewScale = bodySize.width > 0
+    ? (pageWidth === 'wide'
+      ? bodySize.width / previewWidth
+      : Math.min(1, bodySize.width / previewWidth))
+    : 1;
   const scalerStyleFor = (zoom) => {
-    if (device === 'desktop' && bodySize.height <= 0) return undefined;
-    if (device === 'desktop') return {
-      width: `${1280 * desktopScale * zoom}px`,
-      height: `${bodySize.height * zoom}px`,
+    const scaledWidth = Math.round(previewWidth * previewScale * zoom * 1000) / 1000;
+    const scaledHeight = Math.round(bodySize.height * zoom * 1000) / 1000;
+    const scaledPercent = Math.round(zoom * 1000) / 10;
+    return {
+      width: `${scaledWidth}px`,
+      height: bodySize.height > 0 ? `${scaledHeight}px` : `${scaledPercent}%`,
+      marginInline: pageWidth === 'narrow' && previewScale === 1 ? 'auto' : undefined,
     };
-    const percentage = `${Math.round(zoom * 100)}%`;
-    return { width: percentage, height: percentage };
   };
   const frameStyleFor = (zoom) => {
-    if (device === 'desktop' && bodySize.height <= 0) return undefined;
-    if (device === 'desktop') return {
-      width: '1280px',
-      height: `${bodySize.height / desktopScale}px`,
-      transform: `scale(${desktopScale * zoom})`,
-      transformOrigin: '0 0',
-    };
     return {
-      width: `${(100 / zoom).toFixed(4)}%`,
-      height: `${(100 / zoom).toFixed(4)}%`,
-      transform: zoom === 1 ? undefined : `scale(${zoom})`,
+      width: `${previewWidth}px`,
+      height: bodySize.height > 0 ? `${bodySize.height / previewScale}px` : '100%',
+      transform: `scale(${previewScale * zoom})`,
       transformOrigin: '0 0',
     };
   };
@@ -590,15 +604,28 @@ export default function BrowserSheet({ browser, staticPreview }) {
                 </div>
               )}
 
-              <div className="browser-options-row">
-                <strong>{t('browser.pageView')}</strong>
+              <div className="browser-options-row browser-width-row">
+                <strong>{t('browser.pageWidth')}</strong>
                 <div className="browser-view-segment" role="group" aria-label={t('browser.viewMode')}>
-                  <button aria-label={t('browser.mobileView')} aria-pressed={device === 'mobile'}
-                    onClick={() => setDevice('mobile')}><SmartphoneIcon /></button>
-                  <button aria-label={t('browser.desktopView')} aria-pressed={device === 'desktop'}
-                    onClick={() => setDevice('desktop')}><MonitorIcon /></button>
+                  <button aria-pressed={pageWidth === 'narrow'}
+                    onClick={() => setPageWidth('narrow')}>{t('browser.narrowWidth')}</button>
+                  <button aria-pressed={pageWidth === 'wide'}
+                    onClick={() => setPageWidth('wide')}>{t('browser.wideWidth')}</button>
                 </div>
               </div>
+
+              {proxied && (
+                <div className="browser-options-row browser-site-version-row">
+                  <strong>{t('browser.requestSiteVersion')}</strong>
+                  <div className="browser-view-segment" role="group"
+                    aria-label={t('browser.requestSiteVersion')}>
+                    <button aria-pressed={webActive.siteVersion !== 'desktop'}
+                      onClick={() => requestSiteVersion('mobile')}>{t('browser.mobileSite')}</button>
+                    <button aria-pressed={webActive.siteVersion === 'desktop'}
+                      onClick={() => requestSiteVersion('desktop')}>{t('browser.desktopSite')}</button>
+                  </div>
+                </div>
+              )}
 
               {active && !homeActive && (
                 <div className="browser-options-section">
@@ -706,7 +733,7 @@ export default function BrowserSheet({ browser, staticPreview }) {
         )}
       </div>
 
-      <div ref={bodyRef} className={`browser-content ${device === 'desktop' ? 'desktop' : ''}`}
+      <div ref={bodyRef} className={`browser-content ${pageWidth}`}
         inert={clearConfirmation ? '' : undefined}>
         <section className="browser-history" hidden={!homeActive}>
           <div className="browser-history-head">

@@ -27,6 +27,7 @@ import { t } from '../i18n';
 const runtimeTab = (tab) => ({
   ...tab,
   ...(tab.mode === 'direct' ? { url: tab.originalUrl } : {}),
+  ...(tab.mode === 'proxy' ? { siteVersion: tab.siteVersion === 'desktop' ? 'desktop' : 'mobile' } : {}),
 });
 const PROXY_RETRY_DELAYS = [250, 500, 1000, 2000, 4000, 5000];
 
@@ -200,12 +201,15 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       return Promise.resolve(null);
     }
     const requestedUrl = tab.originalUrl;
+    const requestedSiteVersion = tab.siteVersion === 'desktop' ? 'desktop' : 'mobile';
     const existing = bindingPromises.current.get(id);
-    if (existing?.url === requestedUrl) return existing.promise;
+    if (existing?.url === requestedUrl && existing.siteVersion === requestedSiteVersion) return existing.promise;
     let profileWarning = false;
     const stillCurrent = () => {
       const current = tabsRef.current.find((item) => item.id === id);
-      return current?.mode === 'proxy' && current.originalUrl === requestedUrl;
+      return current?.mode === 'proxy'
+        && current.originalUrl === requestedUrl
+        && current.siteVersion === requestedSiteVersion;
     };
     const pending = (async () => {
       for (let attempt = 0; attempt <= PROXY_RETRY_DELAYS.length; attempt += 1) {
@@ -241,7 +245,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
                 recoveryWarningShown.current = true;
                 setError(new Error(t('browser.profileRecoveryWarning')));
               }
-              return acquireBrowserProxyLease(id, requestedUrl);
+              return acquireBrowserProxyLease(id, requestedUrl, requestedSiteVersion);
             });
             if (!stillCurrent()) return null;
             return binding;
@@ -260,7 +264,10 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     })().then((binding) => {
       if (!binding) return null;
       const current = tabsRef.current.find((item) => item.id === id);
-      if (!current || current.mode !== 'proxy' || current.originalUrl !== requestedUrl) {
+      if (!current
+        || current.mode !== 'proxy'
+        || current.originalUrl !== requestedUrl
+        || current.siteVersion !== requestedSiteVersion) {
         deleteBrowserProxyLease(id).catch(() => {});
         return null;
       }
@@ -275,7 +282,9 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
         bindingPromises.current.delete(id);
       }
     });
-    bindingPromises.current.set(id, { url: requestedUrl, promise: pending });
+    bindingPromises.current.set(id, {
+      url: requestedUrl, siteVersion: requestedSiteVersion, promise: pending,
+    });
     return pending;
   }, [applyBinding, browserProxy, enqueueProfileOperation]);
 
@@ -366,6 +375,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     };
     const created = runtimeTab({
       id, mode, originalUrl: url, title: '', deadline: null, createdAt: Date.now(),
+      ...(mode === 'proxy' ? { siteVersion: 'mobile' } : {}),
     });
     commitTabs((current) => [...current.map((tab) => (
       tab.id === activeRef.current && openRef.current && !historyRef.current ? hideTab(tab) : tab
@@ -497,7 +507,7 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
     }
   }, [commitActive, commitHistory, commitTabs, ensureBinding, recordHistory, release]);
 
-  const navigateTab = useCallback(async (id, input, requestedMode) => {
+  const navigateTab = useCallback(async (id, input, requestedMode, requestedSiteVersion) => {
     const url = normalizeBrowserInput(input);
     const current = tabsRef.current.find((tab) => tab.id === id);
     if (!current) return null;
@@ -506,6 +516,13 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       return null;
     }
     const mode = requestedMode || current.mode;
+    const siteVersion = mode === 'proxy'
+      ? (requestedSiteVersion === 'desktop'
+        ? 'desktop'
+        : requestedSiteVersion === 'mobile'
+          ? 'mobile'
+          : current.mode === 'proxy' && current.siteVersion === 'desktop' ? 'desktop' : 'mobile')
+      : undefined;
     if (mode === 'proxy' && !browserProxy) {
       setError(new Error(t('browser.proxyUnavailable')));
       return null;
@@ -521,16 +538,16 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
       originalUrl: url,
       title: '',
       ...(mode === 'direct'
-        ? { url, channel: undefined, generation: undefined }
+        ? { url, channel: undefined, generation: undefined, siteVersion: undefined }
         : (current.mode === 'proxy'
-          ? {}
-          : { url: undefined, channel: undefined, generation: undefined })),
+          ? { siteVersion }
+          : { url: undefined, channel: undefined, generation: undefined, siteVersion })),
     } : tab));
     if (mode === 'proxy') {
       const prior = navigateQueues.current.get(id) || Promise.resolve();
       const request = prior.catch(() => {}).then(() => (
         current.mode === 'proxy'
-          ? navigateBrowserProxyLease(id, url)
+          ? navigateBrowserProxyLease(id, url, siteVersion)
           : ensureBinding(id, { force: true })
       ));
       navigateQueues.current.set(id, request);
@@ -540,7 +557,8 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
         const latest = tabsRef.current.find((tab) => tab.id === id);
         if (navigateSequence.current.get(id) === sequence
           && latest?.mode === mode
-          && latest.originalUrl === url) {
+          && latest.originalUrl === url
+          && latest.siteVersion === siteVersion) {
           if (binding?.url) {
             applyBinding(id, binding);
             setError(null);
@@ -553,7 +571,8 @@ export function useBrowser({ enabled = true, browserProxy = false } = {}) {
         const latest = tabsRef.current.find((tab) => tab.id === id);
         if (navigateSequence.current.get(id) === sequence
           && latest?.mode === mode
-          && latest.originalUrl === url) {
+          && latest.originalUrl === url
+          && latest.siteVersion === siteVersion) {
           commitTabs((all) => all.map((tab) => tab.id === id
             ? { ...tab, url: undefined, channel: undefined, generation: undefined }
             : tab));

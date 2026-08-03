@@ -23,8 +23,8 @@ describe('browser API client', () => {
       .mockResolvedValueOnce(response(204));
     vi.stubGlobal('fetch', fetchMock);
 
-    await acquireBrowserProxyLease('a', 'https://a.example/');
-    await navigateBrowserProxyLease('a', 'https://b.example/');
+    await acquireBrowserProxyLease('a', 'https://a.example/', 'mobile');
+    await navigateBrowserProxyLease('a', 'https://b.example/', 'desktop');
     await deleteBrowserProxyLease('a');
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
@@ -33,10 +33,10 @@ describe('browser API client', () => {
       '/api/browser-proxy/leases/a',
     ]);
     expect(fetchMock.mock.calls[0][1]).toMatchObject({
-      method: 'PUT', body: JSON.stringify({ url: 'https://a.example/' }),
+      method: 'PUT', body: JSON.stringify({ url: 'https://a.example/', siteVersion: 'mobile' }),
     });
     expect(fetchMock.mock.calls[1][1]).toMatchObject({
-      method: 'POST', body: JSON.stringify({ url: 'https://b.example/' }),
+      method: 'POST', body: JSON.stringify({ url: 'https://b.example/', siteVersion: 'desktop' }),
     });
     expect(fetchMock.mock.calls[2][1]).toMatchObject({ method: 'DELETE' });
     const deviceIds = fetchMock.mock.calls.map(([, options]) => options.headers['X-Handmux-Browser-Device']);

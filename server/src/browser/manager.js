@@ -11,6 +11,12 @@ import {
   hammerheadRebindHeaders,
   installHammerheadRebindLocationCompat,
 } from './hammerheadRedirectCompat.js';
+import {
+  applySiteVersionHeaders,
+  normalizeSiteVersion,
+  siteVersionIdentity,
+  siteVersionNavigatorScript,
+} from './siteVersion.js';
 
 const defaultHammerhead = importedHammerhead.default || importedHammerhead;
 const POOL_IDLE_CLOSE_MS = 1_000;
@@ -32,9 +38,10 @@ function isLoopbackUrl(raw) {
   return hostname === 'localhost' || classifyIp(hostname) === 'loopback';
 }
 
-function bridgeScript(channel) {
+function bridgeScript(channel, identity) {
   const encoded = JSON.stringify(channel);
-  return `(() => {
+  return `${siteVersionNavigatorScript(identity)}
+  (() => {
     const channel = ${encoded};
     const hammerhead = window['%hammerhead%'];
     const destinationUrl = (url) => {
@@ -92,7 +99,7 @@ function bridgeScript(channel) {
 
 function browserSessionClass(hammerhead) {
   return class BrowserSession extends hammerhead.Session {
-    constructor(channel) {
+    constructor(channel, identity) {
       super([], {
         disablePageCaching: true,
         allowMultipleWindows: true,
@@ -101,10 +108,11 @@ function browserSessionClass(hammerhead) {
         nativeAutomation: false,
       });
       this.channel = channel;
+      this.identity = identity;
     }
 
-    async getPayloadScript() { return bridgeScript(this.channel); }
-    async getIframePayloadScript() { return ''; }
+    async getPayloadScript() { return bridgeScript(this.channel, this.identity); }
+    async getIframePayloadScript() { return siteVersionNavigatorScript(this.identity); }
     getAuthCredentials() { return null; }
     handleAttachment() {}
     handleFileDownload() {}
@@ -148,6 +156,7 @@ function publicLease(lease) {
     url: lease.url,
     originalUrl: lease.originalUrl,
     channel: lease.channel,
+    siteVersion: lease.siteVersion,
   };
 }
 
@@ -305,7 +314,9 @@ export async function createBrowserPreviewManager({
     if (lease.timer != null) clearTimer(lease.timer);
     lease.timer = setTimer(() => release(lease), leaseTtlMs);
   };
-  const createLease = async ({ tabId, deviceId, url, origin, channel }) => {
+  const createLease = async ({
+    tabId, deviceId, url, origin, channel, siteVersion, sourceUserAgent,
+  }) => {
     if (closing) throw new Error('browser manager closing');
     const target = normalizedTarget(url);
     const publicOrigin = normalizedOrigin(origin);
@@ -316,7 +327,8 @@ export async function createBrowserPreviewManager({
     let detachCookies = null;
     try {
       if (closing) throw new Error('browser manager closing');
-      session = new SessionClass(channel);
+      const identity = siteVersionIdentity(siteVersion, sourceUserAgent);
+      session = new SessionClass(channel, identity);
       session.id = `_browser-${randomId()}-${encodeURIComponent(tabId)}`;
       const policy = targetPolicyFactory({ topLevelUrl: target, handmuxOrigin });
       const hooks = session.requestHookEventProvider || session;
@@ -325,6 +337,7 @@ export async function createBrowserPreviewManager({
           if (await rehomeNavigation(event, session)) return;
           const result = await policy.check(event._requestInfo.url);
           if (result.allowed) {
+            applySiteVersionHeaders(event.requestOptions?.headers, identity);
             if (result.addresses?.length && event.requestOptions) {
               const approved = result.addresses.map(({ address, family }) => ({ address, family }));
               event.requestOptions.autoSelectFamily = true;
@@ -352,6 +365,8 @@ export async function createBrowserPreviewManager({
         url: publicUrl,
         publicOrigin,
         channel,
+        siteVersion,
+        sourceUserAgent,
         pool,
         session,
         policy,
@@ -367,14 +382,21 @@ export async function createBrowserPreviewManager({
     }
   };
 
-  const putImpl = async ({ tabId, deviceId, url, origin }, requireExisting = false) => {
+  const putImpl = async ({
+    tabId, deviceId, url, origin, siteVersion, sourceUserAgent,
+  }, requireExisting = false) => {
     if (!deviceId || !tabId) throw new Error('browser lease identity required');
     const key = leaseKey(deviceId, tabId);
     const existing = leases.get(key);
     if (requireExisting && !existing) return null;
     const target = normalizedTarget(url);
     const publicOrigin = normalizedOrigin(origin);
-    if (existing && existing.originalUrl === target && existing.publicOrigin === publicOrigin) {
+    const requestedVersion = normalizeSiteVersion(siteVersion);
+    if (!requestedVersion) throw new Error('invalid browser site version');
+    if (existing
+      && existing.originalUrl === target
+      && existing.publicOrigin === publicOrigin
+      && existing.siteVersion === requestedVersion) {
       touch(existing);
       return publicLease(existing);
     }
@@ -384,6 +406,8 @@ export async function createBrowserPreviewManager({
       url: target,
       origin: publicOrigin,
       channel: existing?.channel || randomChannel(),
+      siteVersion: requestedVersion,
+      sourceUserAgent,
     });
     leases.set(key, next);
     touch(next);
@@ -438,6 +462,8 @@ export async function createBrowserPreviewManager({
         url: target,
         origin,
         channel: current.channel,
+        siteVersion: current.siteVersion,
+        sourceUserAgent: current.sourceUserAgent,
       });
       try {
         const bootstrapUrl = browserBootstrap.issue({
@@ -471,8 +497,8 @@ export async function createBrowserPreviewManager({
 
   return {
     putLease: (options) => put(options),
-    navigateLease(tabId, url, deviceId, origin) {
-      return put({ tabId, url, deviceId, origin }, true);
+    navigateLease(tabId, url, deviceId, origin, siteVersion, sourceUserAgent) {
+      return put({ tabId, url, deviceId, origin, siteVersion, sourceUserAgent }, true);
     },
     getLease(tabId, deviceId) {
       return publicLease(leases.get(leaseKey(deviceId, tabId)));

@@ -18,20 +18,25 @@ import {
 import { useBrowser } from '../src/hooks/useBrowser.js';
 import { t } from '../src/i18n';
 
-const binding = (id, url, generation = 1) => ({
+const binding = (id, url, generation = 1, siteVersion = 'mobile') => ({
   tabId: id,
   url: `/api/browser-proxy/leases/${id}/bootstrap`,
   channel: `channel-${id}`,
   generation,
   originalUrl: url,
+  siteVersion,
 });
 
 beforeEach(() => {
   localStorage.clear();
   localStorage.setItem('hm_browser_access1', '1');
   vi.resetAllMocks();
-  api.acquireBrowserProxyLease.mockImplementation((id, url) => Promise.resolve(binding(id, url)));
-  api.navigateBrowserProxyLease.mockImplementation((id, url) => Promise.resolve(binding(id, url)));
+  api.acquireBrowserProxyLease.mockImplementation((id, url, siteVersion) => (
+    Promise.resolve(binding(id, url, 1, siteVersion))
+  ));
+  api.navigateBrowserProxyLease.mockImplementation((id, url, siteVersion) => (
+    Promise.resolve(binding(id, url, 1, siteVersion))
+  ));
   api.deleteBrowserProxyLease.mockResolvedValue(undefined);
   api.getBrowserProxyStatus.mockResolvedValue({ ready: true, generation: 1 });
   api.setBrowserProxyProfilePrefs.mockResolvedValue({ persist: false, retentionDays: 30 });
@@ -233,7 +238,7 @@ describe('useBrowser device ownership', () => {
       await act(async () => { await vi.runAllTimersAsync(); });
       await act(async () => { await Promise.all([older, newer]); });
 
-      expect(api.acquireBrowserProxyLease).toHaveBeenCalledWith('proxy-a', 'https://b.example/');
+      expect(api.acquireBrowserProxyLease).toHaveBeenCalledWith('proxy-a', 'https://b.example/', 'mobile');
       expect(result.current.tabs[0]).toMatchObject({
         originalUrl: 'https://b.example/',
         url: expect.stringContaining('/bootstrap'),
@@ -367,7 +372,7 @@ describe('useBrowser device ownership', () => {
     api.acquireBrowserProxyLease.mockClear();
     const restored = renderHook(() => useBrowser({ browserProxy: true }));
     await act(async () => { await restored.result.current.ensureBinding(id); });
-    expect(api.acquireBrowserProxyLease).toHaveBeenCalledWith(id, 'https://a.example/');
+    expect(api.acquireBrowserProxyLease).toHaveBeenCalledWith(id, 'https://a.example/', 'mobile');
     expect(restored.result.current.tabs[0].url).toContain('/bootstrap');
   });
 
@@ -503,7 +508,7 @@ describe('useBrowser device ownership', () => {
     await act(async () => { await result.current.setOpen(true); });
 
     expect(api.acquireBrowserProxyLease).toHaveBeenCalledOnce();
-    expect(api.acquireBrowserProxyLease).toHaveBeenCalledWith(id, 'https://a.example/');
+    expect(api.acquireBrowserProxyLease).toHaveBeenCalledWith(id, 'https://a.example/', 'mobile');
     expect(result.current.tabs[0]).toMatchObject({ id, generation: 2 });
     expect(result.current.tabs[0].url).toContain('/bootstrap');
   });
@@ -534,6 +539,22 @@ describe('useBrowser device ownership', () => {
 
     await act(async () => { await result.current.switchTab(firstId); });
     expect(api.acquireBrowserProxyLease).not.toHaveBeenCalled();
+  });
+
+  it('recreates a proxy binding when the requested website version changes', async () => {
+    const { result } = renderHook(() => useBrowser({ browserProxy: true }));
+    await act(async () => { await result.current.openUrl('https://a.example/', { mode: 'proxy' }); });
+    const id = result.current.activeId;
+    api.navigateBrowserProxyLease.mockClear();
+
+    await act(async () => {
+      await result.current.navigateTab(id, 'https://a.example/', 'proxy', 'desktop');
+    });
+
+    expect(api.navigateBrowserProxyLease).toHaveBeenCalledWith(
+      id, 'https://a.example/', 'desktop',
+    );
+    expect(result.current.tabs[0]).toMatchObject({ siteVersion: 'desktop' });
   });
 
   it('clears a tab-specific proxy error when switching to another tab', async () => {
