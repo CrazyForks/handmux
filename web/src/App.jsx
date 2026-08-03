@@ -1855,7 +1855,7 @@ export default function App() {
             cols={manageWindow.width}
             onAdjust={resizeManagedWindowCols}
             onRestore={restoreManagedWindowCols}
-            restoreLabel={t('resize.followComputer')}
+            restoreLabel={t('resize.restoreAutoWidth')}
             restoreDisabled={windowResizePending > 0}
           />
         )}

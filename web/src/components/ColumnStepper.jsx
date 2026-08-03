@@ -22,8 +22,9 @@ export default function ColumnStepper({ label, cols, onAdjust, onRestore, restor
             {step > 0 ? '+' : '−'}{Math.abs(step)}
           </button>
         ))}
-        <button type="button" className="fontbtn sheet-size-restore" disabled={restoreDisabled} onClick={onRestore}>
-          ↺ {restoreLabel}
+        <button type="button" className="fontbtn sheet-size-restore" disabled={restoreDisabled}
+          aria-label={restoreLabel} title={restoreLabel} onClick={onRestore}>
+          ↺ {t('resize.restore')}
         </button>
       </div>
     </div>
