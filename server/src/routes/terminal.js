@@ -137,6 +137,18 @@ export function terminalRoutes({ commands }) {
     catch (e) { next(e); }
   });
 
+  // Restore only the pane arrangement. Window sizing remains untouched; handing the whole window
+  // back to an attached client is the separate `auto` resize operation below.
+  r.post('/layout', async (req, res, next) => {
+    const { window, layout } = req.body || {};
+    if (!isWindowId(window)) return res.status(400).json({ error: 'bad window id' });
+    if (typeof layout !== 'string' || !layout) return res.status(400).json({ error: 'bad window layout' });
+    try {
+      await commands.applyWindowLayout(window, layout);
+      res.json({ ok: true });
+    } catch (e) { next(e); }
+  });
+
   r.post('/resize', async (req, res, next) => {
     const { window, pane, cols, rows, auto, layout } = req.body || {};
     const c = Math.min(Math.max(Number(cols) || 0, 20), 500);

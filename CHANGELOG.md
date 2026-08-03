@@ -4,6 +4,9 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Changed
+- 将列宽调整从设置页移到对应的窗口管理或分屏管理中；纯上下分屏不再显示无效的宽度控制，恢复分屏比例也不会改变整个窗口尺寸。
+
 ## [0.21.0] - 2026-08-03
 
 ### Added

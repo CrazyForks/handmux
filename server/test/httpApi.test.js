@@ -359,6 +359,26 @@ describe('REST API', () => {
     expect(res.body.layout).toContain('200x50');
   });
 
+  it('POST /layout restores the pane arrangement without changing window sizing', async () => {
+    const commands = {
+      ...baseCommands,
+      applyWindowLayout: vi.fn(async () => {}),
+      restoreWindowSize: vi.fn(async () => {}),
+    };
+    await auth(request(appWith(commands)).post('/api/layout'))
+      .send({ window: '@1', layout: 'c89a,200x50,0,0{...}' }).expect(200);
+    expect(commands.applyWindowLayout).toHaveBeenCalledWith('@1', 'c89a,200x50,0,0{...}');
+    expect(commands.restoreWindowSize).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ window: 'main', layout: 'valid' }, 'bad window id'],
+    [{ window: '@1', layout: '' }, 'bad window layout'],
+  ])('POST /layout rejects invalid input %#', async (body, error) => {
+    const res = await auth(request(appWith(baseCommands)).post('/api/layout')).send(body).expect(400);
+    expect(res.body.error).toBe(error);
+  });
+
   it('POST /resize with auto restores layout then client sizing', async () => {
     await auth(request(appWith(baseCommands)).post('/api/resize'))
       .send({ window: '@1', auto: true, layout: 'c89a,200x50,0,0{...}' }).expect(200);

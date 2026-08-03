@@ -16,7 +16,7 @@ import {
 import { LATEST_RELEASE } from './changelog.js';
 import {
   getSessions, getWindows, getPanes, resizeWindow, resizePane, getWindowLayout,
-  restoreWindowSize, sendKeys, sendText, createWindow,
+  applyWindowLayout, restoreWindowSize, sendKeys, sendText, createWindow,
   renameSession, renameWindow, deleteWindow, swapWindows, fetchDoc, fetchImageUrl,
   getStates, getOrphans, takeoverOrphan,
   getServerVersion,
@@ -60,6 +60,7 @@ import BindSession from './components/BindSession.jsx';
 import NewWindowModal from './components/NewWindowModal.jsx';
 import RenameModal from './components/RenameModal.jsx';
 import ActionSheet from './components/ActionSheet.jsx';
+import ColumnStepper from './components/ColumnStepper.jsx';
 import FileManager from './components/FileManager.jsx';
 import GitPanel from './components/GitPanel.jsx';
 import UploadOverlay from './components/UploadOverlay.jsx';
@@ -80,6 +81,7 @@ import { hasShareFlag, takeSharedFile, clearShareFlag } from './shareIntake.js';
 import { windowManageSubtitle, paneManageSubtitle } from './manageLabels.js';
 import { DEFAULT_SERVER_SHORTCUTS } from './shortcutMerge.js';
 import { recoveryPromptMode } from './workspaceRecovery.js';
+import { canResizePaneWidth } from './paneLayout.js';
 import {
   desktopInputEnvironment,
   getKeyboardMode,
@@ -96,7 +98,7 @@ import {
   terminalStreamEnabled,
 } from './terminalTransport.js';
 
-const COL_STEP = 10; // columns added/removed per ⊟/⊞ tap
+const clampCols = (cols) => Math.max(20, Math.min(500, cols));
 
 // Pick the remembered id if it still exists, else the first. We deliberately don't fall back
 // to tmux's "active" — the local last-opened choice wins, first is the fallback.
@@ -128,6 +130,10 @@ export default function App() {
   const [renameTarget, setRenameTarget] = useState(null); // { kind:'session'|'window', id, name } | null
   const [manageWindow, setManageWindow] = useState(null); // the window long-pressed for its action menu
   const [managePane, setManagePane] = useState(null); // pane id long-pressed in the map
+  const [managedPaneWidth, setManagedPaneWidth] = useState(null);
+  const [paneLayoutRestoreReady, setPaneLayoutRestoreReady] = useState(false);
+  const [windowResizePending, setWindowResizePending] = useState(0);
+  const [paneResizePending, setPaneResizePending] = useState(0);
   const [openMapFor, setOpenMapFor] = useState(null); // window id whose split map "管理分屏" asked to open
   const [paneMapOpen, setPaneMapOpen] = useState(false);
   const [fileManagerOpen, setFileManagerOpen] = useState(false); // file-viewer bottom-sheet visibility
@@ -244,8 +250,10 @@ export default function App() {
       at: Date.now(),
     };
   }, [desktopInput]);
-  const tmuxColsRef = useRef(null); // target col count, so taps accumulate (term.cols lags ~1s)
-  const savedLayoutRef = useRef(null); // window_layout captured before our first resize, for ↺
+  // Pane-width undo is scoped to one open management flow. Map values may briefly be the in-flight
+  // layout request so rapid taps share one pre-resize snapshot instead of racing to capture later ratios.
+  const savedLayoutsRef = useRef(new Map());
+  const managePaneWindowRef = useRef(null);
   const recoveryPlanRef = useRef(null); recoveryPlanRef.current = recoveryPlan;
   const recoveryOperationRef = useRef(null); recoveryOperationRef.current = recoveryOperation;
   const restoreInFlightRef = useRef(false);
@@ -435,7 +443,13 @@ export default function App() {
   useBackButton(!!manageWindow || !!renameTarget, () => {
     if (renameTarget) setRenameTarget(null); else setManageWindow(null);
   });
-  useBackButton(!!managePane, () => setManagePane(null));
+  useBackButton(!!managePane, () => {
+    if (managePaneWindowRef.current) savedLayoutsRef.current.delete(managePaneWindowRef.current);
+    managePaneWindowRef.current = null;
+    setManagedPaneWidth(null);
+    setPaneLayoutRestoreReady(false);
+    setManagePane(null);
+  });
   // This page owns a multi-level history stack. Register it in the shared layer order so it can sit
   // above Settings and consume Back/Escape before the parent.
   useHistoryLayer(notifInboxOpen, () => {
@@ -488,53 +502,6 @@ export default function App() {
     catch (e) { handledAuth(e); }
   }, [current, onAuthFail]);
 
-  const getTrackedColCount = useCallback(
-    () => tmuxColsRef.current ?? termRef.current?.getSize()?.cols,
-    [],
-  );
-
-  // ⊟/⊞ : resize the selected pane in a split, or the whole window when it has only one pane.
-  // Font is NOT touched here — that's the two-finger pinch on the terminal. Settings passes the
-  // current pane width it just read from tmux; after that first tap we track the requested target
-  // (term.cols only catches up on the next ~1s refresh) so repeated taps still accumulate.
-  const tmuxResizeCols = useCallback(async (delta, displayedCols = null) => {
-    const windowId = current?.window?.id;
-    // The displayed value is pane-scoped and wins. Other entry points seed tmuxColsRef when a
-    // window opens; the live grid is the final fallback.
-    const base = Number.isFinite(displayedCols)
-      ? displayedCols
-      : (tmuxColsRef.current ?? termRef.current?.getSize()?.cols);
-    if (!windowId || !base) return;
-    const cols = Math.max(20, Math.min(500, base + delta));
-    tmuxColsRef.current = cols;
-    termRef.current?.flash?.(); // flash the cols×rows·font readout for ~3s
-    try {
-      // Capture the original layout once, before our first change, so ↺ can restore it.
-      if (savedLayoutRef.current == null) {
-        savedLayoutRef.current = await getWindowLayout(windowId).then((r) => r.layout || '').catch(() => '');
-      }
-      // A pane in a split → resize just that pane (resize-window would shrink the whole
-      // window and halve the pane). A lone pane fills the window, so resize the window.
-      if (current.panes && current.panes.length > 1) await resizePane(current.paneId, cols);
-      else await resizeWindow(windowId, cols);
-    } catch (e) {
-      handledAuth(e);
-    }
-  }, [current, onAuthFail]);
-
-  const tmuxRestore = useCallback(async () => {
-    const windowId = current?.window?.id;
-    if (!windowId) return;
-    const layout = savedLayoutRef.current; // restores a split's ratio; window-size for a lone pane
-    tmuxColsRef.current = null; // re-seed from the live size after tmux reclaims it
-    savedLayoutRef.current = null;
-    try {
-      await restoreWindowSize(windowId, layout);
-    } catch (e) {
-      handledAuth(e);
-    }
-  }, [current, onAuthFail]);
-
   // Open a session: load its windows (prefer remembered → active → first), then that window's
   // panes (prefer remembered → active → first). Writes the session name into the URL hash so
   // the location deep-links back here. Returns false if the session has no windows/panes.
@@ -555,10 +522,6 @@ export default function App() {
     setCurrent({ session, windows, window, panes, paneId });
     remember({ sessionId: session.id, windowId: window.id, paneId });
     writeSessionHash(session.name);
-    // Seed the resize target from this pane's real width so the first ⊟/⊞ tap steps from the
-    // true width (not the 80-col xterm default); arm layout capture for the new window.
-    tmuxColsRef.current = panes.find((p) => p.id === paneId)?.width ?? null;
-    savedLayoutRef.current = null;
     return true;
   }, []);
 
@@ -740,8 +703,6 @@ export default function App() {
     // window listing, Terminal mounts now and shows its own loading surface while pane metadata catches up.
     setCurrent((c) => (c ? { ...c, window, panes: [], paneId: immediatePaneId } : c));
     remember({ sessionId: current.session.id, windowId: window.id, paneId: immediatePaneId });
-    tmuxColsRef.current = window.width ?? null;
-    savedLayoutRef.current = null;
     try {
       const panes = await getPanes(window.id);
       if (switchEpoch !== windowSwitchRef.current) return null;
@@ -749,8 +710,6 @@ export default function App() {
       const paneId = pickId(panes, getLastPane(window.id));
       setCurrent((c) => (c && c.window.id === window.id ? { ...c, window, panes, paneId } : c));
       remember({ sessionId: current.session.id, windowId: window.id, paneId });
-      tmuxColsRef.current = panes.find((p) => p.id === paneId)?.width ?? null;
-      savedLayoutRef.current = null;
       return paneId; // callers (管理分屏) need the now-current pane to open its manage sheet
     } catch (e) {
       handledAuth(e);
@@ -774,8 +733,6 @@ export default function App() {
       const newPaneId = pickId(panes, getLastPane(window.id));
       setCurrent((c) => (c ? { ...c, windows, window, panes, paneId: newPaneId } : c));
       remember({ sessionId, windowId: window.id, paneId: newPaneId }); // sessionId → remembered as this session's last window
-      tmuxColsRef.current = panes.find((p) => p.id === newPaneId)?.width ?? null;
-      savedLayoutRef.current = null;
       setNewWinOpen(false);
       termRef.current?.wake?.();
     } catch (e) {
@@ -855,8 +812,6 @@ export default function App() {
       const paneId = pickId(panes, getLastPane(next.id));
       setCurrent((c) => (c ? { ...c, windows, window: next, panes, paneId } : c));
       remember({ sessionId, windowId: next.id, paneId });
-      tmuxColsRef.current = panes.find((p) => p.id === paneId)?.width ?? null;
-      savedLayoutRef.current = null;
     } else {
       setCurrent((c) => (c ? { ...c, windows } : c));
     }
@@ -1005,11 +960,22 @@ export default function App() {
       const panes = await getPanes(targetWindowId);
       if (!panes.some((pane) => pane.id === paneId)) return;
       refreshPanes(targetWindowId, panes);
+      if (managePaneWindowRef.current !== targetWindowId) {
+        if (managePaneWindowRef.current) savedLayoutsRef.current.delete(managePaneWindowRef.current);
+        savedLayoutsRef.current.delete(targetWindowId);
+        setPaneLayoutRestoreReady(false);
+      }
+      managePaneWindowRef.current = targetWindowId;
+      setManagedPaneWidth(panes.find((pane) => pane.id === paneId)?.width ?? null);
       setManagePane(paneId);
     } catch (e) {
-      if (!handledAuth(e)) setManagePane(paneId);
+      if (!handledAuth(e)) {
+        managePaneWindowRef.current = targetWindowId;
+        setManagedPaneWidth(current?.panes?.find((pane) => pane.id === paneId)?.width ?? null);
+        setManagePane(paneId);
+      }
     }
-  }, [current?.window?.id, refreshPanes, handledAuth]);
+  }, [current?.window?.id, current?.panes, refreshPanes, handledAuth]);
 
   const refreshPaneMap = useCallback(async (targetWindowId = current?.window?.id) => {
     if (!targetWindowId) return;
@@ -1020,6 +986,107 @@ export default function App() {
     }
   }, [current?.window?.id, refreshPanes, handledAuth]);
 
+  const setManagedWindowWidth = useCallback((windowId, width) => {
+    setManageWindow((win) => (win?.id === windowId ? { ...win, width } : win));
+    setCurrent((state) => {
+      if (!state) return state;
+      const windows = state.windows.map((win) => (win.id === windowId ? { ...win, width } : win));
+      return {
+        ...state,
+        windows,
+        window: state.window.id === windowId ? { ...state.window, width } : state.window,
+      };
+    });
+  }, []);
+
+  // Window width exists only for a lone-pane window in this UI. A multi-pane window exposes the
+  // independently adjustable target in Pane Management instead, so this action has one clear scope.
+  const resizeManagedWindowCols = useCallback(async (delta, displayedCols) => {
+    const win = manageWindow;
+    if (!win || win.panes !== 1 || !Number.isFinite(displayedCols)) return;
+    const cols = clampCols(displayedCols + delta);
+    setManagedWindowWidth(win.id, cols);
+    if (current?.window?.id === win.id) termRef.current?.flash?.();
+    setWindowResizePending((count) => count + 1);
+    try {
+      await resizeWindow(win.id, cols);
+    } catch (e) {
+      if (handledAuth(e)) return;
+      try {
+        const windows = await getWindows(current?.session?.id);
+        const fresh = windows.find((item) => item.id === win.id);
+        if (fresh) setManagedWindowWidth(win.id, fresh.width);
+      } catch (refreshError) { handledAuth(refreshError); }
+    } finally { setWindowResizePending((count) => Math.max(0, count - 1)); }
+  }, [manageWindow, current?.window?.id, current?.session?.id, handledAuth, setManagedWindowWidth]);
+
+  const restoreManagedWindowCols = useCallback(async () => {
+    const win = manageWindow;
+    const sessionId = current?.session?.id;
+    if (!win || win.panes !== 1 || !sessionId) return;
+    try {
+      await restoreWindowSize(win.id);
+      const windows = await getWindows(sessionId);
+      const fresh = windows.find((item) => item.id === win.id);
+      setCurrent((state) => {
+        if (!state || state.session.id !== sessionId) return state;
+        return { ...state, windows, window: windows.find((item) => item.id === state.window.id) || state.window };
+      });
+      if (fresh) setManageWindow(fresh);
+    } catch (e) { handledAuth(e); }
+  }, [manageWindow, current?.session?.id, handledAuth]);
+
+  const resizeManagedPaneCols = useCallback(async (delta, displayedCols) => {
+    const windowId = current?.window?.id;
+    const pane = current?.panes?.find((item) => item.id === managePane);
+    if (!windowId || !pane || !canResizePaneWidth(current.panes, pane.id) || !Number.isFinite(displayedCols)) return;
+    const cols = clampCols(displayedCols + delta);
+    setManagedPaneWidth(cols);
+    termRef.current?.flash?.();
+    setPaneResizePending((count) => count + 1);
+    try {
+      let saved = savedLayoutsRef.current.get(windowId);
+      if (saved == null) {
+        saved = getWindowLayout(windowId)
+          .then((result) => result.layout || '')
+          .catch(() => '');
+        savedLayoutsRef.current.set(windowId, saved);
+      }
+      const layout = await saved;
+      if (layout) {
+        savedLayoutsRef.current.set(windowId, layout);
+        if (managePaneWindowRef.current === windowId) setPaneLayoutRestoreReady(true);
+      } else {
+        savedLayoutsRef.current.delete(windowId);
+      }
+      await resizePane(pane.id, cols);
+    } catch (e) {
+      if (handledAuth(e)) return;
+      try {
+        const panes = await getPanes(windowId);
+        refreshPanes(windowId, panes);
+        setManagedPaneWidth(panes.find((item) => item.id === pane.id)?.width ?? null);
+      }
+      catch (refreshError) { handledAuth(refreshError); }
+    } finally { setPaneResizePending((count) => Math.max(0, count - 1)); }
+  }, [current, managePane, refreshPanes, handledAuth]);
+
+  const restoreManagedPaneLayout = useCallback(async () => {
+    const windowId = current?.window?.id;
+    if (!windowId) return;
+    const saved = savedLayoutsRef.current.get(windowId);
+    const layout = saved && await saved;
+    if (!layout) return;
+    try {
+      await applyWindowLayout(windowId, layout);
+      const panes = await getPanes(windowId);
+      refreshPanes(windowId, panes);
+      setManagedPaneWidth(panes.find((item) => item.id === managePane)?.width ?? null);
+      savedLayoutsRef.current.delete(windowId);
+      setPaneLayoutRestoreReady(false);
+    } catch (e) { handledAuth(e); }
+  }, [current?.window?.id, managePane, refreshPanes, handledAuth]);
+
   // Split `paneId` into two (dir 'h' left|right, 'v' top/bottom); jump the phone to the new pane. The
   // decision logic (call the api, refetch, pick the new pane) lives in paneActions.js — unit-tested there.
   const splitPaneAction = useCallback(async (paneId, dir) => {
@@ -1027,13 +1094,16 @@ export default function App() {
     if (!windowId) return;
     setManagePane(null);
     setManageWindow(null);
+    savedLayoutsRef.current.delete(windowId);
+    managePaneWindowRef.current = null;
+    setManagedPaneWidth(null);
+    setPaneLayoutRestoreReady(false);
     try {
       const { panes, selectPaneId } = await runSplitPane({
         paneId, dir, windowId, api: { splitPane: apiSplitPane }, getPanes,
       });
       refreshPanes(windowId, panes);
       selectPane(selectPaneId); // you split to work in the new pane
-      savedLayoutRef.current = null; // the window's split layout changed
     } catch (e) {
       if (handledAuth(e)) return;
       window.alert(t('pane.splitFailed'));
@@ -1046,6 +1116,10 @@ export default function App() {
     const windowId = current?.window?.id;
     const viewedPaneId = current?.paneId;
     if (!paneId || !windowId) return;
+    savedLayoutsRef.current.delete(windowId);
+    managePaneWindowRef.current = null;
+    setManagedPaneWidth(null);
+    setPaneLayoutRestoreReady(false);
     try {
       const { panes, selectPaneId } = await runClosePane({
         paneId, windowId, viewedPaneId, api: { closePane: apiClosePane }, getPanes, pickId,
@@ -1053,7 +1127,6 @@ export default function App() {
       setManagePane(null);
       refreshPanes(windowId, panes);
       if (selectPaneId) selectPane(selectPaneId);
-      savedLayoutRef.current = null;
     } catch (e) {
       setManagePane(null);
       if (handledAuth(e)) return;
@@ -1081,8 +1154,6 @@ export default function App() {
         return { ...c, windows, window: win, panes, paneId: selectPaneId };
       });
       remember({ sessionId, windowId: win.id, paneId: selectPaneId });
-      tmuxColsRef.current = panes.find((p) => p.id === selectPaneId)?.width ?? null;
-      savedLayoutRef.current = null;
     } catch (e) {
       if (handledAuth(e)) return;
       window.alert(t('pane.splitFailed'));
@@ -1578,6 +1649,19 @@ export default function App() {
     setChangelogOpen(true);
     setChangelogSeen(LATEST_RELEASE); setClSeen(LATEST_RELEASE); // opening clears the unread dot
   };
+  const managedPane = current?.panes?.find((pane) => pane.id === managePane);
+  const showManagedPaneWidth = Number.isFinite(managedPaneWidth)
+    && !!managedPane && canResizePaneWidth(current?.panes, managePane);
+  const managedPaneSubtitlePanes = managedPaneWidth == null ? current?.panes : current?.panes?.map((pane) => (
+    pane.id === managePane ? { ...pane, width: managedPaneWidth } : pane
+  ));
+  const closePaneManagement = () => {
+    if (managePaneWindowRef.current) savedLayoutsRef.current.delete(managePaneWindowRef.current);
+    managePaneWindowRef.current = null;
+    setManagedPaneWidth(null);
+    setPaneLayoutRestoreReady(false);
+    setManagePane(null);
+  };
 
   return (
     // When the soft keyboard opens, slide the WHOLE app up by the keyboard height so it moves
@@ -1640,11 +1724,6 @@ export default function App() {
         hooksStatus={hooksStatus}
         onEnableHooks={enableHooks}
         termRef={termRef}
-        windowId={current?.window?.id}
-        pane={current?.paneId}
-        getColCount={getTrackedColCount}
-        onColAdjust={tmuxResizeCols}
-        onColRestore={tmuxRestore}
         onOpenChangelog={openChangelog}
         changelogUnread={changelogUnread}
         notifUnread={hasNewNotif}
@@ -1769,12 +1848,23 @@ export default function App() {
             onClick: deleteManagedWindow,
           },
         ] : []}
-      />
+      >
+        {manageWindow?.panes === 1 && Number.isFinite(manageWindow.width) && (
+          <ColumnStepper
+            label={t('resize.windowWidth')}
+            cols={manageWindow.width}
+            onAdjust={resizeManagedWindowCols}
+            onRestore={restoreManagedWindowCols}
+            restoreLabel={t('resize.followComputer')}
+            restoreDisabled={windowResizePending > 0}
+          />
+        )}
+      </ActionSheet>
       <ActionSheet
         open={!!managePane}
         title={t('pane.manageTitle')}
-        subtitle={paneManageSubtitle(current?.panes, managePane)}
-        onClose={() => setManagePane(null)}
+        subtitle={paneManageSubtitle(managedPaneSubtitlePanes, managePane)}
+        onClose={closePaneManagement}
         actions={managePane ? [
           { key: 'split-h', icon: <SplitHIcon />, label: t('pane.splitH'), onClick: () => splitPaneAction(managePane, 'h') },
           { key: 'split-v', icon: <SplitVIcon />, label: t('pane.splitV'), onClick: () => splitPaneAction(managePane, 'v') },
@@ -1783,7 +1873,18 @@ export default function App() {
             confirmLabel: t('pane.closeConfirm'), onClick: closeManagedPane,
           },
         ] : []}
-      />
+      >
+        {showManagedPaneWidth && (
+          <ColumnStepper
+            label={t('resize.paneWidth')}
+            cols={managedPaneWidth}
+            onAdjust={resizeManagedPaneCols}
+            onRestore={restoreManagedPaneLayout}
+            restoreLabel={t('resize.restoreRatio')}
+            restoreDisabled={!paneLayoutRestoreReady || paneResizePending > 0}
+          />
+        )}
+      </ActionSheet>
       <FileManager
         open={fileManagerOpen}
         pane={current?.paneId}

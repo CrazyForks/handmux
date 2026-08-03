@@ -6,7 +6,7 @@ import { t } from '../i18n';
 // renders left of the label for pane/split actions, matching the app's line-icon set. A `confirm` action needs two taps:
 // the first arms it (its label switches to confirmLabel), a second fires onClick. Tapping a
 // different action or 取消 disarms. (Two-tap confirm mirrors BindSession — no separate dialog.)
-export default function ActionSheet({ open, title, subtitle = '', actions = [], onClose }) {
+export default function ActionSheet({ open, title, subtitle = '', actions = [], onClose, children = null }) {
   const [armed, setArmed] = useState(null); // key of the confirm action currently armed
   useEffect(() => { if (!open) setArmed(null); }, [open]);
   if (!open) return null;
@@ -44,6 +44,7 @@ export default function ActionSheet({ open, title, subtitle = '', actions = [], 
           <button className="settings-close" onClick={onClose} aria-label={t('common.close')}>✕</button>
         </div>
         <div className="settings-section sheet-actions">
+          {children}
           {actions.map((a, i) => (Array.isArray(a)
             ? <div key={`row-${i}`} className="sheet-row">{a.map(renderAction)}</div>
             : renderAction(a)))}

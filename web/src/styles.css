@@ -128,7 +128,6 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .lang-option.active { color: #7ab4f5; }
 .settings-value { min-width: 56px; text-align: center; font-size: 14px; color: #e6e6e6; }
 /* Column-step buttons: ±10 full weight, ±1 visually lighter to signal finer granularity. */
-.cols-btns { flex-wrap: nowrap; gap: 5px; }
 .col-step { min-width: 40px; padding: 4px 6px; letter-spacing: 0.3px; }
 .col-fine { color: #aaa; }
 /* Inline status text to the right of the 推送通知 toggle (left-aligned, flexes to fill the row). */
@@ -1132,6 +1131,14 @@ button.cmd-text { background: none; border: none; text-align: left; }
 .sheet-action:disabled { opacity: 0.4; }
 .sheet-row { display: flex; gap: 8px; }
 .sheet-row .sheet-action { flex: 1; }
+.sheet-size-control { padding: 2px 0 10px; border-bottom: 1px solid #33353a; }
+.sheet-size-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.sheet-size-head .settings-label { margin: 0; }
+.sheet-size-value { color: #e6e6e6; font-size: 14px; font-variant-numeric: tabular-nums; }
+.sheet-size-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.sheet-size-buttons .fontbtn { min-width: 0; min-height: 44px; padding-inline: 6px; }
+.sheet-size-restore { grid-column: 1 / -1; }
+.sheet-size-restore:disabled { opacity: .4; }
 .sheet-cancel { margin-top: 4px; }
 .win-tab, .session-name { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 
@@ -1447,8 +1454,8 @@ button.cmd-text { background: none; border: none; text-align: left; }
   .browser-sheet { transition: none; }
   .browser-page-progress::after { animation: none; transform: scaleX(.72); }
 }
-/* Settings group heading (全局设置 / 当前会话设置) — a full-bleed banded separator (breaks out of the
-   card's 16px padding) so the two scopes read as clearly distinct sections, iOS grouped-list style. */
+/* Settings group heading — a full-bleed banded separator (breaks out of the card's 16px padding),
+   iOS grouped-list style. */
 .settings-group {
   margin: 16px -16px 0; padding: 7px 16px;
   background: #1b1c1f; color: #9aa3ad;

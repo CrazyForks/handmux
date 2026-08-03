@@ -12,6 +12,11 @@ const api = vi.hoisted(() => ({
   getWorkspaceRestorePlan: vi.fn(),
   startWorkspaceRestore: vi.fn(),
   getWorkspaceRestoreOperation: vi.fn(),
+  resizeWindow: vi.fn(),
+  resizePane: vi.fn(),
+  getWindowLayout: vi.fn(),
+  applyWindowLayout: vi.fn(),
+  restoreWindowSize: vi.fn(),
 }));
 const storage = vi.hoisted(() => ({ applyWorkspaceRestoreMapping: vi.fn() }));
 const push = vi.hoisted(() => ({ getNotifications: vi.fn() }));
@@ -195,6 +200,11 @@ beforeEach(() => {
   api.getWorkspaceRestorePlan.mockResolvedValue(null);
   api.startWorkspaceRestore.mockResolvedValue({ operationId: 'operation-a', status: 'pending' });
   api.getWorkspaceRestoreOperation.mockResolvedValue({ id: 'operation-a', status: 'pending', progress: { completed: 0, total: 1 }, results: [] });
+  api.resizeWindow.mockResolvedValue({ ok: true });
+  api.resizePane.mockResolvedValue({ ok: true });
+  api.getWindowLayout.mockResolvedValue({ layout: '80x24,0,0{40x24,0,0,1,39x24,41,0,2}' });
+  api.applyWindowLayout.mockResolvedValue({ ok: true });
+  api.restoreWindowSize.mockResolvedValue({ ok: true });
   push.getNotifications.mockResolvedValue([]);
 });
 
@@ -234,6 +244,31 @@ describe('App management dimensions', () => {
     expect(api.getWindows).toHaveBeenCalledTimes(2);
   });
 
+  it('resizes a lone-pane window from Window Management', async () => {
+    const loneWindow = { ...staleWindow, panes: 1 };
+    const lonePane = [{ ...stalePanes[0], width: 80 }];
+    localStorage.setItem('tw_bound', JSON.stringify([session.name]));
+    api.getSessions.mockResolvedValue([session]);
+    api.getWindows.mockResolvedValue([loneWindow]);
+    api.getPanes.mockResolvedValue(lonePane);
+    await renderApp();
+
+    await act(async () => { await windowBar.props.onManageWindow(loneWindow); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '窗口宽度 +1' }));
+      await Promise.resolve();
+    });
+
+    expect(api.resizeWindow).toHaveBeenCalledWith('@1', 81);
+    expect(screen.getByText('81 列')).toBeTruthy();
+  });
+
+  it('does not expose whole-window width for a multi-pane window', async () => {
+    const view = await renderManagedSession();
+    await act(async () => { await windowBar.props.onManageWindow(staleWindow); });
+    expect(view.container.querySelector('.sheet-size-control')).toBeNull();
+  });
+
   it('refreshes the pane dimensions from tmux before opening split management', async () => {
     await renderManagedSession();
     api.getPanes.mockResolvedValueOnce(stalePanes.map((pane) => (
@@ -244,6 +279,53 @@ describe('App management dimensions', () => {
 
     expect(screen.getByRole('dialog', { name: '分屏管理，① zsh · 59×30' })).toBeTruthy();
     expect(api.getPanes).toHaveBeenCalledTimes(2);
+  });
+
+  it('resizes the selected side-by-side pane and restores only its saved split ratio', async () => {
+    await renderManagedSession();
+    await act(async () => { await windowBar.props.onManagePane('%1'); });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '窗格宽度 +1' }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(api.getWindowLayout).toHaveBeenCalledWith('@1');
+    expect(api.resizePane).toHaveBeenCalledWith('%1', 40);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '窗格宽度 +1' }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(api.getWindowLayout).toHaveBeenCalledOnce();
+    expect(api.resizePane).toHaveBeenLastCalledWith('%1', 41);
+    expect(screen.getByText('41 列')).toBeTruthy();
+
+    const restore = screen.getByRole('button', { name: /恢复分屏比例/ });
+    expect(restore.disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(restore);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(api.applyWindowLayout).toHaveBeenCalledWith('@1', '80x24,0,0{40x24,0,0,1,39x24,41,0,2}');
+    expect(api.restoreWindowSize).not.toHaveBeenCalled();
+  });
+
+  it('does not show a pane-width control for a pure top/bottom split', async () => {
+    const stack = [
+      { ...stalePanes[0], width: 80, height: 12, left: 0, top: 0 },
+      { ...stalePanes[1], width: 80, height: 11, left: 0, top: 13 },
+    ];
+    localStorage.setItem('tw_bound', JSON.stringify([session.name]));
+    api.getSessions.mockResolvedValue([session]);
+    api.getWindows.mockResolvedValue([staleWindow]);
+    api.getPanes.mockResolvedValue(stack);
+    const view = await renderApp();
+
+    await act(async () => { await windowBar.props.onManagePane('%1'); });
+    expect(view.container.querySelector('.sheet-size-control')).toBeNull();
   });
 
   it('refreshes pane geometry from tmux before opening the pane map', async () => {

@@ -96,6 +96,8 @@ export const resizePane = (pane, cols) =>
   req('/api/resize', { method: 'POST', body: JSON.stringify({ pane, cols }) });
 export const getWindowLayout = (window) =>
   req(`/api/layout?window=${encodeURIComponent(window)}`);
+export const applyWindowLayout = (window, layout) =>
+  req('/api/layout', { method: 'POST', body: JSON.stringify({ window, layout }) });
 export const restoreWindowSize = (window, layout) =>
   req('/api/resize', { method: 'POST', body: JSON.stringify({ window, auto: true, layout }) });
 export const createSession = (name, cwd, cmd) =>

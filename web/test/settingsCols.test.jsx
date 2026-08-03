@@ -1,27 +1,21 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-
-const { getPanes } = vi.hoisted(() => ({ getPanes: vi.fn() }));
+import ColumnStepper from '../src/components/ColumnStepper.jsx';
+import Settings from '../src/components/Settings.jsx';
 
 vi.mock('../src/push.js', () => ({
   notifyEnabled: () => false, enableNotifications: vi.fn(), disableNotifications: vi.fn(), pushSupported: () => false,
 }));
-vi.mock('../src/api.js', () => ({
-  fetchPaneCwd: vi.fn(async () => ({ cwd: '/home/u/proj' })),
-  getPanes,
-}));
 
-import Settings from '../src/components/Settings.jsx';
-
-let container; let root;
-const termRef = { current: { getFontSize: () => ({ size: 14, auto: false }) } };
+let container;
+let root;
 
 beforeEach(() => {
+  localStorage.setItem('tw_lang', 'zh');
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
-  getPanes.mockReset();
 });
 
 afterEach(async () => {
@@ -30,105 +24,34 @@ afterEach(async () => {
   vi.clearAllMocks();
 });
 
-const render = async (props = {}) => {
-  await act(async () => {
-    root.render(
-      <Settings
-        open
-        onClose={() => {}}
-        termRef={termRef}
-        getColCount={() => 91}
-        onColAdjust={() => {}}
-        onColRestore={() => {}}
-        onOpenChangelog={() => {}}
-        changelogUnread={false}
-        windowId="@1"
-        pane="%2"
-        {...props}
-      />,
-    );
-  });
-};
-const stepButtons = () => [...container.querySelectorAll('.cols-btns .col-step')];
-const restoreButton = () => container.querySelector('.cols-btns button:not(.col-step)');
+describe('ColumnStepper', () => {
+  it('shows the target width and passes that exact baseline to each step', () => {
+    const onAdjust = vi.fn();
+    act(() => root.render(
+      <ColumnStepper label="窗格宽度" cols={37} onAdjust={onAdjust} onRestore={() => {}} restoreLabel="恢复分屏比例" />,
+    ));
 
-describe('Settings pane columns', () => {
-  it('shows the current pane width read from tmux instead of the previous resize target', async () => {
-    getPanes.mockResolvedValue([
-      { id: '%1', width: 63 },
-      { id: '%2', width: 37 },
-    ]);
-
-    await render();
-
-    expect(getPanes).toHaveBeenCalledWith('@1');
-    expect(container.querySelector('.cols-btns').textContent).toContain('37 列');
-    expect(container.querySelector('.cols-btns').textContent).not.toContain('91 列');
-  });
-
-  it('uses the displayed pane width as the next resize baseline', async () => {
-    const onColAdjust = vi.fn();
-    getPanes.mockResolvedValue([
-      { id: '%1', width: 63 },
-      { id: '%2', width: 37 },
-    ]);
-    await render({ onColAdjust });
-
-    const plusOne = [...container.querySelectorAll('.col-step')]
-      .find((button) => button.textContent === '+1');
+    expect(container.querySelector('.sheet-size-value').textContent).toMatch(/^37 (列|columns)$/);
+    const plusOne = [...container.querySelectorAll('.col-step')].find((button) => button.textContent === '+1');
     act(() => plusOne.click());
-
-    expect(onColAdjust).toHaveBeenCalledWith(1, 37);
+    expect(onAdjust).toHaveBeenCalledWith(1, 37);
   });
 
-  it('does not resize from a stale fallback while the live pane width is loading', async () => {
-    getPanes.mockReturnValue(new Promise(() => {}));
-
-    await render();
-
-    expect(stepButtons()).toHaveLength(4);
-    expect(stepButtons().every((button) => button.disabled)).toBe(true);
-    expect(restoreButton().disabled).toBe(false);
+  it('keeps restore disabled until a pane layout snapshot exists', () => {
+    act(() => root.render(
+      <ColumnStepper label="窗格宽度" cols={37} onAdjust={() => {}} onRestore={() => {}}
+        restoreLabel="恢复分屏比例" restoreDisabled />,
+    ));
+    expect(container.querySelector('.sheet-size-restore').disabled).toBe(true);
   });
+});
 
-  it.each([
-    ['the pane lookup rejects', () => getPanes.mockRejectedValue(new Error('offline'))],
-    ['the pane disappeared', () => getPanes.mockResolvedValue([{ id: '%1', width: 63 }])],
-  ])('keeps width adjustments disabled but Restore available when %s', async (_name, arrange) => {
-    arrange();
-    await render();
-    expect(container.querySelector('.cols-btns .settings-value').textContent).toBe('—');
-    expect(stepButtons()).toHaveLength(4);
-    expect(stepButtons().every((button) => button.disabled)).toBe(true);
-    expect(restoreButton().disabled).toBe(false);
-  });
-
-  it('keeps Restore available while loading and ignores the pending width after restore', async () => {
-    let resolveWidth;
-    const onColRestore = vi.fn();
-    getPanes.mockReturnValue(new Promise((resolve) => { resolveWidth = resolve; }));
-    await render({ onColRestore });
-
-    act(() => restoreButton().click());
-    expect(onColRestore).toHaveBeenCalledOnce();
-
-    await act(async () => { resolveWidth([{ id: '%2', width: 37 }]); });
-    expect(container.querySelector('.cols-btns .settings-value').textContent).toBe('—');
-    expect(stepButtons().every((button) => button.disabled)).toBe(true);
-  });
-
-  it('ignores a delayed response from the previously selected pane', async () => {
-    let resolveOld;
-    getPanes
-      .mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }))
-      .mockResolvedValueOnce([{ id: '%3', width: 54 }]);
-
-    await render({ pane: '%1' });
-    await render({ pane: '%3' });
-    expect(container.querySelector('.cols-btns').textContent).toContain('54 列');
-
-    await act(async () => { resolveOld([{ id: '%1', width: 63 }]); });
-    expect(container.querySelector('.cols-btns').textContent).toContain('54 列');
-    expect(container.querySelector('.cols-btns').textContent).not.toContain('63 列');
+describe('Settings sizing scope', () => {
+  it('contains no current-session or column-width controls', () => {
+    const termRef = { current: { getFontSize: () => ({ size: 14, auto: false }) } };
+    act(() => root.render(
+      <Settings open onClose={() => {}} termRef={termRef} onOpenChangelog={() => {}} changelogUnread={false} />,
+    ));
+    expect(container.querySelector('.sheet-size-control')).toBeNull();
   });
 });

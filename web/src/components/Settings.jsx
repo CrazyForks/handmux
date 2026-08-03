@@ -1,16 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { notifyEnabled, enableNotifications, disableNotifications, pushSupported, getScriptPushKey } from '../push.js';
 import PushScriptSheet from './PushScriptSheet.jsx';
-import { getPanes } from '../api.js';
 import { getDocHighlight, setDocHighlight } from '../storage.js';
 import { t, getLangCode, setLang, AVAILABLE } from '../i18n';
 import { SNAPSHOT_INTERVALS } from '../terminalTransport.js';
 import { useBackButton } from '../hooks/useBackButton.js';
 
-// Settings modal: the screen-column controls (⊟/⊞/↺, previously in the topbar) plus an explicit
-// font-size control. Font reads/writes the live terminal through termRef — the same persisted
-// size the two-finger pinch drives — so the modal and the gesture stay in sync.
-export default function Settings({ open, onClose, termRef, onColAdjust, onColRestore, onOpenChangelog, changelogUnread,
+// Settings modal for device/app preferences. Window and pane sizing lives with its concrete target in
+// the corresponding management sheet; font remains here because it is a browser-local preference.
+export default function Settings({ open, onClose, termRef, onOpenChangelog, changelogUnread,
   onReloadApp = () => window.location.reload(),
   chatTone = 'ink', onChatTone = () => {}, chatLensEnabled = false, onChatLensEnabled = () => {},
   keyboardMode = 'auto', onKeyboardMode = () => {},
@@ -18,13 +16,10 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   snapshotInterval = 1000, onSnapshotInterval = () => {},
   hooksStatus = null, onEnableHooks = null,
   notifUnread = false, onOpenInbox,
-  updateInfo = null, windowId = null, pane = null,
-  workspaceProtection = null,
-  getColCount = null }) {
+  updateInfo = null,
+  workspaceProtection = null }) {
   const [font, setFont] = useState(null); // { size, auto } snapshot for display
   const [docHl, setDocHl] = useState(getDocHighlight()); // doc-path highlight toggle (default off)
-  const [cols, setCols] = useState(null); // current pane's live col count (null = loading/unknown/restored)
-  const colReadRef = useRef(0); // request generation; Restore invalidates an in-flight live-width read
   const [langOpen, setLangOpen] = useState(false);
   const [notify, setNotify] = useState(notifyEnabled()); // device-notification toggle state
   const [notifyBusy, setNotifyBusy] = useState(false); // true while (un)subscribing — shows a spinner, disables the button
@@ -49,25 +44,10 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   };
 
   useEffect(() => {
-    let active = true;
-    const requestId = ++colReadRef.current;
     if (open) {
       setFont(termRef.current?.getFontSize?.() ?? null);
-      const fallback = getColCount?.() ?? null;
-      if (windowId && pane) {
-        setCols(null);
-        getPanes(windowId)
-          .then((panes) => {
-            const actual = panes.find((item) => item.id === pane)?.width;
-            if (active && requestId === colReadRef.current) setCols(Number.isFinite(actual) ? actual : null);
-          })
-          .catch(() => { if (active && requestId === colReadRef.current) setCols(null); });
-      } else {
-        setCols(fallback);
-      }
     }
-    return () => { active = false; };
-  }, [open, termRef, getColCount, windowId, pane]);
+  }, [open, termRef]);
 
   useBackButton(open && langOpen, () => setLangOpen(false));
   useBackButton(open && scriptPushOpen, () => setScriptPushOpen(false));
@@ -97,13 +77,6 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
   const toggleDocHl = (on) => { setDocHl(on); setDocHighlight(on); termRef.current?.setDocHighlight?.(on); };
 
   const fontLabel = font?.auto ? t('settings.font_auto') : font?.size ? `${font.size}px` : '—';
-  const colsLabel = cols != null ? `${cols} 列` : '—';
-  const adjustCol = (d) => {
-    if (cols == null) return;
-    onColAdjust?.(d, cols);
-    setCols(getColCount?.() ?? null);
-  };
-  const restoreCol = () => { colReadRef.current += 1; onColRestore?.(); setCols(null); };
   const protectionReason = ['live-corrupt', 'live-unavailable'].includes(workspaceProtection?.errorCode)
     ? workspaceProtection.errorCode : 'unknown';
 
@@ -351,19 +324,6 @@ export default function Settings({ open, onClose, termRef, onColAdjust, onColRes
           <div className="settings-hint">{t('settings.script_push_hint')}</div>
         </div>
 
-        <div className="settings-group">{t('settings.group_session')}</div>
-
-        <div className="settings-section">
-          <div className="settings-label">{t('settings.screen_cols')}</div>
-          <div className="settings-btns cols-btns">
-            <button className="fontbtn col-step" disabled={cols == null} onClick={() => adjustCol(-10)}>−10</button>
-            <button className="fontbtn col-step col-fine" disabled={cols == null} onClick={() => adjustCol(-1)}>−1</button>
-            <span className="settings-value">{colsLabel}</span>
-            <button className="fontbtn col-step col-fine" disabled={cols == null} onClick={() => adjustCol(1)}>+1</button>
-            <button className="fontbtn col-step" disabled={cols == null} onClick={() => adjustCol(10)}>+10</button>
-            <button className="fontbtn" onClick={restoreCol}>↺ {t('settings.cols_restore')}</button>
-          </div>
-        </div>
         </div>
       </div>
       <PushScriptSheet

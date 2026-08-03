@@ -28,6 +28,25 @@ export function hasGeometry(panes) {
     panes.every((p) => fin(p.left) && fin(p.top) && fin(p.width) && fin(p.height));
 }
 
+// A pane has an independently movable WIDTH only when one of its vertical edges meets another pane
+// over a non-empty row range. Pure top/bottom stacks share the window width, so showing an x-stepper
+// there would be a control that tmux cannot meaningfully apply. Accept a 0/1-cell gap because fixtures
+// may omit tmux's one-cell border while live pane coordinates include it.
+export function canResizePaneWidth(panes, paneId) {
+  if (!hasGeometry(panes) || panes.length < 2) return false;
+  const target = panes.find((pane) => pane.id === paneId);
+  if (!target) return false;
+  const right = target.left + target.width;
+  const bottom = target.top + target.height;
+  return panes.some((pane) => {
+    if (pane.id === paneId) return false;
+    const overlapsRows = Math.min(bottom, pane.top + pane.height) > Math.max(target.top, pane.top);
+    if (!overlapsRows) return false;
+    const paneRight = pane.left + pane.width;
+    return Math.abs(pane.left - right) <= 1 || Math.abs(target.left - paneRight) <= 1;
+  });
+}
+
 const uniqSorted = (nums) => [...new Set(nums)].sort((a, b) => a - b);
 
 // Split lines along one axis → equal pixel tracks. A track is a BORDER SEAM when it's ≤1 cell and no
