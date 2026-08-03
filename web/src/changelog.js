@@ -11,6 +11,28 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.22.0',
+    date: '2026-08-03',
+    highlight: {
+      zh: '全屏设置 · 窗口与分屏管理更清晰',
+      en: 'Full-screen Settings · clearer window and pane management',
+    },
+    items: {
+      zh: [
+        '设置改为全屏分组页面：常用选项使用统一的二级页，版本、更新日志、反馈和重新加载应用集中在首层。',
+        '列宽调整移到对应的窗口管理或窗格管理中；单窗格调整窗口宽度，多窗格只调整所选窗格，并可恢复自动宽度或原分屏比例。',
+        '推送通知、脚本推送和脚本推送记录的入口重新整理；关闭通知前会先确认，同一 App 安装重新开启后仍保留原设备 key。',
+        '修复了冷启动时实时终端先显示快照，以及重启后从最近访问打开静态目录产生重复标签的问题。',
+      ],
+      en: [
+        'Settings is now a full-screen grouped page with consistent detail views, while version, changelog, feedback, and Reload app stay on the first level.',
+        'Column sizing now lives in Window or Pane Management: resize a single-pane window or the selected pane in a split, then restore automatic width or the original split ratio.',
+        'Push notifications, Script push, and Script Push History are arranged more clearly; turning notifications off requires confirmation, and re-enabling keeps the same device key for that app installation.',
+        'Fixed live terminals briefly starting in snapshot mode and static directories opening as duplicate tabs from Recently Visited after a restart.',
+      ],
+    },
+  },
+  {
     version: '0.21.0',
     date: '2026-08-03',
     highlight: {
