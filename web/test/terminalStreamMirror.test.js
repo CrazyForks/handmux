@@ -105,6 +105,41 @@ describe('terminal stream mirror', () => {
     mirror.dispose();
   });
 
+  it('keeps sustained high-volume output bounded while snapshots follow the newest lines', async () => {
+    const mirror = createTerminalStreamMirror({
+      scrollback: 500,
+      renderScrollback: 100,
+      TerminalCtor: Terminal,
+      SerializeAddonCtor: SerializeAddon,
+    });
+    await mirror.seed({
+      ansi: Array.from({ length: 24 }, (_, i) => `boot-${i}`).join('\n') + '\n',
+      width: 32,
+      height: 24,
+      alt: false,
+      mouseAware: false,
+    });
+    await mirror.ready({ row: 0, col: 0, vis: true });
+
+    for (let batch = 0; batch < 200; batch += 1) {
+      const output = Array.from(
+        { length: 100 },
+        (_, line) => `load-${String(batch * 100 + line).padStart(5, '0')}`,
+      ).join('\n') + '\n';
+      // Simulate a busy pane arriving in network-sized chunks, with a repaint candidate per batch.
+      // eslint-disable-next-line no-await-in-loop
+      await mirror.data(new Uint8Array(Buffer.from(output)));
+      const frame = mirror.snapshot();
+      expect(frame.bufferRows).toBeLessThanOrEqual(124);
+    }
+
+    const frame = mirror.snapshot();
+    expect(frame.ansi).not.toContain('load-00000');
+    expect(frame.ansi).toContain('load-19999');
+    expect(frame.bufferRows).toBeLessThanOrEqual(124);
+    mirror.dispose();
+  });
+
   it('bottom-aligns a sparse tall pane without changing its exact live parser grid', async () => {
     const mirror = createTerminalStreamMirror({
       scrollback: 500,

@@ -39,14 +39,15 @@ async function finishResync(child, {
   info = '80\t24\t4\t3\t1\t0\t0\t0',
   between,
 } = {}) {
-  await vi.waitFor(() => expect(child.writes.at(-1)).toContain('capture-pane'));
+  const waitFor = (assertion) => vi.waitFor(assertion, { interval: 1 });
+  await waitFor(() => expect(child.writes.at(-1)).toContain('capture-pane'));
   child.lines('%begin 1 1 1', ...capture, '%end 1 1 1');
   between?.();
-  await vi.waitFor(() => expect(child.writes.at(-1)).toContain('display-message'));
+  await waitFor(() => expect(child.writes.at(-1)).toContain('display-message'));
   const firstInfoWriteCount = child.writes.length;
   child.lines('%begin 2 2 1', info, '%end 2 2 1');
   if (info === 'not-pane-info') return;
-  await vi.waitFor(() => expect(child.writes.length).toBeGreaterThan(firstInfoWriteCount));
+  await waitFor(() => expect(child.writes.length).toBeGreaterThan(firstInfoWriteCount));
   child.lines('%begin 3 3 1', info, '%end 3 3 1');
 }
 
@@ -264,6 +265,44 @@ describe('PaneControlStream', () => {
     expect(ws.messages[0]).toEqual(expect.objectContaining({ type: 'seed', ansi: 'new\n' }));
     expect(stream.phase).toBe('live');
     stream.close();
+  });
+
+  it('reuses one tmux control process across repeated background lifecycle cycles', async () => {
+    const child = new FakeChild();
+    const ws = fakeSocket();
+    const spawnControl = vi.fn(() => child);
+    const stream = new PaneControlStream({
+      ws,
+      pane: '%7',
+      session: 'work',
+      spawnControl,
+    });
+    const started = stream.start();
+    child.lines('%session-changed $1 work');
+    await finishResync(child, { capture: ['initial'] });
+    await started;
+
+    for (let cycle = 0; cycle < 30; cycle += 1) {
+      stream.pause();
+      child.lines(`%output %7 ignored-${cycle}`);
+      const resumed = stream.resync();
+      // eslint-disable-next-line no-await-in-loop
+      await finishResync(child, { capture: [`cycle-${cycle}`] });
+      // eslint-disable-next-line no-await-in-loop
+      await resumed;
+      expect(stream.phase).toBe('live');
+      expect(stream.pendingOutputBytes).toBe(0);
+    }
+
+    expect(spawnControl).toHaveBeenCalledTimes(1);
+    expect(ws.messages.at(-2)).toEqual(expect.objectContaining({
+      type: 'seed',
+      ansi: 'cycle-29\n',
+    }));
+    expect(ws.messages.some((message) => Buffer.isBuffer(message)
+      && message.toString().startsWith('ignored-'))).toBe(false);
+    stream.close();
+    expect(child.kill).toHaveBeenCalledTimes(1);
   });
 
   it('rejects pending control requests when closed', async () => {

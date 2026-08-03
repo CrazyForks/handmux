@@ -166,6 +166,65 @@ describe('openTerminalStream', () => {
     stream.close();
   });
 
+  it('survives repeated background pause/resync cycles on one socket without mixing generations', async () => {
+    vi.useFakeTimers();
+    const delivered = [];
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+      onData: (data) => delivered.push(data[0]),
+    });
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+
+    for (let cycle = 0; cycle < 100; cycle += 1) {
+      stream.pause();
+      stream.resync();
+      ws.message(JSON.stringify({ type: 'seed' }));
+      ws.message(new Uint8Array([cycle]).buffer);
+      ws.message(JSON.stringify({ type: 'ready' }));
+      // Drain the serialized parser callbacks before the next lifecycle boundary.
+      // eslint-disable-next-line no-await-in-loop
+      for (let tick = 0; tick < 20; tick += 1) await Promise.resolve();
+    }
+
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(delivered).toEqual(Array.from({ length: 100 }, (_, i) => i));
+    expect(ws.sent.filter(({ type }) => type === 'resync')).toHaveLength(100);
+    await stream.close();
+    vi.runOnlyPendingTimers();
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it('keeps one reconnect chain through a prolonged weak-network failure storm', () => {
+    vi.useFakeTimers();
+    const stream = openTerminalStream({
+      pane: '%7',
+      token: 'secret',
+      WebSocketCtor: FakeWebSocket,
+      reconnectMs: 10,
+    });
+
+    for (let failure = 0; failure < 100; failure += 1) {
+      const ws = FakeWebSocket.instances.at(-1);
+      ws.open();
+      ws.close(1006);
+      // A stale duplicate close must not create a parallel reconnect timer.
+      ws.onclose?.({ code: 1006 });
+      vi.advanceTimersByTime(10);
+      expect(FakeWebSocket.instances).toHaveLength(failure + 2);
+    }
+
+    const current = FakeWebSocket.instances.at(-1);
+    current.open();
+    stream.close();
+    vi.advanceTimersByTime(1000);
+    expect(FakeWebSocket.instances).toHaveLength(101);
+    vi.useRealTimers();
+  });
+
   it('does not subscribe in the background when the socket opens after pausing', () => {
     const stream = openTerminalStream({
       pane: '%7',
