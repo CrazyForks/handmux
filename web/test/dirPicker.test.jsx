@@ -24,7 +24,7 @@ beforeEach(() => {
 });
 afterEach(() => { act(() => root.unmount()); container.remove(); vi.clearAllMocks(); });
 
-const render = (props) => act(() => root.render(<DirPicker onPick={vi.fn()} onClose={vi.fn()} {...props} />));
+const render = (props) => act(async () => root.render(<DirPicker onPick={vi.fn()} onClose={vi.fn()} {...props} />));
 const settle = async () => { await act(async () => {}); await act(async () => {}); };
 
 describe('DirPicker', () => {

@@ -41,7 +41,7 @@ const base = {
   onAuthFail: vi.fn(),
 };
 
-const render = (props) => act(() => root.render(<BindSession {...base} {...props} />));
+const render = (props) => act(async () => root.render(<BindSession {...base} {...props} />));
 const fire = (node, type) => act(async () => { node.dispatchEvent(new MouseEvent(type, { bubbles: true })); });
 // Flush the async getSessions/createSession and the re-renders they trigger.
 const settle = async () => { await act(async () => {}); await act(async () => {}); };

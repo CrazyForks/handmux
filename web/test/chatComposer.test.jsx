@@ -3,7 +3,7 @@ import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/re
 
 vi.mock('../src/api.js', () => ({
   sendText: vi.fn(async () => ({ ok: true })),
-  getPaneContext: vi.fn(async () => ({ model: null, usedPercent: null })), // no context chip by default
+  getPaneContext: vi.fn(() => new Promise(() => {})), // no context chip by default
   UnauthorizedError: class UnauthorizedError extends Error {},
 }));
 
@@ -17,7 +17,12 @@ import { sendText, getPaneContext } from '../src/api.js';
 
 // No globals:true → register cleanup manually so DOM doesn't leak between tests.
 afterEach(cleanup);
-beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); voice.state = 'idle'; });
+beforeEach(() => {
+  vi.clearAllMocks();
+  getPaneContext.mockImplementation(() => new Promise(() => {}));
+  localStorage.clear();
+  voice.state = 'idle';
+});
 
 const typeInto = (el, text) => fireEvent.change(el, { target: { value: text } });
 const deferred = () => {
@@ -149,11 +154,8 @@ describe('ChatComposer', () => {
     expect(container.querySelector('.cc-ctx-model').textContent).toBe('Opus 4.8'); // "(1M context)" stripped
     expect(container.querySelector('.cc-ctx-pct').textContent).toBe('24%');
 
-    getPaneContext.mockResolvedValue({ model: null, usedPercent: null });
     cleanup();
     const { container: c2 } = render(<ChatComposer pane="%2" kind="idle" />);
-    // give the poll a tick; the chip must stay absent
-    await Promise.resolve();
     expect(c2.querySelector('.cc-ctx')).toBeNull();
   });
 

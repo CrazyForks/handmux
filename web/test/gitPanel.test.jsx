@@ -36,7 +36,7 @@ let container, root;
 beforeEach(() => { store = []; container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container); });
 afterEach(() => { act(() => root.unmount()); container.remove(); vi.clearAllMocks(); });
 
-const render = (props) => act(() => root.render(<GitPanel onClose={vi.fn()} windowId="w1" {...props} />));
+const render = (props) => act(async () => root.render(<GitPanel onClose={vi.fn()} windowId="w1" {...props} />));
 const settle = async () => { await act(async () => {}); await act(async () => {}); await act(async () => {}); };
 const q = (sel) => document.querySelector(sel);
 const qa = (sel) => [...document.querySelectorAll(sel)];

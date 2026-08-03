@@ -16,8 +16,8 @@ afterEach(() => {
   container.remove();
 });
 
-const render = (props) => act(() => root.render(<RenameModal {...props} />));
-const fire = (node, type) => act(() => { node.dispatchEvent(new MouseEvent(type, { bubbles: true })); });
+const render = (props) => act(async () => root.render(<RenameModal {...props} />));
+const fire = (node, type) => act(async () => { node.dispatchEvent(new MouseEvent(type, { bubbles: true })); });
 const settle = async () => { await act(async () => {}); await act(async () => {}); };
 // React tracks the controlled value via the native setter; set then fire `input` so onChange runs.
 const typeInto = (node, text) => act(() => {
@@ -76,7 +76,7 @@ describe('RenameModal', () => {
   it('clicking 取消 calls onClose', async () => {
     const onClose = vi.fn();
     await render({ ...base, onClose });
-    fire(container.querySelector('.fontbtn'), 'click');
+    await fire(container.querySelector('.fontbtn'), 'click');
     expect(onClose).toHaveBeenCalled();
   });
 

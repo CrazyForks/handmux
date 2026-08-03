@@ -32,7 +32,7 @@ afterEach(async () => {
   container.remove();
 });
 
-const render = (props) => act(() => root.render(<NewWindowModal {...props} />));
+const render = (props) => act(async () => root.render(<NewWindowModal {...props} />));
 const fire = (node, type) =>
   act(async () => { node.dispatchEvent(new MouseEvent(type, { bubbles: true })); });
 // Flush the async submit and the re-renders it triggers.

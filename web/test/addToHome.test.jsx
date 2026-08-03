@@ -91,7 +91,7 @@ describe('AddToHome', () => {
     expect(banner().dataset.mode).toBe('install');
     const btn = container.querySelector('.a2hs-banner-cta');
     expect(btn).not.toBeNull();
-    click(btn);
+    await act(async () => btn.dispatchEvent(new MouseEvent('click', { bubbles: true })));
     expect(e.prompt).toHaveBeenCalledTimes(1);
   });
 

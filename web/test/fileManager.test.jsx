@@ -27,15 +27,15 @@ import { fetchPaneCwd, fetchDir } from '../src/api.js';
 import { setBrowseDir } from '../src/storage.js';
 import { HOME_TAB } from '../src/hooks/useDocTabs.js';
 
-const popBack = () => act(() => window.dispatchEvent(new PopStateEvent('popstate')));
+const popBack = () => act(async () => window.dispatchEvent(new PopStateEvent('popstate')));
 
 // The sheet renders through a portal on <body>, so query the document, not the mount container.
 let container, root;
 beforeEach(() => { container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container); });
 afterEach(() => { act(() => root.unmount()); container.remove(); vi.clearAllMocks(); });
-const render = (props) => act(() => root.render(<FileManager {...props} />));
+const render = (props) => act(async () => root.render(<FileManager {...props} />));
 const settle = async () => { await act(async () => {}); await act(async () => {}); };
-const click = (node) => act(() => node.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+const click = (node) => act(async () => node.dispatchEvent(new MouseEvent('click', { bubbles: true })));
 const q = (sel) => document.querySelector(sel);
 const qa = (sel) => [...document.querySelectorAll(sel)];
 const seg = (label) => qa('.file-seg-btn').find((b) => b.textContent.includes(label));
@@ -139,7 +139,7 @@ describe('FileManager', () => {
     await settle();
     await render({ ...base, open: true, active: '/home/u/docs/nested.md', windowId: '@1', onActivate, onMinimize });
     await settle();
-    popBack();
+    await popBack();
     expect(onMinimize).toHaveBeenCalled();                        // direct open → Back just hides
     expect(onActivate).not.toHaveBeenCalledWith('home');          // no forced trip to the home tab
   });
@@ -152,10 +152,10 @@ describe('FileManager', () => {
     await settle();
     await render({ ...base, active: '/home/u/docs/nested.md', windowId: '@1', onActivate, onMinimize });
     await settle();
-    popBack();
+    await popBack();
     expect(onActivate).toHaveBeenCalledWith('home');              // leave the preview → home, unchanged
     expect(onMinimize).not.toHaveBeenCalled();                    // sheet stays open
-    popBack();
+    await popBack();
     expect(onMinimize).toHaveBeenCalled();                        // at the base → hide
   });
 
@@ -166,11 +166,11 @@ describe('FileManager', () => {
     await click(qa('.browse-entry').find((b) => b.textContent.includes('docs')));
     await settle();
     expect(q('.browse-input').value).toBe('docs/');               // navigated into docs/
-    popBack();
+    await popBack();
     await settle();
     expect(q('.browse-input').value).toBe('');                    // back → previous path ($HOME)
     expect(onMinimize).not.toHaveBeenCalled();
-    popBack();
+    await popBack();
     expect(onMinimize).toHaveBeenCalled();                        // back at base → close
   });
 });

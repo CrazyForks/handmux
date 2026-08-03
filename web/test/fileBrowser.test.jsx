@@ -39,9 +39,9 @@ import { fetchDir, downloadFile, uploadFile, createDir } from '../src/api.js';
 let container, root;
 beforeEach(() => { vi.useFakeTimers(); container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container); });
 afterEach(() => { act(() => root.unmount()); container.remove(); vi.clearAllMocks(); vi.useRealTimers(); });
-const render = (props) => act(() => root.render(<FileBrowser onOpenDoc={vi.fn()} onNavigate={vi.fn()} {...props} />));
+const render = (props) => act(async () => root.render(<FileBrowser onOpenDoc={vi.fn()} onNavigate={vi.fn()} {...props} />));
 const settle = async () => { await act(async () => {}); await act(async () => {}); };
-const click = (node) => act(() => node.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+const click = (node) => act(async () => node.dispatchEvent(new MouseEvent('click', { bubbles: true })));
 const type = (el, value) => act(() => {
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
   setter.call(el, value);
@@ -133,11 +133,11 @@ describe('FileBrowser', () => {
       const trigger = container.querySelector('.browse-root');
       expect(trigger.textContent).toContain('~/');
       // open the menu → an option per root
-      click(trigger);
+      await click(trigger);
       await settle();
       expect([...container.querySelectorAll('.dd-option-label')].map((o) => o.textContent)).toEqual(['~/', 'tmp/']);
       // pick tmp → loads /private/tmp, prefix flips to tmp/, box is empty (relative to the new root)
-      click([...container.querySelectorAll('.dd-option')].find((o) => o.textContent.includes('tmp/')));
+      await click([...container.querySelectorAll('.dd-option')].find((o) => o.textContent.includes('tmp/')));
       await settle();
       expect(fetchDir).toHaveBeenLastCalledWith('/private/tmp');
       expect(container.querySelector('.browse-root').textContent).toContain('tmp/');
@@ -346,12 +346,12 @@ describe('button order + new folder', () => {
     await render({ path: null });
     await settle();
     expect(fetchDir).toHaveBeenCalledTimes(1);
-    click(container.querySelector('.browse-mkdir')); // open inline row
+    await click(container.querySelector('.browse-mkdir')); // open inline row
     await settle();
     const nameInput = container.querySelector('.browse-newfolder input');
     expect(nameInput).not.toBeNull();
     type(nameInput, 'newdir');
-    click([...container.querySelectorAll('.browse-newfolder button')].find((b) => b.textContent.trim() === '创建'));
+    await click([...container.querySelectorAll('.browse-newfolder button')].find((b) => b.textContent.trim() === '创建'));
     await settle();
     expect(createDir).toHaveBeenCalledWith('/home/u', 'newdir');
     expect(fetchDir).toHaveBeenLastCalledWith('/home/u'); // reloaded after create

@@ -19,7 +19,7 @@ beforeEach(() => {
 });
 afterEach(() => { act(() => root.unmount()); container.remove(); });
 
-const render = (props) => act(() => root.render(<UsagePage open onClose={() => {}} onAuthFail={() => {}} {...props} />));
+const render = (props) => act(async () => root.render(<UsagePage open onClose={() => {}} onAuthFail={() => {}} {...props} />));
 const settle = async () => { await act(async () => {}); await act(async () => {}); };
 
 describe('UsagePage', () => {

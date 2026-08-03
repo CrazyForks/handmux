@@ -1032,7 +1032,7 @@ describe('desktop terminal input', () => {
     });
     render(<Terminal pane="%1" desktop />);
     const term = mocks.instances[0];
-    term.setSelection('selected text');
+    act(() => term.setSelection('selected text'));
 
     expect(term.customKeyHandler({ key: 'c', metaKey: true })).toBe(false);
     const preventDefault = vi.fn();
@@ -1072,23 +1072,31 @@ describe('desktop terminal input', () => {
     mocks.getHistory.mockResolvedValue({ unchanged: true });
     const ref = React.createRef();
     render(<Terminal ref={ref} pane="%1" desktop />);
-    await vi.waitFor(() => expect(mocks.getHistory).toHaveBeenCalledOnce());
+    await act(async () => {
+      await vi.waitFor(() => expect(mocks.getHistory).toHaveBeenCalledOnce());
+    });
     const term = mocks.instances[0];
 
     act(() => term.setSelection('keep me'));
     act(() => ref.current.wake());
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
     expect(mocks.getHistory).toHaveBeenCalledOnce();
 
     act(() => term.setSelection(''));
-    await vi.waitFor(() => expect(mocks.getHistory.mock.calls.length).toBeGreaterThan(1));
+    await act(async () => {
+      await vi.waitFor(() => expect(mocks.getHistory.mock.calls.length).toBeGreaterThan(1));
+    });
   });
 
   it('does not apply an in-flight snapshot after desktop selection begins', async () => {
     const frame = deferred();
     mocks.getHistory.mockReturnValue(frame.promise);
     render(<Terminal pane="%1" desktop />);
-    await vi.waitFor(() => expect(mocks.getHistory).toHaveBeenCalledOnce());
+    await act(async () => {
+      await vi.waitFor(() => expect(mocks.getHistory).toHaveBeenCalledOnce());
+    });
     const term = mocks.instances[0];
 
     act(() => term.setSelection('keep me'));
@@ -1130,7 +1138,9 @@ describe('desktop terminal input', () => {
     mocks.getHistory.mockResolvedValue({ unchanged: true });
     mocks.sendInput.mockResolvedValue({ ok: true });
     render(<Terminal pane="%1" desktop />);
-    await vi.waitFor(() => expect(mocks.getHistory).toHaveBeenCalledOnce());
+    await act(async () => {
+      await vi.waitFor(() => expect(mocks.getHistory).toHaveBeenCalledOnce());
+    });
     const term = mocks.instances[0];
 
     await act(async () => {
@@ -1138,7 +1148,9 @@ describe('desktop terminal input', () => {
       await Promise.resolve();
     });
 
-    await vi.waitFor(() => expect(mocks.getHistory.mock.calls.length).toBeGreaterThan(1));
+    await act(async () => {
+      await vi.waitFor(() => expect(mocks.getHistory.mock.calls.length).toBeGreaterThan(1));
+    });
   });
 
   it('routes unauthorized input failures to authentication handling', async () => {
@@ -1214,8 +1226,10 @@ describe('desktop terminal input', () => {
     const onAuthFail = vi.fn();
     mocks.sendInput.mockReturnValue(input.promise);
     const view = render(<Terminal pane="%1" desktop onAuthFail={onAuthFail} />);
-    mocks.instances[0].onDataCallback('x');
-    await vi.waitFor(() => expect(mocks.sendInput).toHaveBeenCalledOnce());
+    await act(async () => {
+      mocks.instances[0].onDataCallback('x');
+      await vi.waitFor(() => expect(mocks.sendInput).toHaveBeenCalledOnce());
+    });
 
     view.unmount();
     await act(async () => {
@@ -1231,18 +1245,22 @@ describe('desktop terminal input', () => {
     mocks.getHistory.mockResolvedValue({ unchanged: true });
     mocks.sendInput.mockReturnValue(input.promise);
     const view = render(<Terminal pane="%1" desktop />);
-    mocks.instances[0].onDataCallback('x');
-    await vi.waitFor(() => expect(mocks.sendInput).toHaveBeenCalledOnce());
+    await act(async () => {
+      mocks.instances[0].onDataCallback('x');
+      await vi.waitFor(() => expect(mocks.sendInput).toHaveBeenCalledOnce());
+    });
 
     view.rerender(<Terminal pane="%2" desktop />);
-    await vi.waitFor(() => expect(mocks.instances).toHaveLength(2));
-    await vi.waitFor(() => expect(mocks.getHistory.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await act(async () => {
+      await vi.waitFor(() => expect(mocks.instances).toHaveLength(2));
+      await vi.waitFor(() => expect(mocks.getHistory.mock.calls.length).toBeGreaterThanOrEqual(2));
+    });
     const callsAfterSwitch = mocks.getHistory.mock.calls.length;
     await act(async () => {
       input.resolve({ ok: true });
       await input.promise;
     });
-    await Promise.resolve();
+    await act(async () => { await Promise.resolve(); });
 
     expect(mocks.getHistory).toHaveBeenCalledTimes(callsAfterSwitch);
   });
