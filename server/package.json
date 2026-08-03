@@ -41,6 +41,7 @@
     "bundle": "node scripts/bundle-web.mjs",
     "prepack": "node scripts/bundle-web.mjs",
     "test": "vitest run",
+    "test:workspace-host": "HANDMUX_WORKSPACE_HOST=1 vitest run test/workspaceHost.test.js",
     "test:workspace-docker": "HANDMUX_WORKSPACE_DOCKER=1 vitest run test/workspaceDocker.test.js"
   },
   "dependencies": {

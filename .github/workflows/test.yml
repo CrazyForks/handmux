@@ -6,22 +6,34 @@ on:
 
 jobs:
   server:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        node: ['18', '20', '22']
+        include:
+          - os: ubuntu-latest
+            node: '20'
+          - os: ubuntu-latest
+            node: '22'
+          - os: macos-latest
+            node: '20'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
       - run: sudo apt-get update && sudo apt-get install -y tmux
+        if: runner.os == 'Linux'
+      - run: brew install tmux
+        if: runner.os == 'macOS'
       - run: npm install
         working-directory: server
-      - run: npx vitest run --exclude test/commands.test.js --exclude test/workspaceDocker.test.js
+      - run: npx vitest run --exclude test/commands.test.js --exclude test/workspaceDocker.test.js --exclude test/workspaceHost.test.js
+        working-directory: server
+      - run: npm run test:workspace-host
+        if: matrix.node == '20'
         working-directory: server
       - run: npm run test:workspace-docker
-        if: matrix.node == '20'
+        if: runner.os == 'Linux' && matrix.node == '20'
         working-directory: server
 
   web:
