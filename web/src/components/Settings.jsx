@@ -13,7 +13,6 @@ const DETAIL_TITLE = {
   keyboard: 'settings.keyboard_mode',
   transport: 'settings.terminal_transport',
   tone: 'settings.chat_tone',
-  version: 'settings.version_and_updates',
   feedback: 'settings.feedback',
   script: 'settings.script_push',
 };
@@ -48,6 +47,18 @@ function SettingsNavRow({ label, value, onClick, dot = false, disabled = false }
         <span className="settings-page-chevron" aria-hidden="true">›</span>
       </span>
     </button>
+  );
+}
+
+function SettingsValueRow({ label, value, dot = false }) {
+  return (
+    <div className="settings-page-row settings-page-value-row">
+      <span className="settings-page-row-label">{label}</span>
+      <span className="settings-page-row-trailing">
+        <span className="settings-page-row-value">{value}</span>
+        {dot && <span className="settings-page-dot" aria-hidden="true" />}
+      </span>
+    </div>
   );
 }
 
@@ -90,6 +101,39 @@ function SettingsChoiceGroup({ label, options, value, onChange }) {
           </span>
         </button>
       ))}
+    </div>
+  );
+}
+
+function UpdateNotice({ updateInfo }) {
+  if (!updateInfo?.updateAvailable) return null;
+  return (
+    <div className="settings-update">
+      <div className="settings-update-title">{t('settings.update_available', { v: updateInfo.latest })}</div>
+      {updateInfo.whatsNew?.length > 0 && (
+        <ul className="settings-update-new">
+          {updateInfo.whatsNew.slice(0, 1).map((release) => (
+            <li key={release.version}>
+              <span className="settings-update-new-ver">v{release.version}</span>
+              {(getLangCode().startsWith('zh') ? release.zh : release.en) || release.en}
+            </li>
+          ))}
+        </ul>
+      )}
+      {updateInfo.whatsNew?.length > 1 && (
+        <details className="settings-update-more">
+          <summary>{t('settings.update_more', { n: updateInfo.whatsNew.length - 1 })}</summary>
+          <ul className="settings-update-new">
+            {updateInfo.whatsNew.slice(1).map((release) => (
+              <li key={release.version}>
+                <span className="settings-update-new-ver">v{release.version}</span>
+                {(getLangCode().startsWith('zh') ? release.zh : release.en) || release.en}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      <div className="settings-update-how">{t('settings.update_how')} <code>handmux update</code></div>
     </div>
   );
 }
@@ -263,11 +307,14 @@ export default function Settings({ open, onClose, termRef, onOpenChangelog, chan
           disabled={!notificationsSupported} onClick={openScriptPush} />
       </SettingsGroup>
 
-      <SettingsGroup title={t('settings.group_about')}>
-        <SettingsNavRow label={t('settings.version_and_updates')}
-          value={updateInfo?.current ? `v${updateInfo.current}` : '—'} dot={!!updateInfo?.updateAvailable}
-          onClick={() => openPage('version')} />
+      <SettingsGroup title={t('settings.group_about')}
+        footer={updateInfo?.updateAvailable ? <UpdateNotice updateInfo={updateInfo} /> : null}>
+        <SettingsValueRow label={t('settings.version')}
+          value={updateInfo?.current ? `v${updateInfo.current}` : '—'} dot={!!updateInfo?.updateAvailable} />
         <SettingsNavRow label={t('settings.view_changelog')} dot={changelogUnread} onClick={onOpenChangelog} />
+        <button type="button" className="settings-page-row settings-page-text-action" onClick={onReloadApp}>
+          <span className="settings-page-row-label">{t('settings.reload_app')}</span>
+        </button>
         <SettingsNavRow label={t('settings.feedback')} onClick={() => openPage('feedback')} />
       </SettingsGroup>
     </>
@@ -326,51 +373,6 @@ export default function Settings({ open, onClose, termRef, onOpenChangelog, chan
             value: tone, label: t(`settings.chat_tone_${tone}`),
           }))} />
         <p className="settings-detail-note">{t('settings.chat_tone_hint')}</p>
-      </>
-    ),
-    version: (
-      <>
-        <section className="settings-detail-card settings-version-card">
-          <div className="settings-version-current">
-            <span>{t('settings.version')}</span>
-            <strong>{updateInfo?.current ? `v${updateInfo.current}` : '—'}</strong>
-          </div>
-          {updateInfo?.updateAvailable && (
-            <div className="settings-update">
-              <div className="settings-update-title">{t('settings.update_available', { v: updateInfo.latest })}</div>
-              {updateInfo.whatsNew?.length > 0 && (
-                <ul className="settings-update-new">
-                  {updateInfo.whatsNew.slice(0, 1).map((release) => (
-                    <li key={release.version}>
-                      <span className="settings-update-new-ver">v{release.version}</span>
-                      {(getLangCode().startsWith('zh') ? release.zh : release.en) || release.en}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {updateInfo.whatsNew?.length > 1 && (
-                <details className="settings-update-more">
-                  <summary>{t('settings.update_more', { n: updateInfo.whatsNew.length - 1 })}</summary>
-                  <ul className="settings-update-new">
-                    {updateInfo.whatsNew.slice(1).map((release) => (
-                      <li key={release.version}>
-                        <span className="settings-update-new-ver">v{release.version}</span>
-                        {(getLangCode().startsWith('zh') ? release.zh : release.en) || release.en}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-              <div className="settings-update-how">{t('settings.update_how')} <code>handmux update</code></div>
-            </div>
-          )}
-        </section>
-        <div className="settings-page-list settings-version-actions">
-          <SettingsNavRow label={t('settings.view_changelog')} dot={changelogUnread} onClick={onOpenChangelog} />
-          <button type="button" className="settings-page-row settings-page-text-action" onClick={onReloadApp}>
-            <span className="settings-page-row-label">{t('settings.reload_app')}</span>
-          </button>
-        </div>
       </>
     ),
     feedback: (

@@ -307,7 +307,6 @@ export default {
   'settings.group_chat': '對話',
   'settings.group_notifications': '通知',
   'settings.group_about': '關於',
-  'settings.version_and_updates': '版本與更新',
   'settings.font_size': '字型大小',
   'settings.font_decrease': '縮小字型',
   'settings.font_increase': '放大字型',

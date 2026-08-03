@@ -27,15 +27,9 @@ const releases = [
   { version: '0.17.0', zh: '更早版本', en: 'Earlier release' },
 ];
 
-const openVersion = () => act(() => {
-  [...container.querySelectorAll('.settings-page-row')]
-    .find((button) => button.querySelector('.settings-page-row-label')?.textContent === '版本与更新').click();
-});
-
 describe('Settings update notice', () => {
-  it('shows the latest release directly and keeps older releases collapsed until expanded', async () => {
+  it('shows the latest release on the settings root and keeps older releases collapsed until expanded', async () => {
     await render(releases);
-    openVersion();
     const card = container.querySelector('.settings-update');
     const directList = [...card.children].find((el) => el.matches('ul.settings-update-new'));
     expect(directList.querySelectorAll('li')).toHaveLength(1);
@@ -52,15 +46,20 @@ describe('Settings update notice', () => {
 
   it('does not show an expander when only one release is gained', async () => {
     await render(releases.slice(0, 1));
-    openVersion();
     expect(container.querySelectorAll('.settings-update-new li')).toHaveLength(1);
     expect(container.querySelector('.settings-update-more')).toBeNull();
   });
 
-  it('reloads the client from the version controls', async () => {
+  it('keeps version, changelog, and reload controls only on the settings root', async () => {
     const onReloadApp = vi.fn();
     await render(releases, { onReloadApp });
-    openVersion();
+
+    const version = [...container.querySelectorAll('.settings-page-value-row')]
+      .find((item) => item.textContent.includes('版本'));
+    expect(version.textContent).toContain('v0.17.0');
+    expect(version.querySelector('.settings-page-chevron')).toBeNull();
+    expect([...container.querySelectorAll('.settings-page-row-label')]
+      .filter((item) => item.textContent === '查看更新日志')).toHaveLength(1);
 
     const button = [...container.querySelectorAll('button')]
       .find((item) => item.textContent === '重新加载应用');

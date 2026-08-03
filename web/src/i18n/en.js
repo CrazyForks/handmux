@@ -385,7 +385,6 @@ export default {
   'settings.group_chat': 'Chat',
   'settings.group_notifications': 'Notifications',
   'settings.group_about': 'About',
-  'settings.version_and_updates': 'Version & Updates',
   'settings.font_size': 'Font size',
   'settings.font_decrease': 'Decrease font size',
   'settings.font_increase': 'Increase font size',

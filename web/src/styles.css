@@ -112,10 +112,10 @@ a.settings-linkbtn { display: inline-flex; align-items: center; justify-content:
 .settings-page-back {
   align-self: stretch; min-width: 44px; min-height: 44px; padding: 0 12px 2px 8px;
   display: inline-flex; align-items: center; justify-content: flex-start;
-  border: none; background: transparent; color: var(--blue); font: 32px/1 -apple-system, system-ui, sans-serif;
+  border: none; background: transparent; color: rgba(235,235,245,.52); font: 32px/1 -apple-system, system-ui, sans-serif;
   touch-action: manipulation;
 }
-.settings-page-back:active { opacity: .55; }
+.settings-page-back:active { color: rgba(235,235,245,.82); }
 .settings-page-head-spacer { width: 52px; height: 44px; }
 .settings-page-body {
   flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
@@ -195,12 +195,7 @@ button.settings-page-row:disabled, .settings-page-row.disabled { color: rgba(235
 .settings-font-card p { margin: -3px 0 0; color: rgba(235,235,245,.42); font-size: 12.5px; text-align: center; }
 .settings-detail-group { margin-top: 24px; }
 .settings-detail-group .settings-choice-list { border-radius: 13px; }
-.settings-version-card { padding: 14px 16px 16px; }
-.settings-version-current { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.settings-version-current span { color: rgba(235,235,245,.52); font-size: 13px; }
-.settings-version-current strong { color: #f2f2f7; font-size: 18px; font-variant-numeric: tabular-nums; }
 .settings-page .settings-update { margin-top: 14px; }
-.settings-version-actions { margin-top: 18px; }
 .settings-page-text-action { color: var(--blue); }
 .settings-page .push-script-content { width: 100%; }
 .settings-page .push-script-intro {
@@ -1215,13 +1210,10 @@ button.cmd-text { background: none; border: none; text-align: left; }
   padding: 6px 10px; font-size: 13px; touch-action: manipulation; }
 .idea-del { flex: none; background: none; border: none; color: #888; font-size: 14px; padding: 6px 8px; touch-action: manipulation; display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 44px; }
 
-/* Changelog ("新功能") bottom sheet — same chrome as the command/idea panels. */
-.changelog-panel {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 22; max-height: 80vh;
-  display: flex; flex-direction: column;
-  background: #232427; border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,.5);
-}
-.changelog-list { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 6px 16px 16px; }
+/* Changelog is a full-screen child of Settings, using the same navigation bar and centred content. */
+.changelog-page { z-index: 22; }
+.changelog-page-content { padding-top: 14px; }
+.changelog-list { padding: 4px 16px; }
 .rel { padding: 12px 0; border-bottom: 1px solid #2c2e33; }
 .rel:last-child { border-bottom: none; }
 .rel-date { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }

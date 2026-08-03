@@ -32,13 +32,16 @@ describe('changelog data', () => {
   });
 });
 
-describe('Changelog sheet', () => {
+describe('Changelog page', () => {
   it('renders nothing when closed', () => {
     act(() => root.render(<Changelog open={false} onClose={() => {}} />));
-    expect(container.querySelector('.changelog-panel')).toBeNull();
+    expect(container.querySelector('.changelog-page')).toBeNull();
   });
-  it('lists every release with its items', () => {
+  it('opens as a full-screen settings-style page and lists every release', () => {
     act(() => root.render(<Changelog open onClose={() => {}} />));
+    expect(container.querySelector('.changelog-page.settings-page')).toBeTruthy();
+    expect(container.querySelector('.cmd-backdrop')).toBeNull();
+    expect(container.querySelector('.changelog-panel')).toBeNull();
     expect(container.querySelectorAll('.rel')).toHaveLength(CHANGELOG.length);
     expect(container.querySelector('.rel-ver').textContent).toBe(`v${CHANGELOG[0].version}`);
     // items is bilingual { zh, en }; the suite renders in zh (see test/setup.js).
