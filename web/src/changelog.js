@@ -11,6 +11,24 @@
 // `entryId`/`LATEST_RELEASE` use `version` when present, else `date`, as the stable unread-dot id.
 export const CHANGELOG = [
   {
+    version: '0.22.1',
+    date: '2026-08-04',
+    highlight: {
+      zh: '网页宽度与网站版本分开控制',
+      en: 'Separate page width and site-version controls',
+    },
+    items: {
+      zh: [
+        '网页预览器将窄屏 / 宽屏与手机版 / 电脑版分开：宽度切换不重载页面，电脑代理可另外向网站请求所需版本并保留登录状态。',
+        '修复了电脑代理临时重启、会话过期或丢失后可能停在错误页的问题，当前标签现在会自动恢复。',
+      ],
+      en: [
+        'Web Preview now separates narrow/wide page width from mobile/desktop site requests: width changes do not reload, while computer proxy tabs can request a site version and keep their sign-in state.',
+        'Fixed proxy tabs getting stuck on an error page after the computer proxy restarted or a browser session expired or disappeared; the current tab now recovers automatically.',
+      ],
+    },
+  },
+  {
     version: '0.22.0',
     date: '2026-08-03',
     highlight: {
