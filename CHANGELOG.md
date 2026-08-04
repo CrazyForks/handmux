@@ -4,6 +4,8 @@ All notable changes to handmux. Format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-08-04
+
 ### Changed
 - 网页预览器将容易误解的手机 / 电脑视图拆分为窄屏 / 宽屏页面宽度；电脑代理标签可另外向网站请求手机版或电脑版，切换时保留该标签的登录状态。
 
