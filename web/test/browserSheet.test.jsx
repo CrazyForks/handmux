@@ -846,6 +846,27 @@ describe('BrowserSheet', () => {
     expect(model.recoverBinding).toHaveBeenCalledTimes(2);
   });
 
+  it('releases the session recovery lock when a replacement page never reports ready', async () => {
+    vi.useFakeTimers();
+    const model = browser({ recoverBinding: vi.fn().mockResolvedValue(tabs[0]) });
+    await render(model);
+    const frame = document.querySelector('iframe[data-tab-id="a"]');
+    const unavailable = {
+      source: 'handmux-browser', channel: 'ca', type: 'session-unavailable',
+    };
+
+    act(() => window.dispatchEvent(new MessageEvent('message', {
+      source: frame.contentWindow, data: unavailable,
+    })));
+    await act(async () => { await Promise.resolve(); });
+    act(() => vi.advanceTimersByTime(15_000));
+    act(() => window.dispatchEvent(new MessageEvent('message', {
+      source: frame.contentWindow, data: unavailable,
+    })));
+
+    expect(model.recoverBinding).toHaveBeenCalledTimes(2);
+  });
+
   it('matches bridge messages by iframe when same-origin tabs share one session channel', async () => {
     const sharedTabs = tabs.map((tab) => ({ ...tab, channel: 'shared' }));
     const model = browser({ tabs: sharedTabs });

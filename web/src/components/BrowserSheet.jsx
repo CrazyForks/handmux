@@ -24,6 +24,7 @@ const FRAME_SANDBOX = 'allow-scripts allow-forms allow-downloads allow-modals al
 // capability URL itself is same-origin. Otherwise project JavaScript could read the parent app's token.
 const STATIC_FRAME_SANDBOX = 'allow-scripts allow-forms allow-downloads allow-modals allow-popups';
 const PAGE_ZOOM_STEPS = [0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+const SESSION_RECOVERY_LOCK_MS = 15_000;
 
 function tabLabel(tab) {
   if (tab.title) return tab.title;
@@ -93,7 +94,7 @@ export default function BrowserSheet({ browser, staticPreview }) {
   const frameUrls = useRef(new Map());
   const staticFrameUrls = useRef(new Map());
   const refreshSequences = useRef(new Map());
-  const recoveringSessions = useRef(new Set());
+  const recoveringSessions = useRef(new Map());
   const activeIdRef = useRef(activeId);
   const openRef = useRef(open);
   const activeTabRef = useRef(null);
@@ -104,6 +105,12 @@ export default function BrowserSheet({ browser, staticPreview }) {
   const clearDialogRef = useRef(null);
   activeIdRef.current = activeId;
   openRef.current = open;
+
+  const clearSessionRecovery = useCallback((id) => {
+    const timer = recoveringSessions.current.get(id);
+    if (timer != null) clearTimeout(timer);
+    recoveringSessions.current.delete(id);
+  }, []);
 
   useEffect(() => {
     setAddress(staticSelected ? (staticActive?.dir || '') : (homeActive ? '' : (webActive?.originalUrl || '')));
@@ -186,15 +193,20 @@ export default function BrowserSheet({ browser, staticPreview }) {
           return;
         }
         if (recoveringSessions.current.has(tab.id)) return;
-        recoveringSessions.current.add(tab.id);
+        const timer = setTimeout(() => {
+          if (recoveringSessions.current.get(tab.id) === timer) {
+            recoveringSessions.current.delete(tab.id);
+          }
+        }, SESSION_RECOVERY_LOCK_MS);
+        recoveringSessions.current.set(tab.id, timer);
         void recoverBinding(tab.id).then((binding) => {
-          if (!binding) recoveringSessions.current.delete(tab.id);
+          if (!binding) clearSessionRecovery(tab.id);
         });
         return;
       }
       if (tab.channel !== event.data.channel) return;
       if (event.data.type === 'ready') {
-        recoveringSessions.current.delete(tab.id);
+        clearSessionRecovery(tab.id);
         markBindingReady(tab.id, event.data.channel);
         setUnhealthyTabs((current) => {
           if (!current.has(tab.id)) return current;
@@ -212,9 +224,17 @@ export default function BrowserSheet({ browser, staticPreview }) {
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [markBindingReady, recoverBinding, tabs, updateTabMeta]);
+  }, [clearSessionRecovery, markBindingReady, recoverBinding, tabs, updateTabMeta]);
 
   useEffect(() => {
+    const live = new Set(tabs.map((tab) => tab.id));
+    const liveProxy = new Set(tabs.filter((tab) => tab.mode === 'proxy').map((tab) => tab.id));
+    for (const id of refreshSequences.current.keys()) {
+      if (!live.has(id)) refreshSequences.current.delete(id);
+    }
+    for (const id of recoveringSessions.current.keys()) {
+      if (!liveProxy.has(id)) clearSessionRecovery(id);
+    }
     setLoadedTabs((current) => {
       const next = new Set();
       for (const tab of tabs) {
@@ -223,22 +243,16 @@ export default function BrowserSheet({ browser, staticPreview }) {
       frameUrls.current = new Map(tabs.map((tab) => [tab.id, tab.url]));
       return next;
     });
-    setMountedTabs((current) => {
-      const live = new Set(tabs.map((tab) => tab.id));
-      const liveProxy = new Set(tabs.filter((tab) => tab.mode === 'proxy').map((tab) => tab.id));
-      for (const id of refreshSequences.current.keys()) {
-        if (!live.has(id)) refreshSequences.current.delete(id);
-      }
-      for (const id of recoveringSessions.current) {
-        if (!liveProxy.has(id)) recoveringSessions.current.delete(id);
-      }
-      return new Set([...current].filter((id) => live.has(id)));
-    });
+    setMountedTabs((current) => new Set([...current].filter((id) => live.has(id))));
     setUnhealthyTabs((current) => {
-      const live = new Set(tabs.map((tab) => tab.id));
       return new Set([...current].filter((id) => live.has(id)));
     });
-  }, [tabs]);
+  }, [clearSessionRecovery, tabs]);
+
+  useEffect(() => () => {
+    for (const timer of recoveringSessions.current.values()) clearTimeout(timer);
+    recoveringSessions.current.clear();
+  }, []);
 
   useEffect(() => {
     const staticTabs = staticPreview?.tabs || [];
